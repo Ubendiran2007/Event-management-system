@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-cse-primary: #0f172a;
+  --color-cse-accent: #2563eb;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply text-slate-900 font-sans antialiased;
+    background-color: #f8fafc;
+    background-image:
+      radial-gradient(circle at 15% 15%, rgba(37, 99, 235, 0.06) 0%, transparent 35%),
+      radial-gradient(circle at 85% 10%, rgba(15, 23, 42, 0.04) 0%, transparent 30%);
+    min-height: 100vh;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+
+.glass-panel {
+  @apply bg-white border border-slate-200 shadow-sm;
+}
+
+.btn-primary {
+  @apply bg-cse-primary text-white px-4 py-2 rounded-lg font-semibold hover:bg-slate-800 transition-colors disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply bg-white text-slate-700 border border-slate-200 px-4 py-2 rounded-lg font-semibold hover:bg-slate-50 transition-colors;
+}
+
+.input-field {
+  @apply w-full px-4 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-cse-accent/20 focus:border-cse-accent transition-colors;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+

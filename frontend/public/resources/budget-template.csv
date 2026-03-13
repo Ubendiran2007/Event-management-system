@@ -1,0 +1,10 @@
+Item Category,Item Description,Quantity,Unit Cost,Estimated Total,Remarks
+Venue,Hall Booking,1,0,0,
+Food,Refreshments,0,0,0,
+Transport,Vehicle Charges,0,0,0,
+Hospitality,Guest Accommodation,0,0,0,
+Media,Design and Printing,0,0,0,
+Audio/ICTS,Equipment Support,0,0,0,
+Miscellaneous,Other Expenses,0,0,0,
+,,,
+,,Grand Total,=SUM(E2:E8),
