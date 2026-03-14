@@ -344,59 +344,67 @@ const IQACSummaryModal = ({ event, onClose }) => {
     return null;
   };
 
-  const SectionCard = ({ title, icon, children, accent = 'slate' }) => (
-    <section className={`rounded-2xl border border-${accent}-100 bg-white shadow-sm overflow-hidden`}>
-      <div className={`px-6 py-4 border-b border-${accent}-100 flex items-center gap-2`}>
-        <span className={`text-${accent}-600`}>{icon}</span>
+  const SectionCard = ({ title, icon, children, accent = 'slate', className = '' }) => (
+    <section className={`rounded-2xl border border-${accent}-100 bg-white shadow-sm flex flex-col overflow-hidden ${className}`}>
+      <div className={`px-6 py-4 border-b border-${accent}-100 flex items-center gap-2 bg-${accent}-50/30`}>
+        <span className={`text-${accent}-600 p-1.5 bg-white rounded-lg shadow-sm ring-1 ring-${accent}-100`}>{icon}</span>
         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
       </div>
-      <div className="px-6 py-5">{children}</div>
+      <div className="px-6 py-5 flex-1 flex flex-col">{children}</div>
     </section>
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
       <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 12 }}
+        initial={{ scale: 0.95, opacity: 0, y: 15 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.95, opacity: 0, y: 12 }}
+        exit={{ scale: 0.95, opacity: 0, y: 15 }}
         transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-        className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto"
+        className="bg-slate-50/95 backdrop-blur-3xl border border-white/40 ring-1 ring-slate-900/5 rounded-[2rem] shadow-2xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header ── */}
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-5 rounded-t-3xl">
-          <div className="flex items-start justify-between gap-4">
+        {/* ── Premium Header ── */}
+        <div className="shrink-0 bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 px-6 sm:px-8 py-6 relative overflow-hidden">
+          {/* Subtle background glow */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 blur-[80px] rounded-full mix-blend-screen pointer-events-none" />
+          
+          <div className="flex items-start justify-between gap-4 relative z-10">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <ClipboardList size={16} className="text-emerald-600 shrink-0" />
-                <span className="text-xs font-bold uppercase tracking-widest text-emerald-600">Post-Event IQAC Report</span>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-400/20 border border-emerald-400/30 text-emerald-100 text-[10px] font-bold uppercase tracking-widest rounded-full mb-3 backdrop-blur-sm shadow-sm transition-colors hover:bg-emerald-400/30">
+                <ClipboardList size={12} className="shrink-0 text-emerald-300" />
+                Post-Event IQAC Report
               </div>
-              <h2 className="text-xl font-bold text-slate-900 truncate">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm truncate pr-4">
                 {event.title || s1?.eventName || 'Event Report'}
               </h2>
-              <p className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                <span>📅 {s1?.eventStartDate}{s1?.eventEndDate && s1.eventEndDate !== s1.eventStartDate ? ` – ${s1.eventEndDate}` : ''}</span>
-                <span>🕐 {s1?.eventStartTime} – {s1?.eventEndTime}</span>
-                <span>📍 {event.venue || 'Venue not specified'}</span>
+              <p className="text-sm text-emerald-200/90 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
+                <span className="flex items-center gap-1.5"><Calendar size={14} className="opacity-70" /> {s1?.eventStartDate}{s1?.eventEndDate && s1.eventEndDate !== s1.eventStartDate ? ` – ${s1.eventEndDate}` : ''}</span>
+                <span className="flex items-center gap-1.5"><Clock size={14} className="opacity-70" /> {s1?.eventStartTime} – {s1?.eventEndTime}</span>
+                {event.venue && <span className="flex items-center gap-1.5"><MapPin size={14} className="opacity-70" /> {event.venue}</span>}
               </p>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors shrink-0">
-              <X size={18} />
-            </button>
-          </div>
-          {submittedOn && (
-            <div className="mt-3 inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full">
-              <FileCheck size={12} /> IQAC Submitted on {submittedOn}
+            
+            <div className="flex flex-col items-end gap-3 shrink-0">
+              <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors" title="Close">
+                <X size={18} />
+              </button>
+              {submittedOn && (
+                <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-50 text-xs font-semibold px-3 py-1.5 rounded-full backdrop-blur-md mt-1 shadow-sm">
+                  <FileCheck size={12} className="text-emerald-300" /> Submitted on {submittedOn}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
-        <div className="px-6 py-6 space-y-5">
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
 
           {/* ── Event Info ── */}
-          <SectionCard title="Event Information" icon={<ClipboardList size={15} />}>
-            <div className="grid grid-cols-2 gap-3">
+          <SectionCard title="Event Information" icon={<ClipboardList size={15} />} className="lg:col-span-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 ['Event Name',   s1?.eventName || event.title],
                 ['Organizer',    event.organizerName || s1?.organizerDetails?.organizerName],
@@ -468,14 +476,14 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 {reg.mode && <p className="mt-3 text-xs text-slate-500">Mode: <span className="font-semibold text-slate-700">{reg.mode}</span></p>}
               </>
             ) : (
-              <p className="text-sm text-slate-400 italic">Attendance details were not recorded in this submission.</p>
+              <p className="text-sm text-slate-400 italic flex-1 flex items-center">Attendance details were not recorded in this submission.</p>
             )}
           </SectionCard>
 
           {/* ── Student Attendance Roster — always shown ── */}
           <SectionCard title={`Student Attendance Roster${studentRoster.length > 0 ? ` (${studentRoster.length})` : ''}`} icon={<Users size={15} />} accent="indigo">
             {studentRoster.length > 0 ? (
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-100">
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-100 flex-1">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-slate-50">
                     <tr>
@@ -503,7 +511,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-slate-400 italic">No student attendance roster was submitted.</p>
+              <p className="text-sm text-slate-400 italic flex-1 flex items-center">No student attendance roster was submitted.</p>
             )}
           </SectionCard>
 
@@ -525,7 +533,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
                     ))}
                   </div>
                 )}
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-2 flex-1 max-h-48 overflow-y-auto pr-1">
                   {(autoFeedback?.comments || studentFeedback).map((item, idx) => (
                     <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                       <div className="flex items-center justify-between flex-wrap gap-1">
@@ -542,52 +550,52 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-slate-400 italic">No student feedback has been submitted for this event yet.</p>
+              <p className="text-sm text-slate-400 italic flex-1 flex items-center">No student feedback has been submitted for this event yet.</p>
             )}
           </SectionCard>
 
           {/* ── Event Gallery — always shown ── */}
           <SectionCard title={`Event Gallery${gallery.length > 0 ? ` (${gallery.length} photos)` : ''}`} icon={<Star size={15} />} accent="amber">
             {gallery.length > 0 ? (
-              <>
+              <div className="flex flex-col flex-1">
                 <div className="grid grid-cols-3 gap-2">
                   {gallery.map((img, i) => (
-                    <div key={i} className="rounded-xl overflow-hidden aspect-square bg-slate-100 shadow-sm">
-                      <img src={img.url || img.dataUrl} alt={img.title || `Photo ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                    <div key={i} className="rounded-xl overflow-hidden aspect-square bg-slate-100 shadow-sm relative group">
+                      <img src={img.url || img.dataUrl} alt={img.title || `Photo ${i + 1}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                     </div>
                   ))}
                 </div>
                 {gallery.some(img => img.title) && (
-                  <div className="mt-3 space-y-1">
+                  <div className="mt-4 space-y-1.5 pt-4 border-t border-slate-100 max-h-[100px] overflow-y-auto">
                     {gallery.filter(img => img.title).map((img, i) => (
-                      <p key={i} className="text-xs text-slate-500">📷 {img.title}</p>
+                      <p key={i} className="text-xs text-slate-500 flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-slate-300"/> {img.title}</p>
                     ))}
                   </div>
                 )}
-              </>
+              </div>
             ) : (
-              <p className="text-sm text-slate-400 italic">No event photos were uploaded in this submission.</p>
+              <p className="text-sm text-slate-400 italic flex-1 flex items-center">No event photos were uploaded in this submission.</p>
             )}
           </SectionCard>
 
           {/* ── Resource Persons — always shown ── */}
-          <SectionCard title={`Resource Persons / Speakers${resourcePersons.length > 0 ? ` (${resourcePersons.length})` : ''}`} icon={<Users size={15} />} accent="indigo">
+          <SectionCard title={`Resource Persons / Speakers${resourcePersons.length > 0 ? ` (${resourcePersons.length})` : ''}`} icon={<Users size={15} />} accent="indigo" className="lg:col-span-2">
             {resourcePersons.length > 0 ? (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {resourcePersons.map((rp, i) => (
-                  <div key={i} className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3">
+                  <div key={i} className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 flex flex-col justify-center">
                     <div className="flex items-start justify-between flex-wrap gap-2">
                       <div>
                         <p className="text-sm font-bold text-slate-800">{rp.name}</p>
                         {rp.designation && <p className="text-xs text-slate-500 mt-0.5">{rp.designation}{rp.organization ? ` · ${rp.organization}` : ''}</p>}
-                        {rp.topic && <p className="text-xs text-indigo-600 mt-1 font-medium">Topic: {rp.topic}</p>}
+                        {rp.topic && <p className="text-xs text-indigo-600 mt-1.5 font-medium px-2 py-1 bg-indigo-100/50 rounded-md">Topic: {rp.topic}</p>}
                       </div>
                       {rp.rating && (
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-100/50 mt-1">
                           {[1,2,3,4,5].map(s => (
-                            <Star key={s} size={14} className={s <= (rp.rating || 5) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
+                            <Star key={s} size={12} className={s <= (rp.rating || 5) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
                           ))}
-                          <span className="text-xs font-bold text-amber-700 ml-1">{rp.rating}/5</span>
+                          <span className="text-[10px] font-bold text-amber-700 ml-0.5">{rp.rating}/5</span>
                         </div>
                       )}
                     </div>
@@ -600,24 +608,24 @@ const IQACSummaryModal = ({ event, onClose }) => {
           </SectionCard>
 
           {/* ── Guest / Resource Person Feedback — always shown ── */}
-          <SectionCard title="Guest / Resource Person Feedback" icon={<Star size={15} />} accent="amber">
+          <SectionCard title="Guest / Resource Person Feedback" icon={<Star size={15} />} accent="amber" className="lg:col-span-2">
             {guestFeedback.length > 0 ? (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {guestFeedback.map((fb, i) => (
-                  <div key={i} className="rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3">
+                  <div key={i} className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
                         <p className="text-sm font-bold text-slate-800">{fb.name}</p>
                         {fb.designation && <p className="text-xs text-slate-500 mt-0.5">{fb.designation}{fb.organization ? ` · ${fb.organization}` : ''}</p>}
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm">
                         {[1,2,3,4,5].map(s => (
-                          <Star key={s} size={14} className={s <= (fb.rating || 5) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
+                          <Star key={s} size={12} className={s <= (fb.rating || 5) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
                         ))}
-                        <span className="text-xs font-bold text-amber-700 ml-1">{fb.rating || 5}/5</span>
+                        <span className="text-[10px] font-bold text-amber-700 ml-1">{fb.rating || 5}/5</span>
                       </div>
                     </div>
-                    {fb.feedback && <p className="mt-2 text-sm text-slate-700 italic border-l-2 border-amber-300 pl-3">"{fb.feedback}"</p>}
+                    {fb.feedback && <p className="mt-3 text-sm text-slate-700 italic border-l-[3px] border-amber-300 pl-3">"{fb.feedback}"</p>}
                   </div>
                 ))}
               </div>
@@ -627,7 +635,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
           </SectionCard>
 
           {/* ── Documentation Checklist — always shown ── */}
-          <SectionCard title="Documentation Checklist" icon={<FileCheck size={15} />} accent="emerald">
+          <SectionCard title="Documentation Checklist" icon={<FileCheck size={15} />} accent="emerald" className="lg:col-span-2 shadow-md">
             {checklist.length > 0 ? (
               <>
                 <div className="space-y-2">
@@ -669,12 +677,13 @@ const IQACSummaryModal = ({ event, onClose }) => {
               <p className="text-sm text-slate-400 italic">No documentation checklist was recorded in this submission.</p>
             )}
           </SectionCard>
-
+          </div>
+          
           {/* ── Footer ── */}
           {submittedOn && (
-            <p className="text-center text-xs text-slate-400 pb-2">
-              This IQAC report was submitted on <span className="font-semibold">{submittedOn}</span> by the event organizer.
-            </p>
+            <div className="mt-8 text-center text-xs text-slate-400">
+              This IQAC report was submitted on <span className="font-semibold text-slate-500">{submittedOn}</span> by the event organizer.
+            </div>
           )}
         </div>
       </motion.div>
