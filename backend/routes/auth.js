@@ -49,7 +49,7 @@ const STAFF_CREDENTIALS = {
     user: {
       id: 'm1',
       name: 'Media Team',
-      email: 'media@sece.ac.in',
+      email: 'raj220707ram@gmail.com',
       role: 'MEDIA',
     },
   },

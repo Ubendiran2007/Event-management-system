@@ -103,35 +103,48 @@ router.post('/', async (req, res) => {
 
     const docRef = await addDoc(collection(db, 'events'), payload);
 
-    // Send email notification to faculty
-    // Prefer direct email from payload; fallback to Firestore lookup by faculty name.
+    // Send email notification based on initial status (Student vs Faculty creation)
     try {
-      let facultyEmail =
-        eventData.coordinator?.facultyEmail ||
-        eventData.coordinator?.faculty_email ||
-        eventData.facultyEmail ||
-        null;
-
-      if (typeof facultyEmail === 'string') {
-        facultyEmail = facultyEmail.trim().toLowerCase();
-      }
-
-      if (!facultyEmail && eventData.coordinator?.facultyName) {
-        facultyEmail = await getFacultyEmailByName(String(eventData.coordinator.facultyName).trim());
-      }
-
-      if (facultyEmail) {
-        const emailResult = await sendEventNotificationToFaculty(payload, facultyEmail);
-        if (!emailResult.success) {
-          console.warn('[events/create] Email notification failed:', emailResult.error);
+      if (payload.status === 'PENDING_HOD') {
+        const officialEmails = await getOfficialEmailsByRole('HOD');
+        if (officialEmails.length > 0) {
+          const requests = officialEmails.map(email => 
+            sendApprovalRequestToRole(payload, email, 'HOD')
+          );
+          await Promise.allSettled(requests);
+          console.log(`[events/create] Email sent to HODs (Faculty created event)`);
         } else {
-          console.log(`[events/create] Email sent to faculty: ${facultyEmail}`);
+          console.warn('[events/create] No HOD emails found for notification');
         }
       } else {
-        console.warn('[events/create] No faculty email found in payload or Firestore');
+        // Default (Student created) - send to Faculty
+        let facultyEmail =
+          eventData.coordinator?.facultyEmail ||
+          eventData.coordinator?.faculty_email ||
+          eventData.facultyEmail ||
+          null;
+
+        if (typeof facultyEmail === 'string') {
+          facultyEmail = facultyEmail.trim().toLowerCase();
+        }
+
+        if (!facultyEmail && eventData.coordinator?.facultyName) {
+          facultyEmail = await getFacultyEmailByName(String(eventData.coordinator.facultyName).trim());
+        }
+
+        if (facultyEmail) {
+          const emailResult = await sendEventNotificationToFaculty(payload, facultyEmail);
+          if (!emailResult.success) {
+            console.warn('[events/create] Email notification failed:', emailResult.error);
+          } else {
+            console.log(`[events/create] Email sent to faculty: ${facultyEmail}`);
+          }
+        } else {
+          console.warn('[events/create] No faculty email found in payload or Firestore');
+        }
       }
     } catch (emailError) {
-      console.error('[events/create] Error sending email:', emailError);
+      console.error('[events/create] Error sending initial email:', emailError);
       // Don't fail the event creation if email fails
     }
 
