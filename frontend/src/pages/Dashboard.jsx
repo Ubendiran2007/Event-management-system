@@ -456,9 +456,9 @@ const Dashboard = () => {
                               eventEnd.setHours(h, m, 0, 0);
                               if (Date.now() <= eventEnd.getTime()) return null;
                               
-                              // Check if within 3 days of event end
-                              const threeDaysAfter = eventEnd.getTime() + (3 * 24 * 60 * 60 * 1000);
-                              if (Date.now() > threeDaysAfter) return null;
+                              // Check if within 30 seconds of event end (TESTING)
+                              const thirtySecondsAfter = eventEnd.getTime() + (30 * 1000);
+                              if (Date.now() > thirtySecondsAfter) return null;
 
                               return (
                                 <button

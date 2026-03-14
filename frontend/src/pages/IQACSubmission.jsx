@@ -52,7 +52,12 @@ const isEventEndTimePassed = (event) => {
   const eventEnd = new Date(eventDate);
   eventEnd.setHours(hours, minutes, 0, 0);
   
-  return Date.now() > eventEnd.getTime();
+  const now = Date.now();
+  const endMs = eventEnd.getTime();
+  const thirtySecondsAfter = endMs + (30 * 1000); // TESTING: 30 seconds
+  
+  // Must be after event end AND within 30 seconds
+  return now > endMs && now <= thirtySecondsAfter;
 };
 
 const StatusBadge = ({ status }) => {
@@ -515,9 +520,9 @@ const IQACSubmission = () => {
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 text-amber-600" size={18} />
               <div>
-                <p className="text-sm font-bold text-amber-800">IQAC checklist is not available yet</p>
+                <p className="text-sm font-bold text-amber-800">IQAC checklist is not available</p>
                 <p className="mt-1 text-sm text-amber-700">
-                  This page is accessible only when Event Status is Completed.
+                  IQAC submission is only available after the event has ended and must be completed within 30 seconds of the event end time (TESTING).
                 </p>
               </div>
             </div>

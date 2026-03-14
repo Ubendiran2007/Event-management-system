@@ -1,4 +1,4 @@
-import { LogOut } from 'lucide-react';
+import { LogOut, LayoutDashboard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import cseLogo from '../assets/cse_b.jpg';
@@ -26,7 +26,15 @@ const Navbar = () => {
         </div>
       </div>
       {currentUser && (
-        <div className="flex items-center gap-4 sm:gap-6">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-cse-accent/10 text-cse-accent hover:bg-cse-accent hover:text-white rounded-lg transition-colors text-xs font-semibold"
+            title="Dashboard"
+          >
+            <LayoutDashboard size={16} />
+            <span className="hidden sm:inline">Dashboard</span>
+          </button>
           <div className="text-right hidden sm:block">
             <p className="text-sm font-semibold">{currentUser.name}</p>
             <p className="text-xs text-slate-500">{currentUser.role.replace('_', ' ')}</p>

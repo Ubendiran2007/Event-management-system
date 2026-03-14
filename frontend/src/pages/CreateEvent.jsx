@@ -796,9 +796,9 @@ const CreateEvent = () => {
       ? {
           requested: true,
           status: 'REQUESTED',
-          neededByDate: form.posterNeededByDate || null,
-          neededByTime: form.posterNeededByTime || null,
-          requestNotes: 'Poster requested by organizer',
+          neededByDate: form.media?.preEventPosterNeededByDate || null,
+          neededByTime: form.media?.preEventPosterNeededByTime || null,
+          requestNotes: form.media?.preEventPosterNotes || 'Poster requested by organizer',
           requestedAt: new Date().toISOString(),
           requestedBy: form.organizerName || currentUser?.name || 'Organizer',
           mediaDraftDataUrl: null,
@@ -996,29 +996,6 @@ const CreateEvent = () => {
                   />
                   <label htmlFor="requirePosterCheckbox" className="text-sm font-semibold text-slate-700">Require Poster (Send request to Media)</label>
                 </div>
-                {form.requirePoster && (
-                  <div className="grid grid-cols-2 gap-4 mb-2">
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-700">Poster Needed By Date</label>
-                      <input
-                        type="date"
-                        className={inputClass}
-                        value={form.posterNeededByDate || ''}
-                        onChange={e => setForm(prev => ({ ...prev, posterNeededByDate: e.target.value }))}
-                        min={eventStartMinDate}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-700">Poster Needed By Time</label>
-                      <input
-                        type="time"
-                        className={inputClass}
-                        value={form.posterNeededByTime || ''}
-                        onChange={e => setForm(prev => ({ ...prev, posterNeededByTime: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                )}
                 <input
                   type="file"
                   accept="image/*"

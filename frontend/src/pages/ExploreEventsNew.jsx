@@ -8,6 +8,8 @@ import { EventStatus, UserRole } from '../types';
 import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
 import ODLetterModal from '../components/ODLetterModal';
+import FeedbackModal from '../components/FeedbackModal';
+import EventDetailModal from '../components/EventDetailModal';
 import defaultPoster from '../assets/sece.avif';
 
 const ExploreEvents = () => {
@@ -17,6 +19,8 @@ const ExploreEvents = () => {
   const [filter, setFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showODModal, setShowODModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showEventDetail, setShowEventDetail] = useState(false);
   const [processingEventId, setProcessingEventId] = useState(null);
   const navigate = useNavigate();
 
@@ -158,8 +162,8 @@ const ExploreEvents = () => {
     const startTime = event.requisition?.step1?.eventStartTime || '00:00';
     if (!startDate) return false;
     const start = new Date(`${startDate}T${startTime}`).getTime();
-    const oneHourBefore = start - (60 * 60 * 1000);
-    return Date.now() >= oneHourBefore;
+    const oneSecondBefore = start - (1000); // TESTING: 1 second before instead of 1 hour
+    return Date.now() >= oneSecondBefore;
   };
 
   const canSubmitFeedback = (event) => {
@@ -169,7 +173,18 @@ const ExploreEvents = () => {
     const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id);
     if (!odReq || odReq.status !== 'APPROVED') return false;
 
-    return true; // TESTING: Bypass time checks for feedback
+    // Block if feedback already submitted
+    if (odReq.feedback) return false;
+
+    const endDate = event.requisition?.step1?.eventEndDate;
+    const endTime = event.requisition?.step1?.eventEndTime || '23:59';
+    if (!endDate) return false;
+    
+    const end = new Date(`${endDate}T${endTime}`).getTime();
+    const now = Date.now();
+    const twentyFourSecondsAfter = end + (24 * 1000); // TESTING: 24 seconds instead of 24 hours
+    
+    return now >= end && now <= twentyFourSecondsAfter;
   };
 
   const EventCard = ({ event }) => {
@@ -192,7 +207,11 @@ const ExploreEvents = () => {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all"
+        onClick={() => {
+          setSelectedEvent(event);
+          setShowEventDetail(true);
+        }}
+        className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all cursor-pointer"
       >
         <div className="h-48 overflow-hidden">
           <img
@@ -250,9 +269,12 @@ const ExploreEvents = () => {
           )}
 
           <div className="flex flex-wrap gap-2">
-            {isStudent && !registered && (
+            {isStudent && !registered && status === 'upcoming' && (
               <button
-                onClick={() => handleRegister(event.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRegister(event.id);
+                }}
                 disabled={processing}
                 className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium"
               >
@@ -263,7 +285,10 @@ const ExploreEvents = () => {
 
             {isStudent && registered && canWithdraw && (
               <button
-                onClick={() => handleWithdraw(event.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleWithdraw(event.id);
+                }}
                 disabled={processing}
                 className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium"
               >
@@ -302,7 +327,10 @@ const ExploreEvents = () => {
 
             {showOD && (
               <button
-                onClick={() => handleDownloadOD(event)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDownloadOD(event);
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium"
               >
                 <Download size={14} />
@@ -312,6 +340,11 @@ const ExploreEvents = () => {
 
             {showFeedback && (
               <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedEvent(event);
+                  setShowFeedbackModal(true);
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium"
               >
                 <MessageSquare size={14} />
@@ -387,6 +420,30 @@ const ExploreEvents = () => {
           odRequest={odRequests.find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED')}
           onClose={() => {
             setShowODModal(false);
+            setSelectedEvent(null);
+          }}
+        />
+      )}
+
+      {showFeedbackModal && selectedEvent && (() => {
+        const odReq = odRequests.find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED');
+        return odReq ? (
+          <FeedbackModal
+            odRequestId={odReq.id}
+            eventTitle={selectedEvent.title || selectedEvent.requisition?.step1?.eventName || 'Event'}
+            onClose={() => {
+              setShowFeedbackModal(false);
+              setSelectedEvent(null);
+            }}
+          />
+        ) : null;
+      })()}
+
+      {showEventDetail && selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => {
+            setShowEventDetail(false);
             setSelectedEvent(null);
           }}
         />

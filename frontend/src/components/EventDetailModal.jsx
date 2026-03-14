@@ -16,6 +16,8 @@ import {
   Loader2,
   ArrowRight,
   ExternalLink,
+  FileCheck,
+  Star,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
@@ -1097,6 +1099,86 @@ const EventDetailModal = ({ event, onClose }) => {
             ) : (
               <InfoSection title="7. Media Requirements (Annexure VI)" icon={Camera}>
                 <p className="text-sm text-slate-400">Not required for this event.</p>
+              </InfoSection>
+            )}
+
+            {/* 8. IQAC Submission Details */}
+            {event.iqacData && (
+              <InfoSection title="8. IQAC Post-Event Submission" icon={FileCheck}>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">Event Outcome</p>
+                    <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-sm text-emerald-900 whitespace-pre-line">
+                      {event.iqacData.eventOutcome || 'No outcome provided.'}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Registration vs Attendance</p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">Total Registered:</span>
+                          <span className="font-semibold text-slate-900">{event.iqacData.registration?.total || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">Total Attended:</span>
+                          <span className="font-semibold text-emerald-600">{event.iqacData.registration?.attendance?.total || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm border-t border-slate-200 pt-2">
+                          <span className="text-slate-600">Attendance Rate:</span>
+                          <span className="font-semibold text-cse-accent">{event.iqacData.registration?.attendance?.attendanceRate || '0%'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Student Feedback Summary</p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">Total Responses:</span>
+                          <span className="font-semibold text-slate-900">{event.iqacData.feedbackSummary?.totalResponses || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm flex-1">
+                          <span className="text-slate-600">Average Rating:</span>
+                          <div className="flex items-center gap-1 font-semibold text-amber-600">
+                            {event.iqacData.feedbackSummary?.averageRating || '-'} <Star size={14} className="fill-amber-500" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {event.iqacData.gallery?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Event Gallery</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {event.iqacData.gallery.map((img, idx) => (
+                          <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-slate-200">
+                            <img src={img.url} alt={img.title || `Gallery ${idx}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {Object.keys(event.iqacData.documents || {}).length > 0 && (
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Submitted Documents</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(event.iqacData.documents).map(([docName, docInfo]) => (
+                          <div key={docName} className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                            <CheckCircle size={14} className={docInfo.verified ? "text-emerald-500" : "text-blue-500"} />
+                            <span className="font-medium text-slate-700">{docName}</span>
+                            {docInfo.dataUrl && (
+                              <a href={docInfo.dataUrl} download={docInfo.fileName} className="text-cse-accent hover:underline ml-1">(Download)</a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </InfoSection>
             )}
           </div>
