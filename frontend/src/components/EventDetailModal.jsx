@@ -94,11 +94,18 @@ const EventDetailModal = ({ event, onClose }) => {
 
   // Calculate if event has started (must be AFTER all hooks)
   let eventHasStarted = false;
+  let eventHasEnded = false;
   if (event?.requisition?.step1?.eventStartDate && event?.requisition?.step1?.eventStartTime) {
     const startDate = event.requisition.step1.eventStartDate;
     const startTime = event.requisition.step1.eventStartTime;
     const startDateTime = new Date(`${startDate}T${startTime}`);
     eventHasStarted = Date.now() >= startDateTime.getTime();
+    
+    // Default to start date if end date is missing
+    const endDate = event.requisition.step1.eventEndDate || startDate;
+    const endTime = event.requisition.step1.eventEndTime || '23:59';
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+    eventHasEnded = Date.now() >= endDateTime.getTime();
   }
 
   if (!event) return null;
@@ -124,7 +131,7 @@ const EventDetailModal = ({ event, onClose }) => {
     String(event?.autoRejectedBy || '').toUpperCase() === 'SYSTEM';
   const isApprovedEvent = ['POSTED', 'COMPLETED'].includes(String(event.status).toUpperCase());
   const isEventOrganizer = Boolean(currentUser) && event.organizerId === currentUser.id;
-  const canUploadFinalPosterAsMedia = currentUser?.role === UserRole.MEDIA && !eventHasStarted;
+  const canUploadFinalPosterAsMedia = currentUser?.role === UserRole.MEDIA && !eventHasEnded;
   const canUpdatePosterForOrganizer = isEventOrganizer && [UserRole.STUDENT_ORGANIZER, UserRole.FACULTY].includes(currentUser.role) && !posterWorkflow?.requested;
   const canUpdatePoster = canUpdatePosterForOrganizer || canUploadFinalPosterAsMedia;
   const canManagePosterWorkflowAsMedia = false; // Draft workflow is superseded by direct upload for Media
