@@ -229,7 +229,6 @@ const Dashboard = () => {
   };
 
   const handleWithdraw = async (odId) => {
-    if (!window.confirm('Are you sure you want to withdraw this OD request?')) return;
     setWithdrawingOD(prev => ({ ...prev, [odId]: true }));
     try {
       await fetch(`http://localhost:5001/api/od-requests/${odId}/withdraw`, {

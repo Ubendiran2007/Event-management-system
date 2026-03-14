@@ -338,13 +338,20 @@ const CreateEvent = () => {
   }, [form.accommodation]);
 
   const todayIso = useMemo(() => new Date().toISOString().split('T')[0], []);
+  
+  const pastWeekDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  }, []);
+
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
   const audioMinDate = form.startDate || todayIso;
-  const journeyMinDate = form.startDate || todayIso;
-  const accommodationArrivalMinDate = form.startDate || todayIso;
+  const journeyMinDate = pastWeekDate;
+  const accommodationArrivalMinDate = pastWeekDate;
   const accommodationDepartureMinDate = form.accommodation.arrivalDate || accommodationArrivalMinDate;
-  const diningMinDate = form.accommodation.arrivalDate || form.startDate || todayIso;
+  const diningMinDate = form.accommodation.arrivalDate || form.startDate || pastWeekDate;
 
   const steps = useMemo(() => {
     return [
@@ -667,15 +674,44 @@ const CreateEvent = () => {
     }));
   };
 
+  const isValidPhone = (phone) => /^\d{10}$/.test(String(phone).trim());
+  const isValidEmail = (email) => {
+    if (!email) return true; // Validate only if provided, if required check is elsewhere
+    const val = String(email).trim();
+    return val.includes('@') && val === val.toLowerCase();
+  };
+
   const isStepValid = (stepKey) => {
     if (stepKey === STEP_KEYS.EVENT_INFO) {
       if (!form.eventName || !form.eventType || !form.startDate || !form.endDate || !form.startTime || !form.endTime || !form.organizerName || !form.department || !form.mobileNumber) {
         setStepError('Please fill all required Event Info fields.');
         return false;
       }
+      
+      if (!isValidPhone(form.mobileNumber)) {
+        setStepError('Mobile number must be exactly 10 digits.');
+        return false;
+      }
+
+      if (form.internalParticipants && !/^\d+$/.test(String(form.internalParticipants))) {
+        setStepError('Internal participants must be a number.');
+        return false;
+      }
+
+      if (form.externalParticipants && !/^\d+$/.test(String(form.externalParticipants))) {
+        setStepError('External participants must be a number.');
+        return false;
+      }
 
       const start = new Date(form.startDate);
       const end = new Date(form.endDate);
+      const today = new Date(todayIso);
+
+      if (start < today) {
+        setStepError('Event Start Date must be today or a future date.');
+        return false;
+      }
+
       if (end < start) {
         setStepError('Event End Date must be on or after Event Start Date.');
         return false;
@@ -708,6 +744,10 @@ const CreateEvent = () => {
         setStepError('Please enter number of venues required.');
         return false;
       }
+      if (!/^\d+$/.test(String(form.numberOfVenuesRequired))) {
+        setStepError('Number of venues required must be a number.');
+        return false;
+      }
       const hasSelectedVenue = Object.values(form.venueSelection || {}).some((v) => v.selected);
       if (!hasSelectedVenue) {
         setStepError('Please select at least one venue option.');
@@ -724,12 +764,24 @@ const CreateEvent = () => {
         setStepError('Please enter expected number of internet users.');
         return false;
       }
+      if (!/^\d+$/.test(String(form.expectedInternetUsers || '').trim())) {
+        setStepError('Expected number of internet users must be a number.');
+        return false;
+      }
     }
 
     if (stepKey === STEP_KEYS.ACCOMMODATION && form.accommodationRequired) {
       const a = form.accommodation;
       if (!a.arrivalDate || !a.departureDate || !a.arrivalTime || !a.departureTime) {
         setStepError('Please fill arrival/departure date and time for accommodation.');
+        return false;
+      }
+      if (a.email && !isValidEmail(a.email)) {
+        setStepError('Accommodation email must contain @ and be all lowercase.');
+        return false;
+      }
+      if (a.mobileNumber && !isValidPhone(a.mobileNumber)) {
+        setStepError('Accommodation mobile number must be exactly 10 digits.');
         return false;
       }
       const arrival = new Date(a.arrivalDate);
@@ -748,9 +800,45 @@ const CreateEvent = () => {
     }
 
     if (stepKey === STEP_KEYS.TRANSPORT && form.transportRequired) {
-      if (!form.externalTransport.facultyId || !form.externalTransport.contactNumber || !form.internalTransport.indenterName || !form.internalTransport.contactNumber) {
-        setStepError('Please complete key Transport fields (Faculty/Indenter and contact numbers).');
+      if (!form.externalTransport.facultyId && !form.internalTransport.indenterName) {
+        setStepError('Please complete key Transport fields.');
         return false;
+      }
+      
+      if (form.externalTransport.facultyId) {
+        if (!form.externalTransport.contactNumber) {
+          setStepError('Please complete key Transport fields (Contact number for external).');
+          return false;
+        }
+        if (form.externalTransport.contactNumber && !isValidPhone(form.externalTransport.contactNumber)) {
+          setStepError('External Transport contact number must be exactly 10 digits.');
+          return false;
+        }
+        if (form.externalTransport.emailId && !isValidEmail(form.externalTransport.emailId)) {
+          setStepError('External Transport email must contain @ and be all lowercase.');
+          return false;
+        }
+      }
+
+      if (form.internalTransport.indenterName) {
+        if (!form.internalTransport.contactNumber) {
+          setStepError('Please complete key Transport fields (Contact number for internal).');
+          return false;
+        }
+        if (form.internalTransport.contactNumber && !isValidPhone(form.internalTransport.contactNumber)) {
+          setStepError('Internal Transport contact number must be exactly 10 digits.');
+          return false;
+        }
+        if (form.internalTransport.emailId && !isValidEmail(form.internalTransport.emailId)) {
+          setStepError('Internal Transport email must contain @ and be all lowercase.');
+          return false;
+        }
+        for (const [idx, p] of form.internalTransport.passengers.entries()) {
+          if (p.contactNumber && !isValidPhone(p.contactNumber)) {
+            setStepError(`Passenger ${idx + 1} contact number must be exactly 10 digits.`);
+            return false;
+          }
+        }
       }
     }
 
