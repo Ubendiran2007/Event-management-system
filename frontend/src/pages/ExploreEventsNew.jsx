@@ -735,6 +735,13 @@ const EventCard = ({
         </div>
 
         <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+               event.creatorType === 'FACULTY' ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+             }`}>
+               {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
+             </span>
+          </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Calendar size={14} />
             <span className="text-xs">{event.requisition?.step1?.eventStartDate} to {event.requisition?.step1?.eventEndDate}</span>
@@ -998,9 +1005,9 @@ const ExploreEvents = () => {
     // Must be registered
     if (!isRegistered(event)) return false;
 
-    // Block if feedback already submitted (check any non-withdrawn OD request)
+    // Block if feedback already submitted or registration rejected (check any non-withdrawn OD request)
     const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
-    if (odReq?.feedback) return false;
+    if (!odReq || odReq.status === 'REJECTED' || odReq.feedback) return false;
 
     const endDate = event.requisition?.step1?.eventEndDate;
     const endTime = event.requisition?.step1?.eventEndTime || '23:59';

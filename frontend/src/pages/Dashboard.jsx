@@ -468,6 +468,11 @@ const Dashboard = () => {
                                     Resubmitted
                                   </span>
                                 )}
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border ${
+                                  event.creatorType === 'FACULTY' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                }`}>
+                                  {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
+                                </span>
                               </h4>
                               <div className="flex items-center gap-3 mt-1">
                                 <span className="text-xs text-slate-500 flex items-center gap-1">

@@ -388,6 +388,11 @@ const EventDetailModal = ({ event, onClose }) => {
                     Resubmitted
                   </span>
                 )}
+                <span className={`px-2.5 py-1 rounded-lg text-[11px] uppercase tracking-wider font-bold border ${
+                  event.creatorType === 'FACULTY' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                }`}>
+                  {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
+                </span>
               </h2>
               <p className="text-sm text-slate-500 mt-1">Approval review workspace</p>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
