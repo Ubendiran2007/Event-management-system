@@ -80,6 +80,7 @@ router.post('/:eventId', async (req, res) => {
     resourcePersons,
     gallery,
     guestFeedbackList,
+    checklist,
     documents,
     finalReport,
   } = req.body;
@@ -255,6 +256,7 @@ router.post('/:eventId', async (req, res) => {
         guestFeedback:    processedGuestFeedback,
         eventOutcome:     eventOutcome  || '',
         documents:        documents     || {},
+        checklist:        Array.isArray(checklist) ? checklist : [],
         finalReport:      finalReport   || null,
       },
     });
