@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, LayoutDashboard, MessageSquare, X, Star, ClipboardList } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
@@ -235,44 +235,49 @@ const EventCard = ({
         )}
 
         <div className="flex flex-wrap gap-2">
+          {/* Register button — only for upcoming events */}
           {isStudent && !registered && status === 'upcoming' && (
             <button onClick={(e) => { e.stopPropagation(); onRegister(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Register
             </button>
           )}
-          {isStudent && registered && canWithdraw && (
+          {/* Withdraw — only for upcoming events */}
+          {isStudent && registered && canWithdraw && status !== 'completed' && (
             <button onClick={(e) => { e.stopPropagation(); onWithdraw(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Withdraw
             </button>
           )}
-          {isStudent && registered && requestStatus === 'APPROVED' && (
+          {/* Registration status badges — hidden on completed events */}
+          {isStudent && registered && status !== 'completed' && requestStatus === 'APPROVED' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
               <CheckCircle size={14} /> Registered (Approved)
             </span>
           )}
-          {isStudent && registered && requestStatus === 'PENDING_ORGANIZER' && (
+          {isStudent && registered && status !== 'completed' && requestStatus === 'PENDING_ORGANIZER' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">
               <Clock size={14} /> Pending Approval
             </span>
           )}
-          {isStudent && registered && requestStatus === 'REJECTED' && (
+          {isStudent && registered && status !== 'completed' && requestStatus === 'REJECTED' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-medium">
               <XCircle size={14} /> Registration Rejected
             </span>
           )}
-          {isStudent && registered && !requestStatus && (
+          {isStudent && registered && status !== 'completed' && !requestStatus && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
               <CheckCircle size={14} /> Registered
             </span>
           )}
-          {showOD && (
+          {/* OD Letter — hidden on completed events */}
+          {showOD && status !== 'completed' && (
             <button onClick={(e) => { e.stopPropagation(); onDownloadOD(event); }}
               className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium">
               <Download size={14} /> OD Letter
             </button>
           )}
+          {/* Feedback — shown only on completed events for eligible registered students */}
           {showFeedback && (
             <button onClick={(e) => { e.stopPropagation(); onOpenFeedback(event); }}
               className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium">
@@ -478,9 +483,9 @@ const ExploreEvents = () => {
     
     const end = new Date(`${endDate}T${endTime}`).getTime();
     const now = Date.now();
-    const twentyFourSecondsAfter = end + (24 * 1000); // TESTING: 24 seconds instead of 24 hours
+    const sevenDaysAfter = end + (7 * 24 * 60 * 60 * 1000); // 7 days after event ends
     
-    return now >= end && now <= twentyFourSecondsAfter;
+    return now >= end && now <= sevenDaysAfter;
   };
   // Shared props for the stable module-level EventCard
   const cardSharedProps = {
@@ -498,18 +503,9 @@ const ExploreEvents = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Navbar />
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore Events</h1>
-            <p className="text-slate-600">Discover and register for upcoming events</p>
-          </div>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 px-4 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 font-medium"
-          >
-            <LayoutDashboard size={18} />
-            Dashboard
-          </button>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore Events</h1>
+          <p className="text-slate-600">Discover and register for upcoming events</p>
         </div>
 
         <div className="flex gap-3 mb-6 overflow-x-auto pb-2">

@@ -54,10 +54,10 @@ const isEventEndTimePassed = (event) => {
   
   const now = Date.now();
   const endMs = eventEnd.getTime();
-  const thirtySecondsAfter = endMs + (30 * 1000); // TESTING: 30 seconds
+  const sevenDaysAfter = endMs + (7 * 24 * 60 * 60 * 1000); 
   
-  // Must be after event end AND within 30 seconds
-  return now > endMs && now <= thirtySecondsAfter;
+  // Must be after event end AND within 7 days
+  return now > endMs && now <= sevenDaysAfter;
 };
 
 const StatusBadge = ({ status }) => {
@@ -522,7 +522,7 @@ const IQACSubmission = () => {
               <div>
                 <p className="text-sm font-bold text-amber-800">IQAC checklist is not available</p>
                 <p className="mt-1 text-sm text-amber-700">
-                  IQAC submission is only available after the event has ended and must be completed within 30 seconds of the event end time (TESTING).
+                  IQAC submission is only available after the event has ended and must be completed within 7 days of the event end time.
                 </p>
               </div>
             </div>

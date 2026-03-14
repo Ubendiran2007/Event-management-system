@@ -517,9 +517,9 @@ const Dashboard = () => {
                               eventEnd.setHours(h, m, 0, 0);
                               if (Date.now() <= eventEnd.getTime()) return null;
                               
-                              // Check if within 30 seconds of event end (TESTING)
-                              const thirtySecondsAfter = eventEnd.getTime() + (30 * 1000);
-                              if (Date.now() > thirtySecondsAfter) return null;
+                              // Allow IQAC submission up to 7 days after event ends
+                              const sevenDaysAfter = eventEnd.getTime() + (7 * 24 * 60 * 60 * 1000);
+                              if (Date.now() > sevenDaysAfter) return null;
 
                               return (
                                 <button
