@@ -463,8 +463,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     : 'bg-red-50 border-red-200 text-red-700'
                 }`}>
                   {isSystemAutoRejected
-                    ? 'Auto-rejected by system because approval was not completed before the configured cutoff. You can edit and resubmit this event from Dashboard.'
-                    : 'This event has been rejected.'}
+                    ? `Auto-rejected by system because approval was not completed before the configured cutoff.${currentUser?.role === 'ORGANIZER' ? ' You can edit and resubmit this event from Dashboard.' : ''}`
+                    : `This event has been rejected.${currentUser?.role === 'ORGANIZER' ? ' You can edit and resubmit this event from Dashboard.' : ''}`}
                   {event.rejectionReason && (
                     <p className={`mt-1 font-medium text-[11px] ${isSystemAutoRejected ? 'text-amber-900' : 'text-red-800'}`}>
                       Reason: {event.rejectionReason}

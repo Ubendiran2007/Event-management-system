@@ -135,6 +135,24 @@ router.post('/', async (req, res) => {
       // Don't fail the event creation if email fails
     }
 
+    // Send email notification to Media team if poster is requested
+    if (payload.posterWorkflow?.requested) {
+      try {
+        const mediaEmails = await getOfficialEmailsByRole('MEDIA');
+        if (mediaEmails.length > 0) {
+          const requests = mediaEmails.map(email =>
+            sendPosterRequestEmail(payload, email)
+          );
+          await Promise.allSettled(requests);
+          console.log(`[events/create] Email sent to Media team for event ${docRef.id}`);
+        } else {
+          console.warn('[events/create] No MEDIA users found for poster request email');
+        }
+      } catch (mediaError) {
+        console.error('[events/create] Error notifying MEDIA:', mediaError);
+      }
+    }
+
     return res.status(201).json({
       success: true,
       message: 'Event created successfully',
@@ -319,6 +337,61 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// ── PUT /api/events/:id/resubmit-edit ───────────────────────────────
+// Resubmit a rejected event
+router.put('/:id/resubmit-edit', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const updatePayload = {
+      ...req.body,
+      status: req.body.status || 'PENDING_FACULTY',
+      updatedAt: new Date().toISOString()
+    };
+    await updateDoc(eventRef, updatePayload);
+
+    // After resubmitting, we can notify the faculty again
+    try {
+      const payloadWithId = { id: req.params.id, ...updatePayload };
+      let facultyEmail =
+        updatePayload.coordinator?.facultyEmail ||
+        updatePayload.coordinator?.faculty_email ||
+        updatePayload.facultyEmail ||
+        null;
+
+      if (typeof facultyEmail === 'string') {
+        facultyEmail = facultyEmail.trim().toLowerCase();
+      }
+
+      if (!facultyEmail && updatePayload.coordinator?.facultyName) {
+        facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
+      }
+
+      if (facultyEmail) {
+        await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
+      }
+    } catch (emailError) {
+      console.error('[events/resubmit-edit] Error sending email:', emailError);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Event resubmitted successfully',
+      event: { id: req.params.id, ...eventSnap.data(), ...updatePayload },
+    });
+  } catch (error) {
+    console.error('[events/resubmit-edit] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to resubmit event', error: error.message });
+  }
+});
+
 // ── DELETE /api/events/:id ───────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   if (!checkDb(res)) return;
@@ -414,7 +487,7 @@ router.patch('/:id/poster-workflow', async (req, res) => {
     const refreshedData = { id: req.params.id, ...eventData, posterWorkflow: newWorkflow };
 
     // Trigger emails for specific steps in the workflow
-    if (updates.status === 'SENT_TO_ORGANIZER' && eventData.organizerEmail) {
+    if ((updates.status === 'SENT_TO_ORGANIZER' || updates.status === 'COMPLETED') && eventData.organizerEmail) {
       try {
         await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
       } catch (workflowErr) {
