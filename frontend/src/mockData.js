@@ -6,6 +6,7 @@ export const MOCK_USERS = [
   { id: 'p1', name: 'Dr. S. Rajan', email: 'ubendiran.lakshmanan007@gmail.com', role: UserRole.PRINCIPAL },
   { id: 's1', name: 'John Doe', email: 'john@student.edu', role: UserRole.STUDENT_ORGANIZER, isApprovedOrganizer: true },
   { id: 's2', name: 'Jane Smith', email: 'jane@student.edu', role: UserRole.STUDENT_GENERAL },
+  { id: 'm1', name: 'Media Team', email: 'raj220707ram@gmail.com', role: UserRole.MEDIA },
 ];
 
 export const MOCK_EVENTS = [

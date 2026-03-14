@@ -122,10 +122,13 @@ const EventDetailModal = ({ event, onClose }) => {
   const isSystemAutoRejected =
     event.status === EventStatus.REJECTED &&
     String(event?.autoRejectedBy || '').toUpperCase() === 'SYSTEM';
+  const isApprovedEvent = ['POSTED', 'COMPLETED'].includes(String(event.status).toUpperCase());
   const isEventOrganizer = Boolean(currentUser) && event.organizerId === currentUser.id;
-  const canUpdatePoster = isEventOrganizer && [UserRole.STUDENT_ORGANIZER, UserRole.FACULTY].includes(currentUser.role);
-  const canManagePosterWorkflowAsMedia = currentUser?.role === UserRole.MEDIA;
-  const canReviewPosterWorkflowAsOrganizer = isEventOrganizer && [UserRole.STUDENT_ORGANIZER, UserRole.FACULTY].includes(currentUser?.role);
+  const canUploadFinalPosterAsMedia = currentUser?.role === UserRole.MEDIA && !eventHasStarted;
+  const canUpdatePosterForOrganizer = isEventOrganizer && [UserRole.STUDENT_ORGANIZER, UserRole.FACULTY].includes(currentUser.role) && !posterWorkflow?.requested;
+  const canUpdatePoster = canUpdatePosterForOrganizer || canUploadFinalPosterAsMedia;
+  const canManagePosterWorkflowAsMedia = false; // Draft workflow is superseded by direct upload for Media
+  const canReviewPosterWorkflowAsOrganizer = false; // We use direct uploads now
 
   const canApprove = () => {
     if (!currentUser) return false;
@@ -234,6 +237,20 @@ const EventDetailModal = ({ event, onClose }) => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) {
         throw new Error(data.message || 'Failed to upload poster');
+      }
+
+      // If Media uploads directly, auto-complete the poster workflow to clear it from their queue
+      if (currentUser?.role === UserRole.MEDIA && event.posterWorkflow?.requested) {
+        await fetch(`http://localhost:5001/api/events/${event.id}/poster-workflow`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'COMPLETED',
+            finalUploadedAt: new Date().toISOString(),
+            finalUploadedBy: currentUser?.name || currentUser?.email || 'Media Team',
+            updatedBy: currentUser?.name || currentUser?.email || 'Media Team',
+          }),
+        }).catch(err => console.error('Failed to complete poster workflow:', err));
       }
 
       setPosterUploadSuccess('Poster uploaded successfully. The latest version will appear automatically.');
@@ -653,10 +670,12 @@ const EventDetailModal = ({ event, onClose }) => {
                 {canUpdatePoster && (
                   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-800">Upload Poster From Media</p>
+                      <p className="text-sm font-semibold text-slate-800">Upload Event Poster</p>
                       <p className="text-xs text-slate-500 mt-1">
-                        When Media shares the final design, upload or replace the poster here without editing the full event form.
-                      </p>
+                        {currentUser?.role === UserRole.MEDIA
+                          ? 'Upload the finalized event poster here. This updates the live event directly.'
+                          : 'When Media shares the final design, or if you created it yourself, upload the poster here.'}
+                       </p>
                     </div>
                     <input
                       type="file"

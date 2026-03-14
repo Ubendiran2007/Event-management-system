@@ -684,6 +684,11 @@ const CreateEvent = () => {
         setStepError('Event End Time must be after Start Time for same-day events.');
         return false;
       }
+
+      if (!form.requirePoster && !form.posterDataUrl) {
+        setStepError('You must upload an event poster if you are not requesting one from the Media team.');
+        return false;
+      }
     }
 
     if (stepKey === STEP_KEYS.AUDIO && form.audioRequired) {
@@ -792,8 +797,21 @@ const CreateEvent = () => {
     const initialStatus = currentUser?.role === UserRole.FACULTY
       ? EventStatus.PENDING_HOD
       : EventStatus.PENDING_FACULTY;
-    const posterWorkflow = form.requirePoster
-      ? {
+    let posterWorkflow = {
+      requested: false,
+      status: 'NOT_REQUIRED',
+    };
+
+    if (form.requirePoster) {
+      if (isResubmissionEdit && editingEvent.posterWorkflow?.requested) {
+        posterWorkflow = {
+          ...editingEvent.posterWorkflow,
+          neededByDate: form.media?.preEventPosterNeededByDate || editingEvent.posterWorkflow.neededByDate,
+          neededByTime: form.media?.preEventPosterNeededByTime || editingEvent.posterWorkflow.neededByTime,
+          requestNotes: form.media?.preEventPosterNotes || editingEvent.posterWorkflow.requestNotes,
+        };
+      } else {
+        posterWorkflow = {
           requested: true,
           status: 'REQUESTED',
           neededByDate: form.media?.preEventPosterNeededByDate || null,
@@ -811,11 +829,9 @@ const CreateEvent = () => {
           organizerReviewComment: '',
           finalUploadedAt: null,
           finalUploadedBy: null,
-        }
-      : {
-          requested: false,
-          status: 'NOT_REQUIRED',
         };
+      }
+    }
 
     return {
       // Keep compatibility with existing views
@@ -1001,7 +1017,7 @@ const CreateEvent = () => {
                   accept="image/*"
                   className={inputClass}
                   onChange={handlePosterUpload}
-                  disabled={form.requirePoster || (form.startDate && form.startTime && new Date() > new Date(`${form.startDate}T${form.startTime}`))}
+                  disabled={form.requirePoster || (!isResubmissionEdit && form.startDate && form.startTime && new Date() > new Date(`${form.startDate}T${form.startTime}`))}
                 />
                 {form.posterDataUrl ? (
                   <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">

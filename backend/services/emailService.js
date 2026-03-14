@@ -551,4 +551,6 @@ module.exports = {
   sendEventNotificationToFaculty,
   sendEventStatusNotification,
   sendApprovalRequestToRole,
+  sendPosterRequestEmail,
+  sendPosterReadyEmail,
 };

@@ -11,7 +11,7 @@ const {
   where,
 } = require('firebase/firestore');
 const { db } = require('../firebase');
-const { sendEventNotificationToFaculty, sendEventStatusNotification } = require('../services/emailService');
+const { sendEventNotificationToFaculty, sendEventStatusNotification, sendApprovalRequestToRole } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -65,6 +65,20 @@ async function getFacultyEmailByName(facultyName) {
   } catch (error) {
     console.warn('[events] Error fetching faculty email:', error.message);
     return null;
+  }
+}
+
+// ── Helper: Fetch official emails by role ─────────────────────────────────
+async function getOfficialEmailsByRole(role) {
+  if (!role || !db) return [];
+  try {
+    const usersSnapshot = await getDocs(
+      query(collection(db, 'users'), where('role', '==', role))
+    );
+    return usersSnapshot.docs.map(doc => doc.data().email).filter(Boolean);
+  } catch (error) {
+    console.warn(`[events] Error fetching ${role} emails:`, error.message);
+    return [];
   }
 }
 
@@ -224,11 +238,46 @@ router.patch('/:id/status', async (req, res) => {
       try {
         const emailResult = await sendEventStatusNotification(eventData.organizerEmail, eventData, status);
         if (!emailResult.success) {
-          console.warn('[events/status] Email notification failed:', emailResult.error);
+          console.warn('[events/status] Email notification failed for organizer:', emailResult.error);
         }
       } catch (emailError) {
-        console.error('[events/status] Error sending email:', emailError);
-        // Don't fail the status update if email fails
+        console.error('[events/status] Error sending email to organizer:', emailError);
+      }
+    }
+
+    // Send action required notification to the next approver (HOD/PRINCIPAL)
+    if (['PENDING_HOD', 'PENDING_PRINCIPAL'].includes(status)) {
+      const nextRole = status === 'PENDING_HOD' ? 'HOD' : 'PRINCIPAL';
+      try {
+        const officialEmails = await getOfficialEmailsByRole(nextRole);
+        if (officialEmails.length > 0) {
+          // Send to the first official found (or wrap in Promise.all for all)
+          const requests = officialEmails.map(email => 
+            sendApprovalRequestToRole(eventData, email, nextRole)
+          );
+          await Promise.allSettled(requests);
+        } else {
+          console.warn(`[events/status] No users found with role ${nextRole} to send approval request`);
+        }
+      } catch (officialError) {
+        console.error(`[events/status] Error notifying ${nextRole}:`, officialError);
+      }
+    }
+
+    // Trigger poster request to Media if event becomes POSTED and needs a poster
+    if (status === 'POSTED' && eventData.posterWorkflow?.requested) {
+      try {
+        const mediaEmails = await getOfficialEmailsByRole('MEDIA');
+        if (mediaEmails.length > 0) {
+          const requests = mediaEmails.map(email =>
+            sendPosterRequestEmail(eventData, email)
+          );
+          await Promise.allSettled(requests);
+        } else {
+          console.warn('[events/status] No MEDIA users found for poster request email');
+        }
+      } catch (mediaError) {
+        console.error('[events/status] Error notifying MEDIA:', mediaError);
       }
     }
 
@@ -288,6 +337,99 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('[events/delete] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to delete event', error: error.message });
+  }
+});
+
+// ── PATCH /api/events/:id/poster ─────────────────────────────────────────
+// Update just the poster data of an event
+router.patch('/:id/poster', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const { posterDataUrl, posterFileName, posterMimeType, updatedBy } = req.body;
+    
+    if (!posterDataUrl) {
+      return res.status(400).json({ success: false, message: 'Poster data URL is required' });
+    }
+
+    const updatePayload = {
+      posterDataUrl,
+      posterFileName,
+      posterMimeType,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (updatedBy) updatePayload.posterUpdatedBy = updatedBy;
+
+    await updateDoc(eventRef, updatePayload);
+
+    return res.json({
+      success: true,
+      message: 'Poster uploaded successfully'
+    });
+  } catch (error) {
+    console.error('[events/poster] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to upload poster', error: error.message });
+  }
+});
+
+// ── PATCH /api/events/:id/poster-workflow ───────────────────────────────
+// Update just the poster workflow sub-object of an event
+router.patch('/:id/poster-workflow', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const eventData = eventSnap.data();
+    const currentWorkflow = eventData.posterWorkflow || {};
+    
+    const updates = req.body;
+    const { updatedBy, ...workflowFields } = updates;
+
+    const newWorkflow = {
+      ...currentWorkflow,
+      ...workflowFields,
+      lastUpdatedAt: new Date().toISOString(),
+      lastUpdatedBy: updatedBy || 'Unknown User'
+    };
+
+    await updateDoc(eventRef, {
+      posterWorkflow: newWorkflow,
+      updatedAt: new Date().toISOString()
+    });
+
+    const refreshedData = { id: req.params.id, ...eventData, posterWorkflow: newWorkflow };
+
+    // Trigger emails for specific steps in the workflow
+    if (updates.status === 'SENT_TO_ORGANIZER' && eventData.organizerEmail) {
+      try {
+        await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
+      } catch (workflowErr) {
+        console.error('[events/poster-workflow] Error sending email to organizer:', workflowErr);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Poster workflow updated',
+      posterWorkflow: newWorkflow
+    });
+  } catch (error) {
+    console.error('[events/poster-workflow] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update poster workflow', error: error.message });
   }
 });
 
