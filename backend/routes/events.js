@@ -393,6 +393,92 @@ router.put('/:id/resubmit-edit', async (req, res) => {
   }
 });
 
+// ── POST /api/events/:id/register ────────────────────────────────────────────
+// A student registers for an event — adds them to the registeredStudents array
+router.post('/:id/register', async (req, res) => {
+  if (!checkDb(res)) return;  // checkDb returns false when db is ready
+
+  try {
+    const { userId, userName, userEmail, userDepartment, userYear, rollNo, userClass } = req.body;
+
+    if (!userId || !userName) {
+      return res.status(400).json({ success: false, message: 'userId and userName are required' });
+    }
+
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const eventData = eventSnap.data();
+    const registeredStudents = eventData.registeredStudents || [];
+
+    // Prevent duplicate registration
+    if (registeredStudents.some(s => s.userId === userId)) {
+      return res.status(409).json({ success: false, message: 'Already registered for this event' });
+    }
+
+    const newEntry = {
+      userId,
+      userName,
+      userEmail: userEmail || '',
+      userDepartment: userDepartment || '',
+      userYear: userYear || '',
+      rollNo: rollNo || '',
+      userClass: userClass || '',
+      registeredAt: new Date().toISOString(),
+    };
+
+    const updatedList = [...registeredStudents, newEntry];
+    await updateDoc(eventRef, {
+      registeredStudents: updatedList,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.status(201).json({ success: true, message: 'Registered successfully', entry: newEntry });
+  } catch (error) {
+    console.error('[events/register] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to register', error: error.message });
+  }
+});
+
+// ── POST /api/events/:id/withdraw ────────────────────────────────────────────
+// A student withdraws their registration — removes them from registeredStudents
+router.post('/:id/withdraw', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
+
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const eventData = eventSnap.data();
+    const registeredStudents = eventData.registeredStudents || [];
+    const updatedList = registeredStudents.filter(s => s.userId !== userId);
+
+    await updateDoc(eventRef, {
+      registeredStudents: updatedList,
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({ success: true, message: 'Withdrawn successfully' });
+  } catch (error) {
+    console.error('[events/withdraw] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to withdraw', error: error.message });
+  }
+});
+
 // ── DELETE /api/events/:id ───────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   if (!checkDb(res)) return;

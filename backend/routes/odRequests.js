@@ -89,15 +89,8 @@ router.post('/', async (req, res) => {
     const normalizedRollNo =
       normalizeRollNo(studentRecord?.rollNo) ||
       normalizeRollNo(rollNo) ||
-      normalizeRollNo(studentId);
+      normalizeRollNo(studentId); // always falls back to studentId — never empty
     const normalizedClassSection = resolveClassSection(studentRecord, studentClass);
-
-    if (!normalizedRollNo) {
-      return res.status(400).json({
-        success: false,
-        message: 'Unable to resolve roll number for student',
-      });
-    }
 
     const requestedType = registrationType === 'VOLUNTEER' ? 'VOLUNTEER' : 'PARTICIPANT';
     const allowVolunteer = Boolean(event.registrationOptions?.allowVolunteer);

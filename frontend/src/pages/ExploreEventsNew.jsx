@@ -163,6 +163,128 @@ const IQACSummaryModal = ({ event, onClose }) => {
   );
 };
 
+// ── EventCard — module-level so React never sees a new component type on re-renders ──
+const EventCard = ({
+  event, currentUser, odRequests, processingEventId,
+  getEventStatus, isRegistered, canDownloadOD, canSubmitFeedback,
+  onRegister, onWithdraw, onDownloadOD, onOpenFeedback, onOpenIQAC,
+  defaultPoster,
+}) => {
+  const status = getEventStatus(event);
+  const registered = isRegistered(event);
+  const processing = processingEventId === event.id;
+  const isStudent = currentUser?.role === UserRole.STUDENT_GENERAL || currentUser?.role === UserRole.STUDENT_ORGANIZER;
+  const canWithdraw = registered && status === 'upcoming';
+  const showOD = canDownloadOD(event);
+  const showFeedback = canSubmitFeedback(event);
+  const showIQAC = status === 'completed' && (event.iqacSubmittedAt || event.iqacSubmission);
+  const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
+  const requestStatus = odReq ? odReq.status : null;
+
+  return (
+    <div
+      onClick={() => showIQAC && onOpenIQAC(event)}
+      className={`bg-white rounded-xl shadow-md overflow-hidden transition-shadow duration-200 ${showIQAC ? 'hover:shadow-xl cursor-pointer' : 'cursor-default'}`}
+    >
+      <div className="h-48 overflow-hidden">
+        <img
+          src={event.posterDataUrl || event.posterUrl || defaultPoster}
+          alt={event.title || event.requisition?.step1?.eventName || 'Event'}
+          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+        />
+      </div>
+      <div className="p-5">
+        <div className="flex items-start justify-between mb-3">
+          <h3 className="text-lg font-bold text-slate-900 line-clamp-2 flex-1">
+            {event.title || event.requisition?.step1?.eventName || 'Untitled Event'}
+          </h3>
+          <span className={`ml-2 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+            status === 'upcoming' ? 'bg-blue-100 text-blue-700' :
+            status === 'ongoing'  ? 'bg-green-100 text-green-700' :
+            'bg-gray-100 text-gray-700'
+          }`}>
+            {status.toUpperCase()}
+          </span>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <Calendar size={14} />
+            <span className="text-xs">{event.requisition?.step1?.eventStartDate} to {event.requisition?.step1?.eventEndDate}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <Clock size={14} />
+            <span className="text-xs">{event.requisition?.step1?.eventStartTime} - {event.requisition?.step1?.eventEndTime}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <MapPin size={14} />
+            <span className="text-xs">{event.venue || 'Venue TBA'}</span>
+          </div>
+        </div>
+
+        {event.requisition?.step1?.eventDescription && (
+          <p className="text-xs text-slate-600 mb-4 line-clamp-2">{event.requisition.step1.eventDescription}</p>
+        )}
+
+        {showIQAC && (
+          <div className="mb-3 p-2.5 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 text-green-700 text-xs font-semibold">
+              <FileCheck size={14} /><span>IQAC Submitted</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {isStudent && !registered && status === 'upcoming' && (
+            <button onClick={(e) => { e.stopPropagation(); onRegister(event.id); }} disabled={processing}
+              className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium">
+              {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Register
+            </button>
+          )}
+          {isStudent && registered && canWithdraw && (
+            <button onClick={(e) => { e.stopPropagation(); onWithdraw(event.id); }} disabled={processing}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium">
+              {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Withdraw
+            </button>
+          )}
+          {isStudent && registered && requestStatus === 'APPROVED' && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
+              <CheckCircle size={14} /> Registered (Approved)
+            </span>
+          )}
+          {isStudent && registered && requestStatus === 'PENDING_ORGANIZER' && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">
+              <Clock size={14} /> Pending Approval
+            </span>
+          )}
+          {isStudent && registered && requestStatus === 'REJECTED' && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-medium">
+              <XCircle size={14} /> Registration Rejected
+            </span>
+          )}
+          {isStudent && registered && !requestStatus && (
+            <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
+              <CheckCircle size={14} /> Registered
+            </span>
+          )}
+          {showOD && (
+            <button onClick={(e) => { e.stopPropagation(); onDownloadOD(event); }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium">
+              <Download size={14} /> OD Letter
+            </button>
+          )}
+          {showFeedback && (
+            <button onClick={(e) => { e.stopPropagation(); onOpenFeedback(event); }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium">
+              <MessageSquare size={14} /> Feedback
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ExploreEvents = () => {
   const { currentUser, odRequests = [] } = useAppContext();
   const [events, setEvents] = useState([]);
@@ -179,9 +301,9 @@ const ExploreEvents = () => {
     loadEvents();
   }, []);
 
-  const loadEvents = async () => {
+  const loadEvents = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const allEvents = await fetchEvents();
       // Show both POSTED and COMPLETED events in the explore page
       const visibleEvents = allEvents.filter(
@@ -191,7 +313,7 @@ const ExploreEvents = () => {
     } catch (error) {
       console.error('Error loading events:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -224,9 +346,29 @@ const ExploreEvents = () => {
   const handleRegister = async (eventId) => {
     if (!currentUser) return;
     setProcessingEventId(eventId);
+
+    // Build the registration entry we'll add locally
+    const newEntry = {
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email || '',
+      userDepartment: currentUser.department || '',
+      userYear: currentUser.year || '',
+      rollNo: currentUser.rollNo || currentUser.password || '',
+      userClass: currentUser.class || currentUser.className || '',
+      registeredAt: new Date().toISOString(),
+    };
+
+    // Optimistic update — add student to local state immediately (no blink)
+    setEvents(prev => prev.map(ev =>
+      ev.id === eventId
+        ? { ...ev, registeredStudents: [...(ev.registeredStudents || []), newEntry] }
+        : ev
+    ));
+
     try {
-      // 1. Create OD Request (binds to Dashboard Registrations tab)
-      const odResponse = await fetch(`http://localhost:5001/api/od-requests`, {
+      // 1. Create OD Request
+      await fetch(`http://localhost:5001/api/od-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,31 +382,30 @@ const ExploreEvents = () => {
         }),
       });
 
-      const odData = await odResponse.json();
-      if (!odResponse.ok && odData.message === 'Already registered for this event') {
-         // Do nothing, likely already registered
-      }
-
-      // 2. Add to event registered list
+      // 2. Persist registration to Firestore
       const response = await fetch(`http://localhost:5001/api/events/${eventId}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userEmail: currentUser.email,
-          userDepartment: currentUser.department,
-          userYear: currentUser.year,
-          rollNo: currentUser.rollNo || currentUser.password || '',
-          userClass: currentUser.class || currentUser.className || '',
-        }),
+        body: JSON.stringify(newEntry),
       });
-      const data = await response.json();
-      if (data.success) {
-        await loadEvents();
+
+      // 409 = already registered in Firestore — optimistic state is already correct, carry on
+      if (!response.ok && response.status !== 409) {
+        // Roll back optimistic update on unexpected failure
+        setEvents(prev => prev.map(ev =>
+          ev.id === eventId
+            ? { ...ev, registeredStudents: (ev.registeredStudents || []).filter(s => s.userId !== currentUser.id) }
+            : ev
+        ));
       }
     } catch (error) {
       console.error('Error registering:', error);
+      // Roll back on network failure
+      setEvents(prev => prev.map(ev =>
+        ev.id === eventId
+          ? { ...ev, registeredStudents: (ev.registeredStudents || []).filter(s => s.userId !== currentUser.id) }
+          : ev
+      ));
     } finally {
       setProcessingEventId(null);
     }
@@ -273,26 +414,30 @@ const ExploreEvents = () => {
   const handleWithdraw = async (eventId) => {
     if (!currentUser) return;
     setProcessingEventId(eventId);
+
+    // Optimistic update — remove student from local state immediately (no blink)
+    setEvents(prev => prev.map(ev =>
+      ev.id === eventId
+        ? { ...ev, registeredStudents: (ev.registeredStudents || []).filter(s => s.userId !== currentUser.id) }
+        : ev
+    ));
+
     try {
-      // Find the associated OD request
+      // Withdraw OD request if one exists
       const odReq = odRequests.find(r => r.eventId === eventId && r.studentId === currentUser.id && r.status !== 'WITHDRAWN');
       if (odReq) {
-        await fetch(`http://localhost:5001/api/od-requests/${odReq.id}/withdraw`, {
-          method: 'PATCH',
-        });
+        await fetch(`http://localhost:5001/api/od-requests/${odReq.id}/withdraw`, { method: 'PATCH' });
       }
 
-      const response = await fetch(`http://localhost:5001/api/events/${eventId}/withdraw`, {
+      await fetch(`http://localhost:5001/api/events/${eventId}/withdraw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id }),
       });
-      const data = await response.json();
-      if (data.success) {
-        await loadEvents();
-      }
     } catch (error) {
       console.error('Error withdrawing:', error);
+      // Roll back optimistic update on failure
+      loadEvents(true);
     } finally {
       setProcessingEventId(null);
     }
@@ -337,182 +482,16 @@ const ExploreEvents = () => {
     
     return now >= end && now <= twentyFourSecondsAfter;
   };
-
-  const EventCard = ({ event }) => {
-    const status = getEventStatus(event);
-    const registered = isRegistered(event);
-    const processing = processingEventId === event.id;
-    const isStudent = currentUser?.role === UserRole.STUDENT_GENERAL || currentUser?.role === UserRole.STUDENT_ORGANIZER;
-    const canWithdraw = registered && status === 'upcoming';
-    const showOD = canDownloadOD(event);
-    const showFeedback = canSubmitFeedback(event);
-    const showIQAC = status === 'completed' && (event.iqacSubmittedAt || event.iqacSubmission);
-    
-    // Get the student's OD request status (if any)
-    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
-    const requestStatus = odReq ? odReq.status : null;
-
-    // Only open a modal for completed events with IQAC data
-    const hasIQAC = showIQAC;
-    const handleCardClick = () => {
-      if (hasIQAC) {
-        setSelectedEvent(event);
-        setShowEventDetail(true);
-      }
-      // For all other events: do nothing on click
-    };
-
-    return (
-      <motion.div
-        layout
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        onClick={handleCardClick}
-        className={`bg-white rounded-xl shadow-md overflow-hidden transition-all ${hasIQAC ? 'hover:shadow-xl cursor-pointer' : 'cursor-default'}`}
-      >
-        <div className="h-48 overflow-hidden">
-          <img
-            src={event.posterDataUrl || event.posterUrl || defaultPoster}
-            alt={event.title || event.requisition?.step1?.eventName || 'Event'}
-            className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-          />
-        </div>
-        <div className="p-5">
-          <div className="flex items-start justify-between mb-3">
-            <h3 className="text-lg font-bold text-slate-900 line-clamp-2 flex-1">
-              {event.title || event.requisition?.step1?.eventName || 'Untitled Event'}
-            </h3>
-            <span className={`ml-2 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
-              status === 'upcoming' ? 'bg-blue-100 text-blue-700' :
-              status === 'ongoing' ? 'bg-green-100 text-green-700' :
-              'bg-gray-100 text-gray-700'
-            }`}>
-              {status.toUpperCase()}
-            </span>
-          </div>
-
-          <div className="space-y-2 mb-4">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <Calendar size={14} />
-              <span className="text-xs">
-                {event.requisition?.step1?.eventStartDate} to {event.requisition?.step1?.eventEndDate}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <Clock size={14} />
-              <span className="text-xs">
-                {event.requisition?.step1?.eventStartTime} - {event.requisition?.step1?.eventEndTime}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <MapPin size={14} />
-              <span className="text-xs">{event.venue || 'Venue TBA'}</span>
-            </div>
-          </div>
-
-          {event.requisition?.step1?.eventDescription && (
-            <p className="text-xs text-slate-600 mb-4 line-clamp-2">
-              {event.requisition.step1.eventDescription}
-            </p>
-          )}
-
-          {showIQAC && (
-            <div className="mb-3 p-2.5 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-2 text-green-700 text-xs font-semibold">
-                <FileCheck size={14} />
-                <span>IQAC Submitted</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            {isStudent && !registered && status === 'upcoming' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRegister(event.id);
-                }}
-                disabled={processing}
-                className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium"
-              >
-                {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-                Register
-              </button>
-            )}
-
-            {isStudent && registered && canWithdraw && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleWithdraw(event.id);
-                }}
-                disabled={processing}
-                className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium"
-              >
-                {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />}
-                Withdraw
-              </button>
-            )}
-
-            {isStudent && registered && requestStatus === 'APPROVED' && (
-              <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
-                <CheckCircle size={14} />
-                Registered (Approved)
-              </span>
-            )}
-
-            {isStudent && registered && requestStatus === 'PENDING_ORGANIZER' && (
-              <span className="flex items-center gap-1.5 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">
-                <Clock size={14} />
-                Pending Approval
-              </span>
-            )}
-
-            {isStudent && registered && requestStatus === 'REJECTED' && (
-              <span className="flex items-center gap-1.5 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-medium">
-                <XCircle size={14} />
-                Registration Rejected
-              </span>
-            )}
-
-            {isStudent && registered && !requestStatus && (
-              <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
-                <CheckCircle size={14} />
-                Registered
-              </span>
-            )}
-
-            {showOD && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownloadOD(event);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium"
-              >
-                <Download size={14} />
-                OD Letter
-              </button>
-            )}
-
-            {showFeedback && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedEvent(event);
-                  setShowFeedbackModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium"
-              >
-                <MessageSquare size={14} />
-                Feedback
-              </button>
-            )}
-          </div>
-        </div>
-      </motion.div>
-    );
+  // Shared props for the stable module-level EventCard
+  const cardSharedProps = {
+    currentUser, odRequests, processingEventId,
+    getEventStatus, isRegistered, canDownloadOD, canSubmitFeedback,
+    onRegister: handleRegister,
+    onWithdraw: handleWithdraw,
+    onDownloadOD: handleDownloadOD,
+    onOpenFeedback: (event) => { setSelectedEvent(event); setShowFeedbackModal(true); },
+    onOpenIQAC: (event) => { setSelectedEvent(event); setShowEventDetail(true); },
+    defaultPoster,
   };
 
   return (
@@ -564,12 +543,10 @@ const ExploreEvents = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence mode="popLayout">
               {filteredEvents.map((event) => (
-                <EventCard key={event.id} event={event} />
+                <EventCard key={event.id} event={event} {...cardSharedProps} />
               ))}
-            </AnimatePresence>
-          </div>
+            </div>
         )}
       </div>
 
