@@ -342,8 +342,8 @@ const Dashboard = () => {
                 },
                 { label: 'Posted', value: baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                 { label: 'Completed', value: baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' },
-                // Only show OD Requests stat for students
-                ...(currentUser.role === UserRole.STUDENT_GENERAL ? [{ label: 'OD Requests', value: pendingODCount, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' }] : []),
+                // Only show Registrations stat for students
+                ...((currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? [{ label: 'Registrations', value: pendingODCount, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' }] : []),
               ].map((stat, i) => (
                 <div key={i} className="glass-panel p-4 rounded-2xl">
                   <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-3`}>
@@ -398,8 +398,8 @@ const Dashboard = () => {
                   </button>
                 )}
 
-                {/* OD Requests tab — only for general students */}
-                {currentUser.role === UserRole.STUDENT_GENERAL && (
+                {/* My Registrations tab — for all students (general and organizer) */}
+                {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
                   <button
                     onClick={() => setActiveTab('od')}
                     className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'od'
@@ -407,7 +407,7 @@ const Dashboard = () => {
                       : 'text-slate-500 hover:bg-slate-100'
                       }`}
                   >
-                    My OD Requests
+                    My Registrations
                     {pendingODCount > 0 && (
                       <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'od' ? 'bg-white text-cse-accent' : 'bg-purple-500 text-white'
                         }`}>
@@ -417,7 +417,7 @@ const Dashboard = () => {
                   </button>
                 )}
 
-                {/* Registrations tab — only for student organizer and faculty */}
+                {/* Manage Registrations tab — for student organizer and faculty to review incoming requests */}
                 {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
                   <button
                     onClick={() => setActiveTab('registrations')}
@@ -426,7 +426,7 @@ const Dashboard = () => {
                       : 'text-slate-500 hover:bg-slate-100'
                       }`}
                   >
-                    Registrations
+                    Manage Registrations
                     {pendingOrganizerOD.length > 0 && (
                       <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'registrations' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'
                         }`}>
@@ -587,52 +587,61 @@ const Dashboard = () => {
 
                       const renderRequestRow = (req) => {
                         const isToggling = togglingOD[req.id];
+                        // Profile Initials
+                        const initials = req.studentName ? req.studentName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'ST';
+                        
                         return (
-                          <div key={req.id} className="p-4 hover:bg-slate-50/50 transition-colors">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div key={req.id} className="p-4 bg-white hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors group">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                               <div className="flex items-start gap-4">
-                                <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500 shrink-0">
-                                  <FileText size={20} />
+                                <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-blue-200 rounded-full flex items-center justify-center text-blue-800 font-bold text-lg shadow-sm shrink-0 border border-white">
+                                  {initials}
                                 </div>
-                                <div>
-                                  <p className="font-semibold text-slate-900 text-sm">{req.studentName}</p>
-                                  <p className="text-xs text-slate-500 font-mono">{req.rollNo} &bull; {req.class}</p>
-                                  {req.registrationType && (
-                                    <p className="text-[11px] text-blue-600 mt-1 font-semibold">
-                                      {req.registrationType === 'VOLUNTEER' ? 'Volunteer Registration' : 'Participant Registration'}
-                                    </p>
-                                  )}
+                                <div className="flex flex-col justify-center min-h-[48px]">
+                                  <p className="font-bold text-slate-800 leading-tight">{req.studentName}</p>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{req.rollNo}</span>
+                                    <span className="text-xs text-slate-400 font-medium">{req.class}</span>
+                                    {req.registrationType && (
+                                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
+                                        req.registrationType === 'VOLUNTEER' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                                      }`}>
+                                        {req.registrationType === 'VOLUNTEER' ? 'Volunteer' : 'Participant'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-2 shrink-0 sm:mt-0 mt-2">
                                 {req.status === 'PENDING_ORGANIZER' ? (
-                                  <>
+                                  <div className="flex gap-2 w-full sm:w-auto">
                                     <button
                                       onClick={() => handleOrganizerApproval(req.id, false)}
                                       disabled={isToggling}
-                                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 disabled:opacity-60"
+                                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-white text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-300 disabled:opacity-50 transition-all shadow-sm"
                                     >
-                                      {isToggling ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />} Reject
+                                      {isToggling ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />} Reject
                                     </button>
                                     <button
                                       onClick={() => handleOrganizerApproval(req.id, true)}
                                       disabled={isToggling}
-                                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
+                                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 transition-all shadow-md shadow-emerald-500/20"
                                     >
-                                      {isToggling ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={12} />} Approve
+                                      {isToggling ? <Loader2 size={14} className="animate-spin" /> : <UserCheck size={14} />} Approve
                                     </button>
-                                  </>
+                                  </div>
                                 ) : req.status === 'WITHDRAWN' ? (
-                                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-400">
+                                  <span className="px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-slate-100 text-slate-400 border border-slate-200">
                                     Withdrawn
                                   </span>
                                 ) : (
-                                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                  <span className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border shadow-sm ${
                                     req.status === 'APPROVED'
-                                      ? 'bg-emerald-50 text-emerald-600'
-                                      : 'bg-red-50 text-red-500'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-red-50 text-red-700 border-red-200'
                                   }`}>
-                                    {req.status === 'APPROVED' ? '✓ Approved' : '✗ Rejected'}
+                                    {req.status === 'APPROVED' ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                                    {req.status === 'APPROVED' ? 'Approved' : 'Rejected'}
                                   </span>
                                 )}
                               </div>
@@ -656,98 +665,115 @@ const Dashboard = () => {
                           <button
                             type="button"
                             onClick={() => setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
-                            className="w-full mb-3 pb-3 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-left"
+                            className={`w-full transition-all duration-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left border ${
+                              isExpanded 
+                                ? 'bg-white border-blue-100 shadow-md shadow-blue-900/5 mb-4' 
+                                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80 mb-2'
+                            }`}
                           >
                             <div>
-                              <p className="text-sm font-bold text-slate-900">{group.eventTitle}</p>
+                              <p className={`text-base font-bold ${isExpanded ? 'text-blue-900' : 'text-slate-900'}`}>{group.eventTitle}</p>
                               {group.eventDate && (
-                                <p className="text-xs text-slate-500">{group.eventDate}</p>
+                                <p className="text-xs font-medium text-slate-500 mt-1 flex items-center gap-1">
+                                  <Calendar size={12} /> {group.eventDate}
+                                </p>
                               )}
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                              <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 shadow-sm border border-slate-200">
                                 {group.requests.length} Requests
                               </span>
                               {pendingCount > 0 && (
-                                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
-                                  {pendingCount} Pending
+                                <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm flex items-center gap-1">
+                                  <AlertCircle size={12} /> {pendingCount} Pending
                                 </span>
                               )}
-                              <span className="p-1 rounded-md text-slate-500 bg-slate-100">
-                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <span className={`p-1.5 rounded-lg transition-transform duration-300 ${isExpanded ? 'bg-blue-100 text-blue-700 rotate-180' : 'bg-slate-200 text-slate-600'}`}>
+                                <ChevronDown size={16} />
                               </span>
                             </div>
                           </button>
 
                           {isExpanded && (
-                            isVolunteerEnabledEvent ? (
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                <div className="rounded-xl border border-slate-100 overflow-hidden">
-                                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Participants ({participantRequests.length})</p>
-                                      {pendingParticipantRequests.length > 1 && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleBulkOrganizerApproval(participantRequests, `${groupKey}-participants`)}
-                                          disabled={bulkApprovingGroups[`${groupKey}-participants`]}
-                                          className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
-                                        >
-                                          {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve All (${pendingParticipantRequests.length})`}
-                                        </button>
+                            <div className="animate-in slide-in-from-top-2 fade-in duration-200">
+                              {isVolunteerEnabledEvent ? (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                  <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
+                                    <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                          <Users size={16} className="text-slate-500" />
+                                          <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Participants ({participantRequests.length})</p>
+                                        </div>
+                                        {pendingParticipantRequests.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleBulkOrganizerApproval(participantRequests, `${groupKey}-participants`)}
+                                            disabled={bulkApprovingGroups[`${groupKey}-participants`]}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
+                                          >
+                                            {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve All (${pendingParticipantRequests.length})`}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="divide-y divide-slate-100/80">
+                                      {participantRequests.length > 0 ? participantRequests.map(renderRequestRow) : (
+                                        <div className="p-8 text-center text-sm font-medium text-slate-400">No participant requests.</div>
                                       )}
                                     </div>
                                   </div>
-                                  <div className="divide-y divide-slate-100">
-                                    {participantRequests.length > 0 ? participantRequests.map(renderRequestRow) : (
-                                      <div className="p-4 text-xs text-slate-400">No participant requests.</div>
-                                    )}
-                                  </div>
-                                </div>
 
-                                <div className="rounded-xl border border-blue-100 overflow-hidden">
-                                  <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-xs font-bold uppercase tracking-wider text-blue-700">Volunteers ({volunteerRequests.length})</p>
-                                      {pendingVolunteerRequests.length > 1 && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleBulkOrganizerApproval(volunteerRequests, `${groupKey}-volunteers`)}
-                                          disabled={bulkApprovingGroups[`${groupKey}-volunteers`]}
-                                          className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
-                                        >
-                                          {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve All (${pendingVolunteerRequests.length})`}
-                                        </button>
+                                  <div className="rounded-2xl border-2 border-indigo-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
+                                    <div className="px-5 py-4 bg-indigo-50/80 border-b-2 border-indigo-100">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                          <ShieldCheck size={16} className="text-indigo-500" />
+                                          <p className="text-sm font-bold uppercase tracking-wider text-indigo-800">Volunteers ({volunteerRequests.length})</p>
+                                        </div>
+                                        {pendingVolunteerRequests.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleBulkOrganizerApproval(volunteerRequests, `${groupKey}-volunteers`)}
+                                            disabled={bulkApprovingGroups[`${groupKey}-volunteers`]}
+                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
+                                          >
+                                            {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve All (${pendingVolunteerRequests.length})`}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="divide-y divide-indigo-50/80">
+                                      {volunteerRequests.length > 0 ? volunteerRequests.map(renderRequestRow) : (
+                                        <div className="p-8 text-center text-sm font-medium text-slate-400">No volunteer requests.</div>
                                       )}
                                     </div>
                                   </div>
-                                  <div className="divide-y divide-slate-100">
-                                    {volunteerRequests.length > 0 ? volunteerRequests.map(renderRequestRow) : (
-                                      <div className="p-4 text-xs text-slate-400">No volunteer requests.</div>
+                                </div>
+                              ) : (
+                                <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
+                                  <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <Users size={16} className="text-slate-500" />
+                                      <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Registrations ({group.requests.length})</p>
+                                    </div>
+                                    {pendingAllRequests.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBulkOrganizerApproval(group.requests, `${groupKey}-all`)}
+                                        disabled={bulkApprovingGroups[`${groupKey}-all`]}
+                                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm shadow-emerald-500/20"
+                                      >
+                                        {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve All (${pendingAllRequests.length})`}
+                                      </button>
                                     )}
                                   </div>
+                                  <div className="divide-y divide-slate-100/80">
+                                    {group.requests.map(renderRequestRow)}
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="rounded-xl border border-slate-100 overflow-hidden">
-                                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-2">
-                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Registrations ({group.requests.length})</p>
-                                  {pendingAllRequests.length > 1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleBulkOrganizerApproval(group.requests, `${groupKey}-all`)}
-                                      disabled={bulkApprovingGroups[`${groupKey}-all`]}
-                                      className="px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60"
-                                    >
-                                      {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve All (${pendingAllRequests.length})`}
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="divide-y divide-slate-100">
-                                  {group.requests.map(renderRequestRow)}
-                                </div>
-                              </div>
-                            )
+                              )}
+                            </div>
                           )}
                         </div>
                       );
@@ -756,8 +782,8 @@ const Dashboard = () => {
                 </div>
               )}
 
-              {/* OD Requests Tab — general students only */}
-              {activeTab === 'od' && currentUser.role === UserRole.STUDENT_GENERAL && (
+              {/* My Registrations Tab — for all students */}
+              {activeTab === 'od' && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
                 <div className="divide-y divide-slate-100">
                   {filteredODRequests.map(request => (
                     <div
@@ -812,7 +838,7 @@ const Dashboard = () => {
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
                         <FileText size={32} />
                       </div>
-                      <p className="text-slate-500 font-medium">No OD requests at the moment.</p>
+                      <p className="text-slate-500 font-medium">No registrations found.</p>
                     </div>
                   )}
                 </div>

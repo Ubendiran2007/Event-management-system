@@ -458,8 +458,8 @@ const ExploreEvents = () => {
     const startTime = event.requisition?.step1?.eventStartTime || '00:00';
     if (!startDate) return false;
     const start = new Date(`${startDate}T${startTime}`).getTime();
-    const oneSecondBefore = start - (1000); // TESTING: 1 second before instead of 1 hour
-    return Date.now() >= oneSecondBefore;
+    const twentyFourHoursBefore = start - (24 * 60 * 60 * 1000); 
+    return Date.now() >= twentyFourHoursBefore;
   };
 
   const canSubmitFeedback = (event) => {
