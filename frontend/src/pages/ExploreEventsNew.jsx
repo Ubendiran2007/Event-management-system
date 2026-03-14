@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, LayoutDashboard, MessageSquare } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, LayoutDashboard, MessageSquare, X, Star, ClipboardList } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
@@ -9,8 +9,159 @@ import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
 import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
-import EventDetailModal from '../components/EventDetailModal';
 import defaultPoster from '../assets/sece.avif';
+
+// ── Compact IQAC Summary Modal ────────────────────────────────────────────────
+const IQACSummaryModal = ({ event, onClose }) => {
+  if (!event) return null;
+  const s1 = event.requisition?.step1;
+  const iqac = event.iqacSubmission || {};
+  const reg  = iqac.registration || iqac.registrationDetails || {};
+  const checklist = Array.isArray(iqac.checklist) ? iqac.checklist : [];
+  const feedback  = iqac.guestFeedbackList || [];
+  const gallery   = iqac.gallery || [];
+  const feedback3 = feedback.slice(0, 3);
+
+  const totalRegistered = (Number(reg.studentsCount) || 0) + (Number(reg.facultyCount) || 0) + (Number(reg.externalCount) || 0);
+  const totalAttended   = (Number(reg.studentsAttended) || 0) + (Number(reg.facultyAttended) || 0) + (Number(reg.externalAttended) || 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-slate-50 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[88vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-start justify-between z-10">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <ClipboardList size={18} className="text-emerald-600" />
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">IQAC Report</span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">{event.title || s1?.eventName || 'Event'}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {s1?.eventStartDate} — {s1?.eventEndDate} &bull; {event.venue || 'Venue not specified'}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors mt-1">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Attendance Summary */}
+          {totalRegistered > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                <Users size={15} className="text-cse-accent" /> Attendance Summary
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Registered', value: totalRegistered, color: 'text-blue-700 bg-blue-50' },
+                  { label: 'Attended', value: totalAttended, color: 'text-emerald-700 bg-emerald-50' },
+                  { label: 'No-Show', value: Math.max(totalRegistered - totalAttended, 0), color: 'text-amber-700 bg-amber-50' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className={`rounded-xl px-3 py-3 text-center ${color}`}>
+                    <p className="text-2xl font-bold">{value}</p>
+                    <p className="text-xs font-semibold mt-0.5">{label}</p>
+                  </div>
+                ))}
+              </div>
+              {reg.studentsCount > 0 && (
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-500">
+                  <span>Students: {reg.studentsAttended}/{reg.studentsCount}</span>
+                  <span>Faculty: {reg.facultyAttended || 0}/{reg.facultyCount || 0}</span>
+                  <span>External: {reg.externalAttended || 0}/{reg.externalCount || 0}</span>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Gallery Preview */}
+          {gallery.length > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-3">📷 Event Gallery</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {gallery.slice(0, 6).map((img, i) => (
+                  <div key={i} className="rounded-lg overflow-hidden aspect-square bg-slate-100">
+                    <img src={img.dataUrl} alt={img.title || `Photo ${i+1}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+              </div>
+              {gallery.length > 6 && (
+                <p className="text-xs text-slate-400 mt-2">+{gallery.length - 6} more photos</p>
+              )}
+            </section>
+          )}
+
+          {/* Guest Feedback */}
+          {feedback3.length > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                <Star size={14} className="text-amber-500" /> Guest Feedback
+              </h3>
+              <div className="space-y-3">
+                {feedback3.map((fb, i) => (
+                  <div key={i} className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-800">{fb.name}</p>
+                      <span className="text-xs text-amber-600 font-semibold">{'★'.repeat(fb.rating || 5)}</span>
+                    </div>
+                    {fb.designation && <p className="text-xs text-slate-500">{fb.designation}{fb.organization ? ` · ${fb.organization}` : ''}</p>}
+                    {fb.feedback && <p className="text-xs text-slate-700 mt-1 italic">"{fb.feedback}"</p>}
+                  </div>
+                ))}
+                {feedback.length > 3 && (
+                  <p className="text-xs text-slate-400">+{feedback.length - 3} more feedback entries</p>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Document Checklist */}
+          {checklist.length > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                <FileCheck size={14} className="text-emerald-600" /> Documentation Checklist
+              </h3>
+              <div className="space-y-1.5">
+                {checklist.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 text-xs">
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                      item.status === 'verified' ? 'bg-emerald-100 text-emerald-600' :
+                      item.status === 'autoGenerated' ? 'bg-slate-100 text-slate-500' :
+                      item.status === 'uploaded' ? 'bg-blue-100 text-blue-600' :
+                      'bg-red-50 text-red-400'
+                    }`}>
+                      {item.status === 'pending' ? '✗' : '✓'}
+                    </span>
+                    <span className="text-slate-700">{item.requirement}</span>
+                    <span className={`ml-auto font-semibold ${
+                      item.status === 'verified' ? 'text-emerald-600' :
+                      item.status === 'autoGenerated' ? 'text-slate-400' :
+                      item.status === 'uploaded' ? 'text-blue-600' :
+                      'text-red-400'
+                    }`}>{item.status}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Submission timestamp */}
+          {event.iqacSubmittedAt && (
+            <p className="text-xs text-slate-400 text-center">
+              IQAC submitted on {new Date(event.iqacSubmittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const ExploreEvents = () => {
   const { currentUser, odRequests = [] } = useAppContext();
@@ -201,17 +352,24 @@ const ExploreEvents = () => {
     const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
     const requestStatus = odReq ? odReq.status : null;
 
+    // Only open a modal for completed events with IQAC data
+    const hasIQAC = showIQAC;
+    const handleCardClick = () => {
+      if (hasIQAC) {
+        setSelectedEvent(event);
+        setShowEventDetail(true);
+      }
+      // For all other events: do nothing on click
+    };
+
     return (
       <motion.div
         layout
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        onClick={() => {
-          setSelectedEvent(event);
-          setShowEventDetail(true);
-        }}
-        className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-all cursor-pointer"
+        onClick={handleCardClick}
+        className={`bg-white rounded-xl shadow-md overflow-hidden transition-all ${hasIQAC ? 'hover:shadow-xl cursor-pointer' : 'cursor-default'}`}
       >
         <div className="h-48 overflow-hidden">
           <img
@@ -439,15 +597,17 @@ const ExploreEvents = () => {
         ) : null;
       })()}
 
-      {showEventDetail && selectedEvent && (
-        <EventDetailModal
-          event={selectedEvent}
-          onClose={() => {
-            setShowEventDetail(false);
-            setSelectedEvent(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {showEventDetail && selectedEvent && (
+          <IQACSummaryModal
+            event={selectedEvent}
+            onClose={() => {
+              setShowEventDetail(false);
+              setSelectedEvent(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

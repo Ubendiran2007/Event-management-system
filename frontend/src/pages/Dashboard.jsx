@@ -61,10 +61,32 @@ const Dashboard = () => {
     if (!selectedEventDetail) return;
 
     const latestEvent = events.find((event) => event.id === selectedEventDetail.id);
-    if (latestEvent && latestEvent !== selectedEventDetail) {
+    if (!latestEvent) return;
+
+    // Auto-close the modal when the event is no longer in the current user's action queue.
+    // This handles the case where Faculty/HOD/Principal approves or rejects an event and the
+    // status advances — the modal should dismiss itself automatically.
+    const pendingStatusForRole = {
+      [UserRole.FACULTY]: EventStatus.PENDING_FACULTY,
+      [UserRole.HOD]: EventStatus.PENDING_HOD,
+      [UserRole.PRINCIPAL]: EventStatus.PENDING_PRINCIPAL,
+    };
+    const expectedPendingStatus = pendingStatusForRole[currentUser?.role];
+    if (
+      expectedPendingStatus &&
+      selectedEventDetail.status === expectedPendingStatus &&
+      latestEvent.status !== expectedPendingStatus
+    ) {
+      // Event just moved out of this approver's queue — close the modal
+      setSelectedEventDetail(null);
+      return;
+    }
+
+    // Otherwise, keep modal open but update it to the latest event data
+    if (latestEvent !== selectedEventDetail) {
       setSelectedEventDetail(latestEvent);
     }
-  }, [events, selectedEventDetail]);
+  }, [events, selectedEventDetail, currentUser?.role]);
 
   // Filtered events for the current user's role — must be defined BEFORE any early returns
   // so that hook call order stays consistent across every render.

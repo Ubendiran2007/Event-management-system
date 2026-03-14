@@ -131,7 +131,9 @@ const EventDetailModal = ({ event, onClose }) => {
     String(event?.autoRejectedBy || '').toUpperCase() === 'SYSTEM';
   const isApprovedEvent = ['POSTED', 'COMPLETED'].includes(String(event.status).toUpperCase());
   const isEventOrganizer = Boolean(currentUser) && event.organizerId === currentUser.id;
-  const canUploadFinalPosterAsMedia = currentUser?.role === UserRole.MEDIA && !eventHasEnded;
+  // Media can upload if event hasn't ended, OR if there is an active poster workflow request (even if event ended)
+  const hasPendingPosterRequest = currentUser?.role === UserRole.MEDIA && posterWorkflow?.requested && ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus);
+  const canUploadFinalPosterAsMedia = currentUser?.role === UserRole.MEDIA && (!eventHasEnded || hasPendingPosterRequest);
   const canUpdatePosterForOrganizer = isEventOrganizer && [UserRole.STUDENT_ORGANIZER, UserRole.FACULTY].includes(currentUser.role) && !posterWorkflow?.requested;
   const canUpdatePoster = canUpdatePosterForOrganizer || canUploadFinalPosterAsMedia;
   const canManagePosterWorkflowAsMedia = false; // Draft workflow is superseded by direct upload for Media
@@ -696,9 +698,9 @@ const EventDetailModal = ({ event, onClose }) => {
                       accept="image/*"
                       className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-cse-accent file:px-4 file:py-2 file:font-semibold file:text-white hover:file:opacity-90"
                       onChange={handlePosterUpload}
-                      disabled={isUploadingPoster || (currentUser?.role === UserRole.MEDIA ? eventHasEnded : eventHasStarted)}
+                      disabled={isUploadingPoster || (currentUser?.role === UserRole.MEDIA ? (eventHasEnded && !hasPendingPosterRequest) : eventHasStarted)}
                     />
-                    {(currentUser?.role === UserRole.MEDIA ? eventHasEnded : eventHasStarted) && (
+                    {(currentUser?.role === UserRole.MEDIA ? (eventHasEnded && !hasPendingPosterRequest) : eventHasStarted) && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                         Poster upload is disabled because the event has {currentUser?.role === UserRole.MEDIA ? 'ended' : 'started'}.
                       </div>

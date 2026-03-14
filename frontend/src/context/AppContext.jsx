@@ -127,7 +127,7 @@ export const AppProvider = ({ children }) => {
         body.rejectedByRole = String(currentUser?.role || 'UNKNOWN').toUpperCase();
       }
 
-      const response = await fetch(`http://localhost:5000/api/events/${eventId}/status`, {
+      const response = await fetch(`http://localhost:5001/api/events/${eventId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
