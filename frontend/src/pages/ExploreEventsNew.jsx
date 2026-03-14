@@ -448,9 +448,9 @@ const IQACSummaryModal = ({ event, onClose }) => {
                     <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${attendancePct}%` }} />
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-100 overflow-hidden text-xs">
+                <div className="rounded-xl border border-slate-100 overflow-hidden text-xs max-h-48 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
                   <table className="w-full">
-                    <thead className="bg-slate-50">
+                    <thead className="bg-slate-50 sticky top-0 z-10">
                       <tr>
                         {['Category', 'Registered', 'Attended', 'No-Show'].map(h => (
                           <th key={h} className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wide text-[10px]">{h}</th>
@@ -483,9 +483,9 @@ const IQACSummaryModal = ({ event, onClose }) => {
           {/* ── Student Attendance Roster — always shown ── */}
           <SectionCard title={`Student Attendance Roster${studentRoster.length > 0 ? ` (${studentRoster.length})` : ''}`} icon={<Users size={15} />} accent="indigo">
             {studentRoster.length > 0 ? (
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-100 flex-1">
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-100 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
                 <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-slate-50">
+                  <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
                     <tr>
                       {['#', 'Student', 'Roll No', 'Status'].map(h => (
                         <th key={h} className="px-3 py-2 text-left font-bold text-slate-500 uppercase tracking-wide text-[10px]">{h}</th>
@@ -533,7 +533,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
                     ))}
                   </div>
                 )}
-                <div className="space-y-2 flex-1 max-h-48 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
                   {(autoFeedback?.comments || studentFeedback).map((item, idx) => (
                     <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                       <div className="flex items-center justify-between flex-wrap gap-1">
@@ -581,7 +581,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
           {/* ── Resource Persons — always shown ── */}
           <SectionCard title={`Resource Persons / Speakers${resourcePersons.length > 0 ? ` (${resourcePersons.length})` : ''}`} icon={<Users size={15} />} accent="indigo" className="lg:col-span-2">
             {resourcePersons.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-60 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-indigo-200 [&::-webkit-scrollbar-thumb]:rounded-full">
                 {resourcePersons.map((rp, i) => (
                   <div key={i} className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 flex flex-col justify-center">
                     <div className="flex items-start justify-between flex-wrap gap-2">
@@ -610,7 +610,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
           {/* ── Guest / Resource Person Feedback — always shown ── */}
           <SectionCard title="Guest / Resource Person Feedback" icon={<Star size={15} />} accent="amber" className="lg:col-span-2">
             {guestFeedback.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-60 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-amber-200 [&::-webkit-scrollbar-thumb]:rounded-full">
                 {guestFeedback.map((fb, i) => (
                   <div key={i} className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
                     <div className="flex items-center justify-between flex-wrap gap-2">
