@@ -164,13 +164,12 @@ const ExploreEvents = () => {
 
   const canSubmitFeedback = (event) => {
     if (!isRegistered(event)) return false;
-    const endDate = event.requisition?.step1?.eventEndDate;
-    const endTime = event.requisition?.step1?.eventEndTime || '23:59';
-    if (!endDate) return false;
-    const end = new Date(`${endDate}T${endTime}`).getTime();
-    const now = Date.now();
-    const twentyFourHoursAfter = end + (24 * 60 * 60 * 1000);
-    return now >= end && now <= twentyFourHoursAfter;
+    
+    // Check if the student's OD Request is approved (verifies participation)
+    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id);
+    if (!odReq || odReq.status !== 'APPROVED') return false;
+
+    return true; // TESTING: Bypass time checks for feedback
   };
 
   const EventCard = ({ event }) => {

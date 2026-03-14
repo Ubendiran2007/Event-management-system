@@ -455,6 +455,11 @@ const Dashboard = () => {
                               const eventEnd = new Date(eventDate);
                               eventEnd.setHours(h, m, 0, 0);
                               if (Date.now() <= eventEnd.getTime()) return null;
+                              
+                              // Check if within 3 days of event end
+                              const threeDaysAfter = eventEnd.getTime() + (3 * 24 * 60 * 60 * 1000);
+                              if (Date.now() > threeDaysAfter) return null;
+
                               return (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); navigate('/iqac'); }}

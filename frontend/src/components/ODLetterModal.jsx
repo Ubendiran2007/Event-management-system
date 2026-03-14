@@ -269,19 +269,20 @@ const ODLetterModal = ({ odRequest, onClose }) => {
     }
 
     @media print {
-      html, body { background: #fff; }
+      html, body { background: #fff; margin: 0; padding: 0; }
       body {
         width: var(--a4-width);
         height: var(--a4-height);
       }
       .page {
         width: var(--a4-width);
-        height: var(--a4-height);
+        height: 296mm; /* Slightly less than 297mm to prevent empty 2nd page */
         margin: 0;
         padding: 10mm 12mm 8mm;
         box-shadow: none;
         overflow: hidden;
         page-break-inside: avoid;
+        page-break-after: avoid;
         break-inside: avoid;
       }
       @page { size: A4; margin: 0; }
@@ -373,8 +374,8 @@ const ODLetterModal = ({ odRequest, onClose }) => {
     </div>
 
     <!-- Event Organizer e-stamp -->
-                ['Roll No',    displayRollNo],
-                ['Class',      displayClassSection],
+    <div class="sig-box">
+      <div class="e-stamp">
         <span class="check">&#10004;</span>
         <span class="esigned">E-Signed &amp; Verified</span>
         <span class="ename">${approvedBy}</span>
