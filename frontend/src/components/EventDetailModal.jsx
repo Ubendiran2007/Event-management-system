@@ -696,11 +696,11 @@ const EventDetailModal = ({ event, onClose }) => {
                       accept="image/*"
                       className="block w-full text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-cse-accent file:px-4 file:py-2 file:font-semibold file:text-white hover:file:opacity-90"
                       onChange={handlePosterUpload}
-                      disabled={isUploadingPoster || eventHasStarted}
+                      disabled={isUploadingPoster || (currentUser?.role === UserRole.MEDIA ? eventHasEnded : eventHasStarted)}
                     />
-                    {eventHasStarted && (
+                    {(currentUser?.role === UserRole.MEDIA ? eventHasEnded : eventHasStarted) && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                        Poster upload is disabled because the event has started.
+                        Poster upload is disabled because the event has {currentUser?.role === UserRole.MEDIA ? 'ended' : 'started'}.
                       </div>
                     )}
                     {isUploadingPoster && (
