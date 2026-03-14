@@ -380,6 +380,7 @@ const CreateEvent = () => {
       posterDataUrl: editingEvent.posterDataUrl || '',
       posterFileName: editingEvent.posterFileName || '',
       posterMimeType: editingEvent.posterMimeType || '',
+      requirePoster: editingEvent.posterWorkflow?.requested || false,
       professionalSocieties: step1.professionalSocieties || [],
       isIIC: step1.isIIC || 'No',
       startDate: step1.eventStartDate || editingEvent.date || '',
@@ -1000,50 +1001,80 @@ const CreateEvent = () => {
               </select>
             </div>
 
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-semibold text-slate-700">Event Poster</label>
-              <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
-                <div className="flex items-center gap-3 mb-2">
-                  <input
-                    type="checkbox"
-                    checked={form.requirePoster || false}
-                    onChange={e => setForm(prev => ({ ...prev, requirePoster: e.target.checked }))}
-                    id="requirePosterCheckbox"
-                  />
-                  <label htmlFor="requirePosterCheckbox" className="text-sm font-semibold text-slate-700">Require Poster (Send request to Media)</label>
+            {isResubmissionEdit && form.requirePoster ? (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-semibold text-slate-700">Event Poster</label>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-blue-700 mb-3">Event Poster (Managed by Media Team)</p>
+                  {form.posterDataUrl ? (
+                    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                      <div className="w-full h-60 bg-slate-100 flex items-center justify-center">
+                        <img src={form.posterDataUrl} alt="Event poster preview" className="max-w-full max-h-full object-contain" />
+                      </div>
+                      <div className="px-3 py-2 bg-slate-50 border-t border-slate-200">
+                        <p className="text-xs text-slate-500 truncate">{form.posterFileName || 'Poster uploaded by Media Team'}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 italic">No poster has been uploaded yet.</p>
+                  )}
                 </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className={inputClass}
-                  onChange={handlePosterUpload}
-                  disabled={form.requirePoster || (!isResubmissionEdit && form.startDate && form.startTime && new Date() > new Date(`${form.startDate}T${form.startTime}`))}
-                />
-                {form.posterDataUrl ? (
-                  <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
-                    <div className="w-full h-60 bg-slate-100 flex items-center justify-center">
-                      <img
-                        src={form.posterDataUrl}
-                        alt="Event poster preview"
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    </div>
-                    <div className="px-3 py-2 flex items-center justify-between gap-3 bg-white border-t border-slate-200">
-                      <p className="text-xs text-slate-500 truncate">{form.posterFileName || 'Poster selected'}</p>
-                      <button
-                        type="button"
-                        onClick={clearPoster}
-                        className="text-xs font-semibold text-red-600 hover:text-red-700"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">Upload an image poster to show on the Explore Events cards. If 'Require Poster' is checked, poster will be created by Media team.</p>
-                )}
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-sm font-semibold text-slate-700">Event Poster</label>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                  <div className="flex items-center gap-3 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={form.requirePoster || false}
+                      onChange={e => setForm(prev => ({ ...prev, requirePoster: e.target.checked }))}
+                      id="requirePosterCheckbox"
+                      disabled={isResubmissionEdit}
+                    />
+                    <label htmlFor="requirePosterCheckbox" className={`text-sm font-semibold ${isResubmissionEdit ? 'text-slate-400' : 'text-slate-700'}`}>Require Poster (Send request to Media)</label>
+                  </div>
+                  {form.requirePoster ? (
+                    <div className={`${inputClass} bg-slate-50 text-slate-500 flex items-center`}>
+                      Poster will be created and uploaded by the Media Team
+                    </div>
+                  ) : (
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className={inputClass}
+                      onChange={handlePosterUpload}
+                      disabled={!isResubmissionEdit && form.startDate && form.startTime && new Date() > new Date(`${form.startDate}T${form.startTime}`)}
+                    />
+                  )}
+                  {form.posterDataUrl ? (
+                    <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
+                      <div className="w-full h-60 bg-slate-100 flex items-center justify-center">
+                        <img
+                          src={form.posterDataUrl}
+                          alt="Event poster preview"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                      <div className="px-3 py-2 flex items-center justify-between gap-3 bg-white border-t border-slate-200">
+                        <p className="text-xs text-slate-500 truncate">{form.posterFileName || 'Poster selected'}</p>
+                        {!form.requirePoster && (
+                          <button
+                            type="button"
+                            onClick={clearPoster}
+                            className="text-xs font-semibold text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">Upload an image poster to show on the Explore Events cards. If 'Require Poster' is checked, poster will be created by Media team.</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Professional Society Involved</label>
