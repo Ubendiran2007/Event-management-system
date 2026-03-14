@@ -365,33 +365,30 @@ const IQACSummaryModal = ({ event, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Premium Header ── */}
-        <div className="shrink-0 bg-gradient-to-r from-emerald-900 via-emerald-800 to-teal-900 px-6 sm:px-8 py-6 relative overflow-hidden">
-          {/* Subtle background glow */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 blur-[80px] rounded-full mix-blend-screen pointer-events-none" />
-          
+        <div className="shrink-0 bg-slate-200/70 border-b border-slate-300 px-6 sm:px-8 py-6 relative overflow-hidden">
           <div className="flex items-start justify-between gap-4 relative z-10">
             <div className="flex-1 min-w-0">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-400/20 border border-emerald-400/30 text-emerald-100 text-[10px] font-bold uppercase tracking-widest rounded-full mb-3 backdrop-blur-sm shadow-sm transition-colors hover:bg-emerald-400/30">
-                <ClipboardList size={12} className="shrink-0 text-emerald-300" />
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-widest rounded-full mb-3 shadow-sm transition-colors hover:bg-slate-50">
+                <ClipboardList size={12} className="shrink-0 text-slate-500" />
                 Post-Event IQAC Report
               </div>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight drop-shadow-sm truncate pr-4">
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight truncate pr-4">
                 {event.title || s1?.eventName || 'Event Report'}
               </h2>
-              <p className="text-sm text-emerald-200/90 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
-                <span className="flex items-center gap-1.5"><Calendar size={14} className="opacity-70" /> {s1?.eventStartDate}{s1?.eventEndDate && s1.eventEndDate !== s1.eventStartDate ? ` – ${s1.eventEndDate}` : ''}</span>
-                <span className="flex items-center gap-1.5"><Clock size={14} className="opacity-70" /> {s1?.eventStartTime} – {s1?.eventEndTime}</span>
-                {event.venue && <span className="flex items-center gap-1.5"><MapPin size={14} className="opacity-70" /> {event.venue}</span>}
+              <p className="text-sm text-slate-600 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
+                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-500" /> {s1?.eventStartDate}{s1?.eventEndDate && s1.eventEndDate !== s1.eventStartDate ? ` – ${s1.eventEndDate}` : ''}</span>
+                <span className="flex items-center gap-1.5"><Clock size={14} className="text-slate-500" /> {s1?.eventStartTime} – {s1?.eventEndTime}</span>
+                {event.venue && <span className="flex items-center gap-1.5"><MapPin size={14} className="text-slate-500" /> {event.venue}</span>}
               </p>
             </div>
             
             <div className="flex flex-col items-end gap-3 shrink-0">
-              <button onClick={onClose} className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors" title="Close">
+              <button onClick={onClose} className="p-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-600 rounded-full transition-colors shadow-sm" title="Close">
                 <X size={18} />
               </button>
               {submittedOn && (
-                <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/30 text-emerald-50 text-xs font-semibold px-3 py-1.5 rounded-full backdrop-blur-md mt-1 shadow-sm">
-                  <FileCheck size={12} className="text-emerald-300" /> Submitted on {submittedOn}
+                <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full mt-1 shadow-sm">
+                  <FileCheck size={12} className="text-emerald-500" /> Submitted on {submittedOn}
                 </div>
               )}
             </div>
