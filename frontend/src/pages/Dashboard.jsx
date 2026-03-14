@@ -509,14 +509,14 @@ const Dashboard = () => {
                               </button>
                             )}
                             {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && !event.iqacSubmittedAt && event.organizerId === currentUser.id && (event.status === EventStatus.COMPLETED || event.status === EventStatus.POSTED) && (() => {
-                              const eventDate = event.date || event.requisition?.step1?.eventStartDate;
-                              const endTime = event.endTime || event.requisition?.step1?.eventEndTime;
-                              if (!eventDate || !endTime) return null;
-                              const [h, m] = String(endTime).split(':').map(Number);
-                              const eventEnd = new Date(eventDate);
-                              eventEnd.setHours(h, m, 0, 0);
+                              // Use eventEndDate (not startDate) for correct multi-day event support
+                              const endDate = event.requisition?.step1?.eventEndDate || event.date;
+                              const endTime = event.requisition?.step1?.eventEndTime || event.endTime;
+                              if (!endDate || !endTime) return null;
+                              const eventEnd = new Date(`${endDate}T${endTime}`);
+                              if (isNaN(eventEnd.getTime())) return null;
                               if (Date.now() <= eventEnd.getTime()) return null;
-                              
+
                               // Allow IQAC submission up to 7 days after event ends
                               const sevenDaysAfter = eventEnd.getTime() + (7 * 24 * 60 * 60 * 1000);
                               if (Date.now() > sevenDaysAfter) return null;

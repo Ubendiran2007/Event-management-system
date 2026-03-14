@@ -171,13 +171,15 @@ const EventCard = ({
   defaultPoster,
 }) => {
   const status = getEventStatus(event);
+  // Treat as completed if date-computed status OR Firestore status says so
+  const isCompleted = status === 'completed' || String(event.status || '').toUpperCase() === 'COMPLETED';
+  const isUpcoming = !isCompleted && status === 'upcoming';
   const registered = isRegistered(event);
   const processing = processingEventId === event.id;
   const isStudent = currentUser?.role === UserRole.STUDENT_GENERAL || currentUser?.role === UserRole.STUDENT_ORGANIZER;
-  const canWithdraw = registered && status === 'upcoming';
   const showOD = canDownloadOD(event);
   const showFeedback = canSubmitFeedback(event);
-  const showIQAC = status === 'completed' && (event.iqacSubmittedAt || event.iqacSubmission);
+  const showIQAC = isCompleted && (event.iqacSubmittedAt || event.iqacSubmission);
   const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
   const requestStatus = odReq ? odReq.status : null;
 
@@ -235,50 +237,50 @@ const EventCard = ({
         )}
 
         <div className="flex flex-wrap gap-2">
-          {/* Register button — only for upcoming events */}
-          {isStudent && !registered && status === 'upcoming' && (
+          {/* Register — only upcoming, only non-organizers */}
+          {isStudent && !registered && isUpcoming && event.organizerId !== currentUser?.id && (
             <button onClick={(e) => { e.stopPropagation(); onRegister(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Register
             </button>
           )}
-          {/* Withdraw — only for upcoming events */}
-          {isStudent && registered && canWithdraw && status !== 'completed' && (
+          {/* Withdraw — only upcoming (once event starts, no withdrawal) */}
+          {isStudent && registered && isUpcoming && (
             <button onClick={(e) => { e.stopPropagation(); onWithdraw(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Withdraw
             </button>
           )}
-          {/* Registration status badges — hidden on completed events */}
-          {isStudent && registered && status !== 'completed' && requestStatus === 'APPROVED' && (
+          {/* Registration status badges — only on upcoming events */}
+          {isStudent && registered && isUpcoming && requestStatus === 'APPROVED' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
               <CheckCircle size={14} /> Registered (Approved)
             </span>
           )}
-          {isStudent && registered && status !== 'completed' && requestStatus === 'PENDING_ORGANIZER' && (
+          {isStudent && registered && isUpcoming && requestStatus === 'PENDING_ORGANIZER' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">
               <Clock size={14} /> Pending Approval
             </span>
           )}
-          {isStudent && registered && status !== 'completed' && requestStatus === 'REJECTED' && (
+          {isStudent && registered && isUpcoming && requestStatus === 'REJECTED' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-medium">
               <XCircle size={14} /> Registration Rejected
             </span>
           )}
-          {isStudent && registered && status !== 'completed' && !requestStatus && (
+          {isStudent && registered && isUpcoming && !requestStatus && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
               <CheckCircle size={14} /> Registered
             </span>
           )}
-          {/* OD Letter — hidden on completed events */}
-          {showOD && status !== 'completed' && (
+          {/* OD Letter — only on upcoming events (before event starts) */}
+          {showOD && isUpcoming && (
             <button onClick={(e) => { e.stopPropagation(); onDownloadOD(event); }}
               className="flex items-center gap-1.5 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-xs font-medium">
               <Download size={14} /> OD Letter
             </button>
           )}
-          {/* Feedback — shown only on completed events for eligible registered students */}
-          {showFeedback && (
+          {/* Feedback — only on completed events for registered students */}
+          {showFeedback && isCompleted && (
             <button onClick={(e) => { e.stopPropagation(); onOpenFeedback(event); }}
               className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium">
               <MessageSquare size={14} /> Feedback
@@ -468,23 +470,22 @@ const ExploreEvents = () => {
   };
 
   const canSubmitFeedback = (event) => {
+    // Must be registered
     if (!isRegistered(event)) return false;
-    
-    // Check if the student's OD Request is approved (verifies participation)
-    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id);
-    if (!odReq || odReq.status !== 'APPROVED') return false;
 
-    // Block if feedback already submitted
-    if (odReq.feedback) return false;
+    // Block if feedback already submitted (check any non-withdrawn OD request)
+    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
+    if (odReq?.feedback) return false;
 
     const endDate = event.requisition?.step1?.eventEndDate;
     const endTime = event.requisition?.step1?.eventEndTime || '23:59';
     if (!endDate) return false;
-    
+
     const end = new Date(`${endDate}T${endTime}`).getTime();
     const now = Date.now();
     const sevenDaysAfter = end + (7 * 24 * 60 * 60 * 1000); // 7 days after event ends
-    
+
+    // Show feedback button once event has ended and within 7 days
     return now >= end && now <= sevenDaysAfter;
   };
   // Shared props for the stable module-level EventCard
