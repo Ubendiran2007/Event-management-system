@@ -344,13 +344,37 @@ const Dashboard = () => {
                     : 'text-slate-500 hover:bg-slate-100'
                     }`}
                 >
-                  {currentUser.role === UserRole.FACULTY ? 'My Events & Queue' : isStaff ? 'Pending Approvals' : isMedia ? 'Poster Requests' : 'Events'}
-                  {(isStaff || isMedia) && filteredEvents.length > 0 && (
+                  {currentUser.role === UserRole.FACULTY ? 'My Events' : isStaff ? 'Pending Approvals' : isMedia ? 'Poster Requests' : 'Events'}
+                  {(isStaff || isMedia) && currentUser.role !== UserRole.FACULTY && filteredEvents.length > 0 && (
                     <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
                       {filteredEvents.length}
                     </span>
                   )}
+                  {currentUser.role === UserRole.FACULTY && events.filter(e => e.organizerId === currentUser.id).length > 0 && (
+                    <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
+                      {events.filter(e => e.organizerId === currentUser.id).length}
+                    </span>
+                  )}
                 </button>
+
+                {/* Approvals tab — only for faculty */}
+                {currentUser.role === UserRole.FACULTY && (
+                  <button
+                    onClick={() => setActiveTab('approvals')}
+                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'approvals'
+                      ? 'bg-cse-accent text-white'
+                      : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                  >
+                    Approvals
+                    {events.filter(e => e.status === EventStatus.PENDING_FACULTY).length > 0 && (
+                      <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'approvals' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'
+                        }`}>
+                        {events.filter(e => e.status === EventStatus.PENDING_FACULTY).length}
+                      </span>
+                    )}
+                  </button>
+                )}
 
                 {/* OD Requests tab — only for general students */}
                 {currentUser.role === UserRole.STUDENT_GENERAL && (
@@ -392,9 +416,17 @@ const Dashboard = () => {
               </div>
 
               {/* Events Tab Content */}
-              {activeTab === 'events' && (
-                <div className="divide-y divide-slate-100">
-                  {filteredEvents.map(event => (
+              {(activeTab === 'events' || activeTab === 'approvals') && (() => {
+                let displayEvents = [];
+                if (activeTab === 'events') {
+                  displayEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) : filteredEvents;
+                } else if (activeTab === 'approvals') {
+                  displayEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
+                }
+
+                return (
+                  <div className="divide-y divide-slate-100">
+                    {displayEvents.map(event => (
                       <div 
                         key={event.id} 
                         className="p-6 hover:bg-slate-50/50 transition-colors group cursor-pointer"
@@ -408,7 +440,14 @@ const Dashboard = () => {
                               <Calendar size={24} />
                             </div>
                             <div>
-                              <h4 className="font-bold text-slate-900">{event.title}</h4>
+                              <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                                {event.title}
+                                {event.isResubmitted && (
+                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-md text-[10px] uppercase tracking-wider font-bold">
+                                    Resubmitted
+                                  </span>
+                                )}
+                              </h4>
                               <div className="flex items-center gap-3 mt-1">
                                 <span className="text-xs text-slate-500 flex items-center gap-1">
                                   <MapPin size={12} /> {event.venue}
@@ -478,7 +517,7 @@ const Dashboard = () => {
                         </div>
                       </div>
                     ))}
-                  {filteredEvents.length === 0 && (
+                  {displayEvents.length === 0 && (
                       <div className="p-12 text-center">
                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
                           <CheckCircle size={32} />
@@ -503,7 +542,8 @@ const Dashboard = () => {
                       </div>
                     )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* Registrations Tab — organizer sees incoming student OD requests */}
               {activeTab === 'registrations' && (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (

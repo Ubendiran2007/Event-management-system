@@ -379,7 +379,14 @@ const EventDetailModal = ({ event, onClose }) => {
           {/* Header */}
           <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900">{event.title}</h2>
+              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                {event.title}
+                {event.isResubmitted && (
+                  <span className="px-2.5 py-1 bg-purple-100 text-purple-700 rounded-lg text-[11px] uppercase tracking-wider font-bold">
+                    Resubmitted
+                  </span>
+                )}
+              </h2>
               <p className="text-sm text-slate-500 mt-1">Approval review workspace</p>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 border border-blue-200">{eventDateRange}</span>

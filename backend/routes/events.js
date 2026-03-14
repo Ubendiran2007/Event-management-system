@@ -353,6 +353,7 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     const updatePayload = {
       ...req.body,
       status: req.body.status || 'PENDING_FACULTY',
+      isResubmitted: true,
       updatedAt: new Date().toISOString()
     };
     await updateDoc(eventRef, updatePayload);
