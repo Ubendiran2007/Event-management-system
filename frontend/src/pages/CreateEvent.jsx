@@ -184,6 +184,16 @@ const CreateEvent = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [stepError, setStepError] = useState('');
+  // Per-field inline error messages
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const setFE = (key, msg) => setFieldErrors((prev) => ({ ...prev, [key]: msg || '' }));
+
+  // Returns className for an input: adds .input-error or .input-valid based on fieldErrors
+  const fieldCls = (key, base = 'input-field') => {
+    if (fieldErrors[key]) return `${base} input-error`;
+    return base;
+  };
 
   const [form, setForm] = useState({
     eventName: '',
@@ -676,9 +686,139 @@ const CreateEvent = () => {
 
   const isValidPhone = (phone) => /^\d{10}$/.test(String(phone).trim());
   const isValidEmail = (email) => {
-    if (!email) return true; // Validate only if provided, if required check is elsewhere
+    if (!email) return true;
     const val = String(email).trim();
     return val.includes('@') && val === val.toLowerCase();
+  };
+  const isPositiveInt = (v) => /^\d+$/.test(String(v).trim()) && Number(v) >= 0;
+
+  // Validate a single field and update fieldErrors; returns true if ok
+  const validateField = (key, value) => {
+    let msg = '';
+    switch (key) {
+      // ── Event Info ──
+      case 'eventName':
+        if (!String(value || '').trim()) msg = 'Event Name is required.';
+        break;
+      case 'eventType':
+        if (!value) msg = 'Please select an Event Type.';
+        break;
+      case 'startDate':
+        if (!value) { msg = 'Start Date is required.'; break; }
+        if (new Date(value) < new Date(todayIso)) msg = 'Start Date must be today or a future date.';
+        break;
+      case 'endDate':
+        if (!value) { msg = 'End Date is required.'; break; }
+        if (form.startDate && value < form.startDate) msg = 'End Date must be on or after Start Date.';
+        break;
+      case 'startTime':
+        if (!value) msg = 'Start Time is required.';
+        break;
+      case 'endTime':
+        if (!value) { msg = 'End Time is required.'; break; }
+        if (form.startDate && form.endDate && form.startDate === form.endDate && form.startTime && value <= form.startTime)
+          msg = 'End Time must be after Start Time for same-day events.';
+        break;
+      case 'organizerName':
+        if (!String(value || '').trim()) msg = 'Organizer Name is required.';
+        break;
+      case 'department':
+        if (!value) msg = 'Please select a Department.';
+        break;
+      case 'mobileNumber':
+        if (!String(value || '').trim()) { msg = 'Mobile Number is required.'; break; }
+        if (!isValidPhone(value)) msg = 'Mobile number must be exactly 10 digits (numbers only).';
+        break;
+      case 'internalParticipants':
+        if (value !== '' && !/^\d*$/.test(String(value))) msg = 'Only whole numbers allowed.';
+        break;
+      case 'externalParticipants':
+        if (value !== '' && !/^\d*$/.test(String(value))) msg = 'Only whole numbers allowed.';
+        break;
+      // ── Venue ──
+      case 'numberOfVenuesRequired':
+        if (!String(value || '').trim()) { msg = 'Number of venues is required.'; break; }
+        if (!isPositiveInt(value)) msg = 'Must be a whole number (digits only).';
+        break;
+      // ── ICTS ──
+      case 'expectedInternetUsers':
+        if (!String(value || '').trim()) { msg = 'Expected Internet Users is required.'; break; }
+        if (!isPositiveInt(value)) msg = 'Must be a whole number (digits only).';
+        break;
+      // ── External Transport ──
+      case 'ext_contactNumber':
+        if (value && !isValidPhone(value)) msg = 'Must be exactly 10 digits (numbers only).';
+        break;
+      case 'ext_emailId':
+        if (value && !isValidEmail(value)) msg = 'Email must contain @ and be all lowercase.';
+        break;
+      // ── Internal Transport ──
+      case 'int_contactNumber':
+        if (value && !isValidPhone(value)) msg = 'Must be exactly 10 digits (numbers only).';
+        break;
+      case 'int_emailId':
+        if (value && !isValidEmail(value)) msg = 'Email must contain @ and be all lowercase.';
+        break;
+      case 'int_numberOfVehicles':
+        if (value && !isPositiveInt(value)) msg = 'Must be a whole number (digits only).';
+        break;
+      // ── Accommodation ──
+      case 'accom_mobileNumber':
+        if (value && !isValidPhone(value)) msg = 'Must be exactly 10 digits (numbers only).';
+        break;
+      case 'accom_email':
+        if (value && !isValidEmail(value)) msg = 'Email must contain @ and be all lowercase.';
+        break;
+      case 'accom_maleGuests':
+        if (value && !isPositiveInt(value)) msg = 'Must be a whole number (digits only).';
+        break;
+      case 'accom_femaleGuests':
+        if (value && !isPositiveInt(value)) msg = 'Must be a whole number (digits only).';
+        break;
+      case 'accom_numberOfRooms':
+        if (value && !isPositiveInt(value)) msg = 'Must be a whole number (digits only).';
+        break;
+      case 'accom_arrivalDate':
+        if (!value) msg = 'Arrival Date is required.';
+        break;
+      case 'accom_departureDate':
+        if (!value) { msg = 'Departure Date is required.'; break; }
+        if (form.accommodation.arrivalDate && value < form.accommodation.arrivalDate)
+          msg = 'Departure Date must be on or after Arrival Date.';
+        break;
+      case 'accom_arrivalTime':
+        if (!value) msg = 'Arrival Time is required.';
+        break;
+      case 'accom_departureTime':
+        if (!value) msg = 'Departure Time is required.';
+        break;
+      // ── Audio ──
+      case 'audioDate':
+        if (!value) msg = 'Audio Event Date is required.';
+        break;
+      case 'audioStartTime':
+        if (!value) msg = 'Audio Start Time is required.';
+        break;
+      case 'audioEndTime':
+        if (!value) { msg = 'Audio End Time is required.'; break; }
+        if (form.audioStartTime && value <= form.audioStartTime) msg = 'End Time must be after Start Time.';
+        break;
+      case 'audioVenueName':
+        if (!String(value || '').trim()) msg = 'Venue Name is required for Audio.';
+        break;
+      default:
+        break;
+    }
+    setFE(key, msg);
+    return !msg;
+  };
+
+  // Block non-digit keystrokes for phone/number-only inputs
+  const onlyDigitsKeyDown = (e) => {
+    const allow = ['Backspace','Delete','Tab','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
+    if (!allow.includes(e.key) && !/^\d$/.test(e.key)) {
+      e.preventDefault();
+    }
   };
 
   const isStepValid = (stepKey) => {
@@ -1071,22 +1211,50 @@ const CreateEvent = () => {
 
   const inputClass = 'input-field';
 
+  /* ── Helper renderers for validated fields ─────────────────────────── */
+  // Renders <label> with optional required asterisk
+  const Lbl = ({ children, required: req, htmlFor }) => (
+    <label htmlFor={htmlFor} className={`text-sm font-semibold text-slate-700${req ? ' required-label' : ''}`}>{children}</label>
+  );
+  // Renders inline error or hint text below a field
+  const FieldMsg = ({ errKey, hint }) => {
+    const err = fieldErrors[errKey];
+    if (err) return <p className="field-error-msg">{err}</p>;
+    if (hint) return <p className="field-hint">{hint}</p>;
+    return null;
+  };
+
   const renderStepContent = () => {
     if (currentStep === STEP_KEYS.EVENT_INFO) {
       return (
         <Card title="Step 1 - Event Requisition (Basic Event Information)" icon={ClipboardList}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-semibold text-slate-700">Event Name</label>
-              <input className={inputClass} value={form.eventName} onChange={(e) => setField('eventName', e.target.value)} />
+            <div className="space-y-1 md:col-span-2">
+              <Lbl required>Event Name</Lbl>
+              <input
+                id="eventName"
+                className={fieldCls('eventName')}
+                value={form.eventName}
+                onChange={(e) => { setField('eventName', e.target.value); setFE('eventName', ''); }}
+                onBlur={(e) => validateField('eventName', e.target.value)}
+                placeholder="Enter event name"
+              />
+              <FieldMsg errKey="eventName" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event Type</label>
-              <select className={inputClass} value={form.eventType} onChange={(e) => setField('eventType', e.target.value)}>
+            <div className="space-y-1">
+              <Lbl required>Event Type</Lbl>
+              <select
+                id="eventType"
+                className={fieldCls('eventType')}
+                value={form.eventType}
+                onChange={(e) => { setField('eventType', e.target.value); validateField('eventType', e.target.value); }}
+                onBlur={(e) => validateField('eventType', e.target.value)}
+              >
                 <option value="">Select Type</option>
                 {EVENT_TYPES.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
+              <FieldMsg errKey="eventType" />
             </div>
 
             {isResubmissionEdit && form.requirePoster ? (
@@ -1178,65 +1346,148 @@ const CreateEvent = () => {
 
             <YesNoToggle label="Whether Event Belongs to IIC" value={form.isIIC} onChange={(value) => setField('isIIC', value)} />
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event Start Date</label>
-              <input type="date" min={eventStartMinDate} className={inputClass} value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Event Start Date</Lbl>
+              <input
+                id="startDate"
+                type="date"
+                min={eventStartMinDate}
+                className={fieldCls('startDate')}
+                value={form.startDate}
+                onChange={(e) => { setField('startDate', e.target.value); setFE('startDate', ''); }}
+                onBlur={(e) => validateField('startDate', e.target.value)}
+              />
+              <FieldMsg errKey="startDate" hint="Must be today or a future date" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event End Date</label>
-              <input type="date" min={eventEndMinDate} className={inputClass} value={form.endDate} onChange={(e) => setField('endDate', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Event End Date</Lbl>
+              <input
+                id="endDate"
+                type="date"
+                min={eventEndMinDate}
+                className={fieldCls('endDate')}
+                value={form.endDate}
+                onChange={(e) => { setField('endDate', e.target.value); setFE('endDate', ''); }}
+                onBlur={(e) => validateField('endDate', e.target.value)}
+              />
+              <FieldMsg errKey="endDate" hint="Must be on or after start date" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Number of Days</label>
+            <div className="space-y-1">
+              <Lbl>Number of Days</Lbl>
               <input readOnly className={`${inputClass} bg-slate-100`} value={numberOfDays || ''} placeholder="Auto calculated" />
+              <p className="field-hint">Auto-calculated from dates</p>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event Start Time</label>
-              <input type="time" className={inputClass} value={form.startTime} onChange={(e) => setField('startTime', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Event Start Time</Lbl>
+              <input
+                id="startTime"
+                type="time"
+                className={fieldCls('startTime')}
+                value={form.startTime}
+                onChange={(e) => { setField('startTime', e.target.value); setFE('startTime', ''); }}
+                onBlur={(e) => validateField('startTime', e.target.value)}
+              />
+              <FieldMsg errKey="startTime" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event End Time</label>
-              <input type="time" className={inputClass} value={form.endTime} onChange={(e) => setField('endTime', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Event End Time</Lbl>
+              <input
+                id="endTime"
+                type="time"
+                className={fieldCls('endTime')}
+                value={form.endTime}
+                onChange={(e) => { setField('endTime', e.target.value); setFE('endTime', ''); }}
+                onBlur={(e) => validateField('endTime', e.target.value)}
+              />
+              <FieldMsg errKey="endTime" hint="Must be after start time for same-day events" />
             </div>
 
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3">Organizer Details</h4>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Organizer Name</label>
-              <input className={inputClass} value={form.organizerName} onChange={(e) => setField('organizerName', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Organizer Name</Lbl>
+              <input
+                id="organizerName"
+                className={fieldCls('organizerName')}
+                value={form.organizerName}
+                onChange={(e) => { setField('organizerName', e.target.value); setFE('organizerName', ''); }}
+                onBlur={(e) => validateField('organizerName', e.target.value)}
+                placeholder="Full name"
+              />
+              <FieldMsg errKey="organizerName" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Department</label>
-              <select className={inputClass} value={form.department} onChange={(e) => setField('department', e.target.value)}>
+            <div className="space-y-1">
+              <Lbl required>Department</Lbl>
+              <select
+                id="department"
+                className={fieldCls('department')}
+                value={form.department}
+                onChange={(e) => { setField('department', e.target.value); validateField('department', e.target.value); }}
+                onBlur={(e) => validateField('department', e.target.value)}
+              >
                 <option value="">Select Department</option>
                 {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
+              <FieldMsg errKey="department" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Mobile Number</label>
-              <input type="tel" className={inputClass} value={form.mobileNumber} onChange={(e) => setField('mobileNumber', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Mobile Number</Lbl>
+              <input
+                id="mobileNumber"
+                type="tel"
+                className={fieldCls('mobileNumber')}
+                value={form.mobileNumber}
+                maxLength={10}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { setField('mobileNumber', e.target.value); setFE('mobileNumber', ''); }}
+                onBlur={(e) => validateField('mobileNumber', e.target.value)}
+                placeholder="10-digit mobile number"
+              />
+              <FieldMsg errKey="mobileNumber" hint="Exactly 10 digits, numbers only" />
             </div>
 
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3">Participants</h4>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Internal Participants</label>
-              <input type="number" className={inputClass} value={form.internalParticipants} onChange={(e) => setField('internalParticipants', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Internal Participants</Lbl>
+              <input
+                id="internalParticipants"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('internalParticipants')}
+                value={form.internalParticipants}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { setField('internalParticipants', e.target.value); setFE('internalParticipants', ''); }}
+                onBlur={(e) => validateField('internalParticipants', e.target.value)}
+                placeholder="e.g. 50"
+              />
+              <FieldMsg errKey="internalParticipants" hint="Whole numbers only" />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">External Participants</label>
-              <input type="number" className={inputClass} value={form.externalParticipants} onChange={(e) => setField('externalParticipants', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>External Participants</Lbl>
+              <input
+                id="externalParticipants"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('externalParticipants')}
+                value={form.externalParticipants}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { setField('externalParticipants', e.target.value); setFE('externalParticipants', ''); }}
+                onBlur={(e) => validateField('externalParticipants', e.target.value)}
+                placeholder="e.g. 20"
+              />
+              <FieldMsg errKey="externalParticipants" hint="Whole numbers only" />
             </div>
 
 
@@ -1374,13 +1625,24 @@ const CreateEvent = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event Date</label>
+            <div className="space-y-1">
+              <Lbl>Event Date</Lbl>
               <input type="date" min={eventStartMinDate} className={inputClass} value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Number of Venues Required</label>
-              <input type="number" className={inputClass} value={form.numberOfVenuesRequired} onChange={(e) => setField('numberOfVenuesRequired', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Number of Venues Required</Lbl>
+              <input
+                id="numberOfVenuesRequired"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('numberOfVenuesRequired')}
+                value={form.numberOfVenuesRequired}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { setField('numberOfVenuesRequired', e.target.value); setFE('numberOfVenuesRequired', ''); }}
+                onBlur={(e) => validateField('numberOfVenuesRequired', e.target.value)}
+                placeholder="e.g. 2"
+              />
+              <FieldMsg errKey="numberOfVenuesRequired" hint="Whole number only (e.g. 1, 2, 3)" />
             </div>
 
             <div className="md:col-span-2">
@@ -1449,21 +1711,54 @@ const CreateEvent = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Event Date</label>
-              <input type="date" min={audioMinDate} className={inputClass} value={form.audioDate} onChange={(e) => setField('audioDate', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Event Date</Lbl>
+              <input
+                id="audioDate"
+                type="date"
+                min={audioMinDate}
+                className={fieldCls('audioDate')}
+                value={form.audioDate}
+                onChange={(e) => { setField('audioDate', e.target.value); setFE('audioDate', ''); }}
+                onBlur={(e) => validateField('audioDate', e.target.value)}
+              />
+              <FieldMsg errKey="audioDate" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Venue Name</label>
-              <input className={inputClass} value={form.audioVenueName} onChange={(e) => setField('audioVenueName', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Venue Name</Lbl>
+              <input
+                id="audioVenueName"
+                className={fieldCls('audioVenueName')}
+                value={form.audioVenueName}
+                onChange={(e) => { setField('audioVenueName', e.target.value); setFE('audioVenueName', ''); }}
+                onBlur={(e) => validateField('audioVenueName', e.target.value)}
+                placeholder="e.g. Auditorium I Floor"
+              />
+              <FieldMsg errKey="audioVenueName" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Start Time</label>
-              <input type="time" className={inputClass} value={form.audioStartTime} onChange={(e) => setField('audioStartTime', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Start Time</Lbl>
+              <input
+                id="audioStartTime"
+                type="time"
+                className={fieldCls('audioStartTime')}
+                value={form.audioStartTime}
+                onChange={(e) => { setField('audioStartTime', e.target.value); setFE('audioStartTime', ''); }}
+                onBlur={(e) => validateField('audioStartTime', e.target.value)}
+              />
+              <FieldMsg errKey="audioStartTime" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">End Time</label>
-              <input type="time" className={inputClass} value={form.audioEndTime} onChange={(e) => setField('audioEndTime', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>End Time</Lbl>
+              <input
+                id="audioEndTime"
+                type="time"
+                className={fieldCls('audioEndTime')}
+                value={form.audioEndTime}
+                onChange={(e) => { setField('audioEndTime', e.target.value); setFE('audioEndTime', ''); }}
+                onBlur={(e) => validateField('audioEndTime', e.target.value)}
+              />
+              <FieldMsg errKey="audioEndTime" hint="Must be after start time" />
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-semibold text-slate-700">IQAC Number</label>
@@ -1528,9 +1823,20 @@ const CreateEvent = () => {
               </select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Expected Internet Users</label>
-              <input type="number" className={inputClass} value={form.expectedInternetUsers} onChange={(e) => setField('expectedInternetUsers', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Expected Internet Users</Lbl>
+              <input
+                id="expectedInternetUsers"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('expectedInternetUsers')}
+                value={form.expectedInternetUsers}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { setField('expectedInternetUsers', e.target.value); setFE('expectedInternetUsers', ''); }}
+                onBlur={(e) => validateField('expectedInternetUsers', e.target.value)}
+                placeholder="e.g. 30"
+              />
+              <FieldMsg errKey="expectedInternetUsers" hint="Whole number only (digits only)" />
             </div>
 
             <div className="md:col-span-2">
@@ -1578,13 +1884,33 @@ const CreateEvent = () => {
                   <label className="text-sm font-semibold text-slate-700">Organizer Designation</label>
                   <input className={inputClass} value={form.externalTransport.organizerDesignation} onChange={(e) => updateNested('externalTransport.organizerDesignation', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Contact Number</label>
-                  <input className={inputClass} value={form.externalTransport.contactNumber} onChange={(e) => updateNested('externalTransport.contactNumber', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl>Contact Number</Lbl>
+                  <input
+                    id="ext_contactNumber"
+                    type="tel"
+                    className={fieldCls('ext_contactNumber')}
+                    value={form.externalTransport.contactNumber}
+                    maxLength={10}
+                    onKeyDown={onlyDigitsKeyDown}
+                    onChange={(e) => { updateNested('externalTransport.contactNumber', e.target.value); setFE('ext_contactNumber', ''); }}
+                    onBlur={(e) => validateField('ext_contactNumber', e.target.value)}
+                    placeholder="10-digit number"
+                  />
+                  <FieldMsg errKey="ext_contactNumber" hint="Exactly 10 digits, numbers only" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Email ID</label>
-                  <input className={inputClass} value={form.externalTransport.emailId} onChange={(e) => updateNested('externalTransport.emailId', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl>Email ID</Lbl>
+                  <input
+                    id="ext_emailId"
+                    type="email"
+                    className={fieldCls('ext_emailId')}
+                    value={form.externalTransport.emailId}
+                    onChange={(e) => { updateNested('externalTransport.emailId', e.target.value.toLowerCase()); setFE('ext_emailId', ''); }}
+                    onBlur={(e) => validateField('ext_emailId', e.target.value)}
+                    placeholder="lowercase@example.com"
+                  />
+                  <FieldMsg errKey="ext_emailId" hint="Must contain @ and be all lowercase" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Guest Details</label>
@@ -1634,29 +1960,60 @@ const CreateEvent = () => {
                   <label className="text-sm font-semibold text-slate-700">Indenter Name</label>
                   <input className={inputClass} value={form.internalTransport.indenterName} onChange={(e) => updateNested('internalTransport.indenterName', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Contact Number</label>
-                  <input className={inputClass} value={form.internalTransport.contactNumber} onChange={(e) => updateNested('internalTransport.contactNumber', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl>Contact Number</Lbl>
+                  <input
+                    id="int_contactNumber"
+                    type="tel"
+                    className={fieldCls('int_contactNumber')}
+                    value={form.internalTransport.contactNumber}
+                    maxLength={10}
+                    onKeyDown={onlyDigitsKeyDown}
+                    onChange={(e) => { updateNested('internalTransport.contactNumber', e.target.value); setFE('int_contactNumber', ''); }}
+                    onBlur={(e) => validateField('int_contactNumber', e.target.value)}
+                    placeholder="10-digit number"
+                  />
+                  <FieldMsg errKey="int_contactNumber" hint="Exactly 10 digits, numbers only" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Designation</label>
+                <div className="space-y-1">
+                  <Lbl>Designation</Lbl>
                   <input className={inputClass} value={form.internalTransport.designation} onChange={(e) => updateNested('internalTransport.designation', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Employee ID</label>
+                <div className="space-y-1">
+                  <Lbl>Employee ID</Lbl>
                   <input className={inputClass} value={form.internalTransport.employeeId} onChange={(e) => updateNested('internalTransport.employeeId', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Department</label>
+                <div className="space-y-1">
+                  <Lbl>Department</Lbl>
                   <input className={inputClass} value={form.internalTransport.department} onChange={(e) => updateNested('internalTransport.department', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Email ID</label>
-                  <input className={inputClass} value={form.internalTransport.emailId} onChange={(e) => updateNested('internalTransport.emailId', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl>Email ID</Lbl>
+                  <input
+                    id="int_emailId"
+                    type="email"
+                    className={fieldCls('int_emailId')}
+                    value={form.internalTransport.emailId}
+                    onChange={(e) => { updateNested('internalTransport.emailId', e.target.value.toLowerCase()); setFE('int_emailId', ''); }}
+                    onBlur={(e) => validateField('int_emailId', e.target.value)}
+                    placeholder="lowercase@example.com"
+                  />
+                  <FieldMsg errKey="int_emailId" hint="Must contain @ and be all lowercase" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Number of Vehicles</label>
-                  <input type="number" className={inputClass} value={form.internalTransport.numberOfVehicles} onChange={(e) => updateNested('internalTransport.numberOfVehicles', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl>Number of Vehicles</Lbl>
+                  <input
+                    id="int_numberOfVehicles"
+                    type="text"
+                    inputMode="numeric"
+                    className={fieldCls('int_numberOfVehicles')}
+                    value={form.internalTransport.numberOfVehicles}
+                    onKeyDown={onlyDigitsKeyDown}
+                    onChange={(e) => { updateNested('internalTransport.numberOfVehicles', e.target.value); setFE('int_numberOfVehicles', ''); }}
+                    onBlur={(e) => validateField('int_numberOfVehicles', e.target.value)}
+                    placeholder="e.g. 2"
+                  />
+                  <FieldMsg errKey="int_numberOfVehicles" hint="Whole number only" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Vehicle Number</label>
@@ -1752,61 +2109,149 @@ const CreateEvent = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Guest Name(s)</label>
-              <input className={inputClass} value={form.accommodation.guestNames} onChange={(e) => updateNested('accommodation.guestNames', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Guest Name(s)</Lbl>
+              <input className={inputClass} value={form.accommodation.guestNames} onChange={(e) => updateNested('accommodation.guestNames', e.target.value)} placeholder="Guest full name" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Guest Designation</label>
-              <input className={inputClass} value={form.accommodation.guestDesignation} onChange={(e) => updateNested('accommodation.guestDesignation', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Guest Designation</Lbl>
+              <input className={inputClass} value={form.accommodation.guestDesignation} onChange={(e) => updateNested('accommodation.guestDesignation', e.target.value)} placeholder="e.g. Professor" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Industry / Institute</label>
-              <input className={inputClass} value={form.accommodation.industryInstitute} onChange={(e) => updateNested('accommodation.industryInstitute', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Industry / Institute</Lbl>
+              <input className={inputClass} value={form.accommodation.industryInstitute} onChange={(e) => updateNested('accommodation.industryInstitute', e.target.value)} placeholder="e.g. IIT Madras" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Mobile Number</label>
-              <input className={inputClass} value={form.accommodation.mobileNumber} onChange={(e) => updateNested('accommodation.mobileNumber', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Mobile Number</Lbl>
+              <input
+                id="accom_mobileNumber"
+                type="tel"
+                className={fieldCls('accom_mobileNumber')}
+                value={form.accommodation.mobileNumber}
+                maxLength={10}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { updateNested('accommodation.mobileNumber', e.target.value); setFE('accom_mobileNumber', ''); }}
+                onBlur={(e) => validateField('accom_mobileNumber', e.target.value)}
+                placeholder="10-digit number"
+              />
+              <FieldMsg errKey="accom_mobileNumber" hint="Exactly 10 digits, numbers only" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Email</label>
-              <input className={inputClass} value={form.accommodation.email} onChange={(e) => updateNested('accommodation.email', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Email</Lbl>
+              <input
+                id="accom_email"
+                type="email"
+                className={fieldCls('accom_email')}
+                value={form.accommodation.email}
+                onChange={(e) => { updateNested('accommodation.email', e.target.value.toLowerCase()); setFE('accom_email', ''); }}
+                onBlur={(e) => validateField('accom_email', e.target.value)}
+                placeholder="lowercase@example.com"
+              />
+              <FieldMsg errKey="accom_email" hint="Must contain @ and be all lowercase" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Address</label>
-              <input className={inputClass} value={form.accommodation.address} onChange={(e) => updateNested('accommodation.address', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Address</Lbl>
+              <input className={inputClass} value={form.accommodation.address} onChange={(e) => updateNested('accommodation.address', e.target.value)} placeholder="Full address" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Male Guests</label>
-              <input type="number" className={inputClass} value={form.accommodation.maleGuests} onChange={(e) => updateNested('accommodation.maleGuests', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Male Guests</Lbl>
+              <input
+                id="accom_maleGuests"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('accom_maleGuests')}
+                value={form.accommodation.maleGuests}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { updateNested('accommodation.maleGuests', e.target.value); setFE('accom_maleGuests', ''); }}
+                onBlur={(e) => validateField('accom_maleGuests', e.target.value)}
+                placeholder="0"
+              />
+              <FieldMsg errKey="accom_maleGuests" hint="Whole number only" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Female Guests</label>
-              <input type="number" className={inputClass} value={form.accommodation.femaleGuests} onChange={(e) => updateNested('accommodation.femaleGuests', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Female Guests</Lbl>
+              <input
+                id="accom_femaleGuests"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('accom_femaleGuests')}
+                value={form.accommodation.femaleGuests}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { updateNested('accommodation.femaleGuests', e.target.value); setFE('accom_femaleGuests', ''); }}
+                onBlur={(e) => validateField('accom_femaleGuests', e.target.value)}
+                placeholder="0"
+              />
+              <FieldMsg errKey="accom_femaleGuests" hint="Whole number only" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Arrival Date</label>
-              <input type="date" min={accommodationArrivalMinDate} className={inputClass} value={form.accommodation.arrivalDate} onChange={(e) => updateNested('accommodation.arrivalDate', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Arrival Date</Lbl>
+              <input
+                id="accom_arrivalDate"
+                type="date"
+                min={accommodationArrivalMinDate}
+                className={fieldCls('accom_arrivalDate')}
+                value={form.accommodation.arrivalDate}
+                onChange={(e) => { updateNested('accommodation.arrivalDate', e.target.value); setFE('accom_arrivalDate', ''); }}
+                onBlur={(e) => validateField('accom_arrivalDate', e.target.value)}
+              />
+              <FieldMsg errKey="accom_arrivalDate" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Arrival Time</label>
-              <input type="time" className={inputClass} value={form.accommodation.arrivalTime} onChange={(e) => updateNested('accommodation.arrivalTime', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Arrival Time</Lbl>
+              <input
+                id="accom_arrivalTime"
+                type="time"
+                className={fieldCls('accom_arrivalTime')}
+                value={form.accommodation.arrivalTime}
+                onChange={(e) => { updateNested('accommodation.arrivalTime', e.target.value); setFE('accom_arrivalTime', ''); }}
+                onBlur={(e) => validateField('accom_arrivalTime', e.target.value)}
+              />
+              <FieldMsg errKey="accom_arrivalTime" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Departure Date</label>
-              <input type="date" min={accommodationDepartureMinDate} className={inputClass} value={form.accommodation.departureDate} onChange={(e) => updateNested('accommodation.departureDate', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Departure Date</Lbl>
+              <input
+                id="accom_departureDate"
+                type="date"
+                min={accommodationDepartureMinDate}
+                className={fieldCls('accom_departureDate')}
+                value={form.accommodation.departureDate}
+                onChange={(e) => { updateNested('accommodation.departureDate', e.target.value); setFE('accom_departureDate', ''); }}
+                onBlur={(e) => validateField('accom_departureDate', e.target.value)}
+              />
+              <FieldMsg errKey="accom_departureDate" hint="Must be on or after arrival date" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Departure Time</label>
-              <input type="time" className={inputClass} value={form.accommodation.departureTime} onChange={(e) => updateNested('accommodation.departureTime', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Departure Time</Lbl>
+              <input
+                id="accom_departureTime"
+                type="time"
+                className={fieldCls('accom_departureTime')}
+                value={form.accommodation.departureTime}
+                onChange={(e) => { updateNested('accommodation.departureTime', e.target.value); setFE('accom_departureTime', ''); }}
+                onBlur={(e) => validateField('accom_departureTime', e.target.value)}
+              />
+              <FieldMsg errKey="accom_departureTime" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Number of Days</label>
+            <div className="space-y-1">
+              <Lbl>Number of Days</Lbl>
               <input className={`${inputClass} bg-slate-100`} readOnly value={accommodationDays || ''} />
+              <p className="field-hint">Auto-calculated from dates</p>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Number of Rooms</label>
-              <input type="number" className={inputClass} value={form.accommodation.numberOfRooms} onChange={(e) => updateNested('accommodation.numberOfRooms', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl>Number of Rooms</Lbl>
+              <input
+                id="accom_numberOfRooms"
+                type="text"
+                inputMode="numeric"
+                className={fieldCls('accom_numberOfRooms')}
+                value={form.accommodation.numberOfRooms}
+                onKeyDown={onlyDigitsKeyDown}
+                onChange={(e) => { updateNested('accommodation.numberOfRooms', e.target.value); setFE('accom_numberOfRooms', ''); }}
+                onBlur={(e) => validateField('accom_numberOfRooms', e.target.value)}
+                placeholder="e.g. 2"
+              />
+              <FieldMsg errKey="accom_numberOfRooms" hint="Whole number only" />
             </div>
 
             <div className="md:col-span-2">
