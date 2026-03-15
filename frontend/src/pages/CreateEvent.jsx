@@ -186,10 +186,12 @@ const CreateEvent = () => {
   const [stepError, setStepError] = useState('');
   // Per-field inline error messages
   const [fieldErrors, setFieldErrors] = useState({});
+  // Shows red on qty=0 rows ONLY after user clicks Next and validation fails
+  const [qtyErrorsVisible, setQtyErrorsVisible] = useState(false);
 
   const setFE = (key, msg) => setFieldErrors((prev) => ({ ...prev, [key]: msg || '' }));
 
-  // Returns className for an input: adds .input-error or .input-valid based on fieldErrors
+  // Returns className for an input: adds .input-error based on fieldErrors
   const fieldCls = (key, base = 'input-field') => {
     if (fieldErrors[key]) return `${base} input-error`;
     return base;
@@ -877,6 +879,12 @@ const CreateEvent = () => {
         setStepError('Audio End Time must be after Audio Start Time.');
         return false;
       }
+      // Every selected audio equipment must have qty >= 1
+      const audioZeroQty = Object.entries(form.audioEquipment || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
+      if (audioZeroQty) {
+        setStepError(`Quantity for audio equipment "${audioZeroQty[0]}" must be at least 1.`);
+        return false;
+      }
     }
 
     if (stepKey === STEP_KEYS.VENUE && form.venueRequired) {
@@ -891,6 +899,18 @@ const CreateEvent = () => {
       const hasSelectedVenue = Object.values(form.venueSelection || {}).some((v) => v.selected);
       if (!hasSelectedVenue) {
         setStepError('Please select at least one venue option.');
+        return false;
+      }
+      // Every selected venue must have qty >= 1
+      const venueZeroQty = Object.entries(form.venueSelection || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
+      if (venueZeroQty) {
+        setStepError(`Quantity for "${venueZeroQty[0]}" must be at least 1.`);
+        return false;
+      }
+      // Every selected hall requirement must have qty >= 1
+      const hallZeroQty = Object.entries(form.hallRequirements || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
+      if (hallZeroQty) {
+        setStepError(`Quantity for hall requirement "${hallZeroQty[0]}" must be at least 1.`);
         return false;
       }
     }
@@ -1014,11 +1034,17 @@ const CreateEvent = () => {
   };
 
   const goNext = () => {
-    if (!isStepValid(currentStep)) return;
+    if (!isStepValid(currentStep)) {
+      // Reveal qty=0 errors so the user can see which rows need a count
+      setQtyErrorsVisible(true);
+      return;
+    }
+    setQtyErrorsVisible(false);
     setCurrentStepIndex((prev) => advanceStep(prev, steps.length));
   };
 
   const goPrev = () => {
+    setQtyErrorsVisible(false);
     setCurrentStepIndex((i) => Math.max(i - 1, 0));
   };
 
@@ -1646,50 +1672,66 @@ const CreateEvent = () => {
             </div>
 
             <div className="md:col-span-2">
-              <h4 className="font-semibold text-slate-800 mb-2">Venue Selection (Checkbox + Quantity)</h4>
+              <h4 className="font-semibold text-slate-800 mb-1">Venue Selection <span className="text-red-500">*</span><span className="text-xs font-normal text-slate-500 ml-1">(Qty must be ≥ 1 when checked)</span></h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {VENUE_OPTIONS.map((v) => (
-                  <div key={v} className="rounded-lg border border-slate-200 p-3 flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={form.venueSelection[v].selected}
-                      onChange={(e) => updateQtyMap('venueSelection', v, { selected: e.target.checked, qty: e.target.checked ? form.venueSelection[v].qty : 0 })}
-                    />
-                    <span className="text-sm flex-1">{v}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={!form.venueSelection[v].selected}
-                      className="w-24 px-3 py-2 rounded-lg border border-slate-200"
-                      value={form.venueSelection[v].qty}
-                      onChange={(e) => updateQtyMap('venueSelection', v, { qty: Number(e.target.value || 0) })}
-                    />
-                  </div>
-                ))}
+                {VENUE_OPTIONS.map((v) => {
+                  const item = form.venueSelection[v];
+                  const qtyInvalid = qtyErrorsVisible && item.selected && Number(item.qty) <= 0;
+                  return (
+                    <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={(e) => updateQtyMap('venueSelection', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 })}
+                      />
+                      <span className="text-sm flex-1">{v}</span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <input
+                          type="number"
+                          min="1"
+                          disabled={!item.selected}
+                          className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
+                          value={item.qty}
+                          onChange={(e) => updateQtyMap('venueSelection', v, { qty: Number(e.target.value || 0) })}
+                          placeholder="Qty"
+                        />
+                        {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             <div className="md:col-span-2">
-              <h4 className="font-semibold text-slate-800 mb-2">Hall Requirements (Checkbox + Quantity)</h4>
+              <h4 className="font-semibold text-slate-800 mb-1">Hall Requirements <span className="text-red-500">*</span><span className="text-xs font-normal text-slate-500 ml-1">(Qty must be ≥ 1 when checked)</span></h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {HALL_REQUIREMENTS.map((v) => (
-                  <div key={v} className="rounded-lg border border-slate-200 p-3 flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={form.hallRequirements[v].selected}
-                      onChange={(e) => updateQtyMap('hallRequirements', v, { selected: e.target.checked, qty: e.target.checked ? form.hallRequirements[v].qty : 0 })}
-                    />
-                    <span className="text-sm flex-1">{v}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={!form.hallRequirements[v].selected}
-                      className="w-24 px-3 py-2 rounded-lg border border-slate-200"
-                      value={form.hallRequirements[v].qty}
-                      onChange={(e) => updateQtyMap('hallRequirements', v, { qty: Number(e.target.value || 0) })}
-                    />
-                  </div>
-                ))}
+                {HALL_REQUIREMENTS.map((v) => {
+                  const item = form.hallRequirements[v];
+                  const qtyInvalid = qtyErrorsVisible && item.selected && Number(item.qty) <= 0;
+                  return (
+                    <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={(e) => updateQtyMap('hallRequirements', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 })}
+                      />
+                      <span className="text-sm flex-1">{v}</span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <input
+                          type="number"
+                          min="1"
+                          disabled={!item.selected}
+                          className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
+                          value={item.qty}
+                          onChange={(e) => updateQtyMap('hallRequirements', v, { qty: Number(e.target.value || 0) })}
+                          placeholder="Qty"
+                        />
+                        {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1766,26 +1808,34 @@ const CreateEvent = () => {
             </div>
 
             <div className="md:col-span-2">
-              <h4 className="font-semibold text-slate-800 mb-2">Audio Equipment (Checkbox + Quantity)</h4>
+              <h4 className="font-semibold text-slate-800 mb-1">Audio Equipment <span className="text-red-500">*</span><span className="text-xs font-normal text-slate-500 ml-1">(Qty must be ≥ 1 when checked)</span></h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {AUDIO_EQUIPMENT.map((v) => (
-                  <div key={v} className="rounded-lg border border-slate-200 p-3 flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={form.audioEquipment[v].selected}
-                      onChange={(e) => updateQtyMap('audioEquipment', v, { selected: e.target.checked, qty: e.target.checked ? form.audioEquipment[v].qty : 0 })}
-                    />
-                    <span className="text-sm flex-1">{v}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      disabled={!form.audioEquipment[v].selected}
-                      className="w-24 px-3 py-2 rounded-lg border border-slate-200"
-                      value={form.audioEquipment[v].qty}
-                      onChange={(e) => updateQtyMap('audioEquipment', v, { qty: Number(e.target.value || 0) })}
-                    />
-                  </div>
-                ))}
+                {AUDIO_EQUIPMENT.map((v) => {
+                  const item = form.audioEquipment[v];
+                  const qtyInvalid = qtyErrorsVisible && item.selected && Number(item.qty) <= 0;
+                  return (
+                    <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={(e) => updateQtyMap('audioEquipment', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 })}
+                      />
+                      <span className="text-sm flex-1">{v}</span>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <input
+                          type="number"
+                          min="1"
+                          disabled={!item.selected}
+                          className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
+                          value={item.qty}
+                          onChange={(e) => updateQtyMap('audioEquipment', v, { qty: Number(e.target.value || 0) })}
+                          placeholder="Qty"
+                        />
+                        {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1807,15 +1857,15 @@ const CreateEvent = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Desktop / Laptop</label>
+            <div className="space-y-1">
+              <Lbl required>Desktop / Laptop</Lbl>
               <select className={inputClass} value={form.desktopLaptopRequired} onChange={(e) => setField('desktopLaptopRequired', e.target.value)}>
                 <option>Required</option>
                 <option>Not Required</option>
               </select>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Internet Facility</label>
+            <div className="space-y-1">
+              <Lbl required>Internet Facility</Lbl>
               <select className={inputClass} value={form.internetFacility} onChange={(e) => setField('internetFacility', e.target.value)}>
                 <option>LAN</option>
                 <option>WiFi</option>
@@ -1876,12 +1926,12 @@ const CreateEvent = () => {
             <div className="rounded-xl border border-slate-200 p-4 space-y-4">
               <h4 className="font-semibold text-slate-800">External Transport (Annexure IV a)</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Faculty ID</label>
-                  <input className={inputClass} value={form.externalTransport.facultyId} onChange={(e) => updateNested('externalTransport.facultyId', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl required>Faculty ID</Lbl>
+                  <input className={inputClass} value={form.externalTransport.facultyId} onChange={(e) => updateNested('externalTransport.facultyId', e.target.value)} placeholder="e.g. F-1001" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Organizer Designation</label>
+                <div className="space-y-1">
+                  <Lbl>Organizer Designation</Lbl>
                   <input className={inputClass} value={form.externalTransport.organizerDesignation} onChange={(e) => updateNested('externalTransport.organizerDesignation', e.target.value)} />
                 </div>
                 <div className="space-y-1">
@@ -1912,16 +1962,16 @@ const CreateEvent = () => {
                   />
                   <FieldMsg errKey="ext_emailId" hint="Must contain @ and be all lowercase" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Guest Details</label>
+                <div className="space-y-1">
+                  <Lbl>Guest Details</Lbl>
                   <input className={inputClass} value={form.externalTransport.guestDetails} onChange={(e) => updateNested('externalTransport.guestDetails', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Purpose of Visit</label>
+                <div className="space-y-1">
+                  <Lbl>Purpose of Visit</Lbl>
                   <input className={inputClass} value={form.externalTransport.purposeOfVisit} onChange={(e) => updateNested('externalTransport.purposeOfVisit', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Mode of Transport</label>
+                <div className="space-y-1">
+                  <Lbl required>Mode of Transport</Lbl>
                   <select className={inputClass} value={form.externalTransport.modeOfTransport} onChange={(e) => updateNested('externalTransport.modeOfTransport', e.target.value)}>
                     <option>Bus</option>
                     <option>Train</option>
@@ -1956,9 +2006,9 @@ const CreateEvent = () => {
             <div className="rounded-xl border border-slate-200 p-4 space-y-4">
               <h4 className="font-semibold text-slate-800">Internal Transport (Annexure IV b)</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Indenter Name</label>
-                  <input className={inputClass} value={form.internalTransport.indenterName} onChange={(e) => updateNested('internalTransport.indenterName', e.target.value)} />
+                <div className="space-y-1">
+                  <Lbl required>Indenter Name</Lbl>
+                  <input className={inputClass} value={form.internalTransport.indenterName} onChange={(e) => updateNested('internalTransport.indenterName', e.target.value)} placeholder="Full name" />
                 </div>
                 <div className="space-y-1">
                   <Lbl>Contact Number</Lbl>
@@ -2015,12 +2065,12 @@ const CreateEvent = () => {
                   />
                   <FieldMsg errKey="int_numberOfVehicles" hint="Whole number only" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Vehicle Number</label>
+                <div className="space-y-1">
+                  <Lbl>Vehicle Number</Lbl>
                   <input className={inputClass} value={form.internalTransport.vehicleNumber} onChange={(e) => updateNested('internalTransport.vehicleNumber', e.target.value)} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Purpose of Visit</label>
+                <div className="space-y-1">
+                  <Lbl>Purpose of Visit</Lbl>
                   <input className={inputClass} value={form.internalTransport.purposeOfVisit} onChange={(e) => updateNested('internalTransport.purposeOfVisit', e.target.value)} />
                 </div>
               </div>
@@ -2288,8 +2338,8 @@ const CreateEvent = () => {
                     <table className="min-w-[1050px] w-full text-sm">
                       <thead className="bg-slate-50">
                         <tr>
-                          <th className="px-2 py-2 text-left">Date</th>
-                          <th className="px-2 py-2 text-left">No. of Guests</th>
+                          <th className="px-2 py-2 text-left">Date <span className="text-red-500">*</span></th>
+                          <th className="px-2 py-2 text-left">No. of Guests <span className="text-red-500">*</span></th>
                           <th className="px-2 py-2">Breakfast</th>
                           <th className="px-2 py-2">Morning Refreshment</th>
                           <th className="px-2 py-2">Lunch Veg</th>
@@ -2343,16 +2393,16 @@ const CreateEvent = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Logos Required</label>
-              <input className={inputClass} value={form.media.logosRequired} onChange={(e) => updateNested('media.logosRequired', e.target.value)} />
+            <div className="space-y-1">
+              <Lbl required>Logos Required</Lbl>
+              <input className={inputClass} value={form.media.logosRequired} onChange={(e) => updateNested('media.logosRequired', e.target.value)} placeholder="e.g. College, IEEE" />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Photography Time</label>
+            <div className="space-y-1">
+              <Lbl>Photography Time</Lbl>
               <input type="time" className={inputClass} value={form.media.photographyTime} onChange={(e) => updateNested('media.photographyTime', e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Video Recording Time</label>
+            <div className="space-y-1">
+              <Lbl>Video Recording Time</Lbl>
               <input type="time" className={inputClass} value={form.media.videoRecordingTime} onChange={(e) => updateNested('media.videoRecordingTime', e.target.value)} />
             </div>
 
@@ -2378,8 +2428,8 @@ const CreateEvent = () => {
               <div className="md:col-span-2 rounded-xl border border-blue-200 bg-blue-50/50 p-4">
                 <p className="text-sm font-semibold text-blue-800 mb-3">Pre Event Poster Request Details</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Needed By Date</label>
+                  <div className="space-y-1">
+                    <Lbl required>Needed By Date</Lbl>
                     <input
                       type="date"
                       min={form.startDate || todayIso}
@@ -2388,8 +2438,8 @@ const CreateEvent = () => {
                       onChange={(e) => updateNested('media.preEventPosterNeededByDate', e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Needed By Time</label>
+                  <div className="space-y-1">
+                    <Lbl required>Needed By Time</Lbl>
                     <input
                       type="time"
                       className={inputClass}
