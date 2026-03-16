@@ -97,7 +97,7 @@ const EventDetailModal = ({ event, onClose }) => {
       setApprovalError('Please enter a rejection reason before rejecting this event.');
       return;
     }
-
+ 
     setIsProcessing(true);
     setApprovalError('');
     try {
