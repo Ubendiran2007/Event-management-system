@@ -5,9 +5,23 @@ import { ODRequestStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
 
 const ODRequestDetailModal = ({ request, onClose }) => {
-  const { currentUser, handleODApproval } = useAppContext();
+  const { currentUser, handleODApproval, events } = useAppContext();
 
   if (!request) return null;
+
+  const event = events?.find((e) => e.id === request.eventId);
+  const s1 = event?.requisition?.step1;
+  const eventName = event?.title || s1?.eventName || request.eventName || request.eventTitle || 'N/A';
+  const eventDate = event?.date || s1?.eventStartDate || request.eventDate || 'N/A';
+  
+  let eventTime = request.eventTime || 'N/A';
+  if (event?.time) {
+    eventTime = event.time;
+  } else if (s1?.eventStartTime) {
+    eventTime = `${s1.eventStartTime}${s1.eventEndTime ? ` - ${s1.eventEndTime}` : ''}`;
+  }
+  
+  const eventVenue = event?.venue || request.venue || 'N/A';
 
   const canApprove = () => {
     if (!currentUser) return false;
@@ -120,27 +134,27 @@ const ODRequestDetailModal = ({ request, onClose }) => {
               <div className="space-y-3 text-sm">
                 <div>
                   <p className="text-slate-500">Event Name</p>
-                  <p className="font-medium text-lg">{request.eventName}</p>
+                  <p className="font-medium text-lg">{eventName}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-slate-500 flex items-center gap-1">
                       <Calendar size={14} /> Date
                     </p>
-                    <p className="font-medium">{request.eventDate}</p>
+                    <p className="font-medium">{eventDate}</p>
                   </div>
                   <div>
                     <p className="text-slate-500 flex items-center gap-1">
                       <Clock size={14} /> Time
                     </p>
-                    <p className="font-medium">{request.eventTime || 'N/A'}</p>
+                    <p className="font-medium">{eventTime}</p>
                   </div>
                 </div>
                 <div>
                   <p className="text-slate-500 flex items-center gap-1">
                     <MapPin size={14} /> Venue
                   </p>
-                  <p className="font-medium">{request.venue || 'N/A'}</p>
+                  <p className="font-medium">{eventVenue}</p>
                 </div>
               </div>
             </div>

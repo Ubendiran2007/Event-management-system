@@ -47,13 +47,21 @@
 
 /* ── Validation States ── */
 .input-error {
-  @apply border-red-500 bg-red-50/60 focus:ring-red-200 focus:border-red-500 !important;
+  @apply border-red-500 bg-red-50/60;
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
   animation: shake 0.35s ease;
 }
 
+.input-error:focus {
+  @apply ring-red-200 border-red-500;
+}
+
 .input-valid {
-  @apply border-emerald-400 bg-emerald-50/40 focus:ring-emerald-200 focus:border-emerald-400 !important;
+  @apply border-emerald-400 bg-emerald-50/40;
+}
+
+.input-valid:focus {
+  @apply ring-emerald-200 border-emerald-400;
 }
 
 /* Red asterisk on required labels */
