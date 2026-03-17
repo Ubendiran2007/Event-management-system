@@ -18,7 +18,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
@@ -40,11 +40,40 @@ const InfoRow = ({ label, value, fullWidth = false }) => (
   </div>
 );
 
+const compressImageToDataUrl = (file, maxWidth = 1200, quality = 0.82) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = (e) => {
+    const img = new window.Image();
+    img.src = e.target.result;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scaleSize = maxWidth / img.width;
+      if (scaleSize < 1) {
+        canvas.width = maxWidth;
+        canvas.height = img.height * scaleSize;
+      } else {
+        canvas.width = img.width;
+        canvas.height = img.height;
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('Failed to load image for compression.'));
+  };
+  reader.onerror = () => reject(new Error('Failed to read file.'));
+});
+
 const EventDetailModal = ({ event, onClose }) => {
   const { currentUser, handleApproval } = useAppContext();
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
+  const [posterUploadError, setPosterUploadError] = useState('');
+  const [posterUploadSuccess, setPosterUploadSuccess] = useState('');
+  const fileInputRef = useRef(null);
 
   if (!event) return null;
 
@@ -62,6 +91,77 @@ const EventDetailModal = ({ event, onClose }) => {
     : (event?.date || 'Not specified');
   const enabledRequirementCount = Object.values(s1?.requirements || {}).filter(Boolean).length;
   const eventPosterSrc = event?.posterDataUrl || event?.posterUrl || null;
+
+  const isMedia = currentUser?.role === UserRole.MEDIA;
+  const isMediaUploadAllowed = isMedia && ['REQUESTED', 'REWORK_REQUESTED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
+
+  const handlePosterUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setPosterUploadError('Please select a valid image file for the poster.');
+      return;
+    }
+
+    setIsUploadingPoster(true);
+    setPosterUploadError('');
+    setPosterUploadSuccess('');
+
+    try {
+      const posterDataUrl = file.type === 'image/gif' 
+        ? await new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = ev => res(ev.target.result);
+            reader.onerror = () => rej(new Error('Failed to read GIF.'));
+            reader.readAsDataURL(file);
+          })
+        : await compressImageToDataUrl(file);
+
+      if (posterDataUrl.length > 10 * 1024 * 1024) {
+         setPosterUploadError('Poster is too large after processing. Please try a smaller image.');
+         setIsUploadingPoster(false);
+         return;
+      }
+
+      const patchRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          posterDataUrl,
+          posterFileName: file.name,
+          posterMimeType: file.type,
+          updatedBy: currentUser.name
+        })
+      });
+
+      if (!patchRes.ok) throw new Error('Failed to upload poster data.');
+
+      const wfRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster-workflow`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'COMPLETED',
+          finalUploadedBy: currentUser.name,
+          finalUploadedAt: new Date().toISOString()
+        })
+      });
+
+      if (!wfRes.ok) throw new Error('Failed to update workflow status.');
+
+      setPosterUploadSuccess('Poster uploaded successfully! Closing...');
+      
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+
+    } catch (err) {
+      console.error(err);
+      setPosterUploadError(err.message || 'An error occurred during upload.');
+    } finally {
+      setIsUploadingPoster(false);
+    }
+  };
 
   const canApprove = () => {
     if (!currentUser) return false;
@@ -754,69 +854,113 @@ const EventDetailModal = ({ event, onClose }) => {
           </div>
 
           {/* Action Buttons - Sticky Footer */}
-          {canApprove() && (
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4">
-              {approvalError && (
-                <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
-                  <XCircle size={16} className="shrink-0" />
-                  {approvalError}
-                </div>
+          {(canApprove() || isMediaUploadAllowed) && (
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-20">
+              {isMediaUploadAllowed ? (
+                 <div className="flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                       <div>
+                         <p className="text-sm font-semibold text-slate-800">Upload Final Poster</p>
+                         <p className="text-xs text-slate-500">Provide the designed poster for this event.</p>
+                       </div>
+                       <input 
+                         type="file" 
+                         accept="image/*" 
+                         className="hidden" 
+                         ref={fileInputRef} 
+                         onChange={handlePosterUpload}
+                         disabled={isUploadingPoster || !!posterUploadSuccess}
+                       />
+                       <button
+                         onClick={() => fileInputRef.current?.click()}
+                         disabled={isUploadingPoster || !!posterUploadSuccess}
+                         className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                       >
+                         {isUploadingPoster ? (
+                           <> <Loader2 size={18} className="animate-spin" /> Uploading... </>
+                         ) : posterUploadSuccess ? (
+                           <> <CheckCircle size={18} /> Done! </>
+                         ) : (
+                           <> <Camera size={18} /> Choose Poster Image </>
+                         )}
+                       </button>
+                    </div>
+                    {posterUploadError && (
+                      <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                         <XCircle size={16} className="shrink-0" /> {posterUploadError}
+                      </div>
+                    )}
+                    {posterUploadSuccess && (
+                      <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
+                         <CheckCircle size={16} className="shrink-0" /> {posterUploadSuccess}
+                      </div>
+                    )}
+                 </div>
+              ) : (
+                 <>
+                   {approvalError && (
+                     <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                       <XCircle size={16} className="shrink-0" />
+                       {approvalError}
+                     </div>
+                   )}
+                   <div className="mb-3">
+                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+                       Rejection Reason (required to reject)
+                     </label>
+                     <textarea
+                       rows={2}
+                       value={rejectionReason}
+                       onChange={(e) => setRejectionReason(e.target.value)}
+                       placeholder="Enter why this event is being rejected"
+                       disabled={isProcessing}
+                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
+                     />
+                   </div>
+                   <div className="flex items-center justify-between">
+                     <div className="text-sm text-slate-600">
+                       {getNextApprover() && (
+                         <p className="flex items-center gap-2">
+                           <CheckCircle size={16} className="text-emerald-600" />
+                           Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
+                         </p>
+                       )}
+                     </div>
+                     <div className="flex items-center gap-3">
+                       <button
+                         onClick={handleReject}
+                         disabled={isProcessing}
+                         className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                       >
+                         {isProcessing ? (
+                           <>
+                             <Loader2 size={18} className="animate-spin" /> Processing...
+                           </>
+                         ) : (
+                           <>
+                             <XCircle size={18} /> Reject
+                           </>
+                         )}
+                       </button>
+                       <button
+                         onClick={handleApprove}
+                         disabled={isProcessing}
+                         className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                       >
+                         {isProcessing ? (
+                           <>
+                             <Loader2 size={18} className="animate-spin" /> Approving...
+                           </>
+                         ) : (
+                           <>
+                             <CheckCircle size={18} /> Approve & Forward
+                           </>
+                         )}
+                       </button>
+                     </div>
+                   </div>
+                 </>
               )}
-              <div className="mb-3">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                  Rejection Reason (required to reject)
-                </label>
-                <textarea
-                  rows={2}
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  placeholder="Enter why this event is being rejected"
-                  disabled={isProcessing}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-slate-600">
-                  {getNextApprover() && (
-                    <p className="flex items-center gap-2">
-                      <CheckCircle size={16} className="text-emerald-600" />
-                      Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleReject}
-                    disabled={isProcessing}
-                    className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" /> Processing...
-                      </>
-                    ) : (
-                      <>
-                        <XCircle size={18} /> Reject
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={handleApprove}
-                    disabled={isProcessing}
-                    className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 size={18} className="animate-spin" /> Approving...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle size={18} /> Approve & Forward
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
             </div>
           )}
         </motion.div>

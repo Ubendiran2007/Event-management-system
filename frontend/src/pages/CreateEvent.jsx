@@ -24,7 +24,7 @@ import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Other'];
-const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'Other'];
+const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
 const DEPARTMENTS = ['CSE', 'ECE', 'EEE', 'MECH', 'CIVIL', 'AI&DS', 'IT', 'MBA', 'Other'];
 
 const VENUE_OPTIONS = [
@@ -56,6 +56,7 @@ const MEDIA_CHECKLIST = {
   stageDesign: ['Stage LED Back Drop', 'Agenda Items'],
   flexDesign: ['Event Standee', 'Front Entrance Banner', 'Welcome Banner'],
   otherMaterials: ['Certificates', 'Memento Sticker', 'Vinyl Welcome Boards', 'ID Cards'],
+  otherMaterialCount: '',
   videoRequirements: [
     'Coming Soon Video', 'Event Launch Video', 'Promotional Video', 'Stage Streaming Video',
     'Chief Guest AV', 'Event Glimpses Video', 'Feedback Video',
@@ -64,8 +65,11 @@ const MEDIA_CHECKLIST = {
 
 const createQtyMap = (items) => Object.fromEntries(items.map((item) => [item, { selected: false, qty: 0 }]));
 
+// Audio Equipment specific map
+const createAudioQtyMap = (items) => Object.fromEntries(items.map((item) => [item, { selected: false, qty: 0 }]));
+
 const JOURNEY_FIELD_LABELS = {
-  vehicleDate: 'Vehicle Date',
+  vehicleDate: 'Vehicle Date (Default: Event Date)',
   startingPlace: 'Starting Place',
   startTime: 'Start Time',
   endPlace: 'End Place',
@@ -224,7 +228,7 @@ const CreateEvent = () => {
     venueRequired: true,
     audioRequired: true,
     ictsRequired: true,
-    transportRequired: true,
+    transportRequired: false,
     accommodationRequired: true,
     mediaRequired: true,
     financialRequired: false,
@@ -245,7 +249,7 @@ const CreateEvent = () => {
     audioStartTime: '',
     audioEndTime: '',
     audioVenueName: '',
-    audioEquipment: createQtyMap(AUDIO_EQUIPMENT),
+    audioEquipment: createAudioQtyMap(AUDIO_EQUIPMENT),
     audioSpecialRequest: '',
 
     // Step 4: ICTS
@@ -318,6 +322,7 @@ const CreateEvent = () => {
       stageDesign: MEDIA_CHECKLIST.stageDesign.reduce((acc, item) => ({ ...acc, [item]: false }), {}),
       flexDesign: MEDIA_CHECKLIST.flexDesign.reduce((acc, item) => ({ ...acc, [item]: false }), {}),
       otherMaterials: MEDIA_CHECKLIST.otherMaterials.reduce((acc, item) => ({ ...acc, [item]: false }), {}),
+      otherMaterialCount: '',
       videoRequirements: MEDIA_CHECKLIST.videoRequirements.reduce((acc, item) => ({ ...acc, [item]: false }), {}),
       websitePostContent: '',
       socialPostContent: '',
@@ -327,10 +332,9 @@ const CreateEvent = () => {
   });
 
   const iqacNumber = useMemo(() => {
-    const year = new Date().getFullYear();
-    const suffix = String(Date.now() % 1000).padStart(3, '0');
-    return `IQAC-${year}-${suffix}`;
-  }, []);
+    const dept = form.department || 'DEPT';
+    return `IQAC/2025-26/${dept}/01`;
+  }, [form.department]);
 
   const numberOfDays = useMemo(() => {
     if (!form.startDate || !form.endDate) return '';
@@ -356,6 +360,50 @@ const CreateEvent = () => {
     d.setDate(d.getDate() - 7);
     return d.toISOString().split('T')[0];
   }, []);
+
+  // Update Transport Dates automatically if start date is filled and transport dates are empty
+  useEffect(() => {
+    if (form.startDate) {
+      setForm(prev => {
+        let updated = { ...prev };
+        if (!updated.externalTransport.onwardJourney.vehicleDate) {
+          updated.externalTransport.onwardJourney.vehicleDate = form.startDate;
+        }
+        if (!updated.externalTransport.returnJourney.vehicleDate) {
+          updated.externalTransport.returnJourney.vehicleDate = form.startDate;
+        }
+        if (!updated.internalTransport.onwardJourney.vehicleDate) {
+          updated.internalTransport.onwardJourney.vehicleDate = form.startDate;
+        }
+        if (!updated.internalTransport.returnJourney.vehicleDate) {
+          updated.internalTransport.returnJourney.vehicleDate = form.startDate;
+        }
+        return updated;
+      });
+    }
+  }, [form.startDate]);
+
+  // Sync Audio Date and Venue automatically
+  useEffect(() => {
+    setForm(prev => {
+      let updated = { ...prev };
+      // Sync Date
+      if (prev.startDate) {
+        updated.audioDate = prev.startDate;
+      }
+      
+      // Sync Venue: Collect all selected venues
+      const selectedVenues = Object.entries(prev.venueSelection)
+        .filter(([venue, data]) => data.selected)
+        .map(([venue]) => venue);
+      
+      if (selectedVenues.length > 0) {
+        updated.audioVenueName = selectedVenues.join(', ');
+      }
+
+      return updated;
+    });
+  }, [form.startDate, form.venueSelection]);
 
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
@@ -424,7 +472,7 @@ const CreateEvent = () => {
       venueRequired: step1.requirements?.venueRequired ?? true,
       audioRequired: step1.requirements?.audioRequired ?? true,
       ictsRequired: step1.requirements?.ictsRequired ?? true,
-      transportRequired: step1.requirements?.transportRequired ?? true,
+      transportRequired: step1.requirements?.transportRequired ?? false,
       accommodationRequired: step1.requirements?.accommodationDiningRequired ?? true,
       mediaRequired: step1.requirements?.mediaRequired ?? true,
       financialRequired: step1.requirements?.financialRequired ?? false,
@@ -435,11 +483,11 @@ const CreateEvent = () => {
       venueSelection: venueAnnex?.venueSelection || createQtyMap(VENUE_OPTIONS),
       hallRequirements: venueAnnex?.hallRequirements || createQtyMap(HALL_REQUIREMENTS),
       venueSpecialRequest: venueAnnex?.specialRequest || '',
-      audioDate: audioAnnex?.eventDate || '',
+      audioDate: audioAnnex?.eventDate || prev.startDate || '',
       audioStartTime: audioAnnex?.startTime || '',
       audioEndTime: audioAnnex?.endTime || '',
       audioVenueName: audioAnnex?.venueName || '',
-      audioEquipment: audioAnnex?.audioEquipment || createQtyMap(AUDIO_EQUIPMENT),
+      audioEquipment: audioAnnex?.audioEquipment || createAudioQtyMap(AUDIO_EQUIPMENT),
       audioSpecialRequest: audioAnnex?.specialRequest || '',
       desktopLaptopRequired: ictsAnnex?.desktopLaptop || 'Not Required',
       internetFacility: ictsAnnex?.internetFacility || 'WiFi',
@@ -1808,31 +1856,35 @@ const CreateEvent = () => {
             </div>
 
             <div className="md:col-span-2">
-              <h4 className="font-semibold text-slate-800 mb-1">Audio Equipment <span className="text-red-500">*</span><span className="text-xs font-normal text-slate-500 ml-1">(Qty must be ≥ 1 when checked)</span></h4>
+              <h4 className="font-semibold text-slate-800 mb-1">Audio Equipment <span className="text-red-500">*</span><span className="text-xs font-normal text-slate-500 ml-1">(Qty must be ≥ 1 when checked, except AC)</span></h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {AUDIO_EQUIPMENT.map((v) => {
                   const item = form.audioEquipment[v];
-                  const qtyInvalid = qtyErrorsVisible && item.selected && Number(item.qty) <= 0;
+                  // AC does not need a quantity count validation
+                  const isAC = v === 'AC';
+                  const qtyInvalid = qtyErrorsVisible && item.selected && !isAC && Number(item.qty) <= 0;
                   return (
                     <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
                       <input
                         type="checkbox"
                         checked={item.selected}
-                        onChange={(e) => updateQtyMap('audioEquipment', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 })}
+                        onChange={(e) => updateQtyMap('audioEquipment', v, { selected: e.target.checked, qty: e.target.checked ? (isAC ? '' : item.qty) : 0 })}
                       />
                       <span className="text-sm flex-1">{v}</span>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <input
-                          type="number"
-                          min="1"
-                          disabled={!item.selected}
-                          className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
-                          value={item.qty}
-                          onChange={(e) => updateQtyMap('audioEquipment', v, { qty: Number(e.target.value || 0) })}
-                          placeholder="Qty"
-                        />
-                        {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
-                      </div>
+                      {!isAC && (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <input
+                            type="number"
+                            min="1"
+                            disabled={!item.selected}
+                            className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
+                            value={item.qty}
+                            onChange={(e) => updateQtyMap('audioEquipment', v, { qty: Number(e.target.value || 0) })}
+                            placeholder="Qty"
+                          />
+                          {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2406,7 +2458,9 @@ const CreateEvent = () => {
               <input type="time" className={inputClass} value={form.media.videoRecordingTime} onChange={(e) => updateNested('media.videoRecordingTime', e.target.value)} />
             </div>
 
-            {Object.entries(MEDIA_CHECKLIST).map(([bucket, items]) => (
+            {Object.entries(MEDIA_CHECKLIST).map(([bucket, items]) => {
+              if (bucket === 'otherMaterialCount') return null;
+              return (
               <div key={bucket} className="md:col-span-2 rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-800 mb-2 capitalize">{bucket.replace(/([A-Z])/g, ' $1')}</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -2414,15 +2468,28 @@ const CreateEvent = () => {
                     <label key={item} className="text-sm flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
                       <input
                         type="checkbox"
-                        checked={form.media[bucket][item]}
+                        checked={form.media[bucket]?.[item] || false}
                         onChange={() => toggleMediaItem(bucket, item)}
                       />
                       {item}
                     </label>
                   ))}
                 </div>
+                {bucket === 'otherMaterials' && (
+                  <div className="mt-4 border-t border-slate-100 pt-3">
+                    <label className="text-sm font-semibold text-slate-700 mb-1 block">Other Material Count (Optional)</label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 50"
+                      className={inputClass}
+                      value={form.media.otherMaterialCount || ''}
+                      onChange={(e) => updateNested('media.otherMaterialCount', e.target.value)}
+                    />
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
 
             {form.media?.posterDesign?.['Pre Event Poster'] && (
               <div className="md:col-span-2 rounded-xl border border-blue-200 bg-blue-50/50 p-4">

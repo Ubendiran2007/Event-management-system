@@ -235,7 +235,8 @@ router.patch('/:id/status', async (req, res) => {
   const allowedStatuses = [
     'PENDING_FACULTY',
     'PENDING_HOD',
-    'PENDING_PRINCIPAL',
+    'PENDING_DEPARTMENTS',
+    'PENDING_IQAC',
     'APPROVED',
     'POSTED',
     'REJECTED',
@@ -265,7 +266,7 @@ router.patch('/:id/status', async (req, res) => {
     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
 
     // Send status notification to event organizer if applicable
-    if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_PRINCIPAL', 'POSTED', 'REJECTED'].includes(status)) {
+    if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC', 'POSTED', 'REJECTED'].includes(status)) {
       try {
         const emailResult = await sendEventStatusNotification(eventData.organizerEmail, eventData, status);
         if (!emailResult.success) {
@@ -276,22 +277,30 @@ router.patch('/:id/status', async (req, res) => {
       }
     }
 
-    // Send action required notification to the next approver (HOD/PRINCIPAL)
-    if (['PENDING_HOD', 'PENDING_PRINCIPAL'].includes(status)) {
-      const nextRole = status === 'PENDING_HOD' ? 'HOD' : 'PRINCIPAL';
+    // Send action required notification to the next approver (HOD/IQAC or teams)
+    if (['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC'].includes(status)) {
+      let nextRoles = [];
+      if (status === 'PENDING_HOD') nextRoles = ['HOD'];
+      else if (status === 'PENDING_IQAC') nextRoles = ['IQAC', 'FACULTY']; // Replace with actual IQAC role check later or handle similarly
+      else if (status === 'PENDING_DEPARTMENTS') {
+         nextRoles = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN'];
+      }
+      
       try {
-        const officialEmails = await getOfficialEmailsByRole(nextRole);
-        if (officialEmails.length > 0) {
-          // Send to the first official found (or wrap in Promise.all for all)
-          const requests = officialEmails.map(email => 
-            sendApprovalRequestToRole(eventData, email, nextRole)
-          );
-          await Promise.allSettled(requests);
-        } else {
-          console.warn(`[events/status] No users found with role ${nextRole} to send approval request`);
+        for (const nextRole of nextRoles) {
+          const officialEmails = await getOfficialEmailsByRole(nextRole);
+          if (officialEmails.length > 0) {
+            // Send to the first official found (or wrap in Promise.all for all)
+            const requests = officialEmails.map(email => 
+              sendApprovalRequestToRole(eventData, email, nextRole)
+            );
+            await Promise.allSettled(requests);
+          } else {
+            console.warn(`[events/status] No users found with role ${nextRole} to send approval request`);
+          }
         }
       } catch (officialError) {
-        console.error(`[events/status] Error notifying ${nextRole}:`, officialError);
+        console.error(`[events/status] Error notifying approvers:`, officialError);
       }
     }
 

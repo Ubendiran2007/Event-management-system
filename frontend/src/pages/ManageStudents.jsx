@@ -126,19 +126,16 @@ const ManageStudents = () => {
 
             <main className="max-w-5xl mx-auto px-6 py-8">
                 {/* Header */}
-                <div className="flex items-center gap-4 mb-8">
-                    <button
-                        onClick={() => navigate('/dashboard')}
-                        className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 transition-colors text-slate-500 hover:text-slate-800"
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                     <div>
                         <h2 className="text-3xl font-bold text-slate-900">Manage Students</h2>
                         <p className="text-slate-500 mt-1">
                             {selectedClass ? `Viewing students in ${selectedClass}` : 'Select a class to manage students'}
                         </p>
                     </div>
+                    <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap md:order-2">
+                        Back to Dashboard
+                    </button>
                 </div>
 
                 {loading ? (

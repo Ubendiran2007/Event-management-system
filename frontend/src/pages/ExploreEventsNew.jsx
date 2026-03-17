@@ -1035,10 +1035,15 @@ const ExploreEvents = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <Navbar />
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore Events</h1>
-          <p className="text-slate-600">Discover and register for upcoming events</p>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore Events</h1>
+            <p className="text-slate-600">Discover and register for upcoming events</p>
+          </div>
+          <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
+            Back to Dashboard
+          </button>
         </div>
 
         <div className="flex gap-3 mb-6 overflow-x-auto pb-2">
