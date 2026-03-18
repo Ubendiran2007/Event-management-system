@@ -244,7 +244,10 @@ const IQACSummaryModal = ({ event, onClose }) => {
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fa;color:#1a1a2e;padding:0}
   .page{max-width:900px;margin:30px auto;background:#fff;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.10);overflow:hidden}
-  .header{background:linear-gradient(135deg,#1a3a5c,#2563eb);color:#fff;padding:36px 40px 28px}
+  .header{background:linear-gradient(135deg,#1a3a5c,#2563eb);color:#fff;padding:36px 40px 28px;display:flex;align-items:center;gap:30px}
+  .header-content{flex:1}
+  .header-poster{width:110px;height:150px;border-radius:10px;overflow:hidden;border:3px solid rgba(255,255,255,0.2);flex-shrink:0;box-shadow:0 10px 20px rgba(0,0,0,0.2)}
+  .header-poster img{width:100%;height:100%;object-fit:cover}
   .header h1{font-size:26px;font-weight:700;margin-bottom:6px}
   .header p{font-size:13px;opacity:.85}
   .badge{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;margin-top:10px}
@@ -268,9 +271,14 @@ const IQACSummaryModal = ({ event, onClose }) => {
 </style></head>
 <body><div class="page">
   <div class="header">
-    <h1>${event.title || s1?.eventName || 'Event Report'}</h1>
-    <p>📅 ${s1?.eventStartDate||'-'} – ${s1?.eventEndDate||'-'} &nbsp;|&nbsp; 🕐 ${s1?.eventStartTime||'-'} – ${s1?.eventEndTime||'-'} &nbsp;|&nbsp; 📍 ${event.venue||'—'}</p>
-    <span class="badge">✓ IQAC Submitted ${submittedOn ? `on ${submittedOn}` : ''}</span>
+    <div class="header-poster">
+      <img src="${event.posterDataUrl || event.posterUrl || ''}" alt="Event Poster" />
+    </div>
+    <div class="header-content">
+      <h1>${event.title || s1?.eventName || 'Event Report'}</h1>
+      <p>📅 ${s1?.eventStartDate||'-'} – ${s1?.eventEndDate||'-'} &nbsp;|&nbsp; 🕐 ${s1?.eventStartTime||'-'} – ${s1?.eventEndTime||'-'} &nbsp;|&nbsp; 📍 ${event.venue||'—'}</p>
+      <span class="badge">✓ IQAC Submitted ${submittedOn ? `on ${submittedOn}` : ''}</span>
+    </div>
   </div>
   <div class="body">
     <div class="section">
@@ -379,7 +387,25 @@ const IQACSummaryModal = ({ event, onClose }) => {
       >
         {/* ── Premium Header ── */}
         <div className="shrink-0 bg-slate-200/70 border-b border-slate-300 px-6 sm:px-8 py-6 relative overflow-hidden">
-          <div className="flex items-start justify-between gap-4 relative z-10">
+          {/* Subtle background decorative pattern or poster blur */}
+          <div className="absolute inset-0 opacity-10 blur-3xl pointer-events-none">
+            <img 
+              src={event.posterDataUrl || event.posterUrl || defaultPoster} 
+              alt="" 
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-6 relative z-10">
+            {/* Poster Thumbnail */}
+            <div className="shrink-0 w-24 h-32 rounded-xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-200 hidden sm:block">
+               <img 
+                src={event.posterDataUrl || event.posterUrl || defaultPoster} 
+                alt="Event Poster" 
+                className="w-full h-full object-cover"
+              />
+            </div>
+
             <div className="flex-1 min-w-0">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-300 text-slate-600 text-[10px] font-bold uppercase tracking-widest rounded-full mb-3 shadow-sm transition-colors hover:bg-slate-50">
                 <ClipboardList size={12} className="shrink-0 text-slate-500" />
