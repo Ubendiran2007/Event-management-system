@@ -80,9 +80,12 @@ export const AppProvider = ({ children }) => {
 
   const createEvent = async (newEvent) => {
     try {
+      // If the creator is Faculty, skip Faculty approval step and go directly to HOD
+      const isFacultyOrganizer = currentUser?.role === UserRole.FACULTY;
       const createdEvent = await createEventInDB({
         ...newEvent,
-        status: EventStatus.PENDING_FACULTY,
+        status: isFacultyOrganizer ? EventStatus.PENDING_HOD : EventStatus.PENDING_FACULTY,
+        creatorType: isFacultyOrganizer ? 'FACULTY' : 'STUDENT',
       });
       return createdEvent;
     } catch (error) {
@@ -106,9 +109,13 @@ export const AppProvider = ({ children }) => {
           newStatus = EventStatus.PENDING_HOD;
           break;
         case EventStatus.PENDING_HOD:
-          newStatus = EventStatus.PENDING_PRINCIPAL;
+          // Immediately route to departments
+          newStatus = EventStatus.PENDING_DEPARTMENTS;
           break;
-        case EventStatus.PENDING_PRINCIPAL:
+        case EventStatus.PENDING_DEPARTMENTS:
+          newStatus = EventStatus.PENDING_IQAC;
+          break;
+        case EventStatus.PENDING_IQAC:
           newStatus = EventStatus.POSTED;
           break;
         default:
@@ -143,6 +150,27 @@ export const AppProvider = ({ children }) => {
         setEvents(prev => prev.filter(e => e.id !== eventId));
         throw new Error('GHOST_EVENT');
       }
+      throw error;
+    }
+  };
+
+  const handleDepartmentApproval = async (eventId, department) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/events/${eventId}/department-approval`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          department,
+          approvedBy: currentUser?.name || 'Unknown Approver',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to update department approval');
+      }
+    } catch (error) {
+      console.error('Error updating department approval:', error);
       throw error;
     }
   };
@@ -257,6 +285,7 @@ export const AppProvider = ({ children }) => {
     makeEventOrganizer,
     revokeOrganizer,
     completeEvent,
+    handleDepartmentApproval,
   };
 
   return (

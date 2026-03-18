@@ -11,7 +11,12 @@ const { sendEventStatusNotification } = require('./emailService');
 
 // Auto-reject applies to any event that is still pending approval
 // once the configured start date/time is reached.
-const PENDING_STATUSES = ['PENDING_FACULTY', 'PENDING_HOD', 'PENDING_PRINCIPAL'];
+const PENDING_STATUSES = [
+  'PENDING_FACULTY',
+  'PENDING_HOD',
+  'PENDING_DEPARTMENTS',
+  'PENDING_IQAC'
+];
 const AUTO_REJECT_BEFORE_START_MINUTES = parseInt(
   process.env.AUTO_REJECT_BEFORE_START_MINUTES || '5',
   10

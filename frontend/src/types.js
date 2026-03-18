@@ -10,6 +10,7 @@ export const UserRole = {
   MEDIA: 'MEDIA',
   STUDENT_ORGANIZER: 'STUDENT_ORGANIZER',
   STUDENT_GENERAL: 'STUDENT_GENERAL',
+  IQAC_TEAM: 'IQAC_TEAM',
 };
 
 export const EventStatus = {

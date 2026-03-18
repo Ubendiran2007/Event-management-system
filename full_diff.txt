@@ -1,0 +1,795 @@
+diff --git a/backend/routes/auth.js b/backend/routes/auth.js
+index 66ae866..c840272 100644
+--- a/backend/routes/auth.js
++++ b/backend/routes/auth.js
+@@ -53,6 +53,36 @@ const STAFF_CREDENTIALS = {
+       role: 'MEDIA',
+     },
+   },
++  hr: {
++    username: 'hr',
++    password: 'hr',
++    user: { id: 'hr1', name: 'HR Department', email: 'hr@admin.edu', role: 'HR_TEAM' }
++  },
++  audio: {
++    username: 'audio',
++    password: 'audio',
++    user: { id: 'au1', name: 'Audio Section', email: 'audio@admin.edu', role: 'AUDIO_TEAM' }
++  },
++  sysadmin: {
++    username: 'sysadmin',
++    password: 'sysadmin',
++    user: { id: 'sa1', name: 'System Admin', email: 'sysadmin@admin.edu', role: 'SYSTEM_ADMIN' }
++  },
++  transport: {
++    username: 'transport',
++    password: 'transport',
++    user: { id: 'tr1', name: 'Transport Office', email: 'transport@admin.edu', role: 'TRANSPORT_TEAM' }
++  },
++  boyswarden: {
++    username: 'boyswarden',
++    password: 'boyswarden',
++    user: { id: 'bw1', name: 'Boys Hostel Warden', email: 'boyswarden@admin.edu', role: 'BOYS_WARDEN' }
++  },
++  girlswarden: {
++    username: 'girlswarden',
++    password: 'girlswarden',
++    user: { id: 'gw1', name: 'Girls Hostel Warden', email: 'girlswarden@admin.edu', role: 'GIRLS_WARDEN' }
++  },
+ };
+ 
+ async function syncStaffUserToFirestore(staffUser, password) {
+diff --git a/backend/routes/events.js b/backend/routes/events.js
+index f922f22..640c3ca 100644
+--- a/backend/routes/events.js
++++ b/backend/routes/events.js
+@@ -261,6 +261,21 @@ router.patch('/:id/status', async (req, res) => {
+     const updatePayload = { status, updatedAt: new Date().toISOString() };
+     if (approvedBy) updatePayload.approvedBy = approvedBy;
+ 
++    // Record timestamped approval for each stage
++    const prevStatus = eventSnap.data().status;
++    if (status === 'PENDING_HOD' && prevStatus === 'PENDING_FACULTY') {
++      updatePayload.facultyApprovedAt = new Date().toISOString();
++      updatePayload.facultyApprovedBy = approvedBy || 'Faculty';
++    }
++    if (status === 'PENDING_DEPARTMENTS' && prevStatus === 'PENDING_HOD') {
++      updatePayload.hodApprovedAt = new Date().toISOString();
++      updatePayload.hodApprovedBy = approvedBy || 'HOD';
++    }
++    if (status === 'POSTED' && prevStatus === 'PENDING_IQAC') {
++      updatePayload.iqacApprovedAt = new Date().toISOString();
++      updatePayload.iqacApprovedBy = approvedBy || 'IQAC';
++    }
++
+     await updateDoc(eventRef, updatePayload);
+ 
+     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
+@@ -332,6 +347,79 @@ router.patch('/:id/status', async (req, res) => {
+   }
+ });
+ 
++// ── PATCH /api/events/:id/department-approval ────────────────────────────
++// Approve a specific department requirement
++// Body: { department: 'venue' | 'audio' | 'icts' | 'transport' | 'accommodation' | 'media', approvedBy: string }
++router.patch('/:id/department-approval', async (req, res) => {
++  if (!checkDb(res)) return;
++
++  const { department, approvedBy } = req.body;
++
++  if (!department || !approvedBy) {
++    return res.status(400).json({ success: false, message: 'Department and approvedBy are required' });
++  }
++
++  try {
++    const eventRef = doc(db, 'events', req.params.id);
++    const eventSnap = await getDoc(eventRef);
++
++    if (!eventSnap.exists()) {
++      return res.status(404).json({ success: false, message: 'Event not found' });
++    }
++
++    const eventData = eventSnap.data();
++    const departmentApprovals = eventData.departmentApprovals || {};
++
++    departmentApprovals[department] = {
++      status: 'APPROVED',
++      approvedBy,
++      approvedAt: new Date().toISOString(),
++    };
++
++    const updatePayload = { departmentApprovals, updatedAt: new Date().toISOString() };
++
++    // Check if all required departments are approved
++    const reqs = eventData.requisition?.step1?.requirements || {};
++    // Backward compatibility if requirements are at root level
++    const isRequired = (key) => reqs[key] ?? eventData[key] ?? false;
++
++    const requiredDepts = [];
++    if (isRequired('venueRequired')) requiredDepts.push('venue');
++    if (isRequired('audioRequired')) requiredDepts.push('audio');
++    if (isRequired('ictsRequired')) requiredDepts.push('icts');
++    if (isRequired('transportRequired')) requiredDepts.push('transport');
++    if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) requiredDepts.push('accommodation');
++    if (isRequired('mediaRequired')) requiredDepts.push('media');
++
++    const allApproved = requiredDepts.every(dept => departmentApprovals[dept]?.status === 'APPROVED');
++
++    if (allApproved && eventData.status === 'PENDING_DEPARTMENTS') {
++      updatePayload.status = 'PENDING_IQAC';
++      
++      // Auto-notify IQAC here if needed
++      try {
++        const iqacEmails = await getOfficialEmailsByRole('IQAC');
++        for (const email of iqacEmails) {
++          await sendApprovalRequestToRole(eventData, email, 'IQAC');
++        }
++      } catch (e) {
++        console.error('Error notifying IQAC auto-transition:', e);
++      }
++    }
++
++    await updateDoc(eventRef, updatePayload);
++
++    return res.json({
++      success: true,
++      message: `${department} approved successfully`,
++      event: { id: req.params.id, ...eventData, ...updatePayload },
++    });
++  } catch (error) {
++    console.error('[events/department-approval] Error:', error);
++    return res.status(500).json({ success: false, message: 'Failed to update department approval', error: error.message });
++  }
++});
++
+ // ── PUT /api/events/:id ──────────────────────────────────────────────────
+ // Full update of an event document
+ router.put('/:id', async (req, res) => {
+diff --git a/frontend/src/components/EventDetailModal.jsx b/frontend/src/components/EventDetailModal.jsx
+index caff305..861773a 100644
+--- a/frontend/src/components/EventDetailModal.jsx
++++ b/frontend/src/components/EventDetailModal.jsx
+@@ -66,7 +66,7 @@ const compressImageToDataUrl = (file, maxWidth = 1200, quality = 0.82) => new Pr
+ });
+ 
+ const EventDetailModal = ({ event, onClose }) => {
+-  const { currentUser, handleApproval } = useAppContext();
++  const { currentUser, handleApproval, handleDepartmentApproval } = useAppContext();
+   const [isProcessing, setIsProcessing] = useState(false);
+   const [approvalError, setApprovalError] = useState('');
+   const [rejectionReason, setRejectionReason] = useState('');
+@@ -167,10 +167,36 @@ const EventDetailModal = ({ event, onClose }) => {
+     if (!currentUser) return false;
+     if (currentUser.role === UserRole.FACULTY && event.status === EventStatus.PENDING_FACULTY) return true;
+     if (currentUser.role === UserRole.HOD && event.status === EventStatus.PENDING_HOD) return true;
+-    if (currentUser.role === UserRole.PRINCIPAL && event.status === EventStatus.PENDING_PRINCIPAL) return true;
+     return false;
+   };
+ 
++  // Department-level approvals (only visible when event is PENDING_DEPARTMENTS)
++  const isDeptPending = event.status === EventStatus.PENDING_DEPARTMENTS;
++  const reqs = event.requisition?.step1?.requirements || {};
++  const isReq = (key) => reqs[key] ?? event[key] ?? false;
++  const depts = event.departmentApprovals || {};
++
++  const canApproveVenue = currentUser?.role === UserRole.HR_TEAM && isDeptPending && isReq('venueRequired') && depts.venue?.status !== 'APPROVED';
++  const canApproveMedia = currentUser?.role === UserRole.HR_TEAM && isDeptPending && isReq('mediaRequired') && depts.media?.status !== 'APPROVED';
++  const canApproveAudio = currentUser?.role === UserRole.AUDIO_TEAM && isDeptPending && isReq('audioRequired') && depts.audio?.status !== 'APPROVED';
++  const canApproveICTS = currentUser?.role === UserRole.SYSTEM_ADMIN && isDeptPending && isReq('ictsRequired') && depts.icts?.status !== 'APPROVED';
++  const canApproveTransport = currentUser?.role === UserRole.TRANSPORT_TEAM && isDeptPending && isReq('transportRequired') && depts.transport?.status !== 'APPROVED';
++  const canApproveAccommodation = (currentUser?.role === UserRole.BOYS_WARDEN || currentUser?.role === UserRole.GIRLS_WARDEN) && isDeptPending && (isReq('accommodationDiningRequired') || isReq('accommodationRequired')) && depts.accommodation?.status !== 'APPROVED';
++  const hasAnyDeptApproval = canApproveVenue || canApproveMedia || canApproveAudio || canApproveICTS || canApproveTransport || canApproveAccommodation;
++
++  const handleDeptApprove = async (department) => {
++    setIsProcessing(true);
++    setApprovalError('');
++    try {
++      await handleDepartmentApproval(event.id, department);
++      setTimeout(() => { onClose(); }, 300);
++    } catch (error) {
++      console.error('Error approving department:', error);
++      setApprovalError('Approval failed. Check your connection or permissions and try again.');
++      setIsProcessing(false);
++    }
++  };
++
+   const handleApprove = async () => {
+     setIsProcessing(true);
+     setApprovalError('');
+@@ -222,8 +248,10 @@ const EventDetailModal = ({ event, onClose }) => {
+       case EventStatus.PENDING_FACULTY:
+         return 'HOD';
+       case EventStatus.PENDING_HOD:
+-        return 'Principal';
+-      case EventStatus.PENDING_PRINCIPAL:
++        return 'Departments (Concurrent Approval)';
++      case EventStatus.PENDING_DEPARTMENTS:
++        return 'IQAC';
++      case EventStatus.PENDING_IQAC:
+         return 'Posted for all students';
+       default:
+         return '';
+@@ -304,23 +332,34 @@ const EventDetailModal = ({ event, onClose }) => {
+                 {/* HOD step */}
+                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                   event.status === EventStatus.PENDING_HOD ? 'bg-amber-100 text-amber-700' :
+-                  [EventStatus.PENDING_PRINCIPAL, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
++                  [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
+                   'bg-slate-100 text-slate-400'
+                 }`}>
+                   {event.status === EventStatus.PENDING_HOD ? '⏳ HOD Review' :
+-                   [EventStatus.PENDING_PRINCIPAL, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ HOD Approved' :
++                   [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ HOD Approved' :
+                    'HOD Review'}
+                 </div>
+                 <ArrowRight size={14} className="text-slate-300" />
+-                {/* Principal step */}
++                {/* Departments step */}
+                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+-                  event.status === EventStatus.PENDING_PRINCIPAL ? 'bg-amber-100 text-amber-700' :
++                  event.status === EventStatus.PENDING_DEPARTMENTS ? 'bg-orange-100 text-orange-700' :
++                  [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
++                  'bg-slate-100 text-slate-400'
++                }`}>
++                  {event.status === EventStatus.PENDING_DEPARTMENTS ? '⏳ Dept. Review' :
++                   [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Depts. Approved' :
++                   'Dept. Review'}
++                </div>
++                <ArrowRight size={14} className="text-slate-300" />
++                {/* IQAC step */}
++                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
++                  event.status === EventStatus.PENDING_IQAC ? 'bg-amber-100 text-amber-700' :
+                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
+                   'bg-slate-100 text-slate-400'
+                 }`}>
+-                  {event.status === EventStatus.PENDING_PRINCIPAL ? '⏳ Principal Review' :
+-                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Principal Approved' :
+-                   'Principal Review'}
++                  {event.status === EventStatus.PENDING_IQAC ? '⏳ IQAC Review' :
++                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ IQAC Approved' :
++                   'IQAC Review'}
+                 </div>
+                 <ArrowRight size={14} className="text-slate-300" />
+                 {/* Posted step */}
+@@ -854,113 +893,179 @@ const EventDetailModal = ({ event, onClose }) => {
+           </div>
+ 
+           {/* Action Buttons - Sticky Footer */}
+-          {(canApprove() || isMediaUploadAllowed) && (
++          {(canApprove() || isMediaUploadAllowed || hasAnyDeptApproval) && (
+             <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-20">
+-              {isMediaUploadAllowed ? (
+-                 <div className="flex flex-col gap-3">
+-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+-                       <div>
+-                         <p className="text-sm font-semibold text-slate-800">Upload Final Poster</p>
+-                         <p className="text-xs text-slate-500">Provide the designed poster for this event.</p>
+-                       </div>
+-                       <input 
+-                         type="file" 
+-                         accept="image/*" 
+-                         className="hidden" 
+-                         ref={fileInputRef} 
+-                         onChange={handlePosterUpload}
+-                         disabled={isUploadingPoster || !!posterUploadSuccess}
+-                       />
+-                       <button
+-                         onClick={() => fileInputRef.current?.click()}
+-                         disabled={isUploadingPoster || !!posterUploadSuccess}
+-                         className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+-                       >
+-                         {isUploadingPoster ? (
+-                           <> <Loader2 size={18} className="animate-spin" /> Uploading... </>
+-                         ) : posterUploadSuccess ? (
+-                           <> <CheckCircle size={18} /> Done! </>
+-                         ) : (
+-                           <> <Camera size={18} /> Choose Poster Image </>
+-                         )}
+-                       </button>
++
++              {/* ── Media poster upload ── */}
++              {isMediaUploadAllowed && (
++                <div className="flex flex-col gap-3">
++                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
++                    <div>
++                      <p className="text-sm font-semibold text-slate-800">Upload Final Poster</p>
++                      <p className="text-xs text-slate-500">Provide the designed poster for this event.</p>
+                     </div>
+-                    {posterUploadError && (
+-                      <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+-                         <XCircle size={16} className="shrink-0" /> {posterUploadError}
+-                      </div>
++                    <input
++                      type="file"
++                      accept="image/*"
++                      className="hidden"
++                      ref={fileInputRef}
++                      onChange={handlePosterUpload}
++                      disabled={isUploadingPoster || !!posterUploadSuccess}
++                    />
++                    <button
++                      onClick={() => fileInputRef.current?.click()}
++                      disabled={isUploadingPoster || !!posterUploadSuccess}
++                      className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
++                    >
++                      {isUploadingPoster ? (
++                        <><Loader2 size={18} className="animate-spin" /> Uploading...</>
++                      ) : posterUploadSuccess ? (
++                        <><CheckCircle size={18} /> Done!</>
++                      ) : (
++                        <><Camera size={18} /> Choose Poster Image</>
++                      )}
++                    </button>
++                  </div>
++                  {posterUploadError && (
++                    <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
++                      <XCircle size={16} className="shrink-0" /> {posterUploadError}
++                    </div>
++                  )}
++                  {posterUploadSuccess && (
++                    <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
++                      <CheckCircle size={16} className="shrink-0" /> {posterUploadSuccess}
++                    </div>
++                  )}
++                </div>
++              )}
++
++              {/* ── Department approvals (HR / Audio / ICTS / Transport / Accommodation) ── */}
++              {!isMediaUploadAllowed && hasAnyDeptApproval && (
++                <div className="flex flex-col gap-3">
++                  {approvalError && (
++                    <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
++                      <XCircle size={16} className="shrink-0" /> {approvalError}
++                    </div>
++                  )}
++                  <p className="text-sm font-semibold text-slate-700">Approve Your Department's Requirements</p>
++                  <div className="flex flex-wrap gap-3">
++                    {canApproveVenue && (
++                      <button
++                        onClick={() => handleDeptApprove('venue')}
++                        disabled={isProcessing}
++                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
++                      >
++                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Venue
++                      </button>
+                     )}
+-                    {posterUploadSuccess && (
+-                      <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
+-                         <CheckCircle size={16} className="shrink-0" /> {posterUploadSuccess}
+-                      </div>
++                    {canApproveMedia && (
++                      <button
++                        onClick={() => handleDeptApprove('media')}
++                        disabled={isProcessing}
++                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
++                      >
++                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Media Booking
++                      </button>
+                     )}
+-                 </div>
+-              ) : (
+-                 <>
+-                   {approvalError && (
+-                     <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+-                       <XCircle size={16} className="shrink-0" />
+-                       {approvalError}
+-                     </div>
+-                   )}
+-                   <div className="mb-3">
+-                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+-                       Rejection Reason (required to reject)
+-                     </label>
+-                     <textarea
+-                       rows={2}
+-                       value={rejectionReason}
+-                       onChange={(e) => setRejectionReason(e.target.value)}
+-                       placeholder="Enter why this event is being rejected"
+-                       disabled={isProcessing}
+-                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
+-                     />
+-                   </div>
+-                   <div className="flex items-center justify-between">
+-                     <div className="text-sm text-slate-600">
+-                       {getNextApprover() && (
+-                         <p className="flex items-center gap-2">
+-                           <CheckCircle size={16} className="text-emerald-600" />
+-                           Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
+-                         </p>
+-                       )}
+-                     </div>
+-                     <div className="flex items-center gap-3">
+-                       <button
+-                         onClick={handleReject}
+-                         disabled={isProcessing}
+-                         className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+-                       >
+-                         {isProcessing ? (
+-                           <>
+-                             <Loader2 size={18} className="animate-spin" /> Processing...
+-                           </>
+-                         ) : (
+-                           <>
+-                             <XCircle size={18} /> Reject
+-                           </>
+-                         )}
+-                       </button>
+-                       <button
+-                         onClick={handleApprove}
+-                         disabled={isProcessing}
+-                         className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+-                       >
+-                         {isProcessing ? (
+-                           <>
+-                             <Loader2 size={18} className="animate-spin" /> Approving...
+-                           </>
+-                         ) : (
+-                           <>
+-                             <CheckCircle size={18} /> Approve & Forward
+-                           </>
+-                         )}
+-                       </button>
+-                     </div>
+-                   </div>
+-                 </>
++                    {canApproveAudio && (
++                      <button
++                        onClick={() => handleDeptApprove('audio')}
++                        disabled={isProcessing}
++                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
++                      >
++                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Audio
++                      </button>
++                    )}
++                    {canApproveICTS && (
++                      <button
++                        onClick={() => handleDeptApprove('icts')}
++                        disabled={isProcessing}
++                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
++                      >
++                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve ICTS
++                      </button>
++                    )}
++                    {canApproveTransport && (
++                      <button
++                        onClick={() => handleDeptApprove('transport')}
++                        disabled={isProcessing}
++                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
++                      >
++                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Transport
++                      </button>
++                    )}
++                    {canApproveAccommodation && (
++                      <button
++                        onClick={() => handleDeptApprove('accommodation')}
++                        disabled={isProcessing}
++                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
++                      >
++                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Accommodation
++                      </button>
++                    )}
++                  </div>
++                </div>
+               )}
++
++              {/* ── Faculty / HOD approve + reject ── */}
++              {!isMediaUploadAllowed && !hasAnyDeptApproval && canApprove() && (
++                <>
++                  {approvalError && (
++                    <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
++                      <XCircle size={16} className="shrink-0" />
++                      {approvalError}
++                    </div>
++                  )}
++                  <div className="mb-3">
++                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
++                      Rejection Reason (required to reject)
++                    </label>
++                    <textarea
++                      rows={2}
++                      value={rejectionReason}
++                      onChange={(e) => setRejectionReason(e.target.value)}
++                      placeholder="Enter why this event is being rejected"
++                      disabled={isProcessing}
++                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
++                    />
++                  </div>
++                  <div className="flex items-center justify-between">
++                    <div className="text-sm text-slate-600">
++                      {getNextApprover() && (
++                        <p className="flex items-center gap-2">
++                          <CheckCircle size={16} className="text-emerald-600" />
++                          Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
++                        </p>
++                      )}
++                    </div>
++                    <div className="flex items-center gap-3">
++                      <button
++                        onClick={handleReject}
++                        disabled={isProcessing}
++                        className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
++                      >
++                        {isProcessing ? (
++                          <><Loader2 size={18} className="animate-spin" /> Processing...</>
++                        ) : (
++                          <><XCircle size={18} /> Reject</>
++                        )}
++                      </button>
++                      <button
++                        onClick={handleApprove}
++                        disabled={isProcessing}
++                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
++                      >
++                        {isProcessing ? (
++                          <><Loader2 size={18} className="animate-spin" /> Approving...</>
++                        ) : (
++                          <><CheckCircle size={18} /> Approve & Forward</>
++                        )}
++                      </button>
++                    </div>
++                  </div>
++                </>
++              )}
++
+             </div>
+           )}
+         </motion.div>
+diff --git a/frontend/src/components/StatusBadge.jsx b/frontend/src/components/StatusBadge.jsx
+index 0fda19f..be64a3e 100644
+--- a/frontend/src/components/StatusBadge.jsx
++++ b/frontend/src/components/StatusBadge.jsx
+@@ -4,16 +4,28 @@ const StatusBadge = ({ status }) => {
+   const styles = {
+     [EventStatus.PENDING_FACULTY]: "bg-amber-100 text-amber-700 border-amber-200",
+     [EventStatus.PENDING_HOD]: "bg-blue-100 text-blue-700 border-blue-200",
+-    [EventStatus.PENDING_PRINCIPAL]: "bg-purple-100 text-purple-700 border-purple-200",
++    [EventStatus.PENDING_DEPARTMENTS]: "bg-orange-100 text-orange-700 border-orange-200",
++    [EventStatus.PENDING_IQAC]: "bg-purple-100 text-purple-700 border-purple-200",
+     [EventStatus.APPROVED]: "bg-emerald-100 text-emerald-700 border-emerald-200",
+     [EventStatus.POSTED]: "bg-emerald-100 text-emerald-700 border-emerald-200",
+     [EventStatus.REJECTED]: "bg-red-100 text-red-700 border-red-200",
+     [EventStatus.COMPLETED]: "bg-slate-100 text-slate-700 border-slate-200",
+   };
+ 
++  const labels = {
++    [EventStatus.PENDING_FACULTY]: 'Pending Faculty',
++    [EventStatus.PENDING_HOD]: 'Pending HOD',
++    [EventStatus.PENDING_DEPARTMENTS]: 'Dept. Approvals',
++    [EventStatus.PENDING_IQAC]: 'Pending IQAC',
++    [EventStatus.APPROVED]: 'Approved',
++    [EventStatus.POSTED]: 'Posted',
++    [EventStatus.REJECTED]: 'Rejected',
++    [EventStatus.COMPLETED]: 'Completed',
++  };
++
+   return (
+-    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[status]}`}>
+-      {status.replace('PENDING_', '').replace('_', ' ')}
++    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[status] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
++      {labels[status] || status?.replace('PENDING_', '').replace(/_/g, ' ')}
+     </span>
+   );
+ };
+diff --git a/frontend/src/context/AppContext.jsx b/frontend/src/context/AppContext.jsx
+index ad1fbd8..0e96f72 100644
+--- a/frontend/src/context/AppContext.jsx
++++ b/frontend/src/context/AppContext.jsx
+@@ -80,9 +80,12 @@ export const AppProvider = ({ children }) => {
+ 
+   const createEvent = async (newEvent) => {
+     try {
++      // If the creator is Faculty, skip Faculty approval step and go directly to HOD
++      const isFacultyOrganizer = currentUser?.role === UserRole.FACULTY;
+       const createdEvent = await createEventInDB({
+         ...newEvent,
+-        status: EventStatus.PENDING_FACULTY,
++        status: isFacultyOrganizer ? EventStatus.PENDING_HOD : EventStatus.PENDING_FACULTY,
++        creatorType: isFacultyOrganizer ? 'FACULTY' : 'STUDENT',
+       });
+       return createdEvent;
+     } catch (error) {
+@@ -106,9 +109,13 @@ export const AppProvider = ({ children }) => {
+           newStatus = EventStatus.PENDING_HOD;
+           break;
+         case EventStatus.PENDING_HOD:
+-          newStatus = EventStatus.PENDING_PRINCIPAL;
++          // Immediately route to departments
++          newStatus = EventStatus.PENDING_DEPARTMENTS;
+           break;
+-        case EventStatus.PENDING_PRINCIPAL:
++        case EventStatus.PENDING_DEPARTMENTS:
++          newStatus = EventStatus.PENDING_IQAC;
++          break;
++        case EventStatus.PENDING_IQAC:
+           newStatus = EventStatus.POSTED;
+           break;
+         default:
+@@ -147,6 +154,27 @@ export const AppProvider = ({ children }) => {
+     }
+   };
+ 
++  const handleDepartmentApproval = async (eventId, department) => {
++    try {
++      const response = await fetch(`http://localhost:5001/api/events/${eventId}/department-approval`, {
++        method: 'PATCH',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({
++          department,
++          approvedBy: currentUser?.name || 'Unknown Approver',
++        }),
++      });
++
++      const data = await response.json();
++      if (!response.ok || !data.success) {
++        throw new Error(data.message || 'Failed to update department approval');
++      }
++    } catch (error) {
++      console.error('Error updating department approval:', error);
++      throw error;
++    }
++  };
++
+   // OD Request functions
+   const createODRequest = async (odData) => {
+     try {
+@@ -257,6 +285,7 @@ export const AppProvider = ({ children }) => {
+     makeEventOrganizer,
+     revokeOrganizer,
+     completeEvent,
++    handleDepartmentApproval,
+   };
+ 
+   return (
+diff --git a/frontend/src/mockData.js b/frontend/src/mockData.js
+index 2c976ea..eb6b981 100644
+--- a/frontend/src/mockData.js
++++ b/frontend/src/mockData.js
+@@ -7,6 +7,12 @@ export const MOCK_USERS = [
+   { id: 's1', name: 'John Doe', email: 'john@student.edu', role: UserRole.STUDENT_ORGANIZER, isApprovedOrganizer: true },
+   { id: 's2', name: 'Jane Smith', email: 'jane@student.edu', role: UserRole.STUDENT_GENERAL },
+   { id: 'm1', name: 'Media Team', email: 'raj220707ram@gmail.com', role: UserRole.MEDIA },
++  { id: 'hr1', name: 'HR Department', email: 'hr@admin.edu', role: UserRole.HR_TEAM },
++  { id: 'au1', name: 'Audio Section', email: 'audio@admin.edu', role: UserRole.AUDIO_TEAM },
++  { id: 'sa1', name: 'System Admin', email: 'sysadmin@admin.edu', role: UserRole.SYSTEM_ADMIN },
++  { id: 'tr1', name: 'Transport Office', email: 'transport@admin.edu', role: UserRole.TRANSPORT_TEAM },
++  { id: 'bw1', name: 'Boys Hostel Warden', email: 'boyswarden@admin.edu', role: UserRole.BOYS_WARDEN },
++  { id: 'gw1', name: 'Girls Hostel Warden', email: 'girlswarden@admin.edu', role: UserRole.GIRLS_WARDEN },
+ ];
+ 
+ export const MOCK_EVENTS = [
+diff --git a/frontend/src/pages/Dashboard.jsx b/frontend/src/pages/Dashboard.jsx
+index c4b9daf..feacf2c 100644
+--- a/frontend/src/pages/Dashboard.jsx
++++ b/frontend/src/pages/Dashboard.jsx
+@@ -69,7 +69,12 @@ const Dashboard = () => {
+     const pendingStatusForRole = {
+       [UserRole.FACULTY]: EventStatus.PENDING_FACULTY,
+       [UserRole.HOD]: EventStatus.PENDING_HOD,
+-      [UserRole.PRINCIPAL]: EventStatus.PENDING_PRINCIPAL,
++      [UserRole.HR_TEAM]: EventStatus.PENDING_DEPARTMENTS,
++      [UserRole.AUDIO_TEAM]: EventStatus.PENDING_DEPARTMENTS,
++      [UserRole.SYSTEM_ADMIN]: EventStatus.PENDING_DEPARTMENTS,
++      [UserRole.TRANSPORT_TEAM]: EventStatus.PENDING_DEPARTMENTS,
++      [UserRole.BOYS_WARDEN]: EventStatus.PENDING_DEPARTMENTS,
++      [UserRole.GIRLS_WARDEN]: EventStatus.PENDING_DEPARTMENTS,
+     };
+     const expectedPendingStatus = pendingStatusForRole[currentUser?.role];
+     if (
+@@ -99,11 +104,37 @@ const Dashboard = () => {
+         return ev.status === EventStatus.PENDING_FACULTY || ev.organizerId === currentUser.id;
+       }
+       if (currentUser.role === UserRole.HOD)        return ev.status === EventStatus.PENDING_HOD;
+-      if (currentUser.role === UserRole.PRINCIPAL)  return ev.status === EventStatus.PENDING_PRINCIPAL;
+       if (currentUser.role === UserRole.MEDIA) {
+         const posterWorkflowStatus = String(ev.posterWorkflow?.status || '').toUpperCase();
+         return ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus);
+       }
++
++      // ── Department Approvals (Status must be PENDING_DEPARTMENTS) ──
++      const isDeptPending = ev.status === EventStatus.PENDING_DEPARTMENTS;
++      const reqs = ev.requisition?.step1?.requirements || {};
++      const isReq = (key) => reqs[key] ?? ev[key] ?? false;
++      const depts = ev.departmentApprovals || {};
++
++      if (currentUser.role === UserRole.HR_TEAM) {
++        return isDeptPending && (
++          (isReq('venueRequired') && depts.venue?.status !== 'APPROVED') ||
++          (isReq('mediaRequired') && depts.media?.status !== 'APPROVED')
++        );
++      }
++      if (currentUser.role === UserRole.AUDIO_TEAM) {
++        return isDeptPending && isReq('audioRequired') && depts.audio?.status !== 'APPROVED';
++      }
++      if (currentUser.role === UserRole.SYSTEM_ADMIN) {
++        return isDeptPending && isReq('ictsRequired') && depts.icts?.status !== 'APPROVED';
++      }
++      if (currentUser.role === UserRole.TRANSPORT_TEAM) {
++        return isDeptPending && isReq('transportRequired') && depts.transport?.status !== 'APPROVED';
++      }
++      if (currentUser.role === UserRole.BOYS_WARDEN || currentUser.role === UserRole.GIRLS_WARDEN) {
++        const accReq = isReq('accommodationDiningRequired') || isReq('accommodationRequired');
++        return isDeptPending && accReq && depts.accommodation?.status !== 'APPROVED';
++      }
++
+       return false;
+     });
+   }, [currentUser, events]);
+@@ -123,8 +154,12 @@ const Dashboard = () => {
+     );
+   }
+ 
+-  // Is this user a staff member (Faculty / HOD / Principal)?
+-  const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.PRINCIPAL].includes(currentUser.role?.toUpperCase());
++  // Is this user a staff member?
++  const isStaff = [
++    UserRole.FACULTY, UserRole.HOD, UserRole.HR_TEAM, 
++    UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN, UserRole.TRANSPORT_TEAM, 
++    UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN
++  ].includes(currentUser.role?.toUpperCase());
+ 
+   // Filter OD requests for student view only
+   const getFilteredODRequests = () => {
+@@ -488,6 +523,64 @@ const Dashboard = () => {
+                                   Rejection reason: {event.rejectionReason}
+                                 </p>
+                               )}
++                              {/* Approval Timeline — for organizer / faculty view */}
++                              {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.organizerId === currentUser.id && (
++                                <div className="mt-3 space-y-1.5">
++                                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline</p>
++                                  {[
++                                    { label: 'Faculty', done: !['PENDING_FACULTY','REJECTED'].includes(event.status), approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
++                                    { label: 'HOD', done: ['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status), approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
++                                  ].map(step => (
++                                    <div key={step.label} className={`flex items-center gap-2 text-xs ${step.done ? 'text-emerald-700' : 'text-slate-400'}`}>
++                                      <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500' : 'bg-slate-200'}`} />
++                                      <span className="font-semibold">{step.label}</span>
++                                      {step.done && step.approvedAt
++                                        ? <span className="text-emerald-600">{new Date(step.approvedAt).toLocaleString()}{step.approvedBy ? ` · ${step.approvedBy}` : ''}</span>
++                                        : step.done ? <span className="text-emerald-600">Approved</span>
++                                        : <span>Pending</span>}
++                                    </div>
++                                  ))}
++                                  {['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status) && (() => {
++                                    const depts = event.departmentApprovals || {};
++                                    const reqs2 = event.requisition?.step1?.requirements || {};
++                                    const isReq2 = k => reqs2[k] ?? event[k] ?? false;
++                                    const deptList = [
++                                      isReq2('venueRequired') && { key:'venue', label:'Venue (HR)' },
++                                      isReq2('audioRequired') && { key:'audio', label:'Audio' },
++                                      isReq2('ictsRequired') && { key:'icts', label:'ICTS' },
++                                      isReq2('transportRequired') && { key:'transport', label:'Transport' },
++                                      (isReq2('accommodationDiningRequired')||isReq2('accommodationRequired')) && { key:'accommodation', label:'Accommodation' },
++                                      isReq2('mediaRequired') && { key:'media', label:'Media (HR)' },
++                                    ].filter(Boolean);
++                                    if (!deptList.length) return null;
++                                    return (
++                                      <div className="ml-2 pl-2 border-l-2 border-slate-100 space-y-1">
++                                        {deptList.map(d => {
++                                          const info = depts[d.key];
++                                          return (
++                                            <div key={d.key} className={`flex items-center gap-2 text-xs ${info?.status === 'APPROVED' ? 'text-emerald-700' : 'text-slate-400'}`}>
++                                              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${info?.status === 'APPROVED' ? 'bg-emerald-400' : 'bg-slate-200'}`} />
++                                              <span className="font-medium">{d.label}</span>
++                                              {info?.status === 'APPROVED'
++                                                ? <span className="text-emerald-600">{info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}{info.approvedBy ? ` · ${info.approvedBy}` : ''}</span>
++                                                : <span>Pending</span>}
++                                            </div>
++                                          );
++                                        })}
++                                      </div>
++                                    );
++                                  })()}
++                                  <div className={`flex items-center gap-2 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-emerald-700' : ['PENDING_IQAC'].includes(event.status) ? 'text-amber-600' : 'text-slate-400'}`}>
++                                    <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-emerald-500' : ['PENDING_IQAC'].includes(event.status) ? 'bg-amber-400' : 'bg-slate-200'}`} />
++                                    <span className="font-semibold">IQAC</span>
++                                    {['APPROVED','POSTED','COMPLETED'].includes(event.status)
++                                      ? <span className="text-emerald-600">Approved &amp; Posted</span>
++                                      : ['PENDING_IQAC'].includes(event.status)
++                                      ? <span>Pending IQAC Review</span>
++                                      : <span className="text-slate-400">Waiting</span>}
++                                  </div>
++                                </div>
++                              )}
+                             </div>
+                           </div>
+                           <div className="flex items-center gap-3">

@@ -53,6 +53,41 @@ const STAFF_CREDENTIALS = {
       role: 'MEDIA',
     },
   },
+  hr: {
+    username: 'hr',
+    password: 'hr',
+    user: { id: 'hr1', name: 'HR Department', email: 'hr@admin.edu', role: 'HR_TEAM' }
+  },
+  audio: {
+    username: 'audio',
+    password: 'audio',
+    user: { id: 'au1', name: 'Audio Section', email: 'audio@admin.edu', role: 'AUDIO_TEAM' }
+  },
+  sysadmin: {
+    username: 'sysadmin',
+    password: 'sysadmin',
+    user: { id: 'sa1', name: 'System Admin', email: 'sysadmin@admin.edu', role: 'SYSTEM_ADMIN' }
+  },
+  transport: {
+    username: 'transport',
+    password: 'transport',
+    user: { id: 'tr1', name: 'Transport Office', email: 'transport@admin.edu', role: 'TRANSPORT_TEAM' }
+  },
+  boyswarden: {
+    username: 'boyswarden',
+    password: 'boyswarden',
+    user: { id: 'bw1', name: 'Boys Hostel Warden', email: 'boyswarden@admin.edu', role: 'BOYS_WARDEN' }
+  },
+  girlswarden: {
+    username: 'girlswarden',
+    password: 'girlswarden',
+    user: { id: 'gw1', name: 'Girls Hostel Warden', email: 'girlswarden@admin.edu', role: 'GIRLS_WARDEN' }
+  },
+  iqac: {
+    username: 'iqac',
+    password: 'iqac',
+    user: { id: 'iq1', name: 'IQAC Team', email: 'iqac@admin.edu', role: 'IQAC_TEAM' }
+  },
 };
 
 async function syncStaffUserToFirestore(staffUser, password) {

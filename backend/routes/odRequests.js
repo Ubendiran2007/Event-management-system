@@ -67,6 +67,7 @@ router.post('/', async (req, res) => {
     email,
     reason,
     registrationType,
+    department,
   } = req.body;
 
   if (!eventId || !studentId || !studentName) {
@@ -119,6 +120,7 @@ router.post('/', async (req, res) => {
         studentName,
         rollNo: normalizedRollNo,
         class: normalizedClassSection || '',
+        department: department || studentRecord?.department || '',
         email: email || '',
         registrationType: normalizedRegistrationType,
         reason:
@@ -151,6 +153,7 @@ router.post('/', async (req, res) => {
       studentName,
       rollNo: normalizedRollNo,
       class: normalizedClassSection || '',
+      department: department || studentRecord?.department || '',
       email: email || '',
       registrationType: normalizedRegistrationType,
       reason:

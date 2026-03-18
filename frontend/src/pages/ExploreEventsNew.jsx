@@ -916,6 +916,7 @@ const ExploreEvents = () => {
           studentName: currentUser.name,
           rollNo: currentUser.rollNo || currentUser.password || '',
           class: currentUser.class || currentUser.className || '',
+          department: currentUser.department || '',
           email: currentUser.email,
           registrationType: 'PARTICIPANT'
         }),

@@ -16,7 +16,10 @@ import {
   FileText,
   Loader2,
   XCircle,
-  UserCheck
+  UserCheck,
+  Copy,
+  Check,
+  ClipboardCopy
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole, EventStatus, ODRequestStatus } from '../types';
@@ -45,6 +48,7 @@ const Dashboard = () => {
   const [withdrawingOD, setWithdrawingOD] = useState({});
   const [expandedRegistrationGroups, setExpandedRegistrationGroups] = useState({});
   const [bulkApprovingGroups, setBulkApprovingGroups] = useState({});
+  const [copiedStates, setCopiedStates] = useState({});
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const canCreateEvent =
     currentUser?.role === UserRole.FACULTY ||
@@ -69,7 +73,13 @@ const Dashboard = () => {
     const pendingStatusForRole = {
       [UserRole.FACULTY]: EventStatus.PENDING_FACULTY,
       [UserRole.HOD]: EventStatus.PENDING_HOD,
-      [UserRole.PRINCIPAL]: EventStatus.PENDING_PRINCIPAL,
+      [UserRole.HR_TEAM]: EventStatus.PENDING_DEPARTMENTS,
+      [UserRole.AUDIO_TEAM]: EventStatus.PENDING_DEPARTMENTS,
+      [UserRole.SYSTEM_ADMIN]: EventStatus.PENDING_DEPARTMENTS,
+      [UserRole.TRANSPORT_TEAM]: EventStatus.PENDING_DEPARTMENTS,
+      [UserRole.BOYS_WARDEN]: EventStatus.PENDING_DEPARTMENTS,
+      [UserRole.GIRLS_WARDEN]: EventStatus.PENDING_DEPARTMENTS,
+      [UserRole.IQAC_TEAM]: EventStatus.PENDING_IQAC,
     };
     const expectedPendingStatus = pendingStatusForRole[currentUser?.role];
     if (
@@ -99,11 +109,42 @@ const Dashboard = () => {
         return ev.status === EventStatus.PENDING_FACULTY || ev.organizerId === currentUser.id;
       }
       if (currentUser.role === UserRole.HOD)        return ev.status === EventStatus.PENDING_HOD;
-      if (currentUser.role === UserRole.PRINCIPAL)  return ev.status === EventStatus.PENDING_PRINCIPAL;
       if (currentUser.role === UserRole.MEDIA) {
         const posterWorkflowStatus = String(ev.posterWorkflow?.status || '').toUpperCase();
         return ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus);
       }
+
+      // ── Department Approvals (Status must be PENDING_DEPARTMENTS) ──
+      const isDeptPending = ev.status === EventStatus.PENDING_DEPARTMENTS;
+      const reqs = ev.requisition?.step1?.requirements || {};
+      const isReq = (key) => reqs[key] ?? ev[key] ?? false;
+      const depts = ev.departmentApprovals || {};
+
+      if (currentUser.role === UserRole.HR_TEAM) {
+        return isDeptPending && (
+          (isReq('venueRequired') && depts.venue?.status !== 'APPROVED') ||
+          (isReq('mediaRequired') && depts.media?.status !== 'APPROVED')
+        );
+      }
+      if (currentUser.role === UserRole.AUDIO_TEAM) {
+        return isDeptPending && isReq('audioRequired') && depts.audio?.status !== 'APPROVED';
+      }
+      if (currentUser.role === UserRole.SYSTEM_ADMIN) {
+        return isDeptPending && isReq('ictsRequired') && depts.icts?.status !== 'APPROVED';
+      }
+      if (currentUser.role === UserRole.TRANSPORT_TEAM) {
+        return isDeptPending && isReq('transportRequired') && depts.transport?.status !== 'APPROVED';
+      }
+      if (currentUser.role === UserRole.BOYS_WARDEN) {
+        return isDeptPending && depts.boysAccommodation?.status !== 'APPROVED' && (isReq('accommodationDiningRequired') || isReq('accommodationRequired'));
+      }
+      if (currentUser.role === UserRole.GIRLS_WARDEN) {
+        return isDeptPending && depts.girlsAccommodation?.status !== 'APPROVED' && (isReq('accommodationDiningRequired') || isReq('accommodationRequired'));
+      }
+      if (currentUser.role === UserRole.IQAC_TEAM) {
+        return ev.status === EventStatus.PENDING_IQAC || ev.status === EventStatus.COMPLETED;
+      }
+
       return false;
     });
   }, [currentUser, events]);
@@ -123,8 +164,12 @@ const Dashboard = () => {
     );
   }
 
-  // Is this user a staff member (Faculty / HOD / Principal)?
-  const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.PRINCIPAL].includes(currentUser.role?.toUpperCase());
+  // Is this user a staff member?
+  const isStaff = [
+    UserRole.FACULTY, UserRole.HOD, UserRole.HR_TEAM, 
+    UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN, UserRole.TRANSPORT_TEAM, 
+    UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN, UserRole.IQAC_TEAM
+  ].includes(currentUser.role?.toUpperCase());
 
   // Filter OD requests for student view only
   const getFilteredODRequests = () => {
@@ -275,6 +320,14 @@ const Dashboard = () => {
     } finally {
       setBulkApprovingGroups((prev) => ({ ...prev, [bulkKey]: false }));
     }
+  };
+
+  const copyToClipboard = (text, key) => {
+    navigator.clipboard.writeText(text);
+    setCopiedStates(prev => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setCopiedStates(prev => ({ ...prev, [key]: false }));
+    }, 2000);
   };
 
   return (
@@ -488,6 +541,70 @@ const Dashboard = () => {
                                   Rejection reason: {event.rejectionReason}
                                 </p>
                               )}
+                              {/* Approval Timeline — for organizer / faculty view */}
+                              {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.organizerId === currentUser.id && (
+                                <div className="mt-3 space-y-1.5">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline</p>
+                                  {[
+                                    { label: 'Faculty', done: !['PENDING_FACULTY','REJECTED'].includes(event.status), approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
+                                    { label: 'HOD', done: ['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status), approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
+                                  ].map(step => (
+                                    <div key={step.label} className={`flex items-center gap-2 text-xs ${step.done ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                      <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                                      <span className="font-semibold">{step.label}</span>
+                                      {step.done && step.approvedAt
+                                        ? <span className="text-emerald-600">{new Date(step.approvedAt).toLocaleString()}{step.approvedBy ? ` · ${step.approvedBy}` : ''}</span>
+                                        : step.done ? <span className="text-emerald-600">Approved</span>
+                                        : <span>Pending</span>}
+                                    </div>
+                                  ))}
+                                  {['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status) && (() => {
+                                    const depts = event.departmentApprovals || {};
+                                    const reqs2 = event.requisition?.step1?.requirements || {};
+                                    const isReq2 = k => reqs2[k] ?? event[k] ?? false;
+                                    const accom = event.requisition?.annexureV_accommodation || {};
+                                    const hasMales = Number(accom.maleGuests || 0) > 0;
+                                    const hasFemales = Number(accom.femaleGuests || 0) > 0;
+                                    const isAccomAny = isReq2('accommodationDiningRequired') || isReq2('accommodationRequired');
+                                    
+                                    const deptList = [
+                                      isReq2('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
+                                      isReq2('audioRequired') && { key: 'audio', label: 'Audio' },
+                                      isReq2('ictsRequired') && { key: 'icts', label: 'ICTS' },
+                                      isReq2('transportRequired') && { key: 'transport', label: 'Transport' },
+                                      isAccomAny && (hasMales || (!hasMales && !hasFemales)) && { key: 'boysAccommodation', label: 'Boys Accommodation' },
+                                      isAccomAny && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accommodation' },
+                                      isReq2('mediaRequired') && { key: 'media', label: 'Media (HR)' },
+                                    ].filter(Boolean);
+                                    if (!deptList.length) return null;
+                                    return (
+                                      <div className="ml-2 pl-2 border-l-2 border-slate-100 space-y-1">
+                                        {deptList.map(d => {
+                                          const info = depts[d.key];
+                                          return (
+                                            <div key={d.key} className={`flex items-center gap-2 text-xs ${info?.status === 'APPROVED' ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${info?.status === 'APPROVED' ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+                                              <span className="font-medium">{d.label}</span>
+                                              {info?.status === 'APPROVED'
+                                                ? <span className="text-emerald-600">{info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}{info.approvedBy ? ` · ${info.approvedBy}` : ''}</span>
+                                                : <span>Pending</span>}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+                                  <div className={`flex items-center gap-2 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-emerald-700' : ['PENDING_IQAC'].includes(event.status) ? 'text-amber-600' : 'text-slate-400'}`}>
+                                    <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-emerald-500' : ['PENDING_IQAC'].includes(event.status) ? 'bg-amber-400' : 'bg-slate-200'}`} />
+                                    <span className="font-semibold">IQAC</span>
+                                    {['APPROVED','POSTED','COMPLETED'].includes(event.status)
+                                      ? <span className="text-emerald-600">Approved &amp; Posted</span>
+                                      : ['PENDING_IQAC'].includes(event.status)
+                                      ? <span>Pending IQAC Review</span>
+                                      : <span className="text-slate-400">Waiting</span>}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
@@ -534,7 +651,7 @@ const Dashboard = () => {
                                 </button>
                               );
                             })()}
-                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.iqacSubmittedAt && event.organizerId === currentUser.id && (
+                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.IQAC_TEAM) && event.iqacSubmittedAt && (
                               <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
                                 <FileCheck size={12} /> IQAC Submitted
                               </span>
@@ -777,6 +894,80 @@ const Dashboard = () => {
                                   </div>
                                 </div>
                               )}
+
+                              {/* ── Approved OD Lists by Department ── */}
+                              {(() => {
+                                const approvedRequests = group.requests.filter(r => r.status === 'APPROVED' && (r.registrationType || 'PARTICIPANT') === 'PARTICIPANT');
+                                if (approvedRequests.length === 0) return null;
+
+                                const byDept = approvedRequests.reduce((acc, r) => {
+                                  const d = r.department || r.class?.replace(/[0-9]/g, '').trim() || 'General';
+                                  if (!acc[d]) acc[d] = [];
+                                  acc[d].push(r);
+                                  return acc;
+                                }, {});
+
+                                return (
+                                  <div className="mt-8 border-t-2 border-slate-100 pt-6">
+                                    <div className="flex items-center gap-2 mb-4">
+                                      <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                                        <ClipboardCopy size={18} />
+                                      </div>
+                                      <div>
+                                        <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Approved Participant OD Lists by Dept</h4>
+                                        <p className="text-[10px] text-slate-500 font-medium">Grouped and ready to send to respectivos HODs</p>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      {Object.entries(byDept).sort().map(([dept, students]) => {
+                                        const listText = students.map((s, i) => `${i + 1}. ${s.studentName} (${s.rollNo}) - ${s.class}`).join('\n');
+                                        const copyKey = `${groupKey}-${dept}`;
+                                        const isCopied = copiedStates[copyKey];
+
+                                        return (
+                                          <div key={dept} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                                              <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span className="text-xs font-bold text-slate-700 uppercase">{dept}</span>
+                                                <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">{students.length}</span>
+                                              </div>
+                                              <button
+                                                onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
+                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                                  isCopied 
+                                                    ? 'bg-emerald-500 text-white' 
+                                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                                }`}
+                                              >
+                                                {isCopied ? (
+                                                  <><Check size={12} /> Copied!</>
+                                                ) : (
+                                                  <><Copy size={12} /> Copy List</>
+                                                )}
+                                              </button>
+                                            </div>
+                                            <div className="p-3 max-h-40 overflow-y-auto">
+                                              <ol className="space-y-1.5">
+                                                {students.map((s, idx) => (
+                                                  <li key={s.id} className="text-xs text-slate-600 flex items-start gap-2">
+                                                    <span className="text-[10px] font-bold text-slate-400 mt-0.5 w-4 shrink-0">{idx + 1}.</span>
+                                                    <div className="min-w-0">
+                                                      <span className="font-semibold text-slate-800">{s.studentName}</span>
+                                                      <span className="text-[10px] text-slate-500 ml-1.5">{s.rollNo} · {s.class}</span>
+                                                    </div>
+                                                  </li>
+                                                ))}
+                                              </ol>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>

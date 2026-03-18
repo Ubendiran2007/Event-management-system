@@ -16,6 +16,12 @@ import {
   Loader2,
   ArrowRight,
   ExternalLink,
+  Award,
+  Gamepad,
+  Image as ImageIcon,
+  MessageSquare,
+  FileCheck,
+  Star as StarIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef } from 'react';
@@ -66,7 +72,7 @@ const compressImageToDataUrl = (file, maxWidth = 1200, quality = 0.82) => new Pr
 });
 
 const EventDetailModal = ({ event, onClose }) => {
-  const { currentUser, handleApproval } = useAppContext();
+  const { currentUser, handleApproval, handleDepartmentApproval } = useAppContext();
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
@@ -167,8 +173,56 @@ const EventDetailModal = ({ event, onClose }) => {
     if (!currentUser) return false;
     if (currentUser.role === UserRole.FACULTY && event.status === EventStatus.PENDING_FACULTY) return true;
     if (currentUser.role === UserRole.HOD && event.status === EventStatus.PENDING_HOD) return true;
-    if (currentUser.role === UserRole.PRINCIPAL && event.status === EventStatus.PENDING_PRINCIPAL) return true;
+    if (currentUser.role === UserRole.IQAC_TEAM && event.status === EventStatus.PENDING_IQAC) return true;
     return false;
+  };
+
+  // Department-level approvals (only visible when event is PENDING_DEPARTMENTS)
+  const isDeptPending = event.status === EventStatus.PENDING_DEPARTMENTS;
+  const reqs = event.requisition?.step1?.requirements || {};
+  const isReq = (key) => reqs[key] ?? event[key] ?? false;
+  const depts = event.departmentApprovals || {};
+
+  const canApproveVenue = currentUser?.role === UserRole.HR_TEAM && isDeptPending && isReq('venueRequired') && depts.venue?.status !== 'APPROVED';
+  const canApproveMedia = currentUser?.role === UserRole.HR_TEAM && isDeptPending && isReq('mediaRequired') && depts.media?.status !== 'APPROVED';
+  const canApproveAudio = currentUser?.role === UserRole.AUDIO_TEAM && isDeptPending && isReq('audioRequired') && depts.audio?.status !== 'APPROVED';
+  const canApproveICTS = currentUser?.role === UserRole.SYSTEM_ADMIN && isDeptPending && isReq('ictsRequired') && depts.icts?.status !== 'APPROVED';
+  const canApproveTransport = currentUser?.role === UserRole.TRANSPORT_TEAM && isDeptPending && isReq('transportRequired') && depts.transport?.status !== 'APPROVED';
+  
+  const maleGuests = Number(event.requisition?.annexureV_accommodation?.maleGuests || 0);
+  const femaleGuests = Number(event.requisition?.annexureV_accommodation?.femaleGuests || 0);
+  const isAccomReq = isReq('accommodationDiningRequired') || isReq('accommodationRequired');
+  
+  const canApproveBoysAccommodation = currentUser?.role === UserRole.BOYS_WARDEN && isDeptPending && isAccomReq && depts.boysAccommodation?.status !== 'APPROVED' && (maleGuests > 0 || (maleGuests === 0 && femaleGuests === 0));
+  const canApproveGirlsAccommodation = currentUser?.role === UserRole.GIRLS_WARDEN && isDeptPending && isAccomReq && depts.girlsAccommodation?.status !== 'APPROVED' && femaleGuests > 0;
+  
+  const hasAnyDeptApproval = canApproveVenue || canApproveMedia || canApproveAudio || canApproveICTS || canApproveTransport || canApproveBoysAccommodation || canApproveGirlsAccommodation;
+
+  const handleDeptApprove = async (department) => {
+    setIsProcessing(true);
+    setApprovalError('');
+    try {
+      await handleDepartmentApproval(event.id, department);
+      setTimeout(() => { onClose(); }, 300);
+    } catch (error) {
+      console.error('Error approving department:', error);
+      setApprovalError('Approval failed. Check your connection or permissions and try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  const handleHRApproveBoth = async () => {
+    setIsProcessing(true);
+    setApprovalError('');
+    try {
+      if (canApproveVenue) await handleDepartmentApproval(event.id, 'venue');
+      if (canApproveMedia) await handleDepartmentApproval(event.id, 'media');
+      setTimeout(() => { onClose(); }, 300);
+    } catch (error) {
+      console.error('Error approving HR both:', error);
+      setApprovalError('Approval failed.');
+      setIsProcessing(false);
+    }
   };
 
   const handleApprove = async () => {
@@ -222,8 +276,10 @@ const EventDetailModal = ({ event, onClose }) => {
       case EventStatus.PENDING_FACULTY:
         return 'HOD';
       case EventStatus.PENDING_HOD:
-        return 'Principal';
-      case EventStatus.PENDING_PRINCIPAL:
+        return 'Departments (Concurrent Approval)';
+      case EventStatus.PENDING_DEPARTMENTS:
+        return 'IQAC';
+      case EventStatus.PENDING_IQAC:
         return 'Posted for all students';
       default:
         return '';
@@ -304,23 +360,34 @@ const EventDetailModal = ({ event, onClose }) => {
                 {/* HOD step */}
                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                   event.status === EventStatus.PENDING_HOD ? 'bg-amber-100 text-amber-700' :
-                  [EventStatus.PENDING_PRINCIPAL, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
+                  [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
                   'bg-slate-100 text-slate-400'
                 }`}>
                   {event.status === EventStatus.PENDING_HOD ? '⏳ HOD Review' :
-                   [EventStatus.PENDING_PRINCIPAL, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ HOD Approved' :
+                   [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ HOD Approved' :
                    'HOD Review'}
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
-                {/* Principal step */}
+                {/* Departments step */}
                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
-                  event.status === EventStatus.PENDING_PRINCIPAL ? 'bg-amber-100 text-amber-700' :
+                  event.status === EventStatus.PENDING_DEPARTMENTS ? 'bg-orange-100 text-orange-700' :
+                  [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
+                  'bg-slate-100 text-slate-400'
+                }`}>
+                  {event.status === EventStatus.PENDING_DEPARTMENTS ? '⏳ Dept. Review' :
+                   [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Depts. Approved' :
+                   'Dept. Review'}
+                </div>
+                <ArrowRight size={14} className="text-slate-300" />
+                {/* IQAC step */}
+                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                  event.status === EventStatus.PENDING_IQAC ? 'bg-amber-100 text-amber-700' :
                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
                   'bg-slate-100 text-slate-400'
                 }`}>
-                  {event.status === EventStatus.PENDING_PRINCIPAL ? '⏳ Principal Review' :
-                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Principal Approved' :
-                   'Principal Review'}
+                  {event.status === EventStatus.PENDING_IQAC ? '⏳ IQAC Review' :
+                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ IQAC Approved' :
+                   'IQAC Review'}
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
                 {/* Posted step */}
@@ -851,116 +918,305 @@ const EventDetailModal = ({ event, onClose }) => {
                 <p className="text-sm text-slate-400">Not required for this event.</p>
               </InfoSection>
             )}
+            
+            {/* ── 8. IQAC Documentation Checklist ── */}
+            {event.iqacData ? (
+              <InfoSection title="8. IQAC Documentation" icon={FileCheck}>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-slate-900 uppercase">Submission Summary</p>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full uppercase">
+                        Submitted {event.iqacSubmittedAt ? new Date(event.iqacSubmittedAt).toLocaleDateString() : '—'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase">Documents</p>
+                        <p className="mt-0.5 text-sm font-bold text-slate-900">
+                          {(event.iqacData.checklist || []).filter(i => i.status !== 'pending').length} / {(event.iqacData.checklist || []).length}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                        <p className="text-[10px] font-semibold text-slate-500 uppercase">Attendees</p>
+                        <p className="mt-0.5 text-sm font-bold text-cse-accent">
+                          {event.iqacData.registration?.attendance?.total || 0}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                      <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1">Outcome</p>
+                      <p className="text-xs text-emerald-800 leading-relaxed italic">"{event.iqacData.eventOutcome || 'No specific outcome described.'}"</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <p className="text-sm font-bold text-slate-900 uppercase">Uploaded Evidence</p>
+                    <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-inner">
+                      <table className="min-w-full text-xs">
+                        <tbody className="divide-y divide-slate-50">
+                          {(event.iqacData.checklist || []).map((item, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-3 py-2 text-slate-600 font-medium">{item.requirement}</td>
+                              <td className="px-3 py-2 text-right">
+                                {item.file?.dataUrl ? (
+                                  <a
+                                    href={item.file.dataUrl}
+                                    download={item.file.fileName}
+                                    className="text-cse-accent hover:underline font-bold"
+                                  >
+                                    Download
+                                  </a>
+                                ) : item.autoGenerated ? (
+                                  <span className="text-slate-400 italic font-medium">Auto-gen</span>
+                                ) : (
+                                  <span className="text-red-400 font-medium">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  
+                  {/* Resource Persons Summary */}
+                  {(event.iqacData.resourcePersons || []).length > 0 && (
+                    <div className="col-span-1 lg:col-span-2 mt-2 pt-4 border-t border-slate-100">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Award size={16} className="text-amber-500" />
+                        <p className="text-sm font-bold text-slate-900 uppercase">Resource Persons</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {event.iqacData.resourcePersons.map((person, idx) => (
+                          <div key={idx} className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 bg-slate-50/50">
+                            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold shrink-0">
+                              {person.name?.[0] || 'RP'}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 truncate">{person.name}</p>
+                              <p className="text-[10px] text-slate-500 truncate">{person.designation} · {person.organization}</p>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                {[...Array(5)].map((_, i) => (
+                                  <StarIcon 
+                                    key={i} 
+                                    size={10} 
+                                    fill={(person.rating || 5) > i ? 'currentColor' : 'none'}
+                                    className={(person.rating || 5) > i ? 'text-amber-400' : 'text-slate-200'}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </InfoSection>
+            ) : event.status === EventStatus.COMPLETED && (
+              <InfoSection title="8. IQAC Documentation" icon={FileCheck}>
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  <FileText size={40} className="mx-auto text-slate-300 mb-3" />
+                  <p className="text-sm font-medium text-slate-900">Documentation Not Found</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">This event was marked completed but the IQAC data payload is missing.</p>
+                </div>
+              </InfoSection>
+            )}
           </div>
 
           {/* Action Buttons - Sticky Footer */}
-          {(canApprove() || isMediaUploadAllowed) && (
+          {(canApprove() || isMediaUploadAllowed || hasAnyDeptApproval) && (
             <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-20">
-              {isMediaUploadAllowed ? (
-                 <div className="flex flex-col gap-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                       <div>
-                         <p className="text-sm font-semibold text-slate-800">Upload Final Poster</p>
-                         <p className="text-xs text-slate-500">Provide the designed poster for this event.</p>
-                       </div>
-                       <input 
-                         type="file" 
-                         accept="image/*" 
-                         className="hidden" 
-                         ref={fileInputRef} 
-                         onChange={handlePosterUpload}
-                         disabled={isUploadingPoster || !!posterUploadSuccess}
-                       />
-                       <button
-                         onClick={() => fileInputRef.current?.click()}
-                         disabled={isUploadingPoster || !!posterUploadSuccess}
-                         className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                       >
-                         {isUploadingPoster ? (
-                           <> <Loader2 size={18} className="animate-spin" /> Uploading... </>
-                         ) : posterUploadSuccess ? (
-                           <> <CheckCircle size={18} /> Done! </>
-                         ) : (
-                           <> <Camera size={18} /> Choose Poster Image </>
-                         )}
-                       </button>
+
+              {/* ── Media poster upload ── */}
+              {isMediaUploadAllowed && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">Upload Final Poster</p>
+                      <p className="text-xs text-slate-500">Provide the designed poster for this event.</p>
                     </div>
-                    {posterUploadError && (
-                      <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
-                         <XCircle size={16} className="shrink-0" /> {posterUploadError}
-                      </div>
-                    )}
-                    {posterUploadSuccess && (
-                      <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
-                         <CheckCircle size={16} className="shrink-0" /> {posterUploadSuccess}
-                      </div>
-                    )}
-                 </div>
-              ) : (
-                 <>
-                   {approvalError && (
-                     <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
-                       <XCircle size={16} className="shrink-0" />
-                       {approvalError}
-                     </div>
-                   )}
-                   <div className="mb-3">
-                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                       Rejection Reason (required to reject)
-                     </label>
-                     <textarea
-                       rows={2}
-                       value={rejectionReason}
-                       onChange={(e) => setRejectionReason(e.target.value)}
-                       placeholder="Enter why this event is being rejected"
-                       disabled={isProcessing}
-                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
-                     />
-                   </div>
-                   <div className="flex items-center justify-between">
-                     <div className="text-sm text-slate-600">
-                       {getNextApprover() && (
-                         <p className="flex items-center gap-2">
-                           <CheckCircle size={16} className="text-emerald-600" />
-                           Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
-                         </p>
-                       )}
-                     </div>
-                     <div className="flex items-center gap-3">
-                       <button
-                         onClick={handleReject}
-                         disabled={isProcessing}
-                         className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                       >
-                         {isProcessing ? (
-                           <>
-                             <Loader2 size={18} className="animate-spin" /> Processing...
-                           </>
-                         ) : (
-                           <>
-                             <XCircle size={18} /> Reject
-                           </>
-                         )}
-                       </button>
-                       <button
-                         onClick={handleApprove}
-                         disabled={isProcessing}
-                         className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                       >
-                         {isProcessing ? (
-                           <>
-                             <Loader2 size={18} className="animate-spin" /> Approving...
-                           </>
-                         ) : (
-                           <>
-                             <CheckCircle size={18} /> Approve & Forward
-                           </>
-                         )}
-                       </button>
-                     </div>
-                   </div>
-                 </>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      ref={fileInputRef}
+                      onChange={handlePosterUpload}
+                      disabled={isUploadingPoster || !!posterUploadSuccess}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingPoster || !!posterUploadSuccess}
+                      className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isUploadingPoster ? (
+                        <><Loader2 size={18} className="animate-spin" /> Uploading...</>
+                      ) : posterUploadSuccess ? (
+                        <><CheckCircle size={18} /> Done!</>
+                      ) : (
+                        <><Camera size={18} /> Choose Poster Image</>
+                      )}
+                    </button>
+                  </div>
+                  {posterUploadError && (
+                    <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                      <XCircle size={16} className="shrink-0" /> {posterUploadError}
+                    </div>
+                  )}
+                  {posterUploadSuccess && (
+                    <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
+                      <CheckCircle size={16} className="shrink-0" /> {posterUploadSuccess}
+                    </div>
+                  )}
+                </div>
               )}
+
+              {/* ── Department approvals (HR / Audio / ICTS / Transport / Accommodation) ── */}
+              {!isMediaUploadAllowed && hasAnyDeptApproval && (
+                <div className="flex flex-col gap-3">
+                  {approvalError && (
+                    <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                      <XCircle size={16} className="shrink-0" /> {approvalError}
+                    </div>
+                  )}
+                  <p className="text-sm font-semibold text-slate-700">Approve Your Department's Requirements</p>
+                  <div className="flex flex-wrap gap-3">
+                    {canApproveVenue && (
+                      <button
+                        onClick={() => handleDeptApprove('venue')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Venue
+                      </button>
+                    )}
+                    {canApproveMedia && (
+                      <button
+                        onClick={() => handleDeptApprove('media')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Media Booking
+                      </button>
+                    )}
+                    {canApproveVenue && canApproveMedia && (
+                      <button
+                        onClick={handleHRApproveBoth}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Both (HR)
+                      </button>
+                    )}
+                    {canApproveAudio && (
+                      <button
+                        onClick={() => handleDeptApprove('audio')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Audio
+                      </button>
+                    )}
+                    {canApproveICTS && (
+                      <button
+                        onClick={() => handleDeptApprove('icts')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve ICTS
+                      </button>
+                    )}
+                    {canApproveTransport && (
+                      <button
+                        onClick={() => handleDeptApprove('transport')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Transport
+                      </button>
+                    )}
+                    {canApproveBoysAccommodation && (
+                      <button
+                        onClick={() => handleDeptApprove('boysAccommodation')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Boys Accommodation
+                      </button>
+                    )}
+                    {canApproveGirlsAccommodation && (
+                      <button
+                        onClick={() => handleDeptApprove('girlsAccommodation')}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Girls Accommodation
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Faculty / HOD approve + reject ── */}
+              {!isMediaUploadAllowed && !hasAnyDeptApproval && canApprove() && (
+                <>
+                  {approvalError && (
+                    <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+                      <XCircle size={16} className="shrink-0" />
+                      {approvalError}
+                    </div>
+                  )}
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+                      Rejection Reason (required to reject)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      placeholder="Enter why this event is being rejected"
+                      disabled={isProcessing}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-600">
+                      {getNextApprover() && (
+                        <p className="flex items-center gap-2">
+                          <CheckCircle size={16} className="text-emerald-600" />
+                          Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleReject}
+                        disabled={isProcessing}
+                        className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isProcessing ? (
+                          <><Loader2 size={18} className="animate-spin" /> Processing...</>
+                        ) : (
+                          <><XCircle size={18} /> Reject</>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleApprove}
+                        disabled={isProcessing}
+                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isProcessing ? (
+                          <><Loader2 size={18} className="animate-spin" /> Approving...</>
+                        ) : (
+                          <><CheckCircle size={18} /> Approve & Forward</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
             </div>
           )}
         </motion.div>

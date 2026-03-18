@@ -94,6 +94,17 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const { parseEventStartDateTime } = require('../services/eventAutoRejectionService');
+    const startDateTime = parseEventStartDateTime(eventData);
+    if (startDateTime) {
+      const nowMs = new Date().getTime();
+      const startMs = startDateTime.getTime();
+      const rejectAtMs = startMs - parseInt(process.env.AUTO_REJECT_BEFORE_START_MINUTES || '5', 10) * 60 * 1000;
+      if (nowMs >= rejectAtMs) {
+        return res.status(400).json({ success: false, message: 'Cannot create an event that starts in less than 5 minutes or is already in the past.' });
+      }
+    }
+
     const payload = {
       ...eventData,
       status: eventData.status || 'PENDING_FACULTY',
@@ -258,8 +269,61 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    const rawEventData = eventSnap.data();
+
+    if (status !== 'REJECTED') {
+      const { parseEventStartDateTime } = require('../services/eventAutoRejectionService');
+      const startDateTime = parseEventStartDateTime(rawEventData);
+      if (startDateTime) {
+        const nowMs = new Date().getTime();
+        const startMs = startDateTime.getTime();
+        const rejectAtMs = startMs - parseInt(process.env.AUTO_REJECT_BEFORE_START_MINUTES || '5', 10) * 60 * 1000;
+        if (nowMs >= rejectAtMs) {
+          const autoRejectionPayload = {
+            status: 'REJECTED',
+            updatedAt: new Date().toISOString(),
+            autoRejectedAt: new Date().toISOString(),
+            autoRejectedBy: 'SYSTEM',
+            rejectionReason: `Automatically rejected: action attempted within 5 minutes of event start time.`,
+          };
+          await updateDoc(eventRef, autoRejectionPayload);
+          
+          if (rawEventData.organizerEmail) {
+            const { sendEventStatusNotification } = require('../services/emailService');
+            // Try sending notification but don't fail if it doesn't work
+            sendEventStatusNotification(
+              rawEventData.organizerEmail,
+              { id: eventSnap.id, ...rawEventData, ...autoRejectionPayload },
+              'REJECTED'
+            ).catch(err => console.error('[events/status] auto-reject email error:', err.message));
+          }
+          
+          return res.status(400).json({
+            success: false,
+            message: 'Event has been auto-rejected because it is within 5 minutes of the start time.',
+            event: { id: req.params.id, ...rawEventData, ...autoRejectionPayload }
+          });
+        }
+      }
+    }
+
     const updatePayload = { status, updatedAt: new Date().toISOString() };
     if (approvedBy) updatePayload.approvedBy = approvedBy;
+
+    // Record timestamped approval for each stage
+    const prevStatus = eventSnap.data().status;
+    if (status === 'PENDING_HOD' && prevStatus === 'PENDING_FACULTY') {
+      updatePayload.facultyApprovedAt = new Date().toISOString();
+      updatePayload.facultyApprovedBy = approvedBy || 'Faculty';
+    }
+    if (status === 'PENDING_DEPARTMENTS' && prevStatus === 'PENDING_HOD') {
+      updatePayload.hodApprovedAt = new Date().toISOString();
+      updatePayload.hodApprovedBy = approvedBy || 'HOD';
+    }
+    if (status === 'POSTED' && prevStatus === 'PENDING_IQAC') {
+      updatePayload.iqacApprovedAt = new Date().toISOString();
+      updatePayload.iqacApprovedBy = approvedBy || 'IQAC';
+    }
 
     await updateDoc(eventRef, updatePayload);
 
@@ -281,9 +345,23 @@ router.patch('/:id/status', async (req, res) => {
     if (['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC'].includes(status)) {
       let nextRoles = [];
       if (status === 'PENDING_HOD') nextRoles = ['HOD'];
-      else if (status === 'PENDING_IQAC') nextRoles = ['IQAC', 'FACULTY']; // Replace with actual IQAC role check later or handle similarly
+      else if (status === 'PENDING_IQAC') nextRoles = ['IQAC_TEAM'];
       else if (status === 'PENDING_DEPARTMENTS') {
-         nextRoles = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN'];
+        const reqs = eventData.requisition?.step1?.requirements || {};
+        const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
+        
+        nextRoles = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM'];
+        
+        if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
+          const accom = eventData.requisition?.annexureV_accommodation || {};
+          const males = Number(accom.maleGuests || 0);
+          const females = Number(accom.femaleGuests || 0);
+          
+          if (males > 0) nextRoles.push('BOYS_WARDEN');
+          if (females > 0) nextRoles.push('GIRLS_WARDEN');
+          // Fallback if no guest counts but accommodation requested (e.g. only dining)
+          if (males === 0 && females === 0) nextRoles.push('BOYS_WARDEN');
+        }
       }
       
       try {
@@ -332,6 +410,88 @@ router.patch('/:id/status', async (req, res) => {
   }
 });
 
+// ── PATCH /api/events/:id/department-approval ────────────────────────────
+// Approve a specific department requirement
+// Body: { department: 'venue' | 'audio' | 'icts' | 'transport' | 'accommodation' | 'media', approvedBy: string }
+router.patch('/:id/department-approval', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  const { department, approvedBy } = req.body;
+
+  if (!department || !approvedBy) {
+    return res.status(400).json({ success: false, message: 'Department and approvedBy are required' });
+  }
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const eventData = eventSnap.data();
+    const departmentApprovals = eventData.departmentApprovals || {};
+
+    departmentApprovals[department] = {
+      status: 'APPROVED',
+      approvedBy,
+      approvedAt: new Date().toISOString(),
+    };
+
+    const updatePayload = { departmentApprovals, updatedAt: new Date().toISOString() };
+
+    // Check if all required departments are approved
+    const reqs = eventData.requisition?.step1?.requirements || {};
+    // Backward compatibility if requirements are at root level
+    const isRequired = (key) => reqs[key] ?? eventData[key] ?? false;
+
+    const requiredDepts = [];
+    if (isRequired('venueRequired')) requiredDepts.push('venue');
+    if (isRequired('audioRequired')) requiredDepts.push('audio');
+    if (isRequired('ictsRequired')) requiredDepts.push('icts');
+    if (isRequired('transportRequired')) requiredDepts.push('transport');
+    if (isRequired('mediaRequired')) requiredDepts.push('media');
+
+    if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
+      const accom = eventData.requisition?.annexureV_accommodation || {};
+      const males = Number(accom.maleGuests || 0);
+      const females = Number(accom.femaleGuests || 0);
+      
+      if (males > 0) requiredDepts.push('boysAccommodation');
+      if (females > 0) requiredDepts.push('girlsAccommodation');
+      if (males === 0 && females === 0) requiredDepts.push('boysAccommodation'); // fallback
+    }
+
+    const allApproved = requiredDepts.every(dept => departmentApprovals[dept]?.status === 'APPROVED');
+
+    if (allApproved && eventData.status === 'PENDING_DEPARTMENTS') {
+      updatePayload.status = 'PENDING_IQAC';
+      
+      // Auto-notify IQAC here if needed
+      try {
+        const iqacEmails = await getOfficialEmailsByRole('IQAC_TEAM');
+        for (const email of iqacEmails) {
+          await sendApprovalRequestToRole(eventData, email, 'IQAC_TEAM');
+        }
+      } catch (e) {
+        console.error('Error notifying IQAC auto-transition:', e);
+      }
+    }
+
+    await updateDoc(eventRef, updatePayload);
+
+    return res.json({
+      success: true,
+      message: `${department} approved successfully`,
+      event: { id: req.params.id, ...eventData, ...updatePayload },
+    });
+  } catch (error) {
+    console.error('[events/department-approval] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update department approval', error: error.message });
+  }
+});
+
 // ── PUT /api/events/:id ──────────────────────────────────────────────────
 // Full update of an event document
 router.put('/:id', async (req, res) => {
@@ -372,11 +532,36 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    const eventData = eventSnap.data();
+    const isFacultyOrganizer = eventData.creatorType === 'FACULTY';
+    const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl);
+
+    // Reset approvals but preserve media if poster already exists
+    const oldDeptApprovals = eventData.departmentApprovals || {};
+    const newDeptApprovals = {};
+    if (hasMediaPoster && oldDeptApprovals['media']) {
+      newDeptApprovals['media'] = oldDeptApprovals['media'];
+    }
+
     const updatePayload = {
       ...req.body,
-      status: req.body.status || 'PENDING_FACULTY',
+      status: isFacultyOrganizer ? 'PENDING_HOD' : 'PENDING_FACULTY',
       isResubmitted: true,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      
+      // Clear all stage approvals
+      approvedBy: null,
+      rejectionReason: null,
+      
+      facultyApprovedAt: null,
+      facultyApprovedBy: null,
+      hodApprovedAt: null,
+      hodApprovedBy: null,
+      iqacApprovedAt: null,
+      iqacApprovedBy: null,
+      
+      // Reset department approvals (except media if poster exists)
+      departmentApprovals: newDeptApprovals
     };
     await updateDoc(eventRef, updatePayload);
 

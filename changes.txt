@@ -1,0 +1,7 @@
+backend/routes/auth.js
+backend/routes/events.js
+frontend/src/components/EventDetailModal.jsx
+frontend/src/components/StatusBadge.jsx
+frontend/src/context/AppContext.jsx
+frontend/src/mockData.js
+frontend/src/pages/Dashboard.jsx
