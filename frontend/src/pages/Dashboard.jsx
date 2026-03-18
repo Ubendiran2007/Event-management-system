@@ -175,7 +175,9 @@ const Dashboard = () => {
   const getFilteredODRequests = () => {
     const role = currentUser.role?.toUpperCase();
     if (role === UserRole.STUDENT_GENERAL || role === UserRole.STUDENT_ORGANIZER) {
-      return odRequests.filter(r => r.studentId === currentUser.id);
+      return odRequests
+        .filter(r => r.studentId === currentUser.id)
+        .sort((a, b) => (b.eventDate || '').localeCompare(a.eventDate || ''));
     }
     return [];
   };
