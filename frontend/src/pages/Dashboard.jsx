@@ -1056,63 +1056,61 @@ const Dashboard = () => {
                 </div>
               )}
 
-              {/* Staff: Manage Students Quick Card */}
-              {isStaff && (
+              {/* Quick Actions (Context-Aware for All Users) */}
+              <div className="glass-panel rounded-2xl p-6 space-y-3">
+                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                  <Plus size={18} className="text-cse-accent" /> Quick Actions
+                </h3>
+                
+                {/* 1. Explore Events - For Everyone */}
                 <div
-                  onClick={() => navigate('/manage-students')}
-                  className="glass-panel rounded-2xl p-6 cursor-pointer hover:shadow-lg transition-all group border border-transparent hover:border-cse-accent/20"
+                  onClick={() => navigate('/explore')}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
                 >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-cse-accent/10 text-cse-accent rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
-                      <Users size={20} />
-                    </div>
-                    <h3 className="font-bold text-slate-900">Manage Students</h3>
+                  <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
+                    <Calendar size={18} />
                   </div>
-                  <p className="text-sm text-slate-500 mb-4">
-                    View section-wise student lists and grant event organizer privileges.
-                  </p>
-                  <div className="flex items-center gap-1 text-cse-accent text-sm font-semibold">
-                    Open <ChevronRight size={16} />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-800">Explore Events</p>
+                    <p className="text-xs text-slate-500 font-medium">Browse department events</p>
                   </div>
+                  <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
                 </div>
-              )}
 
-              {/* Student Organizer: Quick Actions Card */}
-              {currentUser.role === UserRole.STUDENT_ORGANIZER && (
-                <div className="glass-panel rounded-2xl p-6 space-y-3">
-                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <Plus size={18} className="text-cse-accent" /> Quick Actions
-                  </h3>
+                {/* 2. Create Event - For Faculty and Approved Student Organizers */}
+                {(currentUser.role === UserRole.FACULTY || currentUser.isApprovedOrganizer) && (
                   <div
-                    onClick={() => navigate('/explore')}
+                    onClick={() => navigate('/create-event')}
                     className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
                   >
-                    <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
-                      <Calendar size={18} />
+                    <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
+                      <Plus size={18} />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">Explore Events</p>
-                      <p className="text-xs text-slate-500">Browse all department events</p>
+                      <p className="text-sm font-semibold text-slate-800">Create Event</p>
+                      <p className="text-xs text-slate-500 font-medium">Submit new proposal</p>
                     </div>
                     <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
                   </div>
-                  {currentUser.isApprovedOrganizer && (
-                    <div
-                      onClick={() => navigate('/create-event')}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
-                    >
-                      <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
-                        <Plus size={18} />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-slate-800">Create Event</p>
-                        <p className="text-xs text-slate-500">Submit a new event proposal</p>
-                      </div>
-                      <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
+                )}
+
+                {/* 3. Manage Students - For Staff (merged into quick actions) */}
+                {isStaff && (
+                  <div
+                    onClick={() => navigate('/manage-students')}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
+                  >
+                    <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
+                      <Users size={18} />
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800">Manage Students</p>
+                      <p className="text-xs text-slate-500 font-medium">Grant organizer rights</p>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
+                  </div>
+                )}
+              </div>
 
               {/* Quick Resources */}
               <div className="glass-panel rounded-2xl p-6">
