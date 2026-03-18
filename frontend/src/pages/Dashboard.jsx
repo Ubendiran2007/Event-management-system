@@ -19,7 +19,8 @@ import {
   UserCheck,
   Copy,
   Check,
-  ClipboardCopy
+  ClipboardCopy,
+  ClipboardList
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole, EventStatus, ODRequestStatus } from '../types';
@@ -1130,36 +1131,11 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Department Info Card */}
-            <div className="glass-panel rounded-2xl overflow-hidden">
-              <div className="h-28 w-full relative">
-                <img src={cseDeptImg} alt="CSE Department" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-cse-primary/80 to-transparent" />
-              </div>
-              <div className="p-5 bg-cse-primary text-white relative">
-                <h3 className="font-bold text-lg mb-1">CSE Department</h3>
-                <p className="text-slate-300 text-sm mb-4">Excellence in Innovation and Technology.</p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center">
-                      <Users size={14} />
-                    </div>
-                    <span>1,200+ Students</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center">
-                      <ShieldCheck size={14} />
-                    </div>
-                    <span>45 Faculty Members</span>
-                  </div>
-                </div>
-                <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/5 rounded-full blur-2xl" />
-              </div>
-            </div>
-
-            {/* Quick Links */}
+            {/* Quick Resources */}
             <div className="glass-panel rounded-2xl p-6">
-              <h3 className="font-bold text-slate-900 mb-4">Quick Resources</h3>
+              <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <ClipboardList size={18} className="text-cse-accent" /> Quick Resources
+              </h3>
               <div className="space-y-2">
                 {[
                   { label: 'Venue Booking Policy', href: '/resources/venue-booking-policy.html' },
