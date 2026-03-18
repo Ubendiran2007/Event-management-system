@@ -633,7 +633,27 @@ const Dashboard = () => {
                         )}
                       </div>
                     )}
-                </div>
+                    {needsPagination && (
+                      <div className="p-4 bg-slate-50 border-t border-slate-100 mt-auto">
+                        <button
+                          onClick={() => setShowAllEvents(true)}
+                          className="w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-cse-accent hover:bg-cse-accent hover:text-white hover:border-cse-accent transition-all flex items-center justify-center gap-2 shadow-sm"
+                        >
+                          View All Events ({totalEventCount}) <ChevronDown size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {showAllEvents && totalEventCount > EVENT_DISPLAY_LIMIT && (
+                      <div className="p-4 bg-slate-50 border-t border-slate-100 mt-auto">
+                        <button
+                          onClick={() => setShowAllEvents(false)}
+                          className="w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all flex items-center justify-center gap-2 shadow-sm"
+                        >
+                          Show Less
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
 
@@ -1096,14 +1116,11 @@ const Dashboard = () => {
                     target="_blank"
                     rel="noreferrer"
                     download={item.download ? 'budget-template.csv' : undefined}
-                    className={`flex items-center justify-between p-2 text-sm text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all ${idx !== arr.length - 1 ? 'border-b border-slate-50' : ''}`}
+                    className="flex items-center justify-between p-2 text-sm text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all"
                   >
                     {item.label} <ChevronRight size={14} />
                   </a>
                 ))}
-              </div>
-              <div className="border-t border-slate-200 pt-4 flex items-center justify-center">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End of Resources</span>
               </div>
             </div>
           </div>
