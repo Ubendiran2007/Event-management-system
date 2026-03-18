@@ -1042,8 +1042,11 @@ const ExploreEvents = () => {
             <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore Events</h1>
             <p className="text-slate-600">Discover and register for upcoming events</p>
           </div>
-          <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
-            Back to Dashboard
+          <button
+            onClick={() => navigate(currentUser ? '/dashboard' : '/')}
+            className="btn-secondary whitespace-nowrap"
+          >
+            {currentUser ? 'Back to Dashboard' : 'Back to Home'}
           </button>
         </div>
 

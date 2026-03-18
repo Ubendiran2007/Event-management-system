@@ -25,27 +25,29 @@ const Navbar = () => {
           <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wide">Department of Computer Science</p>
         </div>
       </div>
-      {currentUser && (
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold">{currentUser.name}</p>
-            <p className="text-xs text-slate-500">{currentUser.role.replace('_', ' ')}</p>
+        {currentUser && (
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="text-right hidden sm:block border-l border-slate-200 pl-4 ml-1">
+              <p className="text-sm font-semibold">{currentUser.name}</p>
+              <p className="text-xs text-slate-500 uppercase tracking-tight">{currentUser.role.replace('_', ' ')}</p>
+            </div>
+            <button
+              onClick={onLogout}
+              className="p-2 hover:bg-slate-100 text-slate-500 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
+              title="Logout"
+            >
+              <LogOut size={20} />
+            </button>
           </div>
+        )}
+        {!currentUser && (
           <button
-            onClick={() => navigate('/explore')}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all"
+            onClick={() => navigate('/login')}
+            className="px-4 py-1.5 bg-cse-primary text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition-all border border-transparent shadow-sm hover:shadow-md"
           >
-            Explore
+            Login
           </button>
-          <button
-            onClick={onLogout}
-            className="p-2 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition-colors"
-            title="Logout"
-          >
-            <LogOut size={20} />
-          </button>
-        </div>
-      )}
+        )}
     </nav>
   );
 };

@@ -107,13 +107,13 @@ const Landing = () => {
                   Get Started
                   <ArrowRight size={17} />
                 </button>
-                <a
-                  href="#features"
+                <button
+                  onClick={() => navigate('/explore')}
                   className="btn-secondary inline-flex items-center justify-center gap-2 px-6 py-3"
                 >
-                  Explore Features
+                  Explore Events
                   <ChevronRight size={16} />
-                </a>
+                </button>
               </div>
             </div>
           </div>

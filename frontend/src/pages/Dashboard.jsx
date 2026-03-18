@@ -347,6 +347,12 @@ const Dashboard = () => {
               <p className="text-slate-500 font-medium mt-1">Manage and track your department events.</p>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/explore')}
+                className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+              >
+                <Calendar size={18} /> Explore Events
+              </button>
               {canCreateEvent && (
                 <button
                   onClick={() => navigate('/create-event')}
