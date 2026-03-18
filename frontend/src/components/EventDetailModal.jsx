@@ -345,8 +345,8 @@ const EventDetailModal = ({ event, onClose }) => {
             {/* Approval Workflow Indicator */}
             <div className="glass-panel p-4 rounded-xl">
               <p className="text-xs font-bold text-slate-400 uppercase mb-3">Approval Workflow</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Faculty step */}
+              <div className="flex items-center gap-2 flex-wrap mb-4">
+                {/* Simple workflow steps as before */}
                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                   event.status === EventStatus.PENDING_FACULTY ? 'bg-amber-100 text-amber-700' :
                   event.status === EventStatus.REJECTED ? 'bg-red-100 text-red-700' :
@@ -357,7 +357,6 @@ const EventDetailModal = ({ event, onClose }) => {
                    '✓ Faculty Approved'}
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
-                {/* HOD step */}
                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                   event.status === EventStatus.PENDING_HOD ? 'bg-amber-100 text-amber-700' :
                   [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
@@ -368,18 +367,16 @@ const EventDetailModal = ({ event, onClose }) => {
                    'HOD Review'}
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
-                {/* Departments step */}
                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                   event.status === EventStatus.PENDING_DEPARTMENTS ? 'bg-orange-100 text-orange-700' :
                   [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
                   'bg-slate-100 text-slate-400'
                 }`}>
-                  {event.status === EventStatus.PENDING_DEPARTMENTS ? '⏳ Dept. Review' :
-                   [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Depts. Approved' :
-                   'Dept. Review'}
+                  {event.status === EventStatus.PENDING_DEPARTMENTS ? '⏳ Dept Review' :
+                   [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Depts Approved' :
+                   'Dept Review'}
                 </div>
                 <ArrowRight size={14} className="text-slate-300" />
-                {/* IQAC step */}
                 <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                   event.status === EventStatus.PENDING_IQAC ? 'bg-amber-100 text-amber-700' :
                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
@@ -389,20 +386,85 @@ const EventDetailModal = ({ event, onClose }) => {
                    [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ IQAC Approved' :
                    'IQAC Review'}
                 </div>
-                <ArrowRight size={14} className="text-slate-300" />
-                {/* Posted step */}
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                  [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'
-                }`}>
-                  {[EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '🎉 Posted' : 'Posted'}
-                </div>
               </div>
+
+              {/* Detailed Timeline — for organizer view only */}
+              {event.organizerId === currentUser.id && (
+                <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline Details</p>
+                  {[
+                    { label: 'Faculty', done: !['PENDING_FACULTY','REJECTED'].includes(event.status), approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
+                    { label: 'HOD', done: ['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status), approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
+                  ].map(step => (
+                    <div key={step.label} className={`flex items-center gap-3 text-xs ${step.done ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-200'}`} />
+                      <span className="font-bold min-w-[60px]">{step.label}</span>
+                      {step.done 
+                        ? <span className="text-[10px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                            {step.approvedAt ? new Date(step.approvedAt).toLocaleString() : 'Approved'}
+                            {step.approvedBy ? ` · ${step.approvedBy}` : ''}
+                          </span>
+                        : <span className="italic text-slate-300">Pending</span>}
+                    </div>
+                  ))}
+                  
+                  {['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status) && (() => {
+                    const dApprovals = event.departmentApprovals || {};
+                    const reqList = event.requisition?.step1?.requirements || {};
+                    const isR = k => reqList[k] ?? event[k] ?? false;
+                    const accom = event.requisition?.annexureV_accommodation || {};
+                    const hasMales = Number(accom.maleGuests || 0) > 0;
+                    const hasFemales = Number(accom.femaleGuests || 0) > 0;
+                    const isAcc = isR('accommodationDiningRequired') || isR('accommodationRequired');
+                    
+                    const deptsToShow = [
+                      isR('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
+                      isR('audioRequired') && { key: 'audio', label: 'Audio' },
+                      isR('ictsRequired') && { key: 'icts', label: 'ICTS' },
+                      isR('transportRequired') && { key: 'transport', label: 'Transport' },
+                      isAcc && (hasMales || (!hasMales && !hasFemales)) && { key: 'boysAccommodation', label: 'Boys Accom.' },
+                      isAcc && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accom.' },
+                      isR('mediaRequired') && { key: 'media', label: 'Media (HR)' },
+                    ].filter(Boolean);
+                    
+                    if (!deptsToShow.length) return null;
+                    return (
+                      <div className="ml-1.5 pl-3 border-l-2 border-slate-100 mt-2 space-y-2">
+                        {deptsToShow.map(d => {
+                          const info = dApprovals[d.key];
+                          const isApp = info?.status === 'APPROVED';
+                          return (
+                            <div key={d.key} className={`flex items-center gap-3 text-xs ${isApp ? 'text-emerald-700' : 'text-slate-400'}`}>
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isApp ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+                              <span className="font-medium min-w-[100px]">{d.label}</span>
+                              {isApp 
+                                ? <span className="text-[10px] bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 italic">
+                                    {info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}
+                                  </span>
+                                : <span className="text-[10px] text-slate-300">Pending</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  <div className={`flex items-center gap-3 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-blue-700' : event.status === EventStatus.PENDING_IQAC ? 'text-amber-600' : 'text-slate-300'}`}>
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-blue-500' : event.status === EventStatus.PENDING_IQAC ? 'bg-amber-400 animate-pulse' : 'bg-slate-200'}`} />
+                    <span className="font-bold">IQAC / Posting</span>
+                    {['APPROVED','POSTED','COMPLETED'].includes(event.status) 
+                      ? <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Finalized & Posted</span>
+                      : event.status === EventStatus.PENDING_IQAC ? <span className="italic">Reviewing...</span> : <span className="text-[10px]">Waiting</span>}
+                  </div>
+                </div>
+              )}
+
               {/* Rejected banner */}
               {event.status === EventStatus.REJECTED && (
                 <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs font-semibold text-red-700">
                   ✗ This event has been rejected and will not proceed further.
                   {event.rejectionReason && (
-                    <p className="mt-1 font-medium text-[11px] text-red-800">
+                    <p className="mt-1 font-medium text-[11px] text-red-800 font-sans">
                       Reason: {event.rejectionReason}
                     </p>
                   )}

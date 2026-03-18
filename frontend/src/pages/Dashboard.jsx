@@ -50,6 +50,7 @@ const Dashboard = () => {
   const [expandedRegistrationGroups, setExpandedRegistrationGroups] = useState({});
   const [bulkApprovingGroups, setBulkApprovingGroups] = useState({});
   const [copiedStates, setCopiedStates] = useState({});
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const canCreateEvent =
     currentUser?.role === UserRole.FACULTY ||
@@ -492,7 +493,9 @@ const Dashboard = () => {
                 )}
               </div>
 
-              {/* Events Tab Content */}
+              {/* Fixed-height scrollable container for tab content */}
+              <div className="max-h-[calc(100vh-320px)] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                {/* Events Tab Content */}
               {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                 let displayEvents = [];
                 if (activeTab === 'events') {
@@ -501,9 +504,15 @@ const Dashboard = () => {
                   displayEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
                 }
 
+                const totalEventCount = displayEvents.length;
+                const EVENT_DISPLAY_LIMIT = 3;
+                const needsPagination = !showAllEvents && totalEventCount > EVENT_DISPLAY_LIMIT;
+                const limitedEvents = needsPagination ? displayEvents.slice(0, EVENT_DISPLAY_LIMIT) : displayEvents;
+
                 return (
-                  <div className="divide-y divide-slate-100">
-                    {displayEvents.map(event => (
+                  <div className="flex flex-col h-full">
+                    <div className="divide-y divide-slate-100">
+                      {limitedEvents.map(event => (
                       <div 
                         key={event.id} 
                         className="p-6 hover:bg-slate-50/50 transition-colors group cursor-pointer"
@@ -543,70 +552,6 @@ const Dashboard = () => {
                                 <p className="text-xs text-red-600 mt-1">
                                   Rejection reason: {event.rejectionReason}
                                 </p>
-                              )}
-                              {/* Approval Timeline — for organizer / faculty view */}
-                              {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.organizerId === currentUser.id && (
-                                <div className="mt-3 space-y-1.5">
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline</p>
-                                  {[
-                                    { label: 'Faculty', done: !['PENDING_FACULTY','REJECTED'].includes(event.status), approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
-                                    { label: 'HOD', done: ['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status), approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
-                                  ].map(step => (
-                                    <div key={step.label} className={`flex items-center gap-2 text-xs ${step.done ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                      <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                                      <span className="font-semibold">{step.label}</span>
-                                      {step.done && step.approvedAt
-                                        ? <span className="text-emerald-600">{new Date(step.approvedAt).toLocaleString()}{step.approvedBy ? ` · ${step.approvedBy}` : ''}</span>
-                                        : step.done ? <span className="text-emerald-600">Approved</span>
-                                        : <span>Pending</span>}
-                                    </div>
-                                  ))}
-                                  {['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status) && (() => {
-                                    const depts = event.departmentApprovals || {};
-                                    const reqs2 = event.requisition?.step1?.requirements || {};
-                                    const isReq2 = k => reqs2[k] ?? event[k] ?? false;
-                                    const accom = event.requisition?.annexureV_accommodation || {};
-                                    const hasMales = Number(accom.maleGuests || 0) > 0;
-                                    const hasFemales = Number(accom.femaleGuests || 0) > 0;
-                                    const isAccomAny = isReq2('accommodationDiningRequired') || isReq2('accommodationRequired');
-                                    
-                                    const deptList = [
-                                      isReq2('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
-                                      isReq2('audioRequired') && { key: 'audio', label: 'Audio' },
-                                      isReq2('ictsRequired') && { key: 'icts', label: 'ICTS' },
-                                      isReq2('transportRequired') && { key: 'transport', label: 'Transport' },
-                                      isAccomAny && (hasMales || (!hasMales && !hasFemales)) && { key: 'boysAccommodation', label: 'Boys Accommodation' },
-                                      isAccomAny && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accommodation' },
-                                      isReq2('mediaRequired') && { key: 'media', label: 'Media (HR)' },
-                                    ].filter(Boolean);
-                                    if (!deptList.length) return null;
-                                    return (
-                                      <div className="ml-2 pl-2 border-l-2 border-slate-100 space-y-1">
-                                        {deptList.map(d => {
-                                          const info = depts[d.key];
-                                          return (
-                                            <div key={d.key} className={`flex items-center gap-2 text-xs ${info?.status === 'APPROVED' ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${info?.status === 'APPROVED' ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-                                              <span className="font-medium">{d.label}</span>
-                                              {info?.status === 'APPROVED'
-                                                ? <span className="text-emerald-600">{info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}{info.approvedBy ? ` · ${info.approvedBy}` : ''}</span>
-                                                : <span>Pending</span>}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    );
-                                  })()}
-                                  <div className={`flex items-center gap-2 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-emerald-700' : ['PENDING_IQAC'].includes(event.status) ? 'text-amber-600' : 'text-slate-400'}`}>
-                                    <span className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-emerald-500' : ['PENDING_IQAC'].includes(event.status) ? 'bg-amber-400' : 'bg-slate-200'}`} />
-                                    <span className="font-semibold">IQAC</span>
-                                    {['APPROVED','POSTED','COMPLETED'].includes(event.status)
-                                      ? <span className="text-emerald-600">Approved &amp; Posted</span>
-                                      : ['PENDING_IQAC'].includes(event.status)
-                                      ? <span>Pending IQAC Review</span>
-                                      : <span className="text-slate-400">Waiting</span>}
-                                  </div>
-                                </div>
                               )}
                             </div>
                           </div>
@@ -663,10 +608,11 @@ const Dashboard = () => {
                         </div>
                       </div>
                     ))}
-                  {displayEvents.length === 0 && (
+                  </div>
+                    {displayEvents.length === 0 && (
                       <div className="p-12 text-center">
                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                          <CheckCircle size={32} />
+                          <Calendar size={32} />
                         </div>
                         <p className="text-slate-500 font-medium">
                           {(isStaff || isMedia)
@@ -1041,6 +987,7 @@ const Dashboard = () => {
                   )}
                 </div>
               )}
+              </div>
             </div>
           </div>
 
@@ -1136,24 +1083,27 @@ const Dashboard = () => {
               <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <ClipboardList size={18} className="text-cse-accent" /> Quick Resources
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-1.5 mb-4">
                 {[
                   { label: 'Venue Booking Policy', href: '/resources/venue-booking-policy.html' },
                   { label: 'IQAC Guidelines', href: '/resources/iqac-guidelines.html' },
                   { label: 'Budget Templates', href: '/resources/budget-template.csv', download: true },
                   { label: 'Guest Protocol', href: '/resources/guest-protocol.html' },
-                ].map((item) => (
+                ].map((item, idx, arr) => (
                   <a
                     key={item.label}
                     href={item.href}
                     target="_blank"
                     rel="noreferrer"
                     download={item.download ? 'budget-template.csv' : undefined}
-                    className="flex items-center justify-between p-2 text-sm text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all"
+                    className={`flex items-center justify-between p-2 text-sm text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all ${idx !== arr.length - 1 ? 'border-b border-slate-50' : ''}`}
                   >
                     {item.label} <ChevronRight size={14} />
                   </a>
                 ))}
+              </div>
+              <div className="border-t border-slate-200 pt-4 flex items-center justify-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">End of Resources</span>
               </div>
             </div>
           </div>
