@@ -335,45 +335,40 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="h-screen flex flex-col overflow-hidden bg-slate-50/50">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
-          <div>
-            <h2 className="text-3xl font-bold text-slate-900">Department Dashboard</h2>
-            <p className="text-slate-500 mt-1">
-              Welcome back, {currentUser.name}. Manage your events and approvals.
-            </p>
+      <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
+        <div className="max-w-7xl mx-auto px-6 py-8 pb-20">
+          {/* Header Section */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div>
+              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h2>
+              <p className="text-slate-500 font-medium mt-1">Manage and track your department events.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              {canCreateEvent && (
+                <button
+                  onClick={() => navigate('/create-event')}
+                  className="px-6 py-2.5 bg-cse-primary text-white rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-blue-900/10 active:scale-95"
+                >
+                  <Plus size={18} /> Create Event
+                </button>
+              )}
+              {isStaff && (
+                <button
+                  onClick={() => navigate('/manage-students')}
+                  className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                >
+                  <Users size={18} /> Manage Students
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/explore')} className="btn-secondary flex items-center gap-2">
-              <Calendar size={18} /> Explore Events
-            </button>
-            {canCreateEvent && (
-              <button onClick={() => navigate('/create-event')} className="btn-primary flex items-center gap-2">
-                <Plus size={18} /> Create Event
-              </button>
-            )}
-            {/* Manage Students button for staff */}
-            {isStaff && (
-              <button
-                onClick={() => navigate('/manage-students')}
-                className="btn-primary flex items-center gap-2"
-              >
-                <Users size={18} /> Manage Students
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Dashboard Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content Area */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Stats Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-8">
+              {/* Stats Grid */}
             <div className={`grid grid-cols-2 gap-4 ${(isStaff || isMedia) ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
               {(() => {
                 const baseEvents = (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY)
@@ -1116,6 +1111,7 @@ const Dashboard = () => {
                   </a>
                 ))}
               </div>
+            </div>
             </div>
           </div>
         </div>

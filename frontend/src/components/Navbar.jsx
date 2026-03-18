@@ -32,6 +32,12 @@ const Navbar = () => {
             <p className="text-xs text-slate-500">{currentUser.role.replace('_', ' ')}</p>
           </div>
           <button
+            onClick={() => navigate('/explore')}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all"
+          >
+            Explore
+          </button>
+          <button
             onClick={onLogout}
             className="p-2 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition-colors"
             title="Logout"

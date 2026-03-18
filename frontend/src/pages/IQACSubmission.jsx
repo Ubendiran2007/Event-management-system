@@ -568,8 +568,8 @@ const IQACSubmission = () => {
       <Navbar />
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap md:order-2">
+        <div className="flex justify-end mb-6">
+          <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
             Back to Dashboard
           </button>
         </div>
