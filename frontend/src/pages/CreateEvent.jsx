@@ -1427,10 +1427,21 @@ const CreateEvent = () => {
                       checked={form.requirePoster || false}
                       onChange={e => setForm(prev => ({ ...prev, requirePoster: e.target.checked }))}
                       id="requirePosterCheckbox"
-                      disabled={isResubmissionEdit}
+                      disabled={isResubmissionEdit || (!!form.posterDataUrl && !form.requirePoster)}
                     />
-                    <label htmlFor="requirePosterCheckbox" className={`text-sm font-semibold ${isResubmissionEdit ? 'text-slate-400' : 'text-slate-700'}`}>Require Poster (Send request to Media)</label>
+                    <label 
+                      htmlFor="requirePosterCheckbox" 
+                      className={`text-sm font-semibold ${(isResubmissionEdit || (form.posterDataUrl && !form.requirePoster)) ? 'text-slate-400' : 'text-slate-700'}`}
+                    >
+                      Require Poster (Send request to Media)
+                    </label>
                   </div>
+
+                  {form.posterDataUrl && !form.requirePoster && !isResubmissionEdit && (
+                    <div className="text-[11px] text-amber-600 bg-amber-50 rounded-lg p-2.5 border border-amber-100 italic">
+                      Remove the manually uploaded poster below to send a request to the Media Team instead.
+                    </div>
+                  )}
                   {form.requirePoster ? (
                     <div className={`${inputClass} bg-slate-50 text-slate-500 flex items-center`}>
                       Poster will be created and uploaded by the Media Team
