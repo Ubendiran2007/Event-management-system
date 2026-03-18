@@ -1,28 +1,22 @@
 import {
-  X,
-  Clock,
-  User,
-  Users,
-  Monitor,
-  Camera,
-  Car,
-  Hotel,
-  Mic2,
-  Building2,
-  MonitorSmartphone,
-  FileText,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  ArrowRight,
-  ExternalLink,
-  Award,
-  Gamepad,
-  Image as ImageIcon,
-  MessageSquare,
-  FileCheck,
-  Star as StarIcon
+  X, Calendar, MapPin, Clock, FileText, User,
+  ChevronRight, Building2, Mic2, MonitorSmartphone,
+  Car, Hotel, Camera, CheckCircle2, Award,
+  ArrowRight, FileCheck, ExternalLink, Trash2
 } from 'lucide-react';
+
+const formatTime12 = (t24) => {
+  if (!t24) return "-";
+  try {
+    const [h, m] = String(t24).split(':');
+    const hh = parseInt(h, 10);
+    const suffix = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
+  } catch (e) {
+    return t24;
+  }
+};
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
@@ -115,7 +109,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setPosterUploadSuccess('');
 
     try {
-      const posterDataUrl = file.type === 'image/gif' 
+      const posterDataUrl = file.type === 'image/gif'
         ? await new Promise((res, rej) => {
             const reader = new FileReader();
             reader.onload = ev => res(ev.target.result);
@@ -156,7 +150,7 @@ const EventDetailModal = ({ event, onClose }) => {
       if (!wfRes.ok) throw new Error('Failed to update workflow status.');
 
       setPosterUploadSuccess('Poster uploaded successfully! Closing...');
-      
+
       setTimeout(() => {
         onClose();
       }, 1500);
@@ -188,14 +182,14 @@ const EventDetailModal = ({ event, onClose }) => {
   const canApproveAudio = currentUser?.role === UserRole.AUDIO_TEAM && isDeptPending && isReq('audioRequired') && depts.audio?.status !== 'APPROVED';
   const canApproveICTS = currentUser?.role === UserRole.SYSTEM_ADMIN && isDeptPending && isReq('ictsRequired') && depts.icts?.status !== 'APPROVED';
   const canApproveTransport = currentUser?.role === UserRole.TRANSPORT_TEAM && isDeptPending && isReq('transportRequired') && depts.transport?.status !== 'APPROVED';
-  
+
   const maleGuests = Number(event.requisition?.annexureV_accommodation?.maleGuests || 0);
   const femaleGuests = Number(event.requisition?.annexureV_accommodation?.femaleGuests || 0);
   const isAccomReq = isReq('accommodationDiningRequired') || isReq('accommodationRequired');
-  
+
   const canApproveBoysAccommodation = currentUser?.role === UserRole.BOYS_WARDEN && isDeptPending && isAccomReq && depts.boysAccommodation?.status !== 'APPROVED' && (maleGuests > 0 || (maleGuests === 0 && femaleGuests === 0));
   const canApproveGirlsAccommodation = currentUser?.role === UserRole.GIRLS_WARDEN && isDeptPending && isAccomReq && depts.girlsAccommodation?.status !== 'APPROVED' && femaleGuests > 0;
-  
+
   const hasAnyDeptApproval = canApproveVenue || canApproveMedia || canApproveAudio || canApproveICTS || canApproveTransport || canApproveBoysAccommodation || canApproveGirlsAccommodation;
 
   const handleDeptApprove = async (department) => {
@@ -251,7 +245,7 @@ const EventDetailModal = ({ event, onClose }) => {
       setApprovalError('Please enter a rejection reason before rejecting this event.');
       return;
     }
- 
+
     setIsProcessing(true);
     setApprovalError('');
     try {
@@ -399,7 +393,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     <div key={step.label} className={`flex items-center gap-3 text-xs ${step.done ? 'text-emerald-700' : 'text-slate-400'}`}>
                       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-200'}`} />
                       <span className="font-bold min-w-[60px]">{step.label}</span>
-                      {step.done 
+                      {step.done
                         ? <span className="text-[10px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
                             {step.approvedAt ? new Date(step.approvedAt).toLocaleString() : 'Approved'}
                             {step.approvedBy ? ` · ${step.approvedBy}` : ''}
@@ -407,7 +401,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         : <span className="italic text-slate-300">Pending</span>}
                     </div>
                   ))}
-                  
+
                   {['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status) && (() => {
                     const dApprovals = event.departmentApprovals || {};
                     const reqList = event.requisition?.step1?.requirements || {};
@@ -416,7 +410,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     const hasMales = Number(accom.maleGuests || 0) > 0;
                     const hasFemales = Number(accom.femaleGuests || 0) > 0;
                     const isAcc = isR('accommodationDiningRequired') || isR('accommodationRequired');
-                    
+
                     const deptsToShow = [
                       isR('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
                       isR('audioRequired') && { key: 'audio', label: 'Audio' },
@@ -426,7 +420,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       isAcc && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accom.' },
                       isR('mediaRequired') && { key: 'media', label: 'Media (HR)' },
                     ].filter(Boolean);
-                    
+
                     if (!deptsToShow.length) return null;
                     return (
                       <div className="ml-1.5 pl-3 border-l-2 border-slate-100 mt-2 space-y-2">
@@ -437,7 +431,7 @@ const EventDetailModal = ({ event, onClose }) => {
                             <div key={d.key} className={`flex items-center gap-3 text-xs ${isApp ? 'text-emerald-700' : 'text-slate-400'}`}>
                               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isApp ? 'bg-emerald-400' : 'bg-slate-200'}`} />
                               <span className="font-medium min-w-[100px]">{d.label}</span>
-                              {isApp 
+                              {isApp
                                 ? <span className="text-[10px] bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 italic">
                                     {info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}
                                   </span>
@@ -452,7 +446,7 @@ const EventDetailModal = ({ event, onClose }) => {
                   <div className={`flex items-center gap-3 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-blue-700' : event.status === EventStatus.PENDING_IQAC ? 'text-amber-600' : 'text-slate-300'}`}>
                     <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-blue-500' : event.status === EventStatus.PENDING_IQAC ? 'bg-amber-400 animate-pulse' : 'bg-slate-200'}`} />
                     <span className="font-bold">IQAC / Posting</span>
-                    {['APPROVED','POSTED','COMPLETED'].includes(event.status) 
+                    {['APPROVED','POSTED','COMPLETED'].includes(event.status)
                       ? <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Finalized & Posted</span>
                       : event.status === EventStatus.PENDING_IQAC ? <span className="italic">Reviewing...</span> : <span className="text-[10px]">Waiting</span>}
                   </div>
@@ -486,8 +480,8 @@ const EventDetailModal = ({ event, onClose }) => {
                 <InfoRow label="Start Date" value={s1?.eventStartDate} />
                 <InfoRow label="End Date" value={s1?.eventEndDate} />
                 <InfoRow label="Number of Days" value={s1?.numberOfDays} />
-                <InfoRow label="Start Time" value={s1?.eventStartTime} />
-                <InfoRow label="End Time" value={s1?.eventEndTime} />
+                <InfoRow label="Start Time" value={formatTime12(s1?.eventStartTime)} />
+                <InfoRow label="End Time" value={formatTime12(s1?.eventEndTime)} />
               </div>
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <p className="text-xs font-bold text-slate-400 uppercase mb-3">Organizer Details</p>
@@ -656,8 +650,8 @@ const EventDetailModal = ({ event, onClose }) => {
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <InfoRow label="Event Date" value={audioAnnex.eventDate} />
                   <InfoRow label="Venue Name" value={audioAnnex.venueName} />
-                  <InfoRow label="Start Time" value={audioAnnex.startTime} />
-                  <InfoRow label="End Time" value={audioAnnex.endTime} />
+                   <InfoRow label="Start Time" value={formatTime12(audioAnnex.startTime)} />
+                   <InfoRow label="End Time" value={formatTime12(audioAnnex.endTime)} />
                   <InfoRow label="IQAC Number" value={audioAnnex.iqacNumber} fullWidth />
                 </div>
                 {Object.entries(audioAnnex.audioEquipment || {}).some(([, v]) => v.selected) && (
@@ -750,9 +744,9 @@ const EventDetailModal = ({ event, onClose }) => {
                           <div className="space-y-2">
                             <InfoRow label="Date" value={j?.vehicleDate} />
                             <InfoRow label="From" value={j?.startingPlace} />
-                            <InfoRow label="Start Time" value={j?.startTime} />
+                            <InfoRow label="Start Time" value={formatTime12(j?.startTime)} />
                             <InfoRow label="To" value={j?.endPlace} />
-                            <InfoRow label="End Time" value={j?.endTime} />
+                            <InfoRow label="End Time" value={formatTime12(j?.endTime)} />
                             <InfoRow label="No. of Persons" value={j?.numberOfPersons} />
                           </div>
                         </div>
@@ -782,9 +776,9 @@ const EventDetailModal = ({ event, onClose }) => {
                           <div className="space-y-2">
                             <InfoRow label="Date" value={j?.vehicleDate} />
                             <InfoRow label="From" value={j?.startingPlace} />
-                            <InfoRow label="Start Time" value={j?.startTime} />
+                            <InfoRow label="Start Time" value={formatTime12(j?.startTime)} />
                             <InfoRow label="To" value={j?.endPlace} />
-                            <InfoRow label="End Time" value={j?.endTime} />
+                            <InfoRow label="End Time" value={formatTime12(j?.endTime)} />
                             <InfoRow label="No. of Persons" value={j?.numberOfPersons} />
                           </div>
                         </div>
@@ -851,9 +845,9 @@ const EventDetailModal = ({ event, onClose }) => {
                   <InfoRow label="Male Guests" value={accomAnnex.maleGuests} />
                   <InfoRow label="Female Guests" value={accomAnnex.femaleGuests} />
                   <InfoRow label="Arrival Date" value={accomAnnex.arrivalDate} />
-                  <InfoRow label="Arrival Time" value={accomAnnex.arrivalTime} />
-                  <InfoRow label="Departure Date" value={accomAnnex.departureDate} />
-                  <InfoRow label="Departure Time" value={accomAnnex.departureTime} />
+                   <InfoRow label="Arrival Time" value={formatTime12(accomAnnex.arrivalTime)} />
+                   <InfoRow label="Departure Date" value={accomAnnex.departureDate} />
+                   <InfoRow label="Departure Time" value={formatTime12(accomAnnex.departureTime)} />
                   <InfoRow label="Number of Days" value={accomAnnex.numberOfDays} />
                   <InfoRow label="Number of Rooms" value={accomAnnex.numberOfRooms} />
                 </div>
@@ -921,9 +915,9 @@ const EventDetailModal = ({ event, onClose }) => {
             {mediaAnnex ? (
               <InfoSection title="7. Media Requirements (Annexure VI)" icon={Camera}>
                 <div className="grid grid-cols-2 gap-4 mb-4">
-                  <InfoRow label="Logos Required" value={mediaAnnex.logosRequired} />
-                  <InfoRow label="Photography Time" value={mediaAnnex.photographyTime} />
-                  <InfoRow label="Video Recording Time" value={mediaAnnex.videoRecordingTime} />
+                   <InfoRow label="Logos Required" value={mediaAnnex.logosRequired} />
+                   <InfoRow label="Photography Time" value={formatTime12(mediaAnnex.photographyTime)} />
+                   <InfoRow label="Video Recording Time" value={formatTime12(mediaAnnex.videoRecordingTime)} />
                 </div>
                 {[
                   { label: 'Poster Design', key: 'posterDesign' },

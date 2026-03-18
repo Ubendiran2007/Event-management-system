@@ -5,6 +5,19 @@ import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus } from '../types';
 
+const formatTime12 = (t24) => {
+  if (!t24) return "-";
+  try {
+    const [h, m] = String(t24).split(':');
+    const hh = parseInt(h, 10);
+    const suffix = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
+  } catch (e) {
+    return t24;
+  }
+};
+
 const CHECKLIST_ITEMS = [
   { id: 'requisition-letter-hod', label: 'Requisition Letter to HoD' },
   { id: 'food-transport-requisition', label: 'Food / Transport Requisition Letter' },
@@ -39,7 +52,14 @@ const STATUS_THEME = {
 const toDateRange = (event) => {
   const start = event?.requisition?.step1?.eventStartDate || event?.date || '-';
   const end = event?.requisition?.step1?.eventEndDate || event?.date || '-';
-  return `${start} - ${end}`;
+  const startTime = event?.requisition?.step1?.eventStartTime || event?.startTime || '';
+  const endTime = event?.requisition?.step1?.eventEndTime || event?.endTime || '';
+
+  let range = `${start} - ${end}`;
+  if (startTime && endTime) {
+    range += ` (${formatTime12(startTime)} - ${formatTime12(endTime)})`;
+  }
+  return range;
 };
 
 const yesNo = (value) => (String(value || '').toLowerCase() === 'yes' ? 'Yes' : 'No');

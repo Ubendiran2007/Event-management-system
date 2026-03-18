@@ -20,8 +20,29 @@ import {
   Copy,
   Check,
   ClipboardCopy,
-  ClipboardList
+  ClipboardList,
+  Search,
+  Filter,
+  SlidersHorizontal,
+  ArrowUpRight,
+  Clock3,
+  LayoutDashboard,
+  History,
+  Info
 } from 'lucide-react';
+
+const formatTime12 = (t24) => {
+  if (!t24) return "-";
+  try {
+    const [h, m] = String(t24).split(':');
+    const hh = parseInt(h, 10);
+    const suffix = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
+  } catch (e) {
+    return t24;
+  }
+};
 import { useAppContext } from '../context/AppContext';
 import { UserRole, EventStatus, ODRequestStatus } from '../types';
 import Navbar from '../components/Navbar';
@@ -544,7 +565,7 @@ const Dashboard = () => {
                                         <MapPin size={12} /> {event.venue}
                                       </span>
                                       <span className="text-xs text-slate-500 flex items-center gap-1">
-                                        <Clock size={12} /> {event.date}
+                                        <Clock size={12} /> {event.date} · {formatTime12(event.startTime)}
                                       </span>
                                     </div>
                                     <p className="text-xs text-slate-400 mt-2">By {event.organizerName}</p>

@@ -26,6 +26,12 @@ const Navbar = () => {
         </div>
       </div>
       <div className="flex items-center gap-3 sm:gap-4">
+        <button
+          onClick={() => navigate('/explore')}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all"
+        >
+          Explore
+        </button>
         {currentUser && (
           <>
             <div className="text-right hidden sm:block border-l border-slate-200 pl-4 ml-1">

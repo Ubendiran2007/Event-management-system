@@ -171,6 +171,73 @@ const YesNoToggle = ({ label, value, onChange }) => (
   </div>
 );
 
+const formatTime12 = (t24) => {
+  if (!t24) return "-";
+  try {
+    const [h, m] = t24.split(':');
+    const hh = parseInt(h, 10);
+    const suffix = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
+  } catch (e) {
+    return t24;
+  }
+};
+
+const TimePicker = ({ id, value, onChange, onBlur, className }) => {
+  // Ensure value is HH:mm
+  const val = value || '09:00';
+  const [h, m] = val.split(':');
+  const hh = parseInt(h, 10);
+  const hour12 = hh % 12 || 12;
+  const ampm = hh >= 12 ? 'PM' : 'AM';
+
+  const updateTime = (newH12, newM, newAmpm) => {
+    let h24 = parseInt(newH12, 10);
+    if (newAmpm === 'PM' && h24 < 12) h24 += 12;
+    if (newAmpm === 'AM' && h24 === 12) h24 = 0;
+    const result = `${h24.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
+    onChange({ target: { id, value: result } });
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      <div className="flex-1 flex gap-1 items-center">
+        <select
+          value={hour12.toString().padStart(2, '0')}
+          onChange={(e) => updateTime(e.target.value, m, ampm)}
+          onBlur={onBlur}
+          className={`${className} flex-1 min-w-[65px] text-center appearance-none`}
+        >
+          {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(v => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <span className="font-bold text-slate-400">:</span>
+        <select
+          value={m}
+          onChange={(e) => updateTime(hour12, e.target.value, ampm)}
+          onBlur={onBlur}
+          className={`${className} flex-1 min-w-[65px] text-center appearance-none`}
+        >
+          {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(v => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
+        <select
+          value={ampm}
+          onChange={(e) => updateTime(hour12, m, e.target.value)}
+          onBlur={onBlur}
+          className={`${className} min-w-[56px] px-1 text-center font-bold text-cse-accent appearance-none text-xs`}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
+      </div>
+    </div>
+  );
+};
+
 const RequirementToggle = ({ label, checked, onToggle }) => (
   <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer bg-white">
     <span className="text-sm font-medium text-slate-700">{label}</span>
@@ -1456,9 +1523,8 @@ const CreateEvent = () => {
 
             <div className="space-y-1">
               <Lbl required>Event Start Time</Lbl>
-              <input
+              <TimePicker
                 id="startTime"
-                type="time"
                 className={fieldCls('startTime')}
                 value={form.startTime}
                 onChange={(e) => { setField('startTime', e.target.value); setFE('startTime', ''); }}
@@ -1469,9 +1535,8 @@ const CreateEvent = () => {
 
             <div className="space-y-1">
               <Lbl required>Event End Time</Lbl>
-              <input
+              <TimePicker
                 id="endTime"
-                type="time"
                 className={fieldCls('endTime')}
                 value={form.endTime}
                 onChange={(e) => { setField('endTime', e.target.value); setFE('endTime', ''); }}
@@ -1828,9 +1893,8 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>Start Time</Lbl>
-              <input
+              <TimePicker
                 id="audioStartTime"
-                type="time"
                 className={fieldCls('audioStartTime')}
                 value={form.audioStartTime}
                 onChange={(e) => { setField('audioStartTime', e.target.value); setFE('audioStartTime', ''); }}
@@ -1840,9 +1904,8 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>End Time</Lbl>
-              <input
+              <TimePicker
                 id="audioEndTime"
-                type="time"
                 className={fieldCls('audioEndTime')}
                 value={form.audioEndTime}
                 onChange={(e) => { setField('audioEndTime', e.target.value); setFE('audioEndTime', ''); }}
@@ -2040,13 +2103,22 @@ const CreateEvent = () => {
                       {Object.keys(defaultTransportJourney).map((field) => (
                         <div key={field} className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">{JOURNEY_FIELD_LABELS[field] || field}</label>
-                          <input
-                            className={inputClass}
-                            type={field.toLowerCase().includes('time') ? 'time' : field.toLowerCase().includes('date') ? 'date' : field === 'numberOfPersons' ? 'number' : 'text'}
-                            min={field.toLowerCase().includes('date') ? journeyMinDate : undefined}
-                            value={form.externalTransport[journey][field]}
-                            onChange={(e) => updateJourney('externalTransport', journey, field, e.target.value)}
-                          />
+                          {field.toLowerCase().includes('time') ? (
+                            <TimePicker
+                              id={field}
+                              className={inputClass}
+                              value={form.externalTransport[journey][field]}
+                              onChange={(e) => updateJourney('externalTransport', journey, field, e.target.value)}
+                            />
+                          ) : (
+                            <input
+                              className={inputClass}
+                              type={field.toLowerCase().includes('date') ? 'date' : field === 'numberOfPersons' ? 'number' : 'text'}
+                              min={field.toLowerCase().includes('date') ? journeyMinDate : undefined}
+                              value={form.externalTransport[journey][field]}
+                              onChange={(e) => updateJourney('externalTransport', journey, field, e.target.value)}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2135,13 +2207,22 @@ const CreateEvent = () => {
                       {Object.keys(defaultTransportJourney).map((field) => (
                         <div key={field} className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">{JOURNEY_FIELD_LABELS[field] || field}</label>
-                          <input
-                            className={inputClass}
-                            type={field.toLowerCase().includes('time') ? 'time' : field.toLowerCase().includes('date') ? 'date' : field === 'numberOfPersons' ? 'number' : 'text'}
-                            min={field.toLowerCase().includes('date') ? journeyMinDate : undefined}
-                            value={form.internalTransport[journey][field]}
-                            onChange={(e) => updateJourney('internalTransport', journey, field, e.target.value)}
-                          />
+                          {field.toLowerCase().includes('time') ? (
+                            <TimePicker
+                              id={field}
+                              className={inputClass}
+                              value={form.internalTransport[journey][field]}
+                              onChange={(e) => updateJourney('internalTransport', journey, field, e.target.value)}
+                            />
+                          ) : (
+                            <input
+                              className={inputClass}
+                              type={field.toLowerCase().includes('date') ? 'date' : field === 'numberOfPersons' ? 'number' : 'text'}
+                              min={field.toLowerCase().includes('date') ? journeyMinDate : undefined}
+                              value={form.internalTransport[journey][field]}
+                              onChange={(e) => updateJourney('internalTransport', journey, field, e.target.value)}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2300,9 +2381,8 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>Arrival Time</Lbl>
-              <input
+              <TimePicker
                 id="accom_arrivalTime"
-                type="time"
                 className={fieldCls('accom_arrivalTime')}
                 value={form.accommodation.arrivalTime}
                 onChange={(e) => { updateNested('accommodation.arrivalTime', e.target.value); setFE('accom_arrivalTime', ''); }}
@@ -2325,9 +2405,8 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>Departure Time</Lbl>
-              <input
+              <TimePicker
                 id="accom_departureTime"
-                type="time"
                 className={fieldCls('accom_departureTime')}
                 value={form.accommodation.departureTime}
                 onChange={(e) => { updateNested('accommodation.departureTime', e.target.value); setFE('accom_departureTime', ''); }}
@@ -2451,11 +2530,21 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl>Photography Time</Lbl>
-              <input type="time" className={inputClass} value={form.media.photographyTime} onChange={(e) => updateNested('media.photographyTime', e.target.value)} />
+              <TimePicker
+                id="photographyTime"
+                className={inputClass}
+                value={form.media.photographyTime}
+                onChange={(e) => updateNested('media.photographyTime', e.target.value)}
+              />
             </div>
             <div className="space-y-1">
               <Lbl>Video Recording Time</Lbl>
-              <input type="time" className={inputClass} value={form.media.videoRecordingTime} onChange={(e) => updateNested('media.videoRecordingTime', e.target.value)} />
+              <TimePicker
+                id="videoRecordingTime"
+                className={inputClass}
+                value={form.media.videoRecordingTime}
+                onChange={(e) => updateNested('media.videoRecordingTime', e.target.value)}
+              />
             </div>
 
             {Object.entries(MEDIA_CHECKLIST).map(([bucket, items]) => {
@@ -2507,8 +2596,8 @@ const CreateEvent = () => {
                   </div>
                   <div className="space-y-1">
                     <Lbl required>Needed By Time</Lbl>
-                    <input
-                      type="time"
+                    <TimePicker
+                      id="preEventPosterNeededByTime"
                       className={inputClass}
                       value={form.media.preEventPosterNeededByTime}
                       onChange={(e) => updateNested('media.preEventPosterNeededByTime', e.target.value)}
@@ -2567,7 +2656,7 @@ const CreateEvent = () => {
               <p><span className="font-semibold">Type:</span> {form.eventType || '-'}</p>
               <p><span className="font-semibold">Dates:</span> {form.startDate || '-'} to {form.endDate || '-'}</p>
               <p><span className="font-semibold">Days:</span> {numberOfDays || '-'}</p>
-              <p><span className="font-semibold">Time:</span> {form.startTime || '-'} - {form.endTime || '-'}</p>
+              <p><span className="font-semibold">Time:</span> {formatTime12(form.startTime)} - {formatTime12(form.endTime)}</p>
               <p><span className="font-semibold">Organizer:</span> {form.organizerName || '-'}</p>
               <p><span className="font-semibold">Department:</span> {form.department || '-'}</p>
               <p><span className="font-semibold">IQAC Number:</span> {iqacNumber}</p>

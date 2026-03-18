@@ -11,6 +11,19 @@ import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
 import defaultPoster from '../assets/sece.avif';
 
+const formatTime12 = (t24) => {
+  if (!t24) return "-";
+  try {
+    const [h, m] = String(t24).split(':');
+    const hh = parseInt(h, 10);
+    const suffix = hh >= 12 ? 'PM' : 'AM';
+    const h12 = hh % 12 || 12;
+    return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
+  } catch (e) {
+    return t24;
+  }
+};
+
 // ── IQAC Summary Modal ─────────────────────────────────────────────────────────
 const IQACSummaryModal = ({ event, onClose }) => {
   if (!event) return null;
@@ -377,7 +390,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
               </h2>
               <p className="text-sm text-slate-600 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-medium">
                 <span className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-500" /> {s1?.eventStartDate}{s1?.eventEndDate && s1.eventEndDate !== s1.eventStartDate ? ` – ${s1.eventEndDate}` : ''}</span>
-                <span className="flex items-center gap-1.5"><Clock size={14} className="text-slate-500" /> {s1?.eventStartTime} – {s1?.eventEndTime}</span>
+                <span className="flex items-center gap-1.5"><Clock size={14} className="text-slate-500" /> {formatTime12(s1?.eventStartTime)} – {formatTime12(s1?.eventEndTime)}</span>
                 {event.venue && <span className="flex items-center gap-1.5"><MapPin size={14} className="text-slate-500" /> {event.venue}</span>}
               </p>
             </div>
@@ -748,7 +761,7 @@ const EventCard = ({
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Clock size={14} />
-            <span className="text-xs">{event.requisition?.step1?.eventStartTime} - {event.requisition?.step1?.eventEndTime}</span>
+            <span className="text-xs">{formatTime12(event.requisition?.step1?.eventStartTime)} - {formatTime12(event.requisition?.step1?.eventEndTime)}</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <MapPin size={14} />
