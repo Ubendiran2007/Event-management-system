@@ -845,9 +845,9 @@ const ExploreEvents = () => {
       if (!silent) setLoading(true);
       const allEvents = await fetchEvents();
       // Show both POSTED and COMPLETED events in the explore page
-      const visibleEvents = allEvents.filter(
-        e => e.status === EventStatus.POSTED || e.status === EventStatus.COMPLETED
-      );
+      const visibleEvents = allEvents
+        .filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.COMPLETED)
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       setEvents(visibleEvents);
     } catch (error) {
       console.error('Error loading events:', error);
