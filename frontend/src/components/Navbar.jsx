@@ -25,8 +25,9 @@ const Navbar = () => {
           <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wide">Department of Computer Science</p>
         </div>
       </div>
+      <div className="flex items-center gap-3 sm:gap-4">
         {currentUser && (
-          <div className="flex items-center gap-3 sm:gap-4">
+          <>
             <div className="text-right hidden sm:block border-l border-slate-200 pl-4 ml-1">
               <p className="text-sm font-semibold">{currentUser.name}</p>
               <p className="text-xs text-slate-500 uppercase tracking-tight">{currentUser.role.replace('_', ' ')}</p>
@@ -38,7 +39,7 @@ const Navbar = () => {
             >
               <LogOut size={20} />
             </button>
-          </div>
+          </>
         )}
         {!currentUser && (
           <button
@@ -48,6 +49,7 @@ const Navbar = () => {
             Login
           </button>
         )}
+      </div>
     </nav>
   );
 };
