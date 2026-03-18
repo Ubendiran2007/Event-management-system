@@ -494,7 +494,7 @@ const Dashboard = () => {
               </div>
 
               {/* Fixed-height scrollable container for tab content */}
-              <div className="h-[460px] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+              <div className="h-[385px] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                 {/* Events Tab Content */}
                 {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                   let displayEvents = [];
@@ -724,8 +724,8 @@ const Dashboard = () => {
                                     </span>
                                   ) : (
                                     <span className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border shadow-sm ${req.status === 'APPROVED'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : 'bg-red-50 text-red-700 border-red-200'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-red-50 text-red-700 border-red-200'
                                       }`}>
                                       {req.status === 'APPROVED' ? <CheckCircle size={14} /> : <XCircle size={14} />}
                                       {req.status === 'APPROVED' ? 'Approved' : 'Rejected'}
@@ -753,8 +753,8 @@ const Dashboard = () => {
                               type="button"
                               onClick={() => setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
                               className={`w-full transition-all duration-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left border ${isExpanded
-                                  ? 'bg-white border-blue-100 shadow-md shadow-blue-900/5 mb-4'
-                                  : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80 mb-2'
+                                ? 'bg-white border-blue-100 shadow-md shadow-blue-900/5 mb-4'
+                                : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80 mb-2'
                                 }`}
                             >
                               <div>
@@ -901,8 +901,8 @@ const Dashboard = () => {
                                                 <button
                                                   onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
                                                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${isCopied
-                                                      ? 'bg-emerald-500 text-white'
-                                                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                                    ? 'bg-emerald-500 text-white'
+                                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                                                     }`}
                                                 >
                                                   {isCopied ? (
@@ -967,12 +967,12 @@ const Dashboard = () => {
                           </div>
                           <div className="flex items-center gap-3">
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${request.status === ODRequestStatus.APPROVED
-                                ? 'bg-emerald-50 text-emerald-600'
-                                : request.status === ODRequestStatus.REJECTED
-                                  ? 'bg-red-50 text-red-600'
-                                  : request.status === ODRequestStatus.WITHDRAWN
-                                    ? 'bg-slate-100 text-slate-400 line-through'
-                                    : 'bg-amber-50 text-amber-600'
+                              ? 'bg-emerald-50 text-emerald-600'
+                              : request.status === ODRequestStatus.REJECTED
+                                ? 'bg-red-50 text-red-600'
+                                : request.status === ODRequestStatus.WITHDRAWN
+                                  ? 'bg-slate-100 text-slate-400 line-through'
+                                  : 'bg-amber-50 text-amber-600'
                               }`}>
                               {request.status.replace(/_/g, ' ')}
                             </span>
