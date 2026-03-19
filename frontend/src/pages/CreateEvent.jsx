@@ -259,6 +259,36 @@ const CreateEvent = () => {
   const [fieldErrors, setFieldErrors] = useState({});
   // Shows red on qty=0 rows ONLY after user clicks Next and validation fails
   const [qtyErrorsVisible, setQtyErrorsVisible] = useState(false);
+  const [touchedQuantities, setTouchedQuantities] = useState({});
+  const [fetchedDepartments, setFetchedDepartments] = useState([]);
+
+  const setQtyTouched = (category, item, val = true) => {
+    setTouchedQuantities(prev => ({
+      ...prev,
+      [`${category}.${item}`]: val
+    }));
+  };
+
+  // Fetch departments from coordinators on mount
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const response = await fetch('http://localhost:5001/api/events/coordinators/list');
+        const data = await response.json();
+        if (data.success && data.coordinators) {
+          const depts = [...new Set(data.coordinators.map(c => c.department).filter(Boolean))].sort();
+          if (depts.length > 0) {
+            setFetchedDepartments(depts);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch departments:', err);
+      }
+    };
+    fetchDepartments();
+  }, []);
+
+  const activeDepartments = fetchedDepartments.length > 0 ? fetchedDepartments : DEPARTMENTS;
 
   const setFE = (key, msg) => setFieldErrors((prev) => ({ ...prev, [key]: msg || '' }));
 
@@ -450,27 +480,42 @@ const CreateEvent = () => {
     }
   }, [form.startDate]);
 
-  // Sync Audio Date and Venue automatically
+  // Sync Audio Date, Venue, and Times automatically
   useEffect(() => {
     setForm(prev => {
       let updated = { ...prev };
-      // Sync Date
-      if (prev.startDate) {
+      let changed = false;
+
+      // Sync Date if not set
+      if (prev.startDate && !prev.audioDate) {
         updated.audioDate = prev.startDate;
+        changed = true;
+      }
+      
+      // Sync Times if not set
+      if (prev.startTime && !prev.audioStartTime) {
+        updated.audioStartTime = prev.startTime;
+        changed = true;
+      }
+      if (prev.endTime && !prev.audioEndTime) {
+        updated.audioEndTime = prev.endTime;
+        changed = true;
       }
       
       // Sync Venue: Collect all selected venues
       const selectedVenues = Object.entries(prev.venueSelection)
-        .filter(([venue, data]) => data.selected)
+        .filter(([_, data]) => data.selected)
         .map(([venue]) => venue);
       
-      if (selectedVenues.length > 0) {
-        updated.audioVenueName = selectedVenues.join(', ');
+      const newVenueName = selectedVenues.join(', ');
+      if (newVenueName && !prev.audioVenueName) {
+        updated.audioVenueName = newVenueName;
+        changed = true;
       }
 
-      return updated;
+      return changed ? updated : prev;
     });
-  }, [form.startDate, form.venueSelection]);
+  }, [form.startDate, form.startTime, form.endTime, form.venueSelection]);
 
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
@@ -659,6 +704,10 @@ const CreateEvent = () => {
         },
       },
     }));
+    // If we're toggling on/off, we can reset touched state for this key
+    if (patch.selected !== undefined) {
+      setQtyTouched(field, key, false);
+    }
   };
 
   const updateNested = (path, value) => {
@@ -994,8 +1043,8 @@ const CreateEvent = () => {
         setStepError('Audio End Time must be after Audio Start Time.');
         return false;
       }
-      // Every selected audio equipment must have qty >= 1
-      const audioZeroQty = Object.entries(form.audioEquipment || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
+      // Every selected audio equipment must have qty >= 1 (Except AC)
+      const audioZeroQty = Object.entries(form.audioEquipment || {}).find(([k, v]) => v.selected && k !== 'AC' && Number(v.qty) <= 0);
       if (audioZeroQty) {
         setStepError(`Quantity for audio equipment "${audioZeroQty[0]}" must be at least 1.`);
         return false;
@@ -1583,7 +1632,8 @@ const CreateEvent = () => {
                 onBlur={(e) => validateField('department', e.target.value)}
               >
                 <option value="">Select Department</option>
-                {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                {activeDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
+                {!activeDepartments.includes('Other') && <option value="Other">Other</option>}
               </select>
               <FieldMsg errKey="department" />
             </div>
@@ -1800,7 +1850,8 @@ const CreateEvent = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {VENUE_OPTIONS.map((v) => {
                   const item = form.venueSelection[v];
-                  const qtyInvalid = qtyErrorsVisible && item.selected && Number(item.qty) <= 0;
+                  const isTouched = touchedQuantities[`venueSelection.${v}`];
+                  const qtyInvalid = (qtyErrorsVisible || isTouched) && item.selected && Number(item.qty || 0) <= 0;
                   return (
                     <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
                       <input
@@ -1817,6 +1868,7 @@ const CreateEvent = () => {
                           className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
                           value={item.qty}
                           onChange={(e) => updateQtyMap('venueSelection', v, { qty: Number(e.target.value || 0) })}
+                          onBlur={() => setQtyTouched('venueSelection', v, true)}
                           placeholder="Qty"
                         />
                         {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
@@ -1832,7 +1884,8 @@ const CreateEvent = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {HALL_REQUIREMENTS.map((v) => {
                   const item = form.hallRequirements[v];
-                  const qtyInvalid = qtyErrorsVisible && item.selected && Number(item.qty) <= 0;
+                  const isTouched = touchedQuantities[`hallRequirements.${v}`];
+                  const qtyInvalid = (qtyErrorsVisible || isTouched) && item.selected && Number(item.qty || 0) <= 0;
                   return (
                     <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
                       <input
@@ -1849,6 +1902,7 @@ const CreateEvent = () => {
                           className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
                           value={item.qty}
                           onChange={(e) => updateQtyMap('hallRequirements', v, { qty: Number(e.target.value || 0) })}
+                          onBlur={() => setQtyTouched('hallRequirements', v, true)}
                           placeholder="Qty"
                         />
                         {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
@@ -1936,7 +1990,8 @@ const CreateEvent = () => {
                   const item = form.audioEquipment[v];
                   // AC does not need a quantity count validation
                   const isAC = v === 'AC';
-                  const qtyInvalid = qtyErrorsVisible && item.selected && !isAC && Number(item.qty) <= 0;
+                  const isTouched = touchedQuantities[`audioEquipment.${v}`];
+                  const qtyInvalid = (qtyErrorsVisible || isTouched) && item.selected && !isAC && Number(item.qty || 0) <= 0;
                   return (
                     <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
                       <input
@@ -1954,6 +2009,7 @@ const CreateEvent = () => {
                             className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
                             value={item.qty}
                             onChange={(e) => updateQtyMap('audioEquipment', v, { qty: Number(e.target.value || 0) })}
+                            onBlur={() => setQtyTouched('audioEquipment', v, true)}
                             placeholder="Qty"
                           />
                           {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
