@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import './App.css';
 
-const Landing = lazy(() => import('./pages/landing'));
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const CreateEvent = lazy(() => import('./pages/CreateEvent'));
@@ -17,7 +16,7 @@ export default function App() {
       <AppProvider>
         <Suspense fallback={null}>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Login />} />
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/create-event" element={<CreateEvent />} />

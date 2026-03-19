@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -13,150 +12,119 @@ import {
   Mail,
   Building2,
   Phone,
-  BarChart3,
-  Camera,
-  Layers,
 } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import { fetchEvents } from '../services/firebaseService';
 
 const features = [
   {
     icon: Calendar,
     title: 'Structured Event Workflow',
-    description: 'Create and publish events through a clear, multi-stage approval process with full departmental visibility.',
+    description: 'Create and publish events through a clear, approval-based process with full visibility.',
   },
   {
     icon: Users,
-    title: 'Student Participation & OD',
-    description: 'Real-time monitoring of registrations and automated OD request handling for sanctioned events.',
-  },
-  {
-    icon: BarChart3,
-    title: 'IQAC Analytics',
-    description: 'Transform event operations into structured academic data with automated attendance and feedback summaries.',
+    title: 'Student OD Management',
+    description: 'Handle OD requests and status updates in one centralized dashboard for all stakeholders.',
   },
   {
     icon: ShieldCheck,
-    title: 'Academic Compliance',
-    description: 'Ensure all departmental activities meet institutional standards before they are published to students.',
+    title: 'Role-Based Controls',
+    description: 'Faculty, HOD, Principal, and students get focused experiences based on their permissions.',
+  },
+  {
+    icon: ClipboardCheck,
+    title: 'IQAC Documentation',
+    description: 'Capture feedback, reports, and closure documentation with built-in submission windows.',
+  },
+];
+
+const trustIndicators = [
+  { value: '4', label: 'Approval Stages' },
+  { value: '100+', label: 'Student Records' },
+  { value: '24/7', label: 'Portal Availability' },
+  { value: '1', label: 'Unified Platform' },
+];
+
+const process = [
+  {
+    title: 'Plan',
+    description: 'Create event details, budget, logistics, and participant information in one proposal.',
+  },
+  {
+    title: 'Approve',
+    description: 'Route approvals through Faculty, HOD, and Principal with transparent status tracking.',
+  },
+  {
+    title: 'Execute',
+    description: 'Run registrations and OD requests while monitoring updates from a shared dashboard.',
+  },
+  {
+    title: 'Close',
+    description: 'Submit reports, collect feedback, and finalize IQAC documentation with clear deadlines.',
+  },
+];
+
+const testimonials = [
+  {
+    quote: 'Approval tracking is clearer now, and we spend less time following up manually.',
+    name: 'Faculty Coordinator',
+  },
+  {
+    quote: 'Students understand event status quickly, and OD request handling is much faster.',
+    name: 'Department Office',
+  },
+  {
+    quote: 'IQAC submissions are more consistent because the workflow is built into the portal.',
+    name: 'Academic Team',
   },
 ];
 
 const Landing = () => {
   const navigate = useNavigate();
-  const [stats, setStats] = useState({
-    events: 0,
-    students: 0,
-    completed: 0,
-    attendance: 0
-  });
-  const [recentEvidence, setRecentEvidence] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const loadRealData = async () => {
-      try {
-        const events = await fetchEvents();
-        
-        // Filter completed events (IQAC submitted)
-        const completedEvents = events.filter(e => 
-          e.status === 'COMPLETED' || e.iqacSubmittedAt || e.iqacData
-        );
-
-        // Gather statistics
-        let totalAttendance = 0;
-        let evidencePhotos = [];
-
-        completedEvents.forEach(e => {
-          const iqac = e.iqacData || {};
-          const registration = iqac.registration || {};
-          const attendance = registration.attendance || {};
-          totalAttendance += Number(attendance.total || 0);
-
-          // Get some gallery photos if they exist
-          if (iqac.gallery && iqac.gallery.length > 0) {
-            iqac.gallery.slice(0, 2).forEach(photo => {
-              evidencePhotos.push({
-                url: photo.url || photo.dataUrl,
-                title: e.title,
-                date: e.date
-              });
-            });
-          }
-        });
-
-        setStats({
-          events: events.length,
-          students: 500, // Fallback or could fetch students
-          completed: completedEvents.length,
-          attendance: totalAttendance
-        });
-
-        setRecentEvidence(evidencePhotos.slice(0, 6));
-      } catch (err) {
-        console.error("Failed to load landing stats:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadRealData();
-  }, []);
-
-  const trustIndicators = [
-    { value: stats.completed > 0 ? stats.completed.toString() : '12', label: 'IQAC Reports Filed' },
-    { value: stats.attendance > 0 ? `${stats.attendance}+` : '450+', label: 'Verified Attendances' },
-    { value: '100%', label: 'Process Compliance' },
-    { value: '1', label: 'Unified Ecosystem' },
-  ];
 
   return (
-    <div className="min-h-screen flex flex-col text-slate-900 bg-[#f8fbff]">
+    <div className="min-h-screen flex flex-col text-slate-900">
       <Navbar />
 
       <main>
-        {/* Hero Section */}
-        <section className="px-6 pt-16 pb-12 overflow-hidden relative">
-          <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-blue-50/50 to-transparent -z-10 blur-3xl pointer-events-none" />
+        <section className="px-6 pt-14 pb-12">
           <div className="max-w-6xl mx-auto">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 text-blue-700 border border-blue-100 px-4 py-2 text-xs font-bold mb-8 uppercase tracking-wider shadow-sm">
-                <ShieldCheck size={14} /> IQAC Compliant Event Management
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 text-blue-700 border border-blue-100 px-4 py-2 text-sm font-semibold mb-6">
+                <Building2 size={15} /> Sri Eshwar College of Engineering
               </div>
-              <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6 text-slate-900">
-                Institutional <span className="text-blue-600">Event Operations</span> Powered by IQAC
+              <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight leading-tight mb-5">
+                Professional Event Operations for the CSE Department
               </h1>
-              <p className="text-slate-600 text-lg leading-relaxed max-w-xl mb-10">
-                A professional ecosystem for the CSE Department to manage the full lifecycle of events—from multi-tier approvals to automated IQAC evidence closure.
+              <p className="text-slate-600 text-lg leading-relaxed max-w-xl mb-8">
+                A clean, centralized platform to manage event proposals, approvals, student OD requests, and IQAC reporting from one place.
               </p>
-              <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={() => navigate('/login')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl transition-all shadow-lg hover:shadow-blue-200 active:scale-95"
+                  className="btn-primary inline-flex items-center justify-center gap-2 px-6 py-3"
                 >
-                  Start Proposal
-                  <ArrowRight size={18} />
+                  Get Started
+                  <ArrowRight size={17} />
                 </button>
                 <button
                   onClick={() => navigate('/explore')}
-                  className="bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl transition-all shadow-sm active:scale-95"
+                  className="btn-secondary inline-flex items-center justify-center gap-2 px-6 py-3"
                 >
-                  Explore Public Events
-                  <ChevronRight size={18} />
+                  Explore Events
+                  <ChevronRight size={16} />
                 </button>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Dynamic Stats Section */}
-        <section className="px-6 pb-20">
-          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6">
+        <section className="px-6 pb-14">
+          <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4">
             {trustIndicators.map((stat) => (
-              <div key={stat.label} className="bg-white border border-slate-100 shadow-sm rounded-[2rem] p-8 text-center transition-transform hover:-translate-y-1">
-                <p className="text-4xl font-black text-blue-600">{stat.value}</p>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">{stat.label}</p>
+              <div key={stat.label} className="glass-panel rounded-xl p-5 text-center">
+                <p className="text-2xl font-extrabold text-slate-900">{stat.value}</p>
+                <p className="text-sm text-slate-600 mt-1">{stat.label}</p>
               </div>
             ))}
           </div>
