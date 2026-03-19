@@ -114,68 +114,44 @@ router.post('/', async (req, res) => {
 
     const docRef = await addDoc(collection(db, 'events'), payload);
 
-    // Send email notification based on initial status (Student vs Faculty creation)
-    try {
-      if (payload.status === 'PENDING_HOD') {
-        const officialEmails = await getOfficialEmailsByRole('HOD');
-        if (officialEmails.length > 0) {
-          const requests = officialEmails.map(email => 
-            sendApprovalRequestToRole(payload, email, 'HOD')
-          );
-          await Promise.allSettled(requests);
-          console.log(`[events/create] Email sent to HODs (Faculty created event)`);
-        } else {
-          console.warn('[events/create] No HOD emails found for notification');
-        }
-      } else {
-        // Default (Student created) - send to Faculty
-        let facultyEmail =
-          eventData.coordinator?.facultyEmail ||
-          eventData.coordinator?.faculty_email ||
-          eventData.facultyEmail ||
-          null;
-
-        if (typeof facultyEmail === 'string') {
-          facultyEmail = facultyEmail.trim().toLowerCase();
-        }
-
-        if (!facultyEmail && eventData.coordinator?.facultyName) {
-          facultyEmail = await getFacultyEmailByName(String(eventData.coordinator.facultyName).trim());
-        }
-
-        if (facultyEmail) {
-          const emailResult = await sendEventNotificationToFaculty(payload, facultyEmail);
-          if (!emailResult.success) {
-            console.warn('[events/create] Email notification failed:', emailResult.error);
-          } else {
-            console.log(`[events/create] Email sent to faculty: ${facultyEmail}`);
+    // ── Background Notifications ─────────────────────────────────────────────
+    // Execute all email notifications in background to prevent blocking the API.
+    setImmediate(async () => {
+      try {
+        // 1. Initial approval notification (Faculty vs HOD)
+        if (payload.status === 'PENDING_HOD') {
+          // Faculty created event -> Notify HODs
+          const officialEmails = await getOfficialEmailsByRole('HOD');
+          if (officialEmails.length > 0) {
+            Promise.allSettled(officialEmails.map(email => 
+              sendApprovalRequestToRole(payload, email, 'HOD')
+            )).catch(e => console.error('[events/create/bg] Error notifying HODs:', e.message));
           }
         } else {
-          console.warn('[events/create] No faculty email found in payload or Firestore');
+          // Student created event -> Notify Faculty
+          let facultyEmail = eventData.coordinator?.facultyEmail || eventData.coordinator?.faculty_email || eventData.facultyEmail || null;
+          if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
+          if (!facultyEmail && eventData.coordinator?.facultyName) {
+            facultyEmail = await getFacultyEmailByName(String(eventData.coordinator.facultyName).trim());
+          }
+          if (facultyEmail) {
+            await sendEventNotificationToFaculty(payload, facultyEmail);
+          }
         }
-      }
-    } catch (emailError) {
-      console.error('[events/create] Error sending initial email:', emailError);
-      // Don't fail the event creation if email fails
-    }
 
-    // Send email notification to Media team if poster is requested
-    if (payload.posterWorkflow?.requested) {
-      try {
-        const mediaEmails = await getOfficialEmailsByRole('MEDIA');
-        if (mediaEmails.length > 0) {
-          const requests = mediaEmails.map(email =>
-            sendPosterRequestEmail(payload, email)
-          );
-          await Promise.allSettled(requests);
-          console.log(`[events/create] Email sent to Media team for event ${docRef.id}`);
-        } else {
-          console.warn('[events/create] No MEDIA users found for poster request email');
+        // 2. Media Team notification (Poster request)
+        if (payload.posterWorkflow?.requested) {
+          const mediaEmails = await getOfficialEmailsByRole('MEDIA');
+          if (mediaEmails.length > 0) {
+            Promise.allSettled(mediaEmails.map(email => 
+              sendPosterRequestEmail(payload, email)
+            )).catch(e => console.error('[events/create/bg] Error notifying MEDIA:', e.message));
+          }
         }
-      } catch (mediaError) {
-        console.error('[events/create] Error notifying MEDIA:', mediaError);
+      } catch (err) {
+        console.error('[events/create/bg] Error executing background notifications:', err.message);
       }
-    }
+    });
 
     return res.status(201).json({
       success: true,
@@ -329,75 +305,67 @@ router.patch('/:id/status', async (req, res) => {
 
     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
 
-    // Send status notification to event organizer if applicable
-    if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC', 'POSTED', 'REJECTED'].includes(status)) {
-      try {
-        const emailResult = await sendEventStatusNotification(eventData.organizerEmail, eventData, status);
-        if (!emailResult.success) {
-          console.warn('[events/status] Email notification failed for organizer:', emailResult.error);
+    // ── Background Notifications ─────────────────────────────────────────────
+    // We execute these without awaiting so the user gets an immediate response.
+    // Each block has internal catch logic to prevent unhandled rejections.
+    
+    setImmediate(async () => {
+      // 1. Status notification to organizer
+      if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC', 'POSTED', 'REJECTED'].includes(status)) {
+        try {
+          await sendEventStatusNotification(eventData.organizerEmail, eventData, status);
+        } catch (emailError) {
+          console.error('[events/status/bg] Error sending email to organizer:', emailError.message);
         }
-      } catch (emailError) {
-        console.error('[events/status] Error sending email to organizer:', emailError);
       }
-    }
 
-    // Send action required notification to the next approver (HOD/IQAC or teams)
-    if (['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC'].includes(status)) {
-      let nextRoles = [];
-      if (status === 'PENDING_HOD') nextRoles = ['HOD'];
-      else if (status === 'PENDING_IQAC') nextRoles = ['IQAC_TEAM'];
-      else if (status === 'PENDING_DEPARTMENTS') {
-        const reqs = eventData.requisition?.step1?.requirements || {};
-        const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
-        
-        nextRoles = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM'];
-        
-        if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
-          const accom = eventData.requisition?.annexureV_accommodation || {};
-          const males = Number(accom.maleGuests || 0);
-          const females = Number(accom.femaleGuests || 0);
-          
-          if (males > 0) nextRoles.push('BOYS_WARDEN');
-          if (females > 0) nextRoles.push('GIRLS_WARDEN');
-          // Fallback if no guest counts but accommodation requested (e.g. only dining)
-          if (males === 0 && females === 0) nextRoles.push('BOYS_WARDEN');
-        }
-      }
-      
-      try {
-        for (const nextRole of nextRoles) {
-          const officialEmails = await getOfficialEmailsByRole(nextRole);
-          if (officialEmails.length > 0) {
-            // Send to the first official found (or wrap in Promise.all for all)
-            const requests = officialEmails.map(email => 
-              sendApprovalRequestToRole(eventData, email, nextRole)
-            );
-            await Promise.allSettled(requests);
-          } else {
-            console.warn(`[events/status] No users found with role ${nextRole} to send approval request`);
+      // 2. Notifications to next approvers
+      if (['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC'].includes(status)) {
+        let nextRoles = [];
+        if (status === 'PENDING_HOD') nextRoles = ['HOD'];
+        else if (status === 'PENDING_IQAC') nextRoles = ['IQAC_TEAM'];
+        else if (status === 'PENDING_DEPARTMENTS') {
+          const reqs = eventData.requisition?.step1?.requirements || {};
+          const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
+          nextRoles = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM'];
+          if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
+            const accom = eventData.requisition?.annexureV_accommodation || {};
+            const males = Number(accom.maleGuests || 0);
+            const females = Number(accom.femaleGuests || 0);
+            if (males > 0) nextRoles.push('BOYS_WARDEN');
+            if (females > 0) nextRoles.push('GIRLS_WARDEN');
+            if (males === 0 && females === 0) nextRoles.push('BOYS_WARDEN');
           }
         }
-      } catch (officialError) {
-        console.error(`[events/status] Error notifying approvers:`, officialError);
-      }
-    }
-
-    // Trigger poster request to Media if event becomes POSTED and needs a poster
-    if (status === 'POSTED' && eventData.posterWorkflow?.requested) {
-      try {
-        const mediaEmails = await getOfficialEmailsByRole('MEDIA');
-        if (mediaEmails.length > 0) {
-          const requests = mediaEmails.map(email =>
-            sendPosterRequestEmail(eventData, email)
-          );
-          await Promise.allSettled(requests);
-        } else {
-          console.warn('[events/status] No MEDIA users found for poster request email');
+        
+        for (const nextRole of nextRoles) {
+          try {
+            const officialEmails = await getOfficialEmailsByRole(nextRole);
+            if (officialEmails.length > 0) {
+              Promise.allSettled(officialEmails.map(email => 
+                sendApprovalRequestToRole(eventData, email, nextRole)
+              )).catch(e => console.error(`[events/status/bg] Error notifying ${nextRole}:`, e.message));
+            }
+          } catch (officialError) {
+            console.error(`[events/status/bg] Error fetching official emails for ${nextRole}:`, officialError.message);
+          }
         }
-      } catch (mediaError) {
-        console.error('[events/status] Error notifying MEDIA:', mediaError);
       }
-    }
+
+      // 3. Poster request to Media
+      if (status === 'POSTED' && eventData.posterWorkflow?.requested) {
+        try {
+          const mediaEmails = await getOfficialEmailsByRole('MEDIA');
+          if (mediaEmails.length > 0) {
+            Promise.allSettled(mediaEmails.map(email => 
+              sendPosterRequestEmail(eventData, email)
+            )).catch(e => console.error('[events/status/bg] Error notifying MEDIA:', e.message));
+          }
+        } catch (mediaError) {
+          console.error('[events/status/bg] Error fetching MEDIA emails:', mediaError.message);
+        }
+      }
+    });
 
     return res.json({
       success: true,
@@ -468,17 +436,19 @@ router.patch('/:id/department-approval', async (req, res) => {
     if (allApproved && eventData.status === 'PENDING_DEPARTMENTS') {
       updatePayload.status = 'PENDING_IQAC';
       
-      // Auto-notify IQAC here in parallel to avoid blocking the response
-      try {
-        const iqacEmails = await getOfficialEmailsByRole('IQAC_TEAM');
-        Promise.all(iqacEmails.map(email => 
-          sendApprovalRequestToRole(eventData, email, 'IQAC_TEAM')
-            .catch(e => console.error(`Error notifying IQAC member ${email}:`, e))
-        ));
-        // Note: We don't await the Promise.all here because we want to return the response to the user immediately.
-      } catch (e) {
-        console.error('Error starting IQAC notifications:', e);
-      }
+      // Auto-notify IQAC here in background
+      setImmediate(async () => {
+        try {
+          const iqacEmails = await getOfficialEmailsByRole('IQAC_TEAM');
+          if (iqacEmails.length > 0) {
+            Promise.allSettled(iqacEmails.map(email => 
+              sendApprovalRequestToRole(eventData, email, 'IQAC_TEAM')
+            )).catch(e => console.error('[events/dept-approval/bg] Error notifying IQAC:', e.message));
+          }
+        } catch (e) {
+          console.error('[events/dept-approval/bg] Error starting IQAC notifications:', e.message);
+        }
+      });
     }
 
     await updateDoc(eventRef, updatePayload);
@@ -563,29 +533,24 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     };
     await updateDoc(eventRef, updatePayload);
 
-    // After resubmitting, we can notify the faculty again
-    try {
-      const payloadWithId = { id: req.params.id, ...updatePayload };
-      let facultyEmail =
-        updatePayload.coordinator?.facultyEmail ||
-        updatePayload.coordinator?.faculty_email ||
-        updatePayload.facultyEmail ||
-        null;
+    // After resubmitting, notify the faculty in the background
+    setImmediate(async () => {
+      try {
+        const payloadWithId = { id: req.params.id, ...updatePayload };
+        let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
+        if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
+        
+        if (!facultyEmail && updatePayload.coordinator?.facultyName) {
+          facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
+        }
 
-      if (typeof facultyEmail === 'string') {
-        facultyEmail = facultyEmail.trim().toLowerCase();
+        if (facultyEmail) {
+          await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
+        }
+      } catch (emailError) {
+        console.error('[events/resubmit-edit/bg] Error sending email:', emailError.message);
       }
-
-      if (!facultyEmail && updatePayload.coordinator?.facultyName) {
-        facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
-      }
-
-      if (facultyEmail) {
-        await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
-      }
-    } catch (emailError) {
-      console.error('[events/resubmit-edit] Error sending email:', emailError);
-    }
+    });
 
     return res.json({
       success: true,
