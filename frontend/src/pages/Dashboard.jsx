@@ -19,6 +19,7 @@ import {
   UserCheck,
   Copy,
   Check,
+  Download,
   ClipboardCopy,
   ClipboardList,
   Search,
@@ -50,6 +51,7 @@ import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
 import cseDeptImg from '../assets/cse_b.jpg';
+import seceHeader from '../assets/sece header.jpeg';
 
 const Dashboard = () => {
   const {
@@ -353,6 +355,163 @@ const Dashboard = () => {
     setTimeout(() => {
       setCopiedStates(prev => ({ ...prev, [key]: false }));
     }, 2000);
+  };
+
+  const shareDeptList = async (dept, students, eventTitle) => {
+    const listText = students.map((s, i) => `${i + 1}. ${s.studentName} (${s.rollNo}) - ${s.class}`).join('\n');
+    const shareText = `APPROVED PARTICIPANT OD LIST: ${eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `OD List - ${dept}`,
+          text: shareText,
+        });
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('Error sharing:', err);
+          copyToClipboard(shareText, `${eventTitle}-${dept}`);
+        }
+      }
+    } else {
+      copyToClipboard(shareText, `${eventTitle}-${dept}`);
+    }
+  };
+
+  const downloadDeptListAsPDF = (dept, students, group) => {
+    const listHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title></title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { 
+      size: A4; 
+      margin: 0; 
+    }
+    body { 
+      font-family: 'Times New Roman', Times, serif; 
+      color: #1a202c; 
+      background: #fff; 
+      padding: 18mm 15mm;
+    }
+    .header { border-bottom: 3px double #1a3a6b; margin-bottom: 25px; padding-bottom: 12px; }
+    .header-image { width: 100%; max-height: 90px; object-fit: contain; }
+    .doc-title { text-align: center; font-size: 16pt; font-weight: bold; color: #1a3a6b; margin-top: 15px; text-decoration: underline; text-transform: uppercase; letter-spacing: 0.5px; }
+    .meta-info { margin-bottom: 25px; font-size: 11.5pt; line-height: 1.6; color: #2d3748; border: 1px solid #cbd5e0; padding: 15px; border-radius: 8px; background: #f8fafc; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e0; }
+    th, td { border: 1px solid #cbd5e0; padding: 10px 12px; text-align: left; font-size: 10.5pt; }
+    th { background-color: #f1f5f9; color: #1e293b; font-weight: bold; text-transform: uppercase; font-size: 9.5pt; }
+    tr:nth-child(even) { background-color: #f8fafc; }
+    .footer { margin-top: 40px; font-size: 9.5pt; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+    .sig-space { margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .sig-box { text-align: center; flex: 1; }
+    .sig-label { font-size: 10pt; font-weight: bold; margin-top: 8px; color: #1e293b; }
+    
+    .e-stamp {
+      display: inline-block;
+      border: 2px solid #059669;
+      border-radius: 8px;
+      padding: 6px 12px;
+      background: #ecfdf5;
+      margin-bottom: 4px;
+      min-width: 140px;
+    }
+    .e-stamp .check { font-size: 16pt; color: #059669; display: block; line-height: 1; margin-bottom: 2px; }
+    .e-stamp .esigned { font-size: 8pt; font-weight: bold; color: #059669; text-transform: uppercase; letter-spacing: 0.5px; }
+    .e-stamp .ename { font-size: 10pt; font-weight: bold; color: #1a3a6b; display: block; margin-top: 4px; }
+    .e-stamp .edate { font-size: 8pt; color: #475569; font-family: 'Courier New', monospace; display: block; }
+    
+    .sig-line { border-top: 1.5px solid #1e293b; width: 180px; margin: 30px auto 5px; }
+
+    @media print {
+      body { padding: 0; }
+      .meta-info { background: #fff !important; }
+      th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
+      .e-stamp { background: #ecfdf5 !important; border-color: #059669 !important; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="${seceHeader}" alt="Sri Eshwar College header" class="header-image" />
+    <div class="doc-title">Approved On-Duty (OD) Participant List</div>
+  </div>
+  
+  <div class="meta-info">
+    <div style="display: flex; justify-content: space-between;">
+      <span><strong>Event Title:</strong> ${group.eventTitle}</span>
+      <span><strong>Event Date:</strong> ${group.eventDate}</span>
+    </div>
+    <div style="margin-top: 10px; display: flex; justify-content: space-between;">
+      <span><strong>Department:</strong> ${dept}</span>
+      <span><strong>Total Students:</strong> ${students.length}</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <strong>Academic Year:</strong> ${new Date().getFullYear()} - ${new Date().getFullYear() + 1}
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 50px;">S.No</th>
+        <th>Student Name</th>
+        <th>Roll Number</th>
+        <th>Class / Section</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${students.map((s, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td style="font-weight: bold; color: #1e293b;">${s.studentName}</td>
+          <td style="font-family: 'Courier New', monospace; font-weight: 600;">${s.rollNo}</td>
+          <td>${s.class}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <div class="sig-space">
+    <!-- Organizer Signature -->
+    <div class="sig-box">
+      <div class="sig-line"></div>
+      <div class="sig-label">Event Organizer</div>
+    </div>
+
+    <!-- HOD E-Signature -->
+    <div class="sig-box">
+      <div class="e-stamp">
+        <span class="check">&#10004;</span>
+        <span class="esigned">E-Signed & Verified</span>
+        <span class="ename">Head of Department</span>
+        <span class="edate">${new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+      </div>
+      <div class="sig-label">HOD - ${dept}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    This document is digitally verified by the CSE Event Management Portal.<br/>
+    Authorized for On-Duty (OD) attendance purposes.
+  </div>
+</body>
+</html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow pop-ups to download the OD list.');
+      return;
+    }
+    printWindow.document.write(listHTML);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
   };
 
   return (
@@ -888,7 +1047,16 @@ const Dashboard = () => {
                                     if (approvedRequests.length === 0) return null;
 
                                     const byDept = approvedRequests.reduce((acc, r) => {
-                                      const d = r.department || r.class?.replace(/[0-9]/g, '').trim() || 'General';
+                                      let d = r.department || r.class?.replace(/[0-9]/g, '').replace(/-/g, '').trim() || 'General';
+                                      // Special handling for clean dept names
+                                      if (d.toUpperCase().includes('CSE')) d = 'CSE';
+                                      else if (d.toUpperCase().includes('ECE')) d = 'ECE';
+                                      else if (d.toUpperCase().includes('EEE')) d = 'EEE';
+                                      else if (d.toUpperCase().includes('IT')) d = 'IT';
+                                      else if (d.toUpperCase().includes('MECH')) d = 'MECH';
+                                      else if (d.toUpperCase().includes('CIVIL')) d = 'CIVIL';
+                                      else if (d.toUpperCase().includes('AI')) d = 'AI & DS';
+
                                       if (!acc[d]) acc[d] = [];
                                       acc[d].push(r);
                                       return acc;
@@ -920,19 +1088,35 @@ const Dashboard = () => {
                                                     <span className="text-xs font-bold text-slate-700 uppercase">{dept}</span>
                                                     <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">{students.length}</span>
                                                   </div>
-                                                  <button
-                                                    onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
-                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${isCopied
-                                                      ? 'bg-emerald-500 text-white'
-                                                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                                                      }`}
-                                                  >
-                                                    {isCopied ? (
-                                                      <><Check size={12} /> Copied!</>
-                                                    ) : (
-                                                      <><Copy size={12} /> Copy List</>
-                                                    )}
-                                                  </button>
+                                                  <div className="flex items-center gap-2">
+                                                    <button
+                                                      onClick={() => downloadDeptListAsPDF(dept, students, group)}
+                                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-blue-600 hover:bg-blue-50 border border-slate-200 transition-all shadow-sm"
+                                                      title="Download as PDF"
+                                                    >
+                                                      <Download size={12} /> Download
+                                                    </button>
+                                                    <button
+                                                      onClick={() => shareDeptList(dept, students, group.eventTitle)}
+                                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all shadow-sm"
+                                                      title="Share List"
+                                                    >
+                                                      <ArrowUpRight size={12} /> Share
+                                                    </button>
+                                                    <button
+                                                      onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
+                                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${isCopied
+                                                        ? 'bg-emerald-500 text-white'
+                                                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                                        }`}
+                                                    >
+                                                      {isCopied ? (
+                                                        <><Check size={12} /> Copied!</>
+                                                      ) : (
+                                                        <><Copy size={12} /> Copy</>
+                                                      )}
+                                                    </button>
+                                                  </div>
                                                 </div>
                                                 <div className="p-3 max-h-40 overflow-y-auto">
                                                   <ol className="space-y-1.5">
