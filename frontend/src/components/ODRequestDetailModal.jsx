@@ -1,4 +1,4 @@
-import { X, User, Calendar, Clock, MapPin, FileText, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { X, User, Calendar, Clock, MapPin, FileText, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { ODRequestStatus, UserRole } from '../types';
@@ -181,7 +181,7 @@ const ODRequestDetailModal = ({ request, onClose }) => {
                             ? 'bg-amber-500 text-white animate-pulse'
                             : 'bg-slate-200 text-slate-400'
                       }`}>
-                        {step.done ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                        {step.done ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                       </div>
                       <p className="text-xs mt-2 font-medium">{step.label}</p>
                       {step.done && (
@@ -211,14 +211,14 @@ const ODRequestDetailModal = ({ request, onClose }) => {
                   onClick={handleApprove}
                   className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-semibold"
                 >
-                  <CheckCircle size={20} /> Approve
+                  <CheckCircle2 size={20} /> Approve
                 </button>
               </div>
             )}
 
             {request.status === ODRequestStatus.APPROVED && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-                <CheckCircle className="mx-auto text-emerald-500 mb-2" size={32} />
+                <CheckCircle2 className="mx-auto text-emerald-500 mb-2" size={32} />
                 <p className="font-semibold text-emerald-700">OD Request Approved</p>
                 <p className="text-sm text-emerald-600">This request has been approved by all authorities.</p>
               </div>

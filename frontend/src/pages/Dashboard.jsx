@@ -1231,7 +1231,7 @@ const Dashboard = () => {
                             onClick={() => approveOrganizer(req.id)}
                             className="p-1.5 bg-white text-cse-accent rounded-lg border border-slate-200 hover:bg-cse-accent hover:text-white transition-all"
                           >
-                            <CheckCircle size={16} />
+                            <CheckCircle2 size={16} />
                           </button>
                         )}
                       </div>

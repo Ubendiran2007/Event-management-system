@@ -1145,7 +1145,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Venue
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Venue
                       </button>
                     )}
                     {canApproveMedia && (
