@@ -908,7 +908,7 @@ const Dashboard = () => {
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                         : 'bg-red-50 text-red-700 border-red-200'
                                         }`}>
-                                        {req.status === 'APPROVED' ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                                        {req.status === 'APPROVED' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
                                         {req.status === 'APPROVED' ? 'Approved' : 'Rejected'}
                                       </span>
                                     )}

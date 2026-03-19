@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
@@ -825,7 +825,7 @@ const EventCard = ({
           {/* Registration status badges — only on upcoming events */}
           {isStudent && registered && isUpcoming && requestStatus === 'APPROVED' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
-              <CheckCircle size={14} /> Registered (Approved)
+              <CheckCircle2 size={14} /> Registered (Approved)
             </span>
           )}
           {isStudent && registered && isUpcoming && requestStatus === 'PENDING_ORGANIZER' && (
@@ -840,7 +840,7 @@ const EventCard = ({
           )}
           {isStudent && registered && isUpcoming && !requestStatus && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
-              <CheckCircle size={14} /> Registered
+              <CheckCircle2 size={14} /> Registered
             </span>
           )}
           {/* OD Letter — only on upcoming events (before event starts) */}

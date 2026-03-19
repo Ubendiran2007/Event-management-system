@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { X, Star, MessageSquare, Loader2, CheckCircle } from 'lucide-react';
+import { X, Star, MessageSquare, Loader2, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const FeedbackModal = ({ odRequestId, eventTitle, onClose }) => {
@@ -67,7 +67,7 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose }) => {
             {submitted ? (
               /* Success state */
               <div className="text-center py-6">
-                <CheckCircle className="mx-auto text-emerald-500 mb-3" size={48} />
+                <CheckCircle2 className="mx-auto text-emerald-500 mb-3" size={48} />
                 <h3 className="text-xl font-bold text-slate-900 mb-1">Thank you!</h3>
                 <p className="text-slate-500 text-sm mb-6">
                   Your feedback for <strong>{eventTitle}</strong> has been recorded.

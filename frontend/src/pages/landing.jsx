@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Calendar,
-  CheckCircle,
+  CheckCircle2,
   ChevronRight,
   ClipboardCheck,
   FileText,
@@ -162,7 +162,7 @@ const Landing = () => {
                   'Simple workflows for approvals and submissions',
                 ].map((point) => (
                   <li key={point} className="flex items-start gap-2 text-slate-700">
-                    <CheckCircle size={16} className="text-emerald-600 mt-0.5 shrink-0" /> {point}
+                    <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" /> {point}
                   </li>
                 ))}
               </ul>

@@ -1110,7 +1110,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       {isUploadingPoster ? (
                         <><Loader2 size={18} className="animate-spin" /> Uploading...</>
                       ) : posterUploadSuccess ? (
-                        <><CheckCircle size={18} /> Done!</>
+                        <><CheckCircle2 size={18} /> Done!</>
                       ) : (
                         <><Camera size={18} /> Choose Poster Image</>
                       )}
@@ -1123,7 +1123,7 @@ const EventDetailModal = ({ event, onClose }) => {
                   )}
                   {posterUploadSuccess && (
                     <div className="px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 flex items-center gap-2">
-                      <CheckCircle size={16} className="shrink-0" /> {posterUploadSuccess}
+                      <CheckCircle2 size={16} className="shrink-0" /> {posterUploadSuccess}
                     </div>
                   )}
                 </div>

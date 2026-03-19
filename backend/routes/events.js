@@ -468,14 +468,16 @@ router.patch('/:id/department-approval', async (req, res) => {
     if (allApproved && eventData.status === 'PENDING_DEPARTMENTS') {
       updatePayload.status = 'PENDING_IQAC';
       
-      // Auto-notify IQAC here if needed
+      // Auto-notify IQAC here in parallel to avoid blocking the response
       try {
         const iqacEmails = await getOfficialEmailsByRole('IQAC_TEAM');
-        for (const email of iqacEmails) {
-          await sendApprovalRequestToRole(eventData, email, 'IQAC_TEAM');
-        }
+        Promise.all(iqacEmails.map(email => 
+          sendApprovalRequestToRole(eventData, email, 'IQAC_TEAM')
+            .catch(e => console.error(`Error notifying IQAC member ${email}:`, e))
+        ));
+        // Note: We don't await the Promise.all here because we want to return the response to the user immediately.
       } catch (e) {
-        console.error('Error notifying IQAC auto-transition:', e);
+        console.error('Error starting IQAC notifications:', e);
       }
     }
 
@@ -536,12 +538,8 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     const isFacultyOrganizer = eventData.creatorType === 'FACULTY';
     const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl);
 
-    // Reset approvals but preserve media if poster already exists
-    const oldDeptApprovals = eventData.departmentApprovals || {};
+    // Reset all approvals upon resubmission
     const newDeptApprovals = {};
-    if (hasMediaPoster && oldDeptApprovals['media']) {
-      newDeptApprovals['media'] = oldDeptApprovals['media'];
-    }
 
     const updatePayload = {
       ...req.body,
