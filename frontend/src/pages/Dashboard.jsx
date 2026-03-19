@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Calendar,
   Users,
-  CheckCircle,
+  CheckCircle2,
   Clock,
   Plus,
   ChevronRight,
