@@ -2,7 +2,8 @@ import {
   X, Calendar, MapPin, Clock, FileText, User,
   ChevronRight, Building2, Mic2, MonitorSmartphone,
   Car, Hotel, Camera, CheckCircle2, Award,
-  ArrowRight, FileCheck, ExternalLink, Trash2
+  ArrowRight, FileCheck, ExternalLink, Trash2,
+  XCircle, Loader2, XCircle as XCircleIcon
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -1153,7 +1154,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Media Booking
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Media Booking
                       </button>
                     )}
                     {canApproveVenue && canApproveMedia && (
@@ -1162,7 +1163,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Both (HR)
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Both (HR)
                       </button>
                     )}
                     {canApproveAudio && (
@@ -1171,7 +1172,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Audio
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Audio
                       </button>
                     )}
                     {canApproveICTS && (
@@ -1180,7 +1181,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve ICTS
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve ICTS
                       </button>
                     )}
                     {canApproveTransport && (
@@ -1189,7 +1190,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Transport
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Transport
                       </button>
                     )}
                     {canApproveBoysAccommodation && (
@@ -1198,7 +1199,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Boys Accommodation
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Boys Accommodation
                       </button>
                     )}
                     {canApproveGirlsAccommodation && (
@@ -1207,7 +1208,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         disabled={isProcessing}
                         className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
                       >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} Approve Girls Accommodation
+                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Girls Accommodation
                       </button>
                     )}
                   </div>
@@ -1240,7 +1241,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     <div className="text-sm text-slate-600">
                       {getNextApprover() && (
                         <p className="flex items-center gap-2">
-                          <CheckCircle size={16} className="text-emerald-600" />
+                          <CheckCircle2 size={16} className="text-emerald-600" />
                           Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
                         </p>
                       )}
@@ -1265,7 +1266,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         {isProcessing ? (
                           <><Loader2 size={18} className="animate-spin" /> Approving...</>
                         ) : (
-                          <><CheckCircle size={18} /> Approve & Forward</>
+                          <><CheckCircle2 size={18} /> Approve & Forward</>
                         )}
                       </button>
                     </div>
