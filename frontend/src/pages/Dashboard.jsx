@@ -577,7 +577,7 @@ const Dashboard = () => {
                         : baseEvents.filter(e => e.status?.startsWith('PENDING')).length,
                       icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50'
                     },
-                    { label: 'Posted', value: baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: 'Posted', value: baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                     { label: 'Completed', value: baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' },
                     // Only show Registrations stat for students
                     ...((currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? [{ label: 'Registrations', value: pendingODCount, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' }] : []),
