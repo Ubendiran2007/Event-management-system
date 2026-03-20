@@ -385,26 +385,22 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
       </div>
     </div>
 
-    <!-- Event Organizer e-stamp -->
-    <div class="sig-box">
-      <div class="e-stamp">
-        <span class="check">&#10004;</span>
-        <span class="esigned">E-Signed &amp; Verified</span>
-        <span class="ename">${approvedBy}</span>
-        <span class="edate">${approvedAt}</span>
+    <!-- Event Organizer Signature -->
+    <div class="sig-student-box">
+      <div class="student-line"></div>
+      <div class="sig-label">
+        <strong>Event Organizer</strong><br/>
+        ${approvedBy}
       </div>
-      <div class="sig-label"><strong>Event Organizer</strong></div>
     </div>
 
-    <!-- HOD e-stamp -->
-    <div class="sig-box">
-      <div class="e-stamp">
-        <span class="check">&#10004;</span>
-        <span class="esigned">E-Signed &amp; Verified</span>
-        <span class="ename">${hodName}</span>
-        <span class="edate">${approvedAt}</span>
+    <!-- HOD Signature -->
+    <div class="sig-student-box">
+      <div class="student-line"></div>
+      <div class="sig-label">
+        <strong>Head of Department</strong><br/>
+        ${hodName}
       </div>
-      <div class="sig-label"><strong>Head of Department</strong></div>
     </div>
 
     <!-- Class Advisor physical signature -->
@@ -427,10 +423,10 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
       <div class="qr-caption">Scan to verify OD</div>
     </div>
     <div class="verify-block">
-      <strong>Electronic Verification</strong><br/>
-      This letter is digitally approved via the CSE Event Management Portal.
-      No physical signature is required when the QR code and verification code are present.
-      Scanning the QR code will display full student and event details for instant on-site verification.
+      <strong>Verification Details</strong><br/>
+      This letter is generated via the CSE Event Management Portal.
+      Please verify the details below with the physical signatures provided.
+      Scanning the QR code will display student and event details for instant on-site verification.
       <div class="verify-code">Verification Code: ${verificationCode}</div>
     </div>
   </div>

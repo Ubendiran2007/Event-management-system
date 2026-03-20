@@ -497,14 +497,9 @@ const Dashboard = () => {
       <div class="sig-label">Event Organizer</div>
     </div>
 
-    <!-- HOD E-Signature -->
+    <!-- HOD Signature -->
     <div class="sig-box">
-      <div class="e-stamp">
-        <span class="check">&#10004;</span>
-        <span class="esigned">E-Signed & Verified</span>
-        <span class="ename">Head of Department</span>
-        <span class="edate">${new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-      </div>
+      <div class="sig-line"></div>
       <div class="sig-label">HOD - ${dept}</div>
     </div>
   </div>
