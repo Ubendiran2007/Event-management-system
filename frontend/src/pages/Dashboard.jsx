@@ -379,6 +379,20 @@ const Dashboard = () => {
   };
 
   const downloadDeptListAsPDF = (dept, students, group) => {
+    // 1. Sort students by class and then name
+    const sortedStudents = [...students].sort((a, b) => {
+      const classComp = String(a.class || '').localeCompare(String(b.class || ''));
+      if (classComp !== 0) return classComp;
+      return String(a.studentName || '').localeCompare(String(b.studentName || ''));
+    });
+
+    const classCounts = sortedStudents.reduce((acc, s) => {
+      acc[s.class] = (acc[s.class] || 0) + 1;
+      return acc;
+    }, {});
+    const renderedClasses = new Set();
+    let hodRendered = false;
+
     const event = organizerEventsById[group.eventId];
     const s1 = event?.requisition?.step1;
     
@@ -417,12 +431,13 @@ const Dashboard = () => {
     .doc-title { text-align: center; font-size: 16pt; font-weight: bold; color: #1a3a6b; margin-top: 15px; text-decoration: underline; text-transform: uppercase; letter-spacing: 0.5px; }
     .meta-info { margin-bottom: 25px; font-size: 13pt; line-height: 1.6; color: #2d3748; border: 1px solid #cbd5e0; padding: 20px; border-radius: 8px; background: #f8fafc; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e0; }
-    th, td { border: 1px solid #cbd5e0; padding: 10px 12px; text-align: left; font-size: 10.5pt; }
-    th { background-color: #f1f5f9; color: #1e293b; font-weight: bold; text-transform: uppercase; font-size: 9.5pt; }
+    th, td { border: 1px solid #cbd5e0; padding: 10px 12px; text-align: left; font-size: 10pt; }
+    th { background-color: #f1f5f9; color: #1e293b; font-weight: bold; text-transform: uppercase; font-size: 9pt; }
+    .sig-cell { vertical-align: middle; text-align: center; color: #718096; font-size: 8pt; font-weight: normal; background: #fff !important; }
     tr:nth-child(even) { background-color: #f8fafc; }
     .footer { margin-top: 40px; font-size: 9.5pt; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-    .sig-space { margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .sig-box { text-align: center; flex: 1; }
+    .sig-space { margin-top: 50px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 40px 20px; align-items: flex-end; }
+    .sig-box { text-align: center; }
     .sig-label { font-size: 10pt; font-weight: bold; margin-top: 8px; color: #1e293b; }
     
     .e-stamp {
@@ -475,32 +490,41 @@ const Dashboard = () => {
         <th style="width: 50px;">S.No</th>
         <th>Student Name</th>
         <th>Roll Number</th>
-        <th>Class / Section</th>
+        <th style="width: 100px;">Class / Section</th>
+        <th style="width: 140px;">Class Advisor Signature</th>
+        <th style="width: 140px;">HOD Signature</th>
       </tr>
     </thead>
     <tbody>
-      ${students.map((s, i) => `
+      ${sortedStudents.map((s, i) => {
+        const isFirstInClass = !renderedClasses.has(s.class);
+        if (isFirstInClass) renderedClasses.add(s.class);
+        const isFirstRow = !hodRendered;
+        if (isFirstRow) hodRendered = true;
+
+        return `
         <tr>
           <td>${i + 1}</td>
           <td style="font-weight: bold; color: #1e293b;">${s.studentName}</td>
           <td style="font-family: 'Courier New', monospace; font-weight: 600;">${s.rollNo}</td>
           <td>${s.class}</td>
+          ${isFirstInClass ? `<td rowspan="${classCounts[s.class]}" class="sig-cell"></td>` : ''}
+          ${isFirstRow ? `<td rowspan="${sortedStudents.length}" class="sig-cell"></td>` : ''}
         </tr>
-      `).join('')}
+      `;
+      }).join('')}
     </tbody>
   </table>
 
-  <div class="sig-space">
+  <div class="sig-space" style="display: flex; justify-content: flex-end; margin-top: 60px;">
     <!-- Organizer Signature -->
-    <div class="sig-box">
+    <div class="sig-box" style="width: 200px; text-align: center;">
       <div class="sig-line"></div>
-      <div class="sig-label">Event Organizer</div>
-    </div>
-
-    <!-- HOD Signature -->
-    <div class="sig-box">
-      <div class="sig-line"></div>
-      <div class="sig-label">HOD - ${dept}</div>
+      <div class="sig-label">
+        <strong>Event Organizer Signature</strong><br/>
+        ${currentUser?.name || ''}<br/>
+        ${currentUser?.rollNo || ''}
+      </div>
     </div>
   </div>
 
@@ -1109,15 +1133,23 @@ const Dashboard = () => {
                                     if (approvedRequests.length === 0) return null;
 
                                     const byDept = approvedRequests.reduce((acc, r) => {
-                                      let d = r.department || r.class?.replace(/[0-9]/g, '').replace(/-/g, '').trim() || 'General';
-                                      // Special handling for clean dept names
-                                      if (d.toUpperCase().includes('CSE')) d = 'CSE';
-                                      else if (d.toUpperCase().includes('ECE')) d = 'ECE';
-                                      else if (d.toUpperCase().includes('EEE')) d = 'EEE';
-                                      else if (d.toUpperCase().includes('IT')) d = 'IT';
-                                      else if (d.toUpperCase().includes('MECH')) d = 'MECH';
-                                      else if (d.toUpperCase().includes('CIVIL')) d = 'CIVIL';
-                                      else if (d.toUpperCase().includes('AI')) d = 'AI & DS';
+                                      // Priority 1: Use student's explicit department if available
+                                      let d = r.department ? r.department.toUpperCase().trim() : '';
+                                      
+                                      // Priority 2: Try to extract from the class/section name
+                                      if (!d && r.class) {
+                                        const cls = r.class.toUpperCase();
+                                        if (cls.includes('CSE')) d = 'CSE';
+                                        else if (cls.includes('ECE')) d = 'ECE';
+                                        else if (cls.includes('EEE')) d = 'EEE';
+                                        else if (cls.includes('IT')) d = 'IT';
+                                        else if (cls.includes('MECH')) d = 'MECH';
+                                        else if (cls.includes('CIVIL')) d = 'CIVIL';
+                                        else if (cls.includes('AIDS') || cls.includes('AI&DS') || cls.includes('AI & DS') || (cls.includes('AI') && !cls.includes('CIVIL'))) d = 'AI & DS';
+                                        else d = r.class.replace(/[0-9]/g, '').replace(/-/g, '').trim() || 'General';
+                                      }
+
+                                      if (!d) d = 'General';
 
                                       if (!acc[d]) acc[d] = [];
                                       acc[d].push(r);
