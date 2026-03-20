@@ -214,11 +214,11 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
     .sig-section {
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
-      margin-top: 8px;
-      gap: 8px;
+      gap: 15px;
+      margin-top: 60px;
     }
     .sig-box { text-align: center; flex: 1; }
+    .sig-student-box { text-align: center; flex: 1; }
     .e-stamp {
       display: inline-block;
       border: 2px solid #1a6b3a;
@@ -375,7 +375,7 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
   <!-- E-Signature Section -->
   <div class="sig-section">
 
-    <!-- Student -->
+    <!-- Row 1: Left - Student, Right - Class Advisor -->
     <div class="sig-student-box">
       <div class="student-line"></div>
       <div class="sig-label">
@@ -385,7 +385,15 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
       </div>
     </div>
 
-    <!-- Event Organizer Signature -->
+    <div class="sig-student-box">
+      <div class="student-line"></div>
+      <div class="sig-label">
+        <strong>Class Advisor Signature</strong><br/>
+        (To be signed physically)
+      </div>
+    </div>
+
+    <!-- Row 2: Left - Event Organizer, Right - HOD -->
     <div class="sig-student-box">
       <div class="student-line"></div>
       <div class="sig-label">
@@ -394,21 +402,11 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
       </div>
     </div>
 
-    <!-- HOD Signature -->
     <div class="sig-student-box">
       <div class="student-line"></div>
       <div class="sig-label">
         <strong>Head of Department</strong><br/>
         ${hodName}
-      </div>
-    </div>
-
-    <!-- Class Advisor physical signature -->
-    <div class="sig-student-box">
-      <div class="student-line"></div>
-      <div class="sig-label">
-        <strong>Class Advisor Signature</strong><br/>
-        (To be signed physically)
       </div>
     </div>
 
