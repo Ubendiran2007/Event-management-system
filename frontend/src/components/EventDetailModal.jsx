@@ -3,7 +3,7 @@ import {
   ChevronRight, Building2, Mic2, MonitorSmartphone,
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
-  XCircle, Loader2, XCircle as XCircleIcon
+  XCircle, Loader2, XCircle as XCircleIcon, ClipboardList
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -578,6 +578,38 @@ const EventDetailModal = ({ event, onClose }) => {
                 )}
               </div>
             </InfoSection>
+
+            {/* Event Schedule Section */}
+            {(s1?.schedule?.length > 0 || event?.schedule?.length > 0) && (
+              <InfoSection title="Event Schedule / Agenda" icon={ClipboardList}>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm font-sans">
+                  <table className="min-w-full text-sm divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider w-32 border-b border-slate-200">Time</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">Agenda / Activity</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">Speaker / In-charge</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 italic">
+                      {(s1?.schedule || event?.schedule || []).map((row, idx) => (
+                        <tr key={row.id || idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 text-cse-accent font-bold tabular-nums whitespace-nowrap">
+                            {formatTime12(row.time)}
+                          </td>
+                          <td className="px-4 py-3 text-slate-800 font-medium not-italic">
+                            {row.agenda}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 not-italic">
+                            {row.speaker || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </InfoSection>
+            )}
 
             {/* 2. Venue Requirements - Annexure I */}
             {venueAnnex ? (

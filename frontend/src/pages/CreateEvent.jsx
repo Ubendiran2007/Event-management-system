@@ -144,6 +144,7 @@ const STEP_KEYS = {
   TRANSPORT: 'transport',
   ACCOMMODATION: 'accommodation',
   MEDIA: 'media',
+  SCHEDULE: 'schedule',
   REVIEW: 'review',
 };
 
@@ -320,6 +321,9 @@ const CreateEvent = () => {
     externalParticipants: '',
     // Dynamic guest list (replaces old flat fields noOfGuests/guestNames/guestDesignation/guestOrganization)
     guests: [],
+    schedule: [
+      { id: Date.now(), time: '09:00', agenda: 'Inauguration', speaker: '' }
+    ],
 
     // Requirement toggles
     venueRequired: true,
@@ -561,6 +565,7 @@ const CreateEvent = () => {
       ...(form.transportRequired ? [{ key: STEP_KEYS.TRANSPORT, title: 'Transport', icon: Car }] : []),
       ...(form.accommodationRequired ? [{ key: STEP_KEYS.ACCOMMODATION, title: 'Accommodation', icon: Hotel }] : []),
       ...(form.mediaRequired ? [{ key: STEP_KEYS.MEDIA, title: 'Media', icon: Camera }] : []),
+      { key: STEP_KEYS.SCHEDULE, title: 'Schedule', icon: ClipboardList },
       { key: STEP_KEYS.REVIEW, title: 'Review', icon: Eye },
     ];
   }, [form.venueRequired, form.audioRequired, form.ictsRequired, form.transportRequired, form.accommodationRequired, form.mediaRequired]);
@@ -637,6 +642,7 @@ const CreateEvent = () => {
       internalTransport: transportAnnex?.internalTransport || prev.internalTransport,
       accommodation: accommodationAnnex || prev.accommodation,
       media: mediaAnnex || prev.media,
+      schedule: editingEvent.requisition?.step1?.schedule || editingEvent.schedule || [{ id: Date.now(), time: '09:00', agenda: 'Inauguration', speaker: '' }],
     }));
   }, [editingEvent, currentUser]);
 
@@ -761,6 +767,34 @@ const CreateEvent = () => {
           [field]: value,
         },
       },
+    }));
+  };
+
+  const createScheduleRow = () => ({
+    id: Date.now(),
+    time: '',
+    agenda: '',
+    speaker: '',
+  });
+
+  const addScheduleRow = () => {
+    setForm((prev) => ({
+      ...prev,
+      schedule: [...prev.schedule, createScheduleRow()],
+    }));
+  };
+
+  const removeScheduleRow = (id) => {
+    setForm((prev) => ({
+      ...prev,
+      schedule: prev.schedule.filter((row) => row.id !== id),
+    }));
+  };
+
+  const updateScheduleRow = (id, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      schedule: prev.schedule.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
     }));
   };
 
@@ -1061,6 +1095,13 @@ const CreateEvent = () => {
       }
     }
 
+    if (stepKey === STEP_KEYS.SCHEDULE) {
+      if (form.schedule.some(row => !row.time || !row.agenda)) {
+        setStepError('All schedule rows must have a time and agenda.');
+        return false;
+      }
+    }
+
     if (stepKey === STEP_KEYS.AUDIO && form.audioRequired) {
       if (!form.audioDate || !form.audioStartTime || !form.audioEndTime || !form.audioVenueName) {
         setStepError('Please complete Audio date, time, and venue fields.');
@@ -1344,6 +1385,7 @@ const CreateEvent = () => {
             trophy: form.trophy,
             bouquet: form.bouquet,
           },
+          schedule: form.schedule,
         },
         annexureI_venue: form.venueRequired
           ? {
@@ -2730,6 +2772,72 @@ const CreateEvent = () => {
         </Card>
       );
     }
+    if (currentStep === STEP_KEYS.SCHEDULE) {
+      return (
+        <Card title="Step - Event Schedule / Agenda" icon={ClipboardList}>
+          <div className="space-y-4">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-700 w-32">Time</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Agenda / Activity</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Speaker / In-charge</th>
+                    <th className="px-4 py-3 text-center font-semibold text-slate-700 w-16">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {form.schedule.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-4 py-2">
+                        <TimePicker
+                          className={inputClass}
+                          value={row.time}
+                          onChange={(e) => updateScheduleRow(row.id, 'time', e.target.value)}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          className={inputClass}
+                          value={row.agenda}
+                          onChange={(e) => updateScheduleRow(row.id, 'agenda', e.target.value)}
+                          placeholder="e.g. Keynote Address"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          className={inputClass}
+                          value={row.speaker}
+                          onChange={(e) => updateScheduleRow(row.id, 'speaker', e.target.value)}
+                          placeholder="e.g. Dr. John Doe"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => removeScheduleRow(row.id)}
+                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Remove row"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              onClick={addScheduleRow}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition-colors"
+            >
+              <Plus size={18} /> Add Agenda Item
+            </button>
+          </div>
+        </Card>
+      );
+    }
 
     if (currentStep === STEP_KEYS.REVIEW) {
       const requirements = [
@@ -2743,7 +2851,7 @@ const CreateEvent = () => {
       ];
 
       return (
-        <Card title="Step 8 - Review & Submit" icon={CheckCircle2}>
+        <Card title="Step - Review & Submit" icon={CheckCircle2}>
           <div className="space-y-4 text-sm">
             <div className="rounded-xl bg-slate-50 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               <p><span className="font-semibold">Event Name:</span> {form.eventName || '-'}</p>
@@ -2754,6 +2862,7 @@ const CreateEvent = () => {
               <p><span className="font-semibold">Organizer:</span> {form.organizerName || '-'}</p>
               <p><span className="font-semibold">Department:</span> {form.department || '-'}</p>
               <p><span className="font-semibold">IQAC Number:</span> {iqacNumber}</p>
+              <p><span className="font-semibold">Schedule Items:</span> {form.schedule.length}</p>
             </div>
 
             <div className="rounded-xl border border-slate-200 p-4">
