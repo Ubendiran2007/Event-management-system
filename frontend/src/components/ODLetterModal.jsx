@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
 
-const ODLetterModal = ({ odRequest, onClose }) => {
+const ODLetterModal = ({ odRequest, event, onClose }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
 
   const formatRollNo = (value) =>
@@ -24,7 +24,19 @@ const ODLetterModal = ({ odRequest, onClose }) => {
 
   const eventTitle  = odRequest?.eventTitle  || odRequest?.eventName  || 'N/A';
   const eventVenue  = odRequest?.eventVenue  || odRequest?.venue      || 'N/A';
-  const eventDate   = odRequest?.eventDate   || 'N/A';
+  const s1 = event?.requisition?.step1;
+  const formatDate = (dateStr) => {
+    if (!dateStr || dateStr === 'N/A') return 'N/A';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return dateStr;
+  };
+
+  let eventDate = formatDate(odRequest?.eventDate || 'N/A');
+  if (s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate) {
+    eventDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
+  }
+
   const approvedBy  = odRequest?.approvedBy  || odRequest?.organizerName || 'Event Organizer';
   const hodName     = odRequest?.hodName     || 'Dr. Head of Department';
   const approvedAt  = odRequest?.approvedAt

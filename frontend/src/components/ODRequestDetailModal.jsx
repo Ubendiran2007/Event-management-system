@@ -12,7 +12,17 @@ const ODRequestDetailModal = ({ request, onClose }) => {
   const event = events?.find((e) => e.id === request.eventId);
   const s1 = event?.requisition?.step1;
   const eventName = event?.title || s1?.eventName || request.eventName || request.eventTitle || 'N/A';
-  const eventDate = event?.date || s1?.eventStartDate || request.eventDate || 'N/A';
+  const formatDate = (dateStr) => {
+    if (!dateStr || dateStr === 'N/A') return 'N/A';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return dateStr;
+  };
+
+  let eventDate = formatDate(event?.date || s1?.eventStartDate || request.eventDate || 'N/A');
+  if (s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate) {
+    eventDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
+  }
   
   let eventTime = request.eventTime || 'N/A';
   if (event?.time) {

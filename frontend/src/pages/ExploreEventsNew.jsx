@@ -1126,10 +1126,10 @@ const ExploreEvents = () => {
             </div>
         )}
       </div>
-
       {showODModal && selectedEvent && (
         <ODLetterModal
           odRequest={odRequests.find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED')}
+          event={selectedEvent}
           onClose={() => {
             setShowODModal(false);
             setSelectedEvent(null);

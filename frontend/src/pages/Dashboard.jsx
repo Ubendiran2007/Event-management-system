@@ -379,6 +379,21 @@ const Dashboard = () => {
   };
 
   const downloadDeptListAsPDF = (dept, students, group) => {
+    const event = organizerEventsById[group.eventId];
+    const s1 = event?.requisition?.step1;
+    
+    const formatDate = (dateStr) => {
+      if (!dateStr) return '';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      return dateStr;
+    };
+
+    let displayDate = formatDate(group.eventDate);
+    if (s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate) {
+      displayDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
+    }
+
     const listHTML = `
 <!DOCTYPE html>
 <html>
@@ -400,7 +415,7 @@ const Dashboard = () => {
     .header { border-bottom: 3px double #1a3a6b; margin-bottom: 25px; padding-bottom: 12px; }
     .header-image { width: 100%; max-height: 90px; object-fit: contain; }
     .doc-title { text-align: center; font-size: 16pt; font-weight: bold; color: #1a3a6b; margin-top: 15px; text-decoration: underline; text-transform: uppercase; letter-spacing: 0.5px; }
-    .meta-info { margin-bottom: 25px; font-size: 11.5pt; line-height: 1.6; color: #2d3748; border: 1px solid #cbd5e0; padding: 15px; border-radius: 8px; background: #f8fafc; }
+    .meta-info { margin-bottom: 25px; font-size: 13pt; line-height: 1.6; color: #2d3748; border: 1px solid #cbd5e0; padding: 20px; border-radius: 8px; background: #f8fafc; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e0; }
     th, td { border: 1px solid #cbd5e0; padding: 10px 12px; text-align: left; font-size: 10.5pt; }
     th { background-color: #f1f5f9; color: #1e293b; font-weight: bold; text-transform: uppercase; font-size: 9.5pt; }
@@ -443,7 +458,7 @@ const Dashboard = () => {
   <div class="meta-info">
     <div style="display: flex; justify-content: space-between;">
       <span><strong>Event Title:</strong> ${group.eventTitle}</span>
-      <span><strong>Event Date:</strong> ${group.eventDate}</span>
+      <span><strong>Event Date:</strong> ${displayDate}</span>
     </div>
     <div style="margin-top: 10px; display: flex; justify-content: space-between;">
       <span><strong>Department:</strong> ${dept}</span>
