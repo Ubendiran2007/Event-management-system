@@ -82,6 +82,31 @@ async function getOfficialEmailsByRole(role) {
   }
 }
 
+// ── Helper: Get required departments for an event ─────────────────────────
+function getRequiredDepartments(eventData) {
+  const reqs = eventData.requisition?.step1?.requirements || {};
+  // Backward compatibility if requirements are at root level
+  const isRequired = (key) => reqs[key] ?? eventData[key] ?? false;
+
+  const requiredDepts = [];
+  if (isRequired('venueRequired')) requiredDepts.push('venue');
+  if (isRequired('audioRequired')) requiredDepts.push('audio');
+  if (isRequired('ictsRequired')) requiredDepts.push('icts');
+  if (isRequired('transportRequired')) requiredDepts.push('transport');
+  if (isRequired('mediaRequired')) requiredDepts.push('media');
+
+  if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
+    const accom = eventData.requisition?.annexureV_accommodation || {};
+    const males = Number(accom.maleGuests || 0);
+    const females = Number(accom.femaleGuests || 0);
+    
+    if (males > 0) requiredDepts.push('boysAccommodation');
+    if (females > 0) requiredDepts.push('girlsAccommodation');
+    if (males === 0 && females === 0) requiredDepts.push('boysAccommodation'); // fallback
+  }
+  return requiredDepts;
+}
+
 // ── POST /api/events ──────────────────────────────────────────────────────
 // Create a new event (saves to Firestore "events" collection)
 router.post('/', async (req, res) => {
@@ -283,27 +308,36 @@ router.patch('/:id/status', async (req, res) => {
       }
     }
 
-    const updatePayload = { status, updatedAt: new Date().toISOString() };
+    let finalStatus = status;
+    const updatePayload = { status: finalStatus, updatedAt: new Date().toISOString() };
     if (approvedBy) updatePayload.approvedBy = approvedBy;
 
     // Record timestamped approval for each stage
     const prevStatus = eventSnap.data().status;
-    if (status === 'PENDING_HOD' && prevStatus === 'PENDING_FACULTY') {
+    if (finalStatus === 'PENDING_HOD' && prevStatus === 'PENDING_FACULTY') {
       updatePayload.facultyApprovedAt = new Date().toISOString();
       updatePayload.facultyApprovedBy = approvedBy || 'Faculty';
     }
-    if (status === 'PENDING_DEPARTMENTS' && prevStatus === 'PENDING_HOD') {
+    if (finalStatus === 'PENDING_DEPARTMENTS' && prevStatus === 'PENDING_HOD') {
       updatePayload.hodApprovedAt = new Date().toISOString();
       updatePayload.hodApprovedBy = approvedBy || 'HOD';
+
+      // AUTO-ADVANCE: If no departments are required, skip PENDING_DEPARTMENTS and go to PENDING_IQAC
+      const requiredDepts = getRequiredDepartments(rawEventData);
+      if (requiredDepts.length === 0) {
+        console.log(`[events/status] No departments required for event ${req.params.id}. Auto-advancing to PENDING_IQAC.`);
+        finalStatus = 'PENDING_IQAC';
+        updatePayload.status = finalStatus;
+      }
     }
-    if (status === 'POSTED' && prevStatus === 'PENDING_IQAC') {
+    if (finalStatus === 'POSTED' && prevStatus === 'PENDING_IQAC') {
       updatePayload.iqacApprovedAt = new Date().toISOString();
       updatePayload.iqacApprovedBy = approvedBy || 'IQAC';
     }
 
     await updateDoc(eventRef, updatePayload);
-
     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
+    const notificationStatus = finalStatus; // Use the potentially advanced status for notifications
 
     // ── Background Notifications ─────────────────────────────────────────────
     // We execute these without awaiting so the user gets an immediate response.
@@ -311,20 +345,20 @@ router.patch('/:id/status', async (req, res) => {
     
     setImmediate(async () => {
       // 1. Status notification to organizer
-      if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC', 'POSTED', 'REJECTED'].includes(status)) {
+      if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC', 'POSTED', 'REJECTED'].includes(notificationStatus)) {
         try {
-          await sendEventStatusNotification(eventData.organizerEmail, eventData, status);
+          await sendEventStatusNotification(eventData.organizerEmail, eventData, notificationStatus);
         } catch (emailError) {
           console.error('[events/status/bg] Error sending email to organizer:', emailError.message);
         }
       }
 
       // 2. Notifications to next approvers
-      if (['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC'].includes(status)) {
+      if (['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC'].includes(notificationStatus)) {
         let nextRoles = [];
-        if (status === 'PENDING_HOD') nextRoles = ['HOD'];
-        else if (status === 'PENDING_IQAC') nextRoles = ['IQAC_TEAM'];
-        else if (status === 'PENDING_DEPARTMENTS') {
+        if (notificationStatus === 'PENDING_HOD') nextRoles = ['HOD'];
+        else if (notificationStatus === 'PENDING_IQAC') nextRoles = ['IQAC_TEAM'];
+        else if (notificationStatus === 'PENDING_DEPARTMENTS') {
           const reqs = eventData.requisition?.step1?.requirements || {};
           const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
           nextRoles = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM'];
@@ -409,28 +443,7 @@ router.patch('/:id/department-approval', async (req, res) => {
 
     const updatePayload = { departmentApprovals, updatedAt: new Date().toISOString() };
 
-    // Check if all required departments are approved
-    const reqs = eventData.requisition?.step1?.requirements || {};
-    // Backward compatibility if requirements are at root level
-    const isRequired = (key) => reqs[key] ?? eventData[key] ?? false;
-
-    const requiredDepts = [];
-    if (isRequired('venueRequired')) requiredDepts.push('venue');
-    if (isRequired('audioRequired')) requiredDepts.push('audio');
-    if (isRequired('ictsRequired')) requiredDepts.push('icts');
-    if (isRequired('transportRequired')) requiredDepts.push('transport');
-    if (isRequired('mediaRequired')) requiredDepts.push('media');
-
-    if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
-      const accom = eventData.requisition?.annexureV_accommodation || {};
-      const males = Number(accom.maleGuests || 0);
-      const females = Number(accom.femaleGuests || 0);
-      
-      if (males > 0) requiredDepts.push('boysAccommodation');
-      if (females > 0) requiredDepts.push('girlsAccommodation');
-      if (males === 0 && females === 0) requiredDepts.push('boysAccommodation'); // fallback
-    }
-
+    const requiredDepts = getRequiredDepartments(eventData);
     const allApproved = requiredDepts.every(dept => departmentApprovals[dept]?.status === 'APPROVED');
 
     if (allApproved && eventData.status === 'PENDING_DEPARTMENTS') {
