@@ -555,33 +555,85 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2 space-y-8">
               {/* Stats Grid */}
-              <div className={`grid grid-cols-2 gap-4 ${(isStaff || isMedia) ? 'sm:grid-cols-4' : 'sm:grid-cols-5'}`}>
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                 {(() => {
-                  const baseEvents = (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY)
-                    ? events.filter(e => e.organizerId === currentUser.id)
-                    : events;
+                  const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
+                  const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
+                  
+                  // Base events for counts
+                  const baseEvents = isOrg ? events.filter(e => e.organizerId === currentUser.id) : events;
+                  
+                  // Value mapping based on role
+                  const getStatItems = () => {
+                    const stats = [];
 
-                  return [
-                    {
-                      label: 'Total Events',
-                      // For organizers/faculty: show their own events only; for HOD/Principal/Media: show all
-                      value: baseEvents.length,
+                    // 1. TOTAL EVENTS
+                    stats.push({
+                      label: isOrg ? 'My Total Events' : (isStud ? 'Available Events' : 'Total Events'),
+                      value: isStud ? events.filter(e => e.status === EventStatus.POSTED).length : baseEvents.length,
                       icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50'
-                    },
-                    {
-                      label: isStaff ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : isMedia ? 'Poster Queue' : 'Pending',
-                      value: (isStaff || isMedia)
-                        ? (currentUser.role === UserRole.FACULTY
-                          ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length
-                          : filteredEvents.length)
-                        : baseEvents.filter(e => e.status?.startsWith('PENDING')).length,
+                    });
+
+                    // 2. POSTED / ACTIVE
+                    stats.push({
+                      label: 'Posted',
+                      value: baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length,
+                      icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50'
+                    });
+
+                    // 3. PENDING
+                    stats.push({
+                      label: isStaff ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : (isStud ? 'My Pending ODs' : 'Pending'),
+                      value: isStaff 
+                        ? (currentUser.role === UserRole.FACULTY 
+                            ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length 
+                            : filteredEvents.length)
+                        : (isStud ? filteredODRequests.filter(r => r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length),
                       icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50'
-                    },
-                    { label: 'Posted', value: baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                    { label: 'Completed', value: baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' },
-                    // Only show Registrations stat for students
-                    ...((currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? [{ label: 'Registrations', value: pendingODCount, icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' }] : []),
-                  ].map((stat, i) => (
+                    });
+
+                    // 4. COMPLETED
+                    stats.push({
+                      label: isStud ? 'My Completed ODs' : 'Completed',
+                      value: isStud 
+                        ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length
+                        : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length,
+                      icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100'
+                    });
+
+                    // 5. REJECTED
+                    stats.push({
+                      label: isStud ? 'My Rejected ODs' : 'Rejected',
+                      value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length,
+                      icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50'
+                    });
+
+                    // 6. REGISTRATIONS / PARTICIPANTS
+                    if (isOrg) {
+                      stats.push({
+                        label: 'Total Participants',
+                        value: organizerIncomingOD.length,
+                        icon: Users, color: 'text-purple-600', bg: 'bg-purple-50'
+                      });
+                    } else if (isStud) {
+                      stats.push({
+                        label: 'My Total ODs',
+                        value: filteredODRequests.length,
+                        icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50'
+                      });
+                    } else {
+                      // For other staff, maybe show global registrations or a filler
+                      stats.push({
+                        label: 'Total Registrations',
+                        value: odRequests.length,
+                        icon: Users, color: 'text-purple-600', bg: 'bg-purple-50'
+                      });
+                    }
+
+                    return stats;
+                  };
+
+                  return getStatItems().map((stat, i) => (
                     <div key={i} className="glass-panel p-4 rounded-2xl">
                       <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-3`}>
                         <stat.icon size={20} />

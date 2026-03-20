@@ -246,7 +246,7 @@ const RequirementToggle = ({ label, checked, onToggle }) => (
 );
 
 const CreateEvent = () => {
-  const { currentUser } = useAppContext();
+  const { currentUser, events } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const editingEvent = location.state?.editingEvent || null;
@@ -306,13 +306,13 @@ const CreateEvent = () => {
     posterMimeType: '',
     requirePoster: false,
     posterNeededByDate: '',
-    posterNeededByTime: '',
+    posterNeededByTime: '09:00',
     professionalSocieties: [],
     isIIC: 'No',
     startDate: '',
     endDate: '',
-    startTime: '',
-    endTime: '',
+    startTime: '09:00',
+    endTime: '17:00',
     organizerName: currentUser?.name || '',
     department: '',
     mobileNumber: '',
@@ -343,8 +343,8 @@ const CreateEvent = () => {
 
     // Step 3: Audio
     audioDate: '',
-    audioStartTime: '',
-    audioEndTime: '',
+    audioStartTime: '09:00',
+    audioEndTime: '17:00',
     audioVenueName: '',
     audioEquipment: createAudioQtyMap(AUDIO_EQUIPMENT),
     audioSpecialRequest: '',
@@ -395,9 +395,9 @@ const CreateEvent = () => {
       maleGuests: '',
       femaleGuests: '',
       arrivalDate: '',
-      arrivalTime: '',
+      arrivalTime: '09:00',
       departureDate: '',
-      departureTime: '',
+      departureTime: '18:00',
       numberOfRooms: '',
       accommodationTypes: ACCOMMODATION_TYPES.reduce((acc, t) => ({ ...acc, [t]: false }), {}),
       diningRequired: false,
@@ -409,10 +409,10 @@ const CreateEvent = () => {
     // Step 7: Media
     media: {
       logosRequired: '',
-      photographyTime: '',
-      videoRecordingTime: '',
+      photographyTime: '09:00',
+      videoRecordingTime: '09:00',
       preEventPosterNeededByDate: '',
-      preEventPosterNeededByTime: '',
+      preEventPosterNeededByTime: '09:00',
       preEventPosterNotes: '',
       posterDesign: MEDIA_CHECKLIST.posterDesign.reduce((acc, item) => ({ ...acc, [item]: false }), {}),
       receptionTvDesign: MEDIA_CHECKLIST.receptionTvDesign.reduce((acc, item) => ({ ...acc, [item]: false }), {}),
@@ -429,9 +429,11 @@ const CreateEvent = () => {
   });
 
   const iqacNumber = useMemo(() => {
+    if (editingEvent?.requisition?.iqacNumber) return editingEvent.requisition.iqacNumber;
     const dept = form.department || 'DEPT';
-    return `IQAC/2025-26/${dept}/01`;
-  }, [form.department]);
+    const nextNum = (events?.length || 0) + 1;
+    return `IQAC/2025-26/${dept}/${nextNum.toString().padStart(2, '0')}`;
+  }, [form.department, events, editingEvent]);
 
   const numberOfDays = useMemo(() => {
     if (!form.startDate || !form.endDate) return '';
@@ -458,27 +460,52 @@ const CreateEvent = () => {
     return d.toISOString().split('T')[0];
   }, []);
 
-  // Update Transport Dates automatically if start date is filled and transport dates are empty
+  // Update related dates automatically if event start/end dates are filled and they are empty
   useEffect(() => {
-    if (form.startDate) {
-      setForm(prev => {
-        let updated = { ...prev };
-        if (!updated.externalTransport.onwardJourney.vehicleDate) {
-          updated.externalTransport.onwardJourney.vehicleDate = form.startDate;
+    if (!form.startDate) return;
+
+    setForm(prev => {
+      let next = { ...prev };
+      let changed = false;
+
+      const updateIfEmpty = (path, value) => {
+        const segments = path.split('.');
+        let ptr = next;
+        
+        // Check if value is already there
+        let current = next;
+        for (const seg of segments) {
+          if (!current || !current[seg]) { current = null; break; }
+          current = current[seg];
         }
-        if (!updated.externalTransport.returnJourney.vehicleDate) {
-          updated.externalTransport.returnJourney.vehicleDate = form.startDate;
+        
+        if (!current) {
+          // Deep copy and set
+          let p = next;
+          for (let i = 0; i < segments.length - 1; i++) {
+            p[segments[i]] = { ...p[segments[i]] };
+            p = p[segments[i]];
+          }
+          p[segments[segments.length - 1]] = value;
+          changed = true;
         }
-        if (!updated.internalTransport.onwardJourney.vehicleDate) {
-          updated.internalTransport.onwardJourney.vehicleDate = form.startDate;
-        }
-        if (!updated.internalTransport.returnJourney.vehicleDate) {
-          updated.internalTransport.returnJourney.vehicleDate = form.startDate;
-        }
-        return updated;
-      });
-    }
-  }, [form.startDate]);
+      };
+
+      updateIfEmpty('externalTransport.onwardJourney.vehicleDate', form.startDate);
+      updateIfEmpty('externalTransport.returnJourney.vehicleDate', form.startDate);
+      updateIfEmpty('internalTransport.onwardJourney.vehicleDate', form.startDate);
+      updateIfEmpty('internalTransport.returnJourney.vehicleDate', form.startDate);
+      updateIfEmpty('audioDate', form.startDate);
+      updateIfEmpty('accommodation.arrivalDate', form.startDate);
+
+      if (form.endDate && !prev.accommodation.departureDate) {
+        next.accommodation = { ...next.accommodation, departureDate: form.endDate };
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [form.startDate, form.endDate]);
 
   // Sync Audio Date, Venue, and Times automatically
   useEffect(() => {
