@@ -1,19 +1,15 @@
-
-import { useState } from 'react';
-import { X, Star, MessageSquare, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, MessageSquare, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const FeedbackModal = ({ odRequestId, eventTitle, onClose }) => {
-  const [rating, setRating] = useState(0);
-  const [hovered, setHovered] = useState(0);
+const FeedbackModal = ({ odRequestId, eventTitle, onClose, googleFormLink }) => {
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async () => {
-    if (rating === 0) {
-      setError('Please select a rating before submitting.');
+    if (!comment.trim()) {
+      setError('Please provide your feedback comments before submitting.');
       return;
     }
     setIsSubmitting(true);
@@ -22,7 +18,7 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose }) => {
       const res = await fetch(`http://localhost:5001/api/od-requests/${odRequestId}/feedback`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating, comment }),
+        body: JSON.stringify({ rating: 5, comment }), // Default rating to 5 internally
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.message);
@@ -63,6 +59,25 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose }) => {
             </button>
           </div>
 
+          {/* Google Form Link Alert */}
+          {googleFormLink && (
+            <div className="px-6 pt-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-2">
+                 <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Primary Feedback Method</p>
+                 <p className="text-[11px] text-blue-600 leading-relaxed">The organizer has provided a Google Form for feedback. Please fill that out first.</p>
+                 <a 
+                   href={googleFormLink} 
+                   target="_blank" 
+                   rel="noreferrer" 
+                   className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700"
+                 >
+                   Open Google Form
+                 </a>
+                 <p className="text-[10px] text-blue-500 text-center italic mt-1 font-bold italic">Please prioritize using the Google Form link above.</p>
+              </div>
+            </div>
+          )}
+
           <div className="p-6">
             {submitted ? (
               /* Success state */
@@ -78,53 +93,16 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose }) => {
               </div>
             ) : (
               <>
-                <p className="text-sm text-slate-500 mb-5">
-                  Share your experience for <span className="font-semibold text-slate-700">{eventTitle}</span>
-                </p>
-
-                {/* Star Rating */}
-                <div className="mb-5">
-                  <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Overall Rating <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <button
-                        key={star}
-                        type="button"
-                        onMouseEnter={() => setHovered(star)}
-                        onMouseLeave={() => setHovered(0)}
-                        onClick={() => setRating(star)}
-                        className="transition-transform hover:scale-110"
-                      >
-                        <Star
-                          size={32}
-                          className={`transition-colors ${
-                            star <= (hovered || rating)
-                              ? 'fill-amber-400 text-amber-400'
-                              : 'text-slate-200 fill-slate-200'
-                          }`}
-                        />
-                      </button>
-                    ))}
-                    {rating > 0 && (
-                      <span className="ml-2 text-sm font-medium text-slate-600">
-                        {['', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'][rating]}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
                 {/* Comment */}
                 <div className="mb-5">
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
-                    Your Comments <span className="text-slate-400 font-normal">(optional)</span>
+                    Your Feedback <span className="text-red-500">*</span>
                   </label>
                   <textarea
-                    rows={4}
+                    rows={6}
                     value={comment}
                     onChange={e => setComment(e.target.value)}
-                    placeholder="What did you enjoy? What could be improved?"
+                    placeholder="Tell us about your experience..."
                     className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent resize-none text-sm"
                   />
                 </div>

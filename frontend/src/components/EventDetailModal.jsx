@@ -505,6 +505,41 @@ const EventDetailModal = ({ event, onClose }) => {
                   <InfoRow label="External Participants" value={s1?.participants?.externalParticipants} />
                 </div>
               </div>
+
+              {(() => {
+                const endDate = event.requisition?.step1?.eventEndDate || event.date;
+                const endTime = event.requisition?.step1?.eventEndTime || event.endTime || '23:59';
+                if (!endDate) return null;
+                const eventEnd = new Date(`${endDate}T${endTime}`);
+                const isIQAC = currentUser?.role === UserRole.IQAC_TEAM;
+                const isPastEvent = (!isNaN(eventEnd.getTime()) && Date.now() >= eventEnd.getTime()) || isIQAC;
+                if (!isPastEvent || !event.studentFeedbackLink) return null;
+
+                return (
+                  <div className="mt-4 pt-4 border-t border-slate-100 italic">
+                    <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> 
+                      Feedback Form (Accessible Now)
+                    </p>
+                    <div className="grid grid-cols-1 gap-4">
+                      {event.studentFeedbackLink && (
+                        <div className="rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2.5">
+                          <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-1">Student Feedback</p>
+                          <a 
+                            href={event.studentFeedbackLink} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1.5 truncate"
+                            title={event.studentFeedbackLink}
+                          >
+                            <ExternalLink size={14} className="shrink-0" /> Open Feedback Form
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <p className="text-xs font-bold text-slate-400 uppercase mb-3">Guest Details</p>
                 <div className="grid grid-cols-2 gap-4">
@@ -529,12 +564,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     <span key={lbl} className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       req ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-400'
                     }`}>
-                  <span className={`px-2.5 py-1 rounded-lg text-[11px] uppercase tracking-wider font-bold border ${
-                  event.creatorType === 'FACULTY' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                }`}>
-                  {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
-                </span>
-                    {req ? '✓' : '✗'} {lbl}
+                      {req ? '✓' : '✗'} {lbl}
                     </span>
                   ))}
                 </div>

@@ -357,9 +357,9 @@ const Dashboard = () => {
     }, 2000);
   };
 
-  const shareDeptList = async (dept, students, eventTitle) => {
+  const shareDeptList = async (dept, students, eventTitle, eventDate) => {
     const listText = students.map((s, i) => `${i + 1}. ${s.studentName} (${s.rollNo}) - ${s.class}`).join('\n');
-    const shareText = `APPROVED PARTICIPANT OD LIST: ${eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`;
+    const shareText = `APPROVED PARTICIPANT OD LIST: ${eventTitle}\nDATE: ${eventDate || '-'}\nDEPARTMENT: ${dept}\n\n${listText}`;
     
     if (navigator.share) {
       try {
@@ -866,9 +866,19 @@ const Dashboard = () => {
                                     );
                                   })()}
                                   {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.IQAC_TEAM) && event.iqacSubmittedAt && (
-                                    <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
-                                      <FileCheck size={12} /> IQAC Submitted
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                        <FileCheck size={12} /> IQAC Submitted
+                                      </span>
+                                      {currentUser.role === UserRole.IQAC_TEAM && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); navigate('/explore', { state: { openIQAC: event.id } }); }}
+                                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors"
+                                        >
+                                          View Responses
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -1191,14 +1201,14 @@ const Dashboard = () => {
                                                       <Download size={12} /> Download
                                                     </button>
                                                     <button
-                                                      onClick={() => shareDeptList(dept, students, group.eventTitle)}
+                                                      onClick={() => shareDeptList(dept, students, group.eventTitle, group.eventDate)}
                                                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all shadow-sm"
                                                       title="Share List"
                                                     >
                                                       <ArrowUpRight size={12} /> Share
                                                     </button>
                                                     <button
-                                                      onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
+                                                      onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDATE: ${group.eventDate || '-'}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
                                                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${isCopied
                                                         ? 'bg-emerald-500 text-white'
                                                         : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'

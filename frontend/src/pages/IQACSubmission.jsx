@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus } from '../types';
+import EventReportModal from '../components/EventReportModal';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -98,7 +99,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const IQACSubmission = () => {
-  const { currentUser, selectedEvent } = useAppContext();
+  const { currentUser, selectedEvent, odRequests = [] } = useAppContext();
   const navigate = useNavigate();
 
   const [uploads, setUploads] = useState({});
@@ -134,7 +135,6 @@ const IQACSubmission = () => {
     designation: '',
     organization: '',
     topicsByDay: [], // Now an array for each day
-    rating: 5,
   });
 
   const defaultPoster = "https://placehold.co/600x400/e2e8f0/64748b?text=No+Poster";
@@ -144,9 +144,10 @@ const IQACSubmission = () => {
     name: '',
     designation: '',
     organization: '',
-    rating: 5,
     feedback: '',
   });
+
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     if (!currentUser) {
@@ -261,6 +262,40 @@ const IQACSubmission = () => {
     
     fetchODStats();
   }, [currentUser, selectedEvent, navigate]);
+
+  // Effect to fetch student feedbacks into Guest Feedback section
+  useEffect(() => {
+    if (!selectedEvent || !odRequests.length) return;
+
+    // Only auto-fetch if we haven't already or if we want to refresh
+    const studentFeedbacks = odRequests
+      .filter(r => r.eventId === selectedEvent.id && (r.feedback || r.studentFeedback))
+      .map(r => {
+        // Handle both old and new feedback formats
+        const rawFeedback = r.feedback || r.studentFeedback;
+        const comment = typeof rawFeedback === 'object' ? rawFeedback.comment : rawFeedback;
+        
+        return {
+          id: `auto-${r.id}`,
+          name: r.studentName || 'Student',
+          designation: 'Participant (Student)',
+          organization: r.class || r.department || 'Internal',
+          feedback: comment || 'No comments provided',
+          isAutoFetched: true
+        };
+      });
+
+    if (studentFeedbacks.length > 0) {
+      setGuestFeedback(prev => {
+        // Keep manual entries, but refresh auto-fetched ones
+        const manual = prev.filter(f => !f.isAutoFetched);
+        // Avoid adding the same IDs again
+        const next = [...manual, ...studentFeedbacks];
+        // Deduplicate by ID
+        return Array.from(new Map(next.map(item => [item.id, item])).values());
+      });
+    }
+  }, [selectedEvent, odRequests]);
 
   const eligibleForIQAC = useMemo(() => {
     if (!selectedEvent) return false;
@@ -877,18 +912,10 @@ const IQACSubmission = () => {
           <h2 className="text-lg font-bold text-slate-900">Section 3 - Student Feedback (Auto from registrations)</h2>
           <p className="mt-1 text-sm text-slate-600">Collected automatically from approved students who submitted post-event feedback</p>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-1 text-center">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responses</p>
               <p className="mt-1 text-sm font-bold text-slate-900">{autoFeedbackSummary?.totalResponses ?? 0}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Average Rating</p>
-              <p className="mt-1 text-sm font-bold text-slate-900">{autoFeedbackSummary?.averageRating ?? '-'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Scale</p>
-              <p className="mt-1 text-sm font-bold text-slate-900">{autoFeedbackSummary?.ratingOutOf || 5}</p>
             </div>
           </div>
 
@@ -897,7 +924,6 @@ const IQACSubmission = () => {
               {autoFeedbackSummary.comments.map((item, idx) => (
                 <div key={`${item.student}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">{item.student} <span className="text-xs text-slate-500">({item.rollNo})</span></p>
-                  <p className="text-xs text-amber-600 mt-0.5">Rating: {item.rating}/5</p>
                   {item.comment ? <p className="text-sm text-slate-700 mt-1">{item.comment}</p> : <p className="text-xs text-slate-500 mt-1">No comment</p>}
                 </div>
               ))}
@@ -1022,22 +1048,6 @@ const IQACSubmission = () => {
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
                   />
                 </div>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Rating (1-5) *</label>
-                  <div className="mt-1 flex items-center gap-2">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setFeedbackForm((prev) => ({ ...prev, rating: star }))}
-                        disabled={isSubmitting}
-                        className={`text-2xl transition ${feedbackForm.rating >= star ? 'text-yellow-400' : 'text-slate-300'}`}
-                      >
-                        <Star size={20} fill="currentColor" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               <div>
@@ -1066,33 +1076,23 @@ const IQACSubmission = () => {
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-700">Added Feedback ({guestFeedback.length})</p>
                 {guestFeedback.map((feedback) => (
-                  <div key={feedback.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div>
+                  <div key={feedback.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
                         <p className="font-semibold text-slate-900">{feedback.name}</p>
-                        {feedback.designation && <p className="text-xs text-slate-600">{feedback.designation}</p>}
-                        {feedback.organization && <p className="text-xs text-slate-600">{feedback.organization}</p>}
+                        {feedback.designation && <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{feedback.designation}</p>}
+                        {feedback.organization && <p className="text-[10px] text-slate-400">{feedback.organization}</p>}
+                        <p className="text-sm text-slate-700 mt-2 italic">"{feedback.feedback}"</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => removeGuestFeedback(feedback.id)}
-                        className="text-red-600 hover:text-red-700"
+                        className="text-red-600 hover:text-red-700 ml-4 p-1 hover:bg-red-50 rounded"
+                        title="Remove feedback"
                       >
                         <X size={18} />
                       </button>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          size={14}
-                          fill={feedback.rating >= star ? 'currentColor' : 'none'}
-                          className={feedback.rating >= star ? 'text-yellow-400' : 'text-slate-300'}
-                        />
-                      ))}
-                      <span className="text-xs text-slate-600 ml-2">({feedback.rating}/5)</span>
-                    </div>
-                    <p className="text-sm text-slate-700">{feedback.feedback}</p>
                   </div>
                 ))}
               </div>
@@ -1103,7 +1103,6 @@ const IQACSubmission = () => {
           </div>
         </section>
 
-        {/* ── Section 6 – Resource Persons ── */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900">Section 6 - Resource Persons / Speakers</h2>
           <p className="mt-1 text-sm text-slate-600">Add details of all resource persons and speakers who participated in the event</p>
@@ -1172,23 +1171,6 @@ const IQACSubmission = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Session Rating (1–5)</label>
-                <div className="mt-1 flex items-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setResourcePersonForm((prev) => ({ ...prev, rating: star }))}
-                      disabled={isSubmitting}
-                      className={`text-2xl transition ${resourcePersonForm.rating >= star ? 'text-yellow-400' : 'text-slate-300'}`}
-                    >
-                      <Star size={20} fill="currentColor" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <button
                 type="button"
                 onClick={addResourcePerson}
@@ -1203,7 +1185,7 @@ const IQACSubmission = () => {
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-700">Added Resource Persons ({resourcePersons.length})</p>
                 {resourcePersons.map((person) => (
-                  <div key={person.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1">
+                  <div key={person.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="font-semibold text-slate-900">{person.name}</p>
@@ -1220,17 +1202,6 @@ const IQACSubmission = () => {
                       >
                         <X size={18} />
                       </button>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          size={14}
-                          fill={person.rating >= star ? 'currentColor' : 'none'}
-                          className={person.rating >= star ? 'text-yellow-400' : 'text-slate-300'}
-                        />
-                      ))}
-                      <span className="text-xs text-slate-600 ml-2">({person.rating}/5)</span>
                     </div>
                   </div>
                 ))}
@@ -1353,6 +1324,14 @@ const IQACSubmission = () => {
                           Open Link
                         </a>
                       )}
+                      {item.id === 'event-report' && (
+                        <button
+                          onClick={() => setShowReportModal(true)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-bold text-purple-700 hover:bg-purple-100 transition-all shadow-sm"
+                        >
+                          <FileText size={12} /> View/Generate Report
+                        </button>
+                      )}
                       {file && file.dataUrl && (
                         <a
                           href={file.dataUrl}
@@ -1402,6 +1381,24 @@ const IQACSubmission = () => {
             {selectedEvent.iqacSubmittedAt ? 'IQAC Already Submitted' : 'Submit IQAC Documentation'}
           </button>
         </footer>
+        {/* Event Report Modal */}
+        {showReportModal && (
+          <EventReportModal
+            event={selectedEvent}
+            resourcePersons={resourcePersons}
+            registrationDetails={registrationDetails}
+            onClose={() => setShowReportModal(false)}
+          />
+        )}
+
+        {/* Existing Modals */}
+        {showODRosterModal && (
+          <ODRosterModal
+            roster={studentAttendanceRoster}
+            onUpdate={setStudentAttendanceRoster}
+            onClose={() => setShowODRosterModal(false)}
+          />
+        )}
       </main>
     </div>
   );

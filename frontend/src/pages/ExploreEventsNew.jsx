@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
@@ -143,23 +143,21 @@ const IQACSummaryModal = ({ event, onClose }) => {
   };
 
   const downloadParticipantFeedbackExcel = () => {
-    const comments = autoFeedback?.comments || studentFeedback || [];
-    const rows = comments.length > 0
-      ? comments.map((c, i) => `<tr>
+    const commentsList = autoFeedback?.comments || studentFeedback || [];
+    const rows = commentsList.length > 0
+      ? commentsList.map((c, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
           <td style='${tdStyle}'>${c.student || c.name || '—'}</td>
           <td style='${tdStyle}'>${c.rollNo || '—'}</td>
-          <td style='${tdStyle}text-align:center'>${'★'.repeat(Number(c.rating) || 0)}${'☆'.repeat(5 - (Number(c.rating) || 0))} (${c.rating || '—'}/5)</td>
           <td style='${tdStyle}'>${c.comment || c.feedback || 'No comment'}</td>
         </tr>`).join('')
-      : `<tr><td colspan='5' style='${tdStyle}text-align:center;color:#888'>No participant feedback submitted</td></tr>`;
+      : `<tr><td colspan='4' style='${tdStyle}text-align:center;color:#888'>No participant feedback submitted</td></tr>`;
 
     const table = `<table style='${tableStyle}'>
       <thead><tr>
         <th style='${thStyle}'>#</th>
         <th style='${thStyle}'>Student Name</th>
         <th style='${thStyle}'>Roll No</th>
-        <th style='${thStyle}'>Rating</th>
         <th style='${thStyle}'>Feedback</th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -219,10 +217,9 @@ const IQACSummaryModal = ({ event, onClose }) => {
     const fbRows = (autoFeedback?.comments || studentFeedback).length > 0
       ? (autoFeedback?.comments || studentFeedback).map((c,i) => `<tr>
           <td>${i+1}</td><td>${c.student||c.name||'—'}</td><td>${c.rollNo||'—'}</td>
-          <td>${'★'.repeat(Number(c.rating)||0)}${'☆'.repeat(5-(Number(c.rating)||0))} ${c.rating||'—'}/5</td>
           <td>${c.comment||c.feedback||'—'}</td>
         </tr>`).join('')
-      : '<tr><td colspan="5" style="text-align:center;color:#888">No feedback submitted</td></tr>';
+      : '<tr><td colspan="4" style="text-align:center;color:#888">No feedback submitted</td></tr>';
 
     const gfRows = guestFeedback.length > 0
       ? guestFeedback.map((fb,i) => `<tr>
@@ -556,17 +553,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
             {autoFeedback?.totalResponses > 0 || studentFeedback.length > 0 ? (
               <>
                 {autoFeedback && (
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    {[
-                      ['Responses',   autoFeedback.totalResponses ?? 0],
-                      ['Avg. Rating', autoFeedback.averageRating   ?? '—'],
-                      ['Out of',      autoFeedback.ratingOutOf     || 5],
-                    ].map(([label, val]) => (
-                      <div key={label} className="rounded-xl border border-purple-100 bg-purple-50 px-3 py-3 text-center">
-                        <p className="text-2xl font-extrabold text-purple-700">{val}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-purple-500 mt-0.5">{label}</p>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 gap-3 mb-4">
+                    <div className="rounded-xl border border-purple-100 bg-purple-50 px-3 py-3 text-center">
+                      <p className="text-2xl font-extrabold text-purple-700">{autoFeedback.totalResponses ?? 0}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-purple-500 mt-0.5">Total Responses</p>
+                    </div>
                   </div>
                 )}
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
@@ -576,7 +567,6 @@ const IQACSummaryModal = ({ event, onClose }) => {
                         <p className="text-sm font-semibold text-slate-800">
                           {item.student || item.name}{item.rollNo && <span className="text-xs text-slate-400 font-normal"> ({item.rollNo})</span>}
                         </p>
-                        <span className="text-amber-500 text-sm">{'★'.repeat(Number(item.rating) || 5)}</span>
                       </div>
                       <p className={`text-xs mt-1 ${item.comment || item.feedback ? 'text-slate-600 italic' : 'text-slate-400'}`}>
                         {item.comment || item.feedback || 'No comment provided.'}
@@ -654,14 +644,8 @@ const IQACSummaryModal = ({ event, onClose }) => {
                         <p className="text-sm font-bold text-slate-800">{fb.name}</p>
                         {fb.designation && <p className="text-xs text-slate-500 mt-0.5">{fb.designation}{fb.organization ? ` · ${fb.organization}` : ''}</p>}
                       </div>
-                      <div className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm">
-                        {[1,2,3,4,5].map(s => (
-                          <Star key={s} size={12} className={s <= (fb.rating || 5) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
-                        ))}
-                        <span className="text-[10px] font-bold text-amber-700 ml-1">{fb.rating || 5}/5</span>
-                      </div>
+                      {fb.feedback && <p className="mt-3 text-sm text-slate-700 italic border-l-[3px] border-amber-300 pl-3">"{fb.feedback}"</p>}
                     </div>
-                    {fb.feedback && <p className="mt-3 text-sm text-slate-700 italic border-l-[3px] border-amber-300 pl-3">"{fb.feedback}"</p>}
                   </div>
                 ))}
               </div>
@@ -743,7 +727,7 @@ const EventCard = ({
   const isStudent = currentUser?.role === UserRole.STUDENT_GENERAL || currentUser?.role === UserRole.STUDENT_ORGANIZER;
   const showOD = canDownloadOD(event);
   const showFeedback = canSubmitFeedback(event);
-  const showIQAC = isCompleted && (event.iqacSubmittedAt || event.iqacSubmission);
+  const showIQAC = isCompleted && (event.iqacSubmittedAt || event.iqacSubmission || currentUser?.role === UserRole.IQAC_TEAM);
   const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
   const requestStatus = odReq ? odReq.status : null;
 
@@ -854,11 +838,21 @@ const EventCard = ({
               <Download size={14} /> OD Letter
             </button>
           )}
-          {/* Feedback — only on completed events for registered students */}
-          {showFeedback && isCompleted && (
-            <button onClick={(e) => { e.stopPropagation(); onOpenFeedback(event); }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium">
-              <MessageSquare size={14} /> Feedback
+          {/* Feedback — either via internal modal or external Google Form */}
+          {showFeedback && (
+            <button 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (event.studentFeedbackLink) {
+                  window.open(event.studentFeedbackLink, '_blank');
+                } else {
+                  onOpenFeedback(event); 
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium shadow-sm transition-all active:scale-95"
+            >
+              {event.studentFeedbackLink ? <ExternalLink size={14} /> : <MessageSquare size={14} />}
+              {event.studentFeedbackLink ? 'Feedback Form' : 'Feedback'}
             </button>
           )}
         </div>
@@ -878,6 +872,19 @@ const ExploreEvents = () => {
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [processingEventId, setProcessingEventId] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.openIQAC && events.length > 0) {
+      const event = events.find(e => e.id === location.state.openIQAC);
+      if (event) {
+        setSelectedEvent(event);
+        setShowEventDetail(true);
+        // Clear state to avoid reopening on refresh
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, events, navigate]);
 
   useEffect(() => {
     loadEvents();
@@ -1041,27 +1048,36 @@ const ExploreEvents = () => {
     const startTime = event.requisition?.step1?.eventStartTime || '00:00';
     if (!startDate) return false;
     const start = new Date(`${startDate}T${startTime}`).getTime();
+    const now = Date.now();
     const twentyFourHoursBefore = start - (24 * 60 * 60 * 1000); 
-    return Date.now() >= twentyFourHoursBefore;
+
+    // Can only download starting 24h before AND until the event starts
+    return now >= twentyFourHoursBefore && now < start;
   };
 
   const canSubmitFeedback = (event) => {
-    // Must be registered
-    if (!isRegistered(event)) return false;
-
-    // Block if feedback already submitted or registration rejected (check any non-withdrawn OD request)
-    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
-    if (!odReq || odReq.status === 'REJECTED' || odReq.feedback) return false;
-
     const endDate = event.requisition?.step1?.eventEndDate;
     const endTime = event.requisition?.step1?.eventEndTime || '23:59';
     if (!endDate) return false;
 
     const end = new Date(`${endDate}T${endTime}`).getTime();
     const now = Date.now();
-    const sevenDaysAfter = end + (7 * 24 * 60 * 60 * 1000); // 7 days after event ends
 
-    // Show feedback button once event has ended and within 7 days
+    // If a Google Form link is provided, it should be enabled for everyone after the event ends
+    if (event.studentFeedbackLink) {
+      return now >= end;
+    }
+
+    // Internal feedback via FeedbackModal still requires registration
+    if (!isRegistered(event)) return false;
+
+    // Block if feedback already submitted or registration rejected
+    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
+    if (!odReq || odReq.status === 'REJECTED' || odReq.feedback) return false;
+
+    const sevenDaysAfter = end + (7 * 24 * 60 * 60 * 1000); 
+
+    // Show internal feedback button once event has ended and within 7 days
     return now >= end && now <= sevenDaysAfter;
   };
   // Shared props for the stable module-level EventCard
@@ -1147,6 +1163,7 @@ const ExploreEvents = () => {
           <FeedbackModal
             odRequestId={odReq.id}
             eventTitle={selectedEvent.title || selectedEvent.requisition?.step1?.eventName || 'Event'}
+            googleFormLink={selectedEvent.studentFeedbackLink}
             onClose={() => {
               setShowFeedbackModal(false);
               setSelectedEvent(null);

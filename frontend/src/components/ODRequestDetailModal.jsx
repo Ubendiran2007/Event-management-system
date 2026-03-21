@@ -1,4 +1,4 @@
-import { X, User, Calendar, Clock, MapPin, FileText, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { X, User, Calendar, Clock, MapPin, FileText, CheckCircle2, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { ODRequestStatus, UserRole } from '../types';
@@ -241,6 +241,40 @@ const ODRequestDetailModal = ({ request, onClose }) => {
                 <p className="text-sm text-red-600">This request has been rejected.</p>
               </div>
             )}
+
+            {/* Participation Feedback Link - Post event only */}
+            {(() => {
+                const isStudentView = currentUser?.id === request.studentId;
+                if (!isStudentView || request.status !== ODRequestStatus.APPROVED || request.feedback || !event) return null;
+                const endDate = s1?.eventEndDate || event.date;
+                const endTime = s1?.eventEndTime || '23:59';
+                if (!endDate) return null;
+                const end = new Date(`${endDate}T${endTime}`).getTime();
+                const now = Date.now();
+                if (now < end) return null;
+                if (now > end + (7 * 24 * 60 * 60 * 1000)) return null;
+
+                return (
+                  <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 text-center flex flex-col items-center gap-2 mt-4">
+                    <MessageSquare size={24} className="text-purple-600 mb-1" />
+                    <p className="font-bold text-slate-800">Event Feedback Released</p>
+                    <p className="text-[11px] text-slate-500 mb-2">Thank you for participating! Please provide your feedback below.</p>
+                    
+                    {event.studentFeedbackLink ? (
+                      <a
+                        href={event.studentFeedbackLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs font-bold shadow-lg transition-all active:scale-95"
+                      >
+                         Open Google Form Feedback
+                      </a>
+                    ) : (
+                      <p className="text-[10px] text-purple-600 italic">Please go to Explore Events to submit feedback.</p>
+                    )}
+                  </div>
+                );
+            })()}
           </div>
         </motion.div>
       </motion.div>
