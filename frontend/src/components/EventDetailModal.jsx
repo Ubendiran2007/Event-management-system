@@ -88,7 +88,7 @@ const EventDetailModal = ({ event, onClose }) => {
   const mediaAnnex = r?.annexureVI_media;
   const createdOn = event?.createdAt ? new Date(event.createdAt).toLocaleDateString() : 'Not available';
   const eventDateRange = s1?.eventStartDate && s1?.eventEndDate
-    ? `${s1.eventStartDate} to ${s1.eventEndDate}`
+    ? (s1.eventStartDate === s1.eventEndDate ? s1.eventStartDate : `${s1.eventStartDate} to ${s1.eventEndDate}`)
     : (event?.date || 'Not specified');
   const enabledRequirementCount = Object.values(s1?.requirements || {}).filter(Boolean).length;
   const eventPosterSrc = event?.posterDataUrl || event?.posterUrl || null;
@@ -478,8 +478,14 @@ const EventDetailModal = ({ event, onClose }) => {
                 {s1?.professionalSocieties?.length > 0 && (
                   <InfoRow label="Professional Societies" value={s1.professionalSocieties.join(', ')} fullWidth />
                 )}
-                <InfoRow label="Start Date" value={s1?.eventStartDate} />
-                <InfoRow label="End Date" value={s1?.eventEndDate} />
+                {s1?.eventStartDate === s1?.eventEndDate ? (
+                  <InfoRow label="Event Date" value={s1?.eventStartDate} />
+                ) : (
+                  <>
+                    <InfoRow label="Start Date" value={s1?.eventStartDate} />
+                    <InfoRow label="End Date" value={s1?.eventEndDate} />
+                  </>
+                )}
                 <InfoRow label="Number of Days" value={s1?.numberOfDays} />
                 <InfoRow label="Start Time" value={formatTime12(s1?.eventStartTime)} />
                 <InfoRow label="End Time" value={formatTime12(s1?.eventEndTime)} />

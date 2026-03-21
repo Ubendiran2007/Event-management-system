@@ -319,6 +319,8 @@ const CreateEvent = () => {
     mobileNumber: '',
     internalParticipants: '',
     externalParticipants: '',
+    studentFeedbackLink: '',
+    resourcePersonFeedbackLink: '',
     // Dynamic guest list (replaces old flat fields noOfGuests/guestNames/guestDesignation/guestOrganization)
     guests: [],
     schedule: [
@@ -598,6 +600,8 @@ const CreateEvent = () => {
       endDate: step1.eventEndDate || editingEvent.date || '',
       startTime: step1.eventStartTime || editingEvent.startTime || '',
       endTime: step1.eventEndTime || editingEvent.endTime || '',
+      studentFeedbackLink: editingEvent.studentFeedbackLink || '',
+      resourcePersonFeedbackLink: editingEvent.resourcePersonFeedbackLink || '',
       organizerName: step1.organizerDetails?.organizerName || editingEvent.organizerName || currentUser?.name || '',
       department: step1.organizerDetails?.department || editingEvent.department || '',
       mobileNumber: step1.organizerDetails?.mobileNumber || '',
@@ -1325,7 +1329,7 @@ const CreateEvent = () => {
       title: form.eventName,
       description: `${form.eventType} event requisition${form.isIIC === 'Yes' ? ' (IIC)' : ''}`,
       eventType: form.eventType,
-      date: form.startDate,
+      date: form.startDate === form.endDate ? form.startDate : `${form.startDate} - ${form.endDate}`,
       startTime: form.startTime,
       endTime: form.endTime,
       venue: form.audioVenueName || Object.entries(form.venueSelection).find(([, v]) => v.selected)?.[0] || 'To be allocated',
@@ -1334,6 +1338,8 @@ const CreateEvent = () => {
       organizerEmail: currentUser?.email || '',
       createdByRole: currentUser?.role || UserRole.STUDENT_GENERAL,
       creatorType: currentUser?.role === UserRole.FACULTY ? 'FACULTY' : 'STUDENT',
+      studentFeedbackLink: form.studentFeedbackLink,
+      resourcePersonFeedbackLink: form.resourcePersonFeedbackLink,
       status: initialStatus,
       createdAt: new Date().toISOString(),
       posterWorkflow,
@@ -1757,6 +1763,36 @@ const CreateEvent = () => {
                 placeholder="e.g. 20"
               />
               <FieldMsg errKey="externalParticipants" hint="Whole numbers only" />
+            </div>
+
+            <div className="md:col-span-2 border-t border-slate-200 pt-4">
+              <h4 className="font-semibold text-slate-800 mb-3 text-sm">Feedback Links (Google Forms)</h4>
+            </div>
+
+            <div className="space-y-1">
+              <Lbl>Student Feedback Link</Lbl>
+              <input
+                id="studentFeedbackLink"
+                type="url"
+                className={fieldCls('studentFeedbackLink')}
+                value={form.studentFeedbackLink}
+                onChange={(e) => setField('studentFeedbackLink', e.target.value)}
+                placeholder="https://forms.gle/..."
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5 italic">Will be auto-fetched in IQAC submission</p>
+            </div>
+
+            <div className="space-y-1">
+              <Lbl>Resource Person Feedback Link</Lbl>
+              <input
+                id="resourcePersonFeedbackLink"
+                type="url"
+                className={fieldCls('resourcePersonFeedbackLink')}
+                value={form.resourcePersonFeedbackLink}
+                onChange={(e) => setField('resourcePersonFeedbackLink', e.target.value)}
+                placeholder="https://forms.gle/..."
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5 italic">Will be auto-fetched in IQAC submission</p>
             </div>
 
 
@@ -2856,13 +2892,19 @@ const CreateEvent = () => {
             <div className="rounded-xl bg-slate-50 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               <p><span className="font-semibold">Event Name:</span> {form.eventName || '-'}</p>
               <p><span className="font-semibold">Type:</span> {form.eventType || '-'}</p>
-              <p><span className="font-semibold">Dates:</span> {form.startDate || '-'} to {form.endDate || '-'}</p>
+              {form.startDate === form.endDate ? (
+                <p><span className="font-semibold">Event Date:</span> {form.startDate || '-'}</p>
+              ) : (
+                <p><span className="font-semibold">Dates:</span> {form.startDate || '-'} to {form.endDate || '-'}</p>
+              )}
               <p><span className="font-semibold">Days:</span> {numberOfDays || '-'}</p>
               <p><span className="font-semibold">Time:</span> {formatTime12(form.startTime)} - {formatTime12(form.endTime)}</p>
               <p><span className="font-semibold">Organizer:</span> {form.organizerName || '-'}</p>
               <p><span className="font-semibold">Department:</span> {form.department || '-'}</p>
               <p><span className="font-semibold">IQAC Number:</span> {iqacNumber}</p>
               <p><span className="font-semibold">Schedule Items:</span> {form.schedule.length}</p>
+              <p className="md:col-span-2 truncate"><span className="font-semibold">Student Feedback:</span> {form.studentFeedbackLink || '-'}</p>
+              <p className="md:col-span-2 truncate"><span className="font-semibold">Resource Person Feedback:</span> {form.resourcePersonFeedbackLink || '-'}</p>
             </div>
 
             <div className="rounded-xl border border-slate-200 p-4">

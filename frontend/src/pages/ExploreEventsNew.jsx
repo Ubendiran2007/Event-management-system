@@ -783,7 +783,11 @@ const EventCard = ({
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Calendar size={14} />
-            <span className="text-xs">{event.requisition?.step1?.eventStartDate} to {event.requisition?.step1?.eventEndDate}</span>
+            <span className="text-xs">
+              {event.requisition?.step1?.eventStartDate === event.requisition?.step1?.eventEndDate
+                ? event.requisition?.step1?.eventStartDate
+                : `${event.requisition?.step1?.eventStartDate} to ${event.requisition?.step1?.eventEndDate}`}
+            </span>
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Clock size={14} />

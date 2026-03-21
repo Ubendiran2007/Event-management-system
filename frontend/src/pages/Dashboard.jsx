@@ -1262,7 +1262,10 @@ const Dashboard = () => {
                                   <span className="text-xs text-slate-500">•</span>
                                   <span className="text-xs text-slate-500">{request.eventName}</span>
                                 </div>
-                                <p className="text-xs text-slate-400 mt-2">{request.eventDate}</p>
+                                 <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
+                                    <Clock size={12} />
+                                    {request.eventDate}
+                                 </p>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">

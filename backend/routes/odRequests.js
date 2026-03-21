@@ -110,10 +110,19 @@ router.post('/', async (req, res) => {
       if (existingStatus !== 'WITHDRAWN' && existingStatus !== 'REJECTED') {
         return res.status(409).json({ success: false, message: 'Already registered for this event' });
       }
+
+      const s1 = event.requisition?.step1;
+      let eventDisplayDate = event.date || '';
+      if (s1?.eventStartDate && s1?.eventEndDate) {
+        eventDisplayDate = s1.eventStartDate === s1.eventEndDate
+          ? s1.eventStartDate
+          : `${s1.eventStartDate} - ${s1.eventEndDate}`;
+      }
+
       // Re-registration: reset the existing doc instead of creating a new one
       const reActivated = {
         eventTitle: event.title || '',
-        eventDate: event.date || '',
+        eventDate: eventDisplayDate,
         eventVenue: event.venue || '',
         organizerId: event.organizerId || '',
         organizerName: event.organizerName || '',
@@ -142,10 +151,18 @@ router.post('/', async (req, res) => {
       return res.status(200).json({ success: true, odRequest: { id: existingDoc.id, ...existingDoc.data(), ...reActivated } });
     }
 
+    const s1_new = event.requisition?.step1;
+    let eventDisplayDate_new = event.date || '';
+    if (s1_new?.eventStartDate && s1_new?.eventEndDate) {
+      eventDisplayDate_new = s1_new.eventStartDate === s1_new.eventEndDate
+        ? s1_new.eventStartDate
+        : `${s1_new.eventStartDate} - ${s1_new.eventEndDate}`;
+    }
+
     const odData = {
       eventId,
       eventTitle: event.title || '',
-      eventDate: event.date || '',
+      eventDate: eventDisplayDate_new,
       eventVenue: event.venue || '',
       organizerId: event.organizerId || '',
       organizerName: event.organizerName || '',
