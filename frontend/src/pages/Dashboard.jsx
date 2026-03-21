@@ -174,6 +174,80 @@ const Dashboard = () => {
     });
   }, [currentUser, events]);
 
+  // For organizer: incoming registrations from students for their events
+  const organizerIncomingOD = useMemo(() => {
+    if (!currentUser) return [];
+    return (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY)
+      ? odRequests.filter(r => r.organizerId === currentUser.id)
+      : [];
+  }, [currentUser, odRequests]);
+
+  const groupedOrganizerEvents = useMemo(() => {
+    if (!currentUser) return [];
+    const organizerIncomingGroupedByEvent = organizerIncomingOD.reduce((acc, req) => {
+      const eventKey = req.eventId || req.eventTitle || 'unknown-event';
+      if (!acc[eventKey]) {
+        acc[eventKey] = {
+          eventId: req.eventId || null,
+          eventTitle: req.eventTitle || 'Untitled Event',
+          eventDate: req.eventDate || '',
+          requests: [],
+        };
+      }
+      acc[eventKey].requests.push(req);
+      return acc;
+    }, {});
+
+    return Object.values(organizerIncomingGroupedByEvent)
+      .sort((a, b) => (a.eventTitle || '').localeCompare(b.eventTitle || ''))
+      .map(group => ({
+        ...group,
+        requests: [...group.requests].sort((a, b) => {
+          const aPending = a.status === 'PENDING_ORGANIZER' ? 0 : 1;
+          const bPending = b.status === 'PENDING_ORGANIZER' ? 0 : 1;
+          if (aPending !== bPending) return aPending - bPending;
+          return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+        }),
+      }));
+  }, [organizerIncomingOD, currentUser]);
+
+  const organizerEventsById = useMemo(() => (
+    events.reduce((acc, ev) => {
+      acc[ev.id] = ev;
+      return acc;
+    }, {})
+  ), [events]);
+
+  useEffect(() => {
+    if (currentUser?.role !== UserRole.STUDENT_ORGANIZER) return;
+
+    setExpandedRegistrationGroups((prev) => {
+      const next = {};
+
+      groupedOrganizerEvents.forEach((group) => {
+        const groupKey = group.eventId || group.eventTitle;
+        const pendingCount = group.requests.filter(r => r.status === 'PENDING_ORGANIZER').length;
+        if (Object.prototype.hasOwnProperty.call(prev, groupKey)) {
+          next[groupKey] = prev[groupKey];
+        } else {
+          // Default-open groups that need immediate action.
+          next[groupKey] = pendingCount > 0;
+        }
+      });
+
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (
+        prevKeys.length === nextKeys.length &&
+        nextKeys.every((key) => prev[key] === next[key])
+      ) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [currentUser?.role, groupedOrganizerEvents]);
+
   if (!currentUser) {
     return null;
   }
@@ -208,79 +282,11 @@ const Dashboard = () => {
   };
 
   const filteredODRequests = getFilteredODRequests();
-  const pendingODCount = filteredODRequests.filter(r => r.status.startsWith('PENDING')).length;
+  const pendingODCount = filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length;
 
-  // For organizer: incoming registrations from students for their events
-  const organizerIncomingOD = useMemo(() => (
-    (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY)
-      ? odRequests.filter(r => r.organizerId === currentUser.id)
-      : []
-  ), [currentUser.role, currentUser.id, odRequests]);
   const pendingOrganizerOD = organizerIncomingOD.filter(r => r.status === 'PENDING_ORGANIZER');
-  const groupedOrganizerEvents = useMemo(() => {
-    const organizerIncomingGroupedByEvent = organizerIncomingOD.reduce((acc, req) => {
-      const eventKey = req.eventId || req.eventTitle || 'unknown-event';
-      if (!acc[eventKey]) {
-        acc[eventKey] = {
-          eventId: req.eventId || null,
-          eventTitle: req.eventTitle || 'Untitled Event',
-          eventDate: req.eventDate || '',
-          requests: [],
-        };
-      }
-      acc[eventKey].requests.push(req);
-      return acc;
-    }, {});
 
-    return Object.values(organizerIncomingGroupedByEvent)
-      .sort((a, b) => (a.eventTitle || '').localeCompare(b.eventTitle || ''))
-      .map(group => ({
-        ...group,
-        requests: [...group.requests].sort((a, b) => {
-          const aPending = a.status === 'PENDING_ORGANIZER' ? 0 : 1;
-          const bPending = b.status === 'PENDING_ORGANIZER' ? 0 : 1;
-          if (aPending !== bPending) return aPending - bPending;
-          return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
-        }),
-      }));
-  }, [organizerIncomingOD]);
 
-  const organizerEventsById = useMemo(() => (
-    events.reduce((acc, ev) => {
-      acc[ev.id] = ev;
-      return acc;
-    }, {})
-  ), [events]);
-
-  useEffect(() => {
-    if (currentUser.role !== UserRole.STUDENT_ORGANIZER) return;
-
-    setExpandedRegistrationGroups((prev) => {
-      const next = {};
-
-      groupedOrganizerEvents.forEach((group) => {
-        const groupKey = group.eventId || group.eventTitle;
-        const pendingCount = group.requests.filter(r => r.status === 'PENDING_ORGANIZER').length;
-        if (Object.prototype.hasOwnProperty.call(prev, groupKey)) {
-          next[groupKey] = prev[groupKey];
-        } else {
-          // Default-open groups that need immediate action.
-          next[groupKey] = pendingCount > 0;
-        }
-      });
-
-      const prevKeys = Object.keys(prev);
-      const nextKeys = Object.keys(next);
-      if (
-        prevKeys.length === nextKeys.length &&
-        nextKeys.every((key) => prev[key] === next[key])
-      ) {
-        return prev;
-      }
-
-      return next;
-    });
-  }, [currentUser.role, groupedOrganizerEvents]);
 
   const handleOrganizerApproval = async (odId, approve) => {
     setTogglingOD(prev => ({ ...prev, [odId]: true }));
@@ -622,7 +628,7 @@ const Dashboard = () => {
                         ? (currentUser.role === UserRole.FACULTY 
                             ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length 
                             : filteredEvents.length)
-                        : (isStud ? filteredODRequests.filter(r => r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length),
+                        : (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length),
                       icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50'
                     });
 
@@ -1279,7 +1285,7 @@ const Dashboard = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${request.status === ODRequestStatus.APPROVED
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${request.status === ODRequestStatus.APPROVED
                                 ? 'bg-emerald-50 text-emerald-600'
                                 : request.status === ODRequestStatus.REJECTED
                                   ? 'bg-red-50 text-red-600'
@@ -1287,9 +1293,9 @@ const Dashboard = () => {
                                     ? 'bg-slate-100 text-slate-400 line-through'
                                     : 'bg-amber-50 text-amber-600'
                                 }`}>
-                                {request.status.replace(/_/g, ' ')}
+                                {(request.status || '').replace(/_/g, ' ')}
                               </span>
-                              {(request.status === ODRequestStatus.APPROVED || request.status.startsWith('PENDING')) && (
+                              {(request.status === ODRequestStatus.APPROVED || (request.status && request.status.startsWith('PENDING'))) && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
                                   disabled={withdrawingOD[request.id]}

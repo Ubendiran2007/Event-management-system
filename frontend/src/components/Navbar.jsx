@@ -30,7 +30,7 @@ const Navbar = () => {
           <>
             <div className="text-right hidden sm:block border-l border-slate-200 pl-4 ml-1">
               <p className="text-sm font-semibold">{currentUser.name}</p>
-              <p className="text-xs text-slate-500 uppercase tracking-tight">{currentUser.role.replace('_', ' ')}</p>
+              <p className="text-xs text-slate-500 uppercase tracking-tight">{(currentUser.role || 'GUEST').replace('_', ' ')}</p>
             </div>
             <button
               onClick={onLogout}

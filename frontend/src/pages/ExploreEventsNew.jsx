@@ -9,6 +9,7 @@ import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
 import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
+import EventDetailModal from '../components/EventDetailModal';
 import defaultPoster from '../assets/sece.avif';
 
 const formatTime12 = (t24) => {
@@ -26,7 +27,25 @@ const formatTime12 = (t24) => {
 
 // ── IQAC Summary Modal ─────────────────────────────────────────────────────────
 const IQACSummaryModal = ({ event, onClose }) => {
+  const { odRequests } = useAppContext();
   if (!event) return null;
+
+  // Live feedback from odRequests
+  const liveRequests = (odRequests || []).filter(r => r.eventId === event.id && r.status === 'APPROVED');
+  const liveFeedbackList = liveRequests
+    .filter(r => r.feedback)
+    .map(r => ({
+      student: r.studentName,
+      rollNo: r.rollNo,
+      rating: r.feedback.rating,
+      comment: r.feedback.comment,
+      submittedAt: r.feedback.submittedAt
+    }));
+
+  const liveAvgRating = liveFeedbackList.length > 0
+    ? +(liveFeedbackList.reduce((sum, f) => sum + (f.rating || 5), 0) / liveFeedbackList.length).toFixed(2)
+    : null;
+
   const s1 = event.requisition?.step1;
   // Backend saves all IQAC data under event.iqacData (not iqacSubmission)
   const iqac = event.iqacData || {};
@@ -52,9 +71,12 @@ const IQACSummaryModal = ({ event, onClose }) => {
   const gallery       = Array.isArray(iqac.gallery)       ? iqac.gallery       : [];
   // Guest feedback: backend saves as iqac.guestFeedback (not guestFeedbackList)
   const guestFeedback = Array.isArray(iqac.guestFeedback) ? iqac.guestFeedback : [];
-  // Student feedback: from auto-stats feedbackSummary.comments
+  // Student feedback: prefer live data from odRequests
   const autoFeedback  = iqac.feedbackSummary || null;
-  const studentFeedback = autoFeedback?.comments || [];
+  const studentFeedback = liveFeedbackList.length > 0 ? liveFeedbackList : (autoFeedback?.comments || []);
+  const studentFeedbackCount = liveFeedbackList.length > 0 ? liveFeedbackList.length : (autoFeedback?.totalResponses || 0);
+  const studentAvgRating = liveFeedbackList.length > 0 ? liveAvgRating : (autoFeedback?.averageRating || null);
+
   // Resource persons: backend saves as iqac.resourcePersons array
   const resourcePersons = Array.isArray(iqac.resourcePersons) ? iqac.resourcePersons : [];
   // Attendance roster: stored under registration.attendance.studentAttendanceList
@@ -143,7 +165,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
   };
 
   const downloadParticipantFeedbackExcel = () => {
-    const commentsList = autoFeedback?.comments || studentFeedback || [];
+    const commentsList = studentFeedback;
     const rows = commentsList.length > 0
       ? commentsList.map((c, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
@@ -214,8 +236,8 @@ const IQACSummaryModal = ({ event, onClose }) => {
         </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888">No roster recorded</td></tr>';
 
-    const fbRows = (autoFeedback?.comments || studentFeedback).length > 0
-      ? (autoFeedback?.comments || studentFeedback).map((c,i) => `<tr>
+    const fbRows = studentFeedback.length > 0
+      ? studentFeedback.map((c,i) => `<tr>
           <td>${i+1}</td><td>${c.student||c.name||'—'}</td><td>${c.rollNo||'—'}</td>
           <td>${c.comment||c.feedback||'—'}</td>
         </tr>`).join('')
@@ -307,7 +329,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     </div>
 
     <div class="section">
-      <div class="section-title">Participant Feedback${autoFeedback?` — Avg Rating: ${autoFeedback.averageRating||'—'}/5 (${autoFeedback.totalResponses||0} responses)`:''}</div>
+      <div class="section-title">Participant Feedback — Avg Rating: ${studentAvgRating||'—'}/5 (${studentFeedbackCount||0} responses)</div>
       <table><thead><tr><th>#</th><th>Student</th><th>Roll No</th><th>Rating</th><th>Comment</th></tr></thead><tbody>${fbRows}</tbody></table>
     </div>
 
@@ -550,23 +572,28 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
           {/* ── Student Feedback — always shown ── */}
           <SectionCard title="Student Feedback" icon={<MessageSquare size={15} />} accent="purple">
-            {autoFeedback?.totalResponses > 0 || studentFeedback.length > 0 ? (
+            {studentFeedbackCount > 0 ? (
               <>
-                {autoFeedback && (
-                  <div className="grid grid-cols-1 gap-3 mb-4">
-                    <div className="rounded-xl border border-purple-100 bg-purple-50 px-3 py-3 text-center">
-                      <p className="text-2xl font-extrabold text-purple-700">{autoFeedback.totalResponses ?? 0}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-purple-500 mt-0.5">Total Responses</p>
-                    </div>
+                <div className="grid grid-cols-1 gap-3 mb-4">
+                  <div className="rounded-xl border border-purple-100 bg-purple-50 px-3 py-3 text-center">
+                    <p className="text-2xl font-extrabold text-purple-700">{studentFeedbackCount}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-purple-500 mt-0.5">Total Responses</p>
                   </div>
-                )}
+                </div>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-                  {(autoFeedback?.comments || studentFeedback).map((item, idx) => (
+                  {studentFeedback.map((item, idx) => (
                     <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
                       <div className="flex items-center justify-between flex-wrap gap-1">
                         <p className="text-sm font-semibold text-slate-800">
-                          {item.student || item.name}{item.rollNo && <span className="text-xs text-slate-400 font-normal"> ({item.rollNo})</span>}
+                          {item.student || item.name || 'Student'}{item.rollNo && <span className="text-xs text-slate-400 font-normal"> ({item.rollNo})</span>}
                         </p>
+                        {item.rating && (
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map(s => (
+                              <Star key={s} size={10} className={s <= item.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <p className={`text-xs mt-1 ${item.comment || item.feedback ? 'text-slate-600 italic' : 'text-slate-400'}`}>
                         {item.comment || item.feedback || 'No comment provided.'}
@@ -718,17 +745,20 @@ const EventCard = ({
   onRegister, onWithdraw, onDownloadOD, onOpenFeedback, onOpenIQAC,
   defaultPoster,
 }) => {
-  const status = getEventStatus(event);
+  const [linkOpened, setLinkOpened] = useState(false);
+  if (!event || !event.id) return null;
+  const status = typeof getEventStatus === 'function' ? getEventStatus(event) : 'upcoming';
   // Treat as completed if date-computed status OR Firestore status says so
-  const isCompleted = status === 'completed' || String(event.status || '').toUpperCase() === 'COMPLETED';
-  const isUpcoming = !isCompleted && status === 'upcoming';
-  const registered = isRegistered(event);
-  const processing = processingEventId === event.id;
-  const isStudent = currentUser?.role === UserRole.STUDENT_GENERAL || currentUser?.role === UserRole.STUDENT_ORGANIZER;
-  const showOD = canDownloadOD(event);
-  const showFeedback = canSubmitFeedback(event);
-  const showIQAC = isCompleted && (event.iqacSubmittedAt || event.iqacSubmission || currentUser?.role === UserRole.IQAC_TEAM);
-  const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
+  const isCompleted = !!(status === 'completed' || String(event?.status || '').toUpperCase() === 'COMPLETED');
+  const isUpcoming = !!(!isCompleted && status === 'upcoming');
+  const registered = typeof isRegistered === 'function' && isRegistered(event);
+  const processing = !!(processingEventId && event?.id && processingEventId === event.id);
+  const isStudent = !!(currentUser?.role && UserRole && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER));
+  const showOD = !!(typeof canDownloadOD === 'function' && canDownloadOD(event));
+  const showFeedback = !!(typeof canSubmitFeedback === 'function' && canSubmitFeedback(event));
+  const isIQAC = !!(currentUser?.role && UserRole && currentUser.role === UserRole.IQAC_TEAM);
+  const showIQAC = !!(isCompleted && (event?.iqacSubmittedAt || event?.iqacSubmission || isIQAC));
+  const odReq = (odRequests || []).find(r => r && event?.id && r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
   const requestStatus = odReq ? odReq.status : null;
 
   return (
@@ -843,16 +873,17 @@ const EventCard = ({
             <button 
               onClick={(e) => { 
                 e.stopPropagation(); 
-                if (event.studentFeedbackLink) {
+                if (event.studentFeedbackLink && !linkOpened) {
                   window.open(event.studentFeedbackLink, '_blank');
+                  setLinkOpened(true);
                 } else {
                   onOpenFeedback(event); 
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 text-xs font-medium shadow-sm transition-all active:scale-95"
+              className={`flex items-center gap-1.5 px-3 py-2 ${linkOpened ? 'bg-emerald-500' : 'bg-purple-500'} text-white rounded-lg hover:opacity-90 text-xs font-medium shadow-sm transition-all active:scale-95`}
             >
-              {event.studentFeedbackLink ? <ExternalLink size={14} /> : <MessageSquare size={14} />}
-              {event.studentFeedbackLink ? 'Feedback Form' : 'Feedback'}
+              {event.studentFeedbackLink ? (linkOpened ? <CheckCircle2 size={14} /> : <ExternalLink size={14} />) : <MessageSquare size={14} />}
+              {event.studentFeedbackLink ? (linkOpened ? 'Mark as Submitted' : 'Feedback Form') : 'Feedback'}
             </button>
           )}
         </div>
@@ -862,7 +893,7 @@ const EventCard = ({
 };
 
 const ExploreEvents = () => {
-  const { currentUser, odRequests = [] } = useAppContext();
+  const { currentUser, odRequests = [], handleApproval, handleDepartmentApproval } = useAppContext();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -908,15 +939,21 @@ const ExploreEvents = () => {
 
   const getEventStatus = (event) => {
     const now = Date.now();
-    const startDate = event.requisition?.step1?.eventStartDate;
-    const startTime = event.requisition?.step1?.eventStartTime || '00:00';
-    const endDate = event.requisition?.step1?.eventEndDate;
-    const endTime = event.requisition?.step1?.eventEndTime || '23:59';
+    const startDateStr = event?.requisition?.step1?.eventStartDate;
+    const startTimeStr = event?.requisition?.step1?.eventStartTime || '00:00';
+    const endDateStr = event?.requisition?.step1?.eventEndDate;
+    const endTimeStr = event?.requisition?.step1?.eventEndTime || '23:59';
 
-    if (!startDate || !endDate) return 'upcoming';
+    if (!startDateStr || !endDateStr) return 'upcoming';
 
-    const start = new Date(`${startDate}T${startTime}`).getTime();
-    const end = new Date(`${endDate}T${endTime}`).getTime();
+    // Manual local date parsing
+    const sDP = startDateStr.split('-');
+    const sTP = startTimeStr.split(':');
+    const start = new Date(parseInt(sDP[0]), parseInt(sDP[1])-1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+
+    const eDP = endDateStr.split('-');
+    const eTP = endTimeStr.split(':');
+    const end = new Date(parseInt(eDP[0]), parseInt(eDP[1])-1, parseInt(eDP[2]), parseInt(eTP[0]), parseInt(eTP[1])).getTime();
 
     if (now < start) return 'upcoming';
     if (now >= start && now <= end) return 'ongoing';
@@ -929,11 +966,12 @@ const ExploreEvents = () => {
   }, [events, filter]);
 
   const isRegistered = (event) => {
-    return event.registeredStudents?.some(s => s.userId === currentUser?.id);
+    if (!currentUser?.id || !event?.id) return false;
+    return (event.registeredStudents || []).some(s => s && s.userId === currentUser.id);
   };
 
   const handleRegister = async (eventId) => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return; // Safely handle null currentUser
     setProcessingEventId(eventId);
 
     // Build the registration entry we'll add locally
@@ -1002,7 +1040,7 @@ const ExploreEvents = () => {
   };
 
   const handleWithdraw = async (eventId) => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return; // Safely handle null currentUser
     setProcessingEventId(eventId);
 
     // Optimistic update — remove student from local state immediately (no blink)
@@ -1014,7 +1052,7 @@ const ExploreEvents = () => {
 
     try {
       // Withdraw OD request if one exists
-      const odReq = odRequests.find(r => r.eventId === eventId && r.studentId === currentUser.id && r.status !== 'WITHDRAWN');
+      const odReq = (odRequests || []).find(r => r.eventId === eventId && r.studentId === currentUser.id && r.status !== 'WITHDRAWN');
       if (odReq) {
         await fetch(`http://localhost:5001/api/od-requests/${odReq.id}/withdraw`, { method: 'PATCH' });
       }
@@ -1041,13 +1079,24 @@ const ExploreEvents = () => {
   const canDownloadOD = (event) => {
     if (!isRegistered(event)) return false;
     // Check if there is an APPROVED OD Request
-    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id);
+    const odReq = (odRequests || []).find(r => r && r.eventId === event.id && r.studentId === currentUser?.id);
     if (!odReq || odReq.status !== 'APPROVED') return false;
 
     const startDate = event.requisition?.step1?.eventStartDate;
-    const startTime = event.requisition?.step1?.eventStartTime || '00:00';
     if (!startDate) return false;
-    const start = new Date(`${startDate}T${startTime}`).getTime();
+    
+    // Manual local date parsing
+    const startTime = event.requisition?.step1?.eventStartTime || '00:00';
+    const dateParts = startDate.split('-');
+    const timeParts = startTime.split(':');
+    const startObj = new Date(
+      parseInt(dateParts[0]), 
+      parseInt(dateParts[1]) - 1, 
+      parseInt(dateParts[2]), 
+      parseInt(timeParts[0]), 
+      parseInt(timeParts[1])
+    );
+    const start = startObj.getTime();
     const now = Date.now();
     const twentyFourHoursBefore = start - (24 * 60 * 60 * 1000); 
 
@@ -1056,29 +1105,47 @@ const ExploreEvents = () => {
   };
 
   const canSubmitFeedback = (event) => {
-    const endDate = event.requisition?.step1?.eventEndDate;
-    const endTime = event.requisition?.step1?.eventEndTime || '23:59';
-    if (!endDate) return false;
+    const endDateStr = event.requisition?.step1?.eventEndDate || event.date;
+    const endTimeStr = event.requisition?.step1?.eventEndTime || event.endTime || '23:59';
+    if (!endDateStr) return false;
 
-    const end = new Date(`${endDate}T${endTime}`).getTime();
+    // Manual local date parsing
+    const dateParts = endDateStr.split('-');
+    const timeParts = endTimeStr.split(':');
+    const endObj = new Date(
+      parseInt(dateParts[0]), 
+      parseInt(dateParts[1]) - 1, 
+      parseInt(dateParts[2]), 
+      parseInt(timeParts[0]), 
+      parseInt(timeParts[1])
+    );
+    const end = endObj.getTime();
     const now = Date.now();
 
-    // If a Google Form link is provided, it should be enabled for everyone after the event ends
+    // 1. User must be logged in
+    if (!currentUser?.id) return false;
+
+    // 2. User must have an APPROVED OD/Registration Request (this is "approval for participating")
+    const odReq = (odRequests || []).find(r => r && event?.id && r.eventId === event.id && r.studentId === currentUser?.id);
+    
+    // Only students who have been approved can submit feedback
+    if (!odReq || odReq.status !== 'APPROVED') return false;
+
+    // 3. Prevent duplicate submission if feedback already exists in internal system
+    if (odReq.feedback) return false;
+
+    // 4. Feedback is only available after the event has ended
+    if (now < end) return false;
+
+    // 5. Case: Google Form Link (External feedback)
     if (event.studentFeedbackLink) {
-      return now >= end;
+      return true;
     }
 
-    // Internal feedback via FeedbackModal still requires registration
-    if (!isRegistered(event)) return false;
-
-    // Block if feedback already submitted or registration rejected
-    const odReq = odRequests.find(r => r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
-    if (!odReq || odReq.status === 'REJECTED' || odReq.feedback) return false;
-
+    // 6. Case: Internal feedback (Internal FeedbackModal)
     const sevenDaysAfter = end + (7 * 24 * 60 * 60 * 1000); 
-
     // Show internal feedback button once event has ended and within 7 days
-    return now >= end && now <= sevenDaysAfter;
+    return now <= sevenDaysAfter;
   };
   // Shared props for the stable module-level EventCard
   const cardSharedProps = {
@@ -1148,7 +1215,7 @@ const ExploreEvents = () => {
       </div>
       {showODModal && selectedEvent && (
         <ODLetterModal
-          odRequest={odRequests.find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED')}
+          odRequest={(odRequests || []).find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED')}
           event={selectedEvent}
           onClose={() => {
             setShowODModal(false);
@@ -1158,10 +1225,10 @@ const ExploreEvents = () => {
       )}
 
       {showFeedbackModal && selectedEvent && (() => {
-        const odReq = odRequests.find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED');
-        return odReq ? (
+        const odReq = (odRequests || []).find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
+        return (odReq || currentUser?.role) ? (
           <FeedbackModal
-            odRequestId={odReq.id}
+            odRequestId={odReq?.id}
             eventTitle={selectedEvent.title || selectedEvent.requisition?.step1?.eventName || 'Event'}
             googleFormLink={selectedEvent.studentFeedbackLink}
             onClose={() => {
@@ -1174,7 +1241,7 @@ const ExploreEvents = () => {
 
       <AnimatePresence>
         {showEventDetail && selectedEvent && (
-          <IQACSummaryModal
+          <EventDetailModal
             event={selectedEvent}
             onClose={() => {
               setShowEventDetail(false);

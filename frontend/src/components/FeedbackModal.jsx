@@ -1,11 +1,39 @@
+import { useState } from 'react';
 import { X, MessageSquare, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const FeedbackModal = ({ odRequestId, eventTitle, onClose, googleFormLink }) => {
+  const [linkOpened, setLinkOpened] = useState(false);
+  const [feedbackDone, setFeedbackDone] = useState(false);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleFormDone = async () => {
+    if (!odRequestId) {
+      setSubmitted(true);
+      setFeedbackDone(true);
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`http://localhost:5001/api/od-requests/${odRequestId}/feedback`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: 5, comment: 'Submitted via Google Form' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSubmitted(true);
+        setFeedbackDone(true);
+      }
+    } catch (err) {
+      setError('Failed to update status. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!comment.trim()) {
@@ -60,7 +88,7 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose, googleFormLink }) => 
           </div>
 
           {/* Google Form Link Alert */}
-          {googleFormLink && (
+          {googleFormLink && !feedbackDone && (
             <div className="px-6 pt-4">
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-2">
                  <p className="text-xs font-bold text-blue-800 uppercase tracking-tight">Primary Feedback Method</p>
@@ -69,11 +97,24 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose, googleFormLink }) => 
                    href={googleFormLink} 
                    target="_blank" 
                    rel="noreferrer" 
+                   onClick={() => setLinkOpened(true)}
                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700"
                  >
                    Open Google Form
                  </a>
-                 <p className="text-[10px] text-blue-500 text-center italic mt-1 font-bold italic">Please prioritize using the Google Form link above.</p>
+                 {linkOpened && (
+                   <div className="mt-2 pt-2 border-t border-blue-200">
+                     <p className="text-[10px] text-blue-500 mb-2 font-bold italic">Once you have finished the form, click below to update your status.</p>
+                     <button 
+                        onClick={handleFormDone}
+                        disabled={isSubmitting}
+                        className="w-full py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 flex items-center justify-center gap-2"
+                     >
+                       {isSubmitting ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                       I've Submitted the Form
+                     </button>
+                   </div>
+                 )}
               </div>
             </div>
           )}

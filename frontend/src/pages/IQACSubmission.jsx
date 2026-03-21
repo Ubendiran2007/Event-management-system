@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus } from '../types';
 import EventReportModal from '../components/EventReportModal';
+import * as XLSX from 'xlsx';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -435,6 +436,70 @@ const IQACSubmission = () => {
       e.target.value = '';
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFeedbackCsvUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const jsonData = XLSX.utils.sheet_to_json(ws);
+
+        if (jsonData.length === 0) {
+          alert('The uploaded file appears to be empty.');
+          return;
+        }
+
+        // Validate required headers
+        const firstRow = jsonData[0];
+        const headers = Object.keys(firstRow).map(h => h.toLowerCase());
+        const required = ['name', 'roll_no', 'class', 'feedback'];
+        const missing = required.filter(r => !headers.includes(r));
+
+        if (missing.length > 0) {
+          alert(`Error: Missing required columns: ${missing.join(', ')}.\n\nYour CSV must have these headers: name, roll_no, class, feedback`);
+          return;
+        }
+
+        // Map data to the exact requested structure
+        const mappedData = jsonData.map((row) => {
+          // Find fields by case-insensitive matching
+          const getVal = (field) => {
+            const key = Object.keys(row).find(k => k.toLowerCase() === field);
+            return row[key] || '';
+          };
+
+          return {
+            student: getVal('name'),
+            rollNo: getVal('roll_no'),
+            class: getVal('class'),
+            comment: getVal('feedback'),
+            isManualUpload: true
+          };
+        });
+
+        // 8. UI Behavior: Clear previous data when a new file is uploaded
+        setAutoFeedbackSummary(prev => ({
+          ...prev,
+          comments: mappedData,
+          totalResponses: mappedData.length,
+          averageRating: 5
+        }));
+        
+        alert(`Successfully imported ${mappedData.length} records.`);
+      } catch (err) {
+        console.error('CSV Parsing failed:', err);
+        setSubmitError('Failed to parse the file. Please ensure it is a valid CSV or Excel file.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
   };
 
   const toggleVerified = (item) => {
@@ -909,27 +974,71 @@ const IQACSubmission = () => {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-900">Section 3 - Student Feedback (Auto from registrations)</h2>
-          <p className="mt-1 text-sm text-slate-600">Collected automatically from approved students who submitted post-event feedback</p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Section 3 - Student Feedback</h2>
+              <p className="text-sm text-slate-600">Collected automatically or uploaded from external sources (Google Forms)</p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
+              <Upload size={16} /> Upload Feedback CSV
+              <input 
+                type="file" 
+                accept=".csv,.xlsx,.xls" 
+                className="hidden" 
+                onChange={handleFeedbackCsvUpload} 
+                disabled={isSubmitting}
+              />
+            </label>
+          </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-1 text-center">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4 mb-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responses</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Responses</p>
               <p className="mt-1 text-sm font-bold text-slate-900">{autoFeedbackSummary?.totalResponses ?? 0}</p>
             </div>
           </div>
 
           {autoFeedbackSummary?.comments?.length > 0 ? (
-            <div className="mt-4 space-y-2 max-h-64 overflow-y-auto pr-1">
-              {autoFeedbackSummary.comments.map((item, idx) => (
-                <div key={`${item.student}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm font-semibold text-slate-900">{item.student} <span className="text-xs text-slate-500">({item.rollNo})</span></p>
-                  {item.comment ? <p className="text-sm text-slate-700 mt-1">{item.comment}</p> : <p className="text-xs text-slate-500 mt-1">No comment</p>}
-                </div>
-              ))}
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md custom-scrollbar">
+              <table className="min-w-full text-sm divide-y divide-slate-200">
+                <thead className="bg-[#f8fafc] sticky top-0 z-10">
+                  <tr>
+                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-16 bg-slate-100/50">S.No</th>
+                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-1/4">Name</th>
+                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-1/4 text-center">Roll No</th>
+                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-1/6 text-center">Class</th>
+                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider font-sans">Feedback</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {autoFeedbackSummary.comments.map((item, idx) => (
+                    <tr key={`${item.rollNo}-${idx}`} className="hover:bg-blue-50/30 transition-all group border-b border-transparent last:border-0">
+                      <td className="px-5 py-4 text-slate-400 font-bold tabular-nums group-hover:text-blue-500">{idx + 1}</td>
+                      <td className="px-5 py-4 text-slate-900 font-extrabold tracking-tight">{item.student}</td>
+                      <td className="px-5 py-4 text-slate-600 font-mono text-center bg-slate-50/40 group-hover:bg-transparent">{item.rollNo}</td>
+                      <td className="px-5 py-4 text-slate-500 font-medium text-center italic">{item.class || '-'}</td>
+                      <td className="px-5 py-4 text-slate-700 leading-relaxed font-outfit">
+                        {item.comment ? (
+                          <div className="flex items-start gap-2">
+                            <span className="text-slate-300">"</span>
+                            <span>{item.comment}</span>
+                            <span className="text-slate-300">"</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 font-normal italic">No feedback provided</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
-            <p className="mt-4 text-sm text-slate-500">No student feedback submitted yet.</p>
+            <div className="p-12 text-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50">
+              <FileText size={40} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-sm text-slate-500">No student feedback submitted yet.</p>
+              <p className="text-xs text-slate-400 mt-1">Submit feedback via portal or upload a CSV file.</p>
+            </div>
           )}
         </section>
 
@@ -1388,15 +1497,6 @@ const IQACSubmission = () => {
             resourcePersons={resourcePersons}
             registrationDetails={registrationDetails}
             onClose={() => setShowReportModal(false)}
-          />
-        )}
-
-        {/* Existing Modals */}
-        {showODRosterModal && (
-          <ODRosterModal
-            roster={studentAttendanceRoster}
-            onUpdate={setStudentAttendanceRoster}
-            onClose={() => setShowODRosterModal(false)}
           />
         )}
       </main>

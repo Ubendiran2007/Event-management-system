@@ -26,7 +26,10 @@ export const useAppContext = () => {
 };
 
 export const AppProvider = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('currentUser');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [events, setEvents] = useState([]);
   const [students, setStudents] = useState([]);
   const [odRequests, setODRequests] = useState([]);
@@ -70,12 +73,19 @@ export const AppProvider = ({ children }) => {
     };
   }, []);
 
-  const handleLogin = (user) => setCurrentUser(
-    user ? { ...user, role: user.role?.toUpperCase() } : user
-  );
+  const handleLogin = (user) => {
+    const formattedUser = user ? { ...user, role: user.role?.toUpperCase() } : user;
+    setCurrentUser(formattedUser);
+    if (formattedUser) {
+      localStorage.setItem('currentUser', JSON.stringify(formattedUser));
+    } else {
+      localStorage.removeItem('currentUser');
+    }
+  };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    localStorage.removeItem('currentUser');
   };
 
   const createEvent = async (newEvent) => {

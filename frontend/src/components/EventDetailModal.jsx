@@ -23,6 +23,7 @@ import { useState, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
+import FeedbackModal from './FeedbackModal';
 
 const InfoSection = ({ title, icon: Icon, children }) => (
   <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -67,11 +68,12 @@ const compressImageToDataUrl = (file, maxWidth = 1200, quality = 0.82) => new Pr
 });
 
 const EventDetailModal = ({ event, onClose }) => {
-  const { currentUser, handleApproval, handleDepartmentApproval } = useAppContext();
+  const { currentUser, odRequests = [], handleApproval, handleDepartmentApproval } = useAppContext();
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
-  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
+  const [showRejectInput, setShowRejectInput] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [posterUploadError, setPosterUploadError] = useState('');
   const [posterUploadSuccess, setPosterUploadSuccess] = useState('');
   const fileInputRef = useRef(null);
@@ -507,13 +509,23 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
 
               {(() => {
-                const endDate = event.requisition?.step1?.eventEndDate || event.date;
-                const endTime = event.requisition?.step1?.eventEndTime || event.endTime || '23:59';
-                if (!endDate) return null;
-                const eventEnd = new Date(`${endDate}T${endTime}`);
+                const endDateStr = event.requisition?.step1?.eventEndDate || event.date;
+                const endTimeStr = event.requisition?.step1?.eventEndTime || event.endTime || '23:59';
+                if (!endDateStr) return null;
+                
+                const eDP = endDateStr.split('-');
+                const eTP = endTimeStr.split(':');
+                const eventEnd = new Date(parseInt(eDP[0]), parseInt(eDP[1])-1, parseInt(eDP[2]), parseInt(eTP[0]), parseInt(eTP[1]));
+                
                 const isIQAC = currentUser?.role === UserRole.IQAC_TEAM;
                 const isPastEvent = (!isNaN(eventEnd.getTime()) && Date.now() >= eventEnd.getTime()) || isIQAC;
-                if (!isPastEvent || !event.studentFeedbackLink) return null;
+                
+                // Hide if no link OR feedback already submitted by this student
+                // 1. User must have an APPROVED participation request
+                const odReq = (odRequests || []).find(r => r && r.eventId === event.id && r.studentId === currentUser?.id);
+                
+                // Hide if not past event, no link, participation NOT approved, or feedback already submitted
+                if (!isPastEvent || !event.studentFeedbackLink || odReq?.status !== 'APPROVED' || odReq?.feedback) return null;
 
                 return (
                   <div className="mt-4 pt-4 border-t border-slate-100 italic">
@@ -525,18 +537,25 @@ const EventDetailModal = ({ event, onClose }) => {
                       {event.studentFeedbackLink && (
                         <div className="rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2.5">
                           <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-1">Student Feedback</p>
-                          <a 
-                            href={event.studentFeedbackLink} 
-                            target="_blank" 
-                            rel="noreferrer" 
-                            className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1.5 truncate"
-                            title={event.studentFeedbackLink}
+                          <button 
+                            onClick={() => setShowFeedbackModal(true)}
+                            className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1.5 truncate text-left w-full"
                           >
-                            <ExternalLink size={14} className="shrink-0" /> Open Feedback Form
-                          </a>
+                            <ExternalLink size={14} className="flex-shrink-0" />
+                            Open Feedback Link / Form
+                          </button>
                         </div>
                       )}
                     </div>
+
+                    {showFeedbackModal && (
+                      <FeedbackModal
+                        odRequestId={odReq?.id}
+                        eventTitle={event.title || event.requisition?.step1?.eventName || 'Event'}
+                        googleFormLink={event.studentFeedbackLink}
+                        onClose={() => setShowFeedbackModal(false)}
+                      />
+                    )}
                   </div>
                 );
               })()}
