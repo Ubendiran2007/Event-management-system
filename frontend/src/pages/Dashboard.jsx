@@ -29,7 +29,8 @@ import {
   Clock3,
   LayoutDashboard,
   History,
-  Info
+  Info,
+  UserPlus
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -74,27 +75,24 @@ const Dashboard = () => {
   const [bulkApprovingGroups, setBulkApprovingGroups] = useState({});
   const [copiedStates, setCopiedStates] = useState({});
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [eventFilter, setEventFilter] = useState('all'); // all, posted, completed, iqac
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const canCreateEvent =
     currentUser?.role === UserRole.FACULTY ||
     (currentUser?.role === UserRole.STUDENT_ORGANIZER && currentUser?.isApprovedOrganizer);
 
-  // Redirect if not logged in
+  // ORIGINAL HOOKS START HERE
   useEffect(() => {
-    if (!currentUser) {
-      navigate('/');
+    if (!currentUser) return;
+    if (currentUser.role === UserRole.STUDENT_GENERAL && activeTab === 'events') {
+      setActiveTab('available');
     }
-  }, [currentUser, navigate]);
+  }, [currentUser?.role, activeTab]);
 
   useEffect(() => {
     if (!selectedEventDetail) return;
-
     const latestEvent = events.find((event) => event.id === selectedEventDetail.id);
     if (!latestEvent) return;
-
-    // Auto-close the modal when the event is no longer in the current user's action queue.
-    // This handles the case where Faculty/HOD/Principal approves or rejects an event and the
-    // status advances — the modal should dismiss itself automatically.
     const pendingStatusForRole = {
       [UserRole.FACULTY]: EventStatus.PENDING_FACULTY,
       [UserRole.HOD]: EventStatus.PENDING_HOD,
@@ -107,17 +105,10 @@ const Dashboard = () => {
       [UserRole.IQAC_TEAM]: EventStatus.PENDING_IQAC,
     };
     const expectedPendingStatus = pendingStatusForRole[currentUser?.role];
-    if (
-      expectedPendingStatus &&
-      selectedEventDetail.status === expectedPendingStatus &&
-      latestEvent.status !== expectedPendingStatus
-    ) {
-      // Event just moved out of this approver's queue — close the modal
+    if (expectedPendingStatus && selectedEventDetail.status === expectedPendingStatus && latestEvent.status !== expectedPendingStatus) {
       setSelectedEventDetail(null);
       return;
     }
-
-    // Otherwise, keep modal open but update it to the latest event data
     if (latestEvent !== selectedEventDetail) {
       setSelectedEventDetail(latestEvent);
     }
@@ -218,6 +209,51 @@ const Dashboard = () => {
     }, {})
   ), [events]);
 
+
+
+  const handleRegister = async (eventId) => {
+    if (!currentUser?.id) return;
+    setProcessingEventId(eventId);
+
+    const newEntry = {
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email || '',
+      userDepartment: currentUser.department || '',
+      userYear: currentUser.year || '',
+      rollNo: currentUser.rollNo || currentUser.password || '',
+      userClass: currentUser.class || currentUser.className || '',
+      registeredAt: new Date().toISOString(),
+    };
+
+    try {
+      await fetch(`http://localhost:5001/api/od-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          studentId: currentUser.id,
+          studentName: currentUser.name,
+          rollNo: currentUser.rollNo || currentUser.password || '',
+          class: currentUser.class || currentUser.className || '',
+          department: currentUser.department || '',
+          email: currentUser.email,
+          registrationType: 'PARTICIPANT'
+        }),
+      });
+
+      await fetch(`http://localhost:5001/api/events/${eventId}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEntry),
+      });
+    } catch (error) {
+      console.error('Error registering:', error);
+    } finally {
+      setProcessingEventId(null);
+    }
+  };
+
   useEffect(() => {
     if (currentUser?.role !== UserRole.STUDENT_ORGANIZER) return;
 
@@ -246,7 +282,43 @@ const Dashboard = () => {
 
       return next;
     });
+
   }, [currentUser?.role, groupedOrganizerEvents]);
+
+  // NEW HOOKS ADDED HERE (Stay at end of hook section)
+  const [processingEventId, setProcessingEventId] = useState(null);
+
+  const availableEvents = useMemo(() => {
+    if (!currentUser) return [];
+    const now = new Date();
+    
+    return events.filter(ev => {
+      // 1. Must be POSTED status
+      if (ev.status !== EventStatus.POSTED) return false;
+      
+      // 2. Must NOT be the organizer of this event (string comparison for robustness)
+      if (String(ev.organizerId) === String(currentUser.id)) return false;
+
+      // 3. Must NOT be already registered for this event
+      const alreadyRegistered = (ev.registeredStudents || []).some(s => String(s?.userId) === String(currentUser.id));
+      if (alreadyRegistered) return false;
+      
+      // 4. Avoid ongoing and completed events (check date)
+      if (!ev.date) return false;
+      
+      try {
+        const evDate = new Date(`${ev.date} ${ev.startTime || '00:00'}`);
+        // If now is past or equal the event start time, it's considered ongoing/starting
+        if (now >= evDate) return false;
+      } catch (e) {
+        // Fallback to simple date string comparison if date object fails
+        const today = new Date().toISOString().split('T')[0];
+        if (ev.date < today) return false;
+      }
+
+      return true;
+    }).sort((a, b) => (new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0));
+  }, [events, currentUser]);
 
   if (!currentUser) {
     return null;
@@ -307,13 +379,26 @@ const Dashboard = () => {
   };
 
   const handleWithdraw = async (odId) => {
+    const req = odRequests.find(r => r.id === odId);
+    if (!req) return;
+
     setWithdrawingOD(prev => ({ ...prev, [odId]: true }));
     try {
+      // 1. Mark OD request as withdrawn
       await fetch(`http://localhost:5001/api/od-requests/${odId}/withdraw`, {
         method: 'PATCH',
       });
+
+      // 2. Remove student from event's registration list
+      if (req.eventId && currentUser?.id) {
+        await fetch(`http://localhost:5001/api/events/${req.eventId}/withdraw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id }),
+        });
+      }
     } catch (err) {
-      console.error('Error withdrawing OD request:', err);
+      console.error('Error withdrawing registration:', err);
     } finally {
       setWithdrawingOD(prev => ({ ...prev, [odId]: false }));
     }
@@ -688,25 +773,45 @@ const Dashboard = () => {
               {/* Tabs */}
               <div className="glass-panel rounded-2xl overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4">
-                  <button
-                    onClick={() => setActiveTab('events')}
-                    className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'events'
-                      ? 'bg-cse-accent text-white'
-                      : 'text-slate-500 hover:bg-slate-100'
-                      }`}
-                  >
-                    {currentUser.role === UserRole.FACULTY ? 'My Events' : isStaff ? 'Pending Approvals' : isMedia ? 'Poster Requests' : 'Events'}
-                    {(isStaff || isMedia) && currentUser.role !== UserRole.FACULTY && filteredEvents.length > 0 && (
-                      <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
-                        {filteredEvents.length}
-                      </span>
-                    )}
-                    {currentUser.role === UserRole.FACULTY && events.filter(e => e.organizerId === currentUser.id).length > 0 && (
-                      <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
-                        {events.filter(e => e.organizerId === currentUser.id).length}
-                      </span>
-                    )}
-                  </button>
+                  {currentUser.role !== UserRole.STUDENT_GENERAL && (
+                    <button
+                      onClick={() => setActiveTab('events')}
+                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'events'
+                        ? 'bg-cse-accent text-white'
+                        : 'text-slate-500 hover:bg-slate-100'
+                        }`}
+                    >
+                      {currentUser.role === UserRole.FACULTY ? 'My Events' : isStaff ? 'Pending Approvals' : isMedia ? 'Poster Requests' : 'My Events'}
+                      {(isStaff || isMedia) && currentUser.role !== UserRole.FACULTY && filteredEvents.length > 0 && (
+                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
+                          {filteredEvents.length}
+                        </span>
+                      )}
+                      {currentUser.role === UserRole.FACULTY && events.filter(e => e.organizerId === currentUser.id).length > 0 && (
+                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
+                          {events.filter(e => e.organizerId === currentUser.id).length}
+                        </span>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Available Events Tab — for all students and faculty */}
+                  {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
+                    <button
+                      onClick={() => setActiveTab('available')}
+                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'available'
+                        ? 'bg-cse-accent text-white'
+                        : 'text-slate-500 hover:bg-slate-100'
+                        }`}
+                    >
+                      Available Events
+                      {availableEvents.length > 0 && (
+                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'available' ? 'bg-white text-cse-accent' : 'bg-blue-500 text-white'}`}>
+                          {availableEvents.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
 
                   {/* Approvals tab — only for faculty */}
                   {currentUser.role === UserRole.FACULTY && (
@@ -772,7 +877,12 @@ const Dashboard = () => {
                   {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                     let displayEvents = [];
                     if (activeTab === 'events') {
-                      displayEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) : filteredEvents;
+                      const baseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) : filteredEvents;
+                      
+                      if (eventFilter === 'all') displayEvents = baseEvents;
+                      else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && (e.status.startsWith('PENDING') || e.status === EventStatus.APPROVED));
+                      else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
+                      else if (eventFilter === 'iqac') displayEvents = baseEvents.filter(e => e.iqacSubmittedAt);
                     } else if (activeTab === 'approvals') {
                       displayEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
                     }
@@ -784,6 +894,28 @@ const Dashboard = () => {
 
                     return (
                       <div className="flex flex-col h-full">
+                        {/* Sub-tabs for Event Categories */}
+                        {activeTab === 'events' && (
+                          <div className="px-6 py-3 sticky top-0 z-20 bg-slate-50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto no-scrollbar backdrop-blur-md bg-opacity-95 shadow-sm">
+                            {[
+                              { id: 'all', label: 'Show All', color: 'bg-slate-700' },
+                              { id: 'process', label: 'In Process', color: 'bg-amber-600' },
+                              { id: 'posted', label: 'Posted', color: 'bg-emerald-600' },
+                              { id: 'iqac', label: 'IQAC Submitted', color: 'bg-purple-600' }
+                            ].map(tab => (
+                              <button
+                                key={tab.id}
+                                onClick={() => { setEventFilter(tab.id); setShowAllEvents(false); }}
+                                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${eventFilter === tab.id
+                                    ? `${tab.color} text-white shadow-md shadow-indigo-100`
+                                    : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+                                  }`}
+                              >
+                                {tab.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <div className="divide-y divide-slate-100">
                           {limitedEvents.map(event => (
                             <div
@@ -938,6 +1070,79 @@ const Dashboard = () => {
                       </div>
                     );
                   })()}
+
+                  {/* Available Events Tab Content */}
+                  {activeTab === 'available' && (
+                    <div className="divide-y divide-slate-100 h-full overflow-y-auto">
+                      {availableEvents.length === 0 ? (
+                        <div className="p-12 text-center h-full flex flex-col items-center justify-center">
+                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                            <Calendar size={32} />
+                          </div>
+                          <p className="text-slate-500 font-medium">No available events right now.</p>
+                        </div>
+                      ) : (
+                        availableEvents.map(event => {
+                          const isRegistered = (event.registeredStudents || []).some(s => s.userId === currentUser.id);
+                          const isProcessing = processingEventId === event.id;
+
+                          return (
+                            <div
+                              key={event.id}
+                              className="p-6 hover:bg-slate-50/50 transition-colors group"
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-start gap-4 flex-1">
+                                  <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-500 group-hover:text-white transition-all">
+                                    <Calendar size={24} />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-bold text-slate-900 flex items-center gap-2">
+                                      {event.title}
+                                    </h4>
+                                    <div className="flex items-center gap-3 mt-1">
+                                      <span className="text-xs text-slate-500 flex items-center gap-1">
+                                        <MapPin size={12} /> {event.venue}
+                                      </span>
+                                      <span className="text-xs text-slate-500 flex items-center gap-1">
+                                        <Clock size={12} /> {event.date} · {formatTime12(event.startTime)}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-2">By {event.organizerName}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {isRegistered ? (
+                                    <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                      <CheckCircle2 size={14} /> Registered
+                                    </span>
+                                  ) : (
+                                    <button
+                                      disabled={isProcessing}
+                                      onClick={() => handleRegister(event.id)}
+                                      className="px-6 py-2 bg-cse-primary text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-md shadow-blue-500/10 disabled:opacity-50"
+                                    >
+                                      {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                                      Register Now
+                                    </button>
+                                  )}
+                                  {currentUser.role !== UserRole.STUDENT_GENERAL && 
+                                   currentUser.role !== UserRole.STUDENT_ORGANIZER && (
+                                    <button
+                                      onClick={() => setSelectedEventDetail(event)}
+                                      className="text-xs font-semibold text-slate-500 hover:text-cse-accent flex items-center gap-1"
+                                    >
+                                      Details <ChevronRight size={14} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
 
                   {/* Registrations Tab — organizer sees incoming student OD requests */}
                   {activeTab === 'registrations' && (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
@@ -1407,32 +1612,6 @@ const Dashboard = () => {
                     <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
                   </div>
                 )}
-              </div>
-
-              {/* Quick Resources */}
-              <div className="glass-panel rounded-2xl p-6">
-                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <ClipboardList size={18} className="text-cse-accent" /> Quick Resources
-                </h3>
-                <div className="space-y-1.5 mb-4">
-                  {[
-                    { label: 'Venue Booking Policy', href: '/resources/venue-booking-policy.html' },
-                    { label: 'IQAC Guidelines', href: '/resources/iqac-guidelines.html' },
-                    { label: 'Budget Templates', href: '/resources/budget-template.csv', download: true },
-                    { label: 'Guest Protocol', href: '/resources/guest-protocol.html' },
-                  ].map((item, idx, arr) => (
-                    <a
-                      key={item.label}
-                      href={item.href}
-                      target="_blank"
-                      rel="noreferrer"
-                      download={item.download ? 'budget-template.csv' : undefined}
-                      className="flex items-center justify-between p-2 text-sm text-slate-600 hover:text-cse-accent hover:bg-slate-50 rounded-lg transition-all"
-                    >
-                      {item.label} <ChevronRight size={14} />
-                    </a>
-                  ))}
-                </div>
               </div>
             </div>
           </div>
