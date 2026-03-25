@@ -76,6 +76,7 @@ router.post('/:eventId', async (req, res) => {
   const { eventId } = req.params;
   const {
     eventOutcome,
+    reportDetails,
     registrationDetails,
     resourcePersons,
     gallery,
@@ -255,6 +256,7 @@ router.post('/:eventId', async (req, res) => {
         gallery:          processedGallery,
         guestFeedback:    processedGuestFeedback,
         eventOutcome:     eventOutcome  || '',
+        reportDetails:    reportDetails || {},
         documents:        documents     || {},
         checklist:        Array.isArray(checklist) ? checklist : [],
         finalReport:      finalReport   || null,

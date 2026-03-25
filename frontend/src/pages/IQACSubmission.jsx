@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus } from '../types';
@@ -128,6 +128,34 @@ const IQACSubmission = () => {
   const [autoAttendanceStats, setAutoAttendanceStats] = useState(null);
   const [autoFeedbackSummary, setAutoFeedbackSummary] = useState(null);
   const [studentAttendanceRoster, setStudentAttendanceRoster] = useState([]);
+  const [eventOutcome, setEventOutcome] = useState('IQAC documentation checklist submitted.');
+  
+  // Detailed Report Content State
+  const [reportDetails, setReportDetails] = useState({
+    objectives: [
+      'To introduce participants to the core concepts of the event theme.',
+      'To explore advanced methodologies and modern tools within this domain.',
+      'To provide a platform for hands-on learning and skill enhancement.',
+      'To facilitate academic and industrial interactions with subject experts.',
+      'To align the curriculum outcomes with contemporary professional requirements.'
+    ],
+    description: '',
+    outcomes: [
+      'Understand the fundamental principles discussed during the event.',
+      'Acquire practical skills in the relevant frameworks and methodologies.',
+      'Identify the scope and applications of these technologies in the industry.',
+      'Demonstrate problem-solving abilities within the specific domain.',
+      'Strengthen professional portfolios with expert-validated knowledge.'
+    ],
+    benefits: {
+      technical: 'Hands-on exposure to domain-specific tools, methodologies, and technical documentation.',
+      industry: 'Alignment with global market standards and professional role expectations.'
+    },
+    socialMedia: {
+      website: '',
+      social: ''
+    }
+  });
 
   // Resource persons state
   const [resourcePersons, setResourcePersons] = useState([]);
@@ -135,18 +163,15 @@ const IQACSubmission = () => {
     name: '',
     designation: '',
     organization: '',
-    topicsByDay: [], // Now an array for each day
+    topicsByDay: [],
+    email: '',
+    phone: '',
+    expertise: '',
+    bio: '',
+    photo: null,
   });
 
   const defaultPoster = "https://placehold.co/600x400/e2e8f0/64748b?text=No+Poster";
-
-  // New feedback form state
-  const [feedbackForm, setFeedbackForm] = useState({
-    name: '',
-    designation: '',
-    organization: '',
-    feedback: '',
-  });
 
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -176,9 +201,14 @@ const IQACSubmission = () => {
 
           // Populate saved data if exists
           if (iqacData) {
-            if (iqacData.gallery) setGallery(iqacData.gallery.map((g, i) => ({ ...g, id: g.id || `saved-g-${i}` })));
+            if (iqacData.gallery) setGallery(iqacData.gallery.map((g, i) => ({ ...g, id: g.id || `saved-g-${i}`, dataUrl: g.dataUrl || g.url })));
             if (iqacData.resourcePersons) setResourcePersons(iqacData.resourcePersons.map((rp, i) => ({ ...rp, id: rp.id || `saved-rp-${i}` })));
-            if (iqacData.guestFeedback) setGuestFeedback(iqacData.guestFeedback.map((gf, i) => ({ ...gf, id: gf.id || `saved-gf-${i}` })));
+            if (iqacData.guestFeedback) setGuestFeedback(iqacData.guestFeedback.map((gf, i) => ({ ...gf, id: gf.id || `saved-gf-${i}`, highlights: Array.isArray(gf.highlights) ? gf.highlights.join(', ') : gf.highlights })));
+            if (iqacData.eventOutcome) setEventOutcome(iqacData.eventOutcome);
+            
+            if (iqacData.reportDetails) {
+              setReportDetails(prev => ({ ...prev, ...iqacData.reportDetails }));
+            }
             
             if (iqacData.registration) {
               setRegistrationDetails({
@@ -502,6 +532,63 @@ const IQACSubmission = () => {
     e.target.value = '';
   };
 
+  const handleGuestFeedbackCsvUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const jsonData = XLSX.utils.sheet_to_json(ws);
+
+        if (jsonData.length === 0) {
+          alert('The uploaded file appears to be empty.');
+          return;
+        }
+
+        // Validate required headers
+        const firstRow = jsonData[0];
+        const headers = Object.keys(firstRow).map(h => h.toLowerCase());
+        const required = ['name', 'feedback'];
+        const missing = required.filter(r => !headers.includes(r));
+
+        if (missing.length > 0) {
+          alert(`Error: Missing required columns: ${missing.join(', ')}.\n\nYour CSV must have at least: name, feedback`);
+          return;
+        }
+
+        const getVal = (row, header) => {
+          const key = Object.keys(row).find(k => k.toLowerCase() === header);
+          return key ? row[key] : '';
+        };
+
+        const importedGuestFeedback = jsonData.map((row, idx) => ({
+          id: Date.now() + idx,
+          name: getVal(row, 'name'),
+          designation: getVal(row, 'designation') || getVal(row, 'position') || '',
+          organization: getVal(row, 'organization') || getVal(row, 'institution') || '',
+          rating: parseInt(getVal(row, 'rating')) || 5,
+          feedback: getVal(row, 'feedback') || getVal(row, 'comments') || '',
+          highlights: getVal(row, 'highlights') || getVal(row, 'highlights_tags') || '',
+        }));
+
+        setGuestFeedback((prev) => [...prev, ...importedGuestFeedback]);
+        alert(`Successfully imported ${importedGuestFeedback.length} guest feedback entries!`);
+
+      } catch (err) {
+        console.error('Error parsing Guest CSV:', err);
+        alert('Failed to parse the file. Please ensure it follows the correct format.');
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const toggleVerified = (item) => {
     const currentStatus = getStatus(item);
     if (currentStatus === 'pending') return;
@@ -549,8 +636,30 @@ const IQACSubmission = () => {
       designation: '',
       organization: '',
       topicsByDay: [],
+      email: '',
+      phone: '',
+      expertise: '',
+      bio: '',
+      photo: null,
       rating: 5,
     });
+  };
+
+  const onResourcePersonPhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setResourcePersonForm(prev => ({
+        ...prev,
+        photo: {
+          dataUrl: event.target.result,
+          fileName: file.name
+        }
+      }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const removeResourcePerson = (id) => {
@@ -572,6 +681,7 @@ const IQACSubmission = () => {
       organization: '',
       rating: 5,
       feedback: '',
+      highlights: '',
     });
   };
 
@@ -664,7 +774,8 @@ const IQACSubmission = () => {
       );
 
       const payload = {
-        eventOutcome: 'IQAC documentation checklist submitted.',
+        eventOutcome: eventOutcome,
+        reportDetails,
         registrationDetails: {
           studentsCount,
           facultyCount,
@@ -678,6 +789,7 @@ const IQACSubmission = () => {
             student: row.student || '',
             rollNo: row.rollNo || '',
             attendanceStatus: row.attendanceStatus,
+            ...Object.fromEntries(Object.keys(row).filter(k => k.startsWith('day')).map(k => [k, row[k]]))
           })),
           periodStart: registrationDetails.periodStart,
           periodEnd: registrationDetails.periodEnd,
@@ -1115,99 +1227,176 @@ const IQACSubmission = () => {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-900">Section 5 - Guest Feedback</h2>
-          <p className="mt-1 text-sm text-slate-600">Collect feedback from resource persons and guests</p>
+          <h2 className="text-lg font-bold text-slate-900">Section 5 - Detailed Event Report Content</h2>
+          <p className="mt-1 text-sm text-slate-600">This content is used to generate the academic event report. Pre-filled with defaults based on event theme.</p>
           
-          <div className="mt-4 space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Name *</label>
-                  <input
-                    type="text"
-                    placeholder="Full name"
-                    value={feedbackForm.name}
-                    onChange={(e) => setFeedbackForm((prev) => ({ ...prev, name: e.target.value }))}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Designation</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Professor, Industry Expert"
-                    value={feedbackForm.designation}
-                    onChange={(e) => setFeedbackForm((prev) => ({ ...prev, designation: e.target.value }))}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Organization</label>
-                  <input
-                    type="text"
-                    placeholder="Organization name"
-                    value={feedbackForm.organization}
-                    onChange={(e) => setFeedbackForm((prev) => ({ ...prev, organization: e.target.value }))}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Feedback *</label>
-                <textarea
-                  placeholder="Guest feedback and comments"
-                  value={feedbackForm.feedback}
-                  onChange={(e) => setFeedbackForm((prev) => ({ ...prev, feedback: e.target.value }))}
-                  disabled={isSubmitting}
-                  rows={3}
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={addGuestFeedback}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 rounded-lg bg-cse-accent px-4 py-2 text-sm font-semibold text-white hover:bg-cse-accent/90 disabled:opacity-60"
-              >
-                <Plus size={16} /> Add Feedback
-              </button>
+          <div className="mt-6 space-y-6">
+            <div>
+              <label className="text-sm font-bold text-slate-700">Event Final Outcome *</label>
+              <textarea
+                value={eventOutcome}
+                onChange={(e) => setEventOutcome(e.target.value)}
+                rows={2}
+                placeholder="Brief summary of the completion status..."
+                className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:ring-cse-accent/30 focus:border-cse-accent"
+              />
             </div>
 
-            {guestFeedback.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-700">Added Feedback ({guestFeedback.length})</p>
-                {guestFeedback.map((feedback) => (
-                  <div key={feedback.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-900">{feedback.name}</p>
-                        {feedback.designation && <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{feedback.designation}</p>}
-                        {feedback.organization && <p className="text-[10px] text-slate-400">{feedback.organization}</p>}
-                        <p className="text-sm text-slate-700 mt-2 italic">"{feedback.feedback}"</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeGuestFeedback(feedback.id)}
-                        className="text-red-600 hover:text-red-700 ml-4 p-1 hover:bg-red-50 rounded"
-                        title="Remove feedback"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            <div>
+              <label className="text-sm font-bold text-slate-700">Description of the Event *</label>
+              <textarea
+                value={reportDetails.description}
+                onChange={(e) => setReportDetails(p => ({ ...p, description: e.target.value }))}
+                rows={5}
+                placeholder="Detailed narrative of how the event was conducted..."
+                className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:ring-cse-accent/30 focus:border-cse-accent"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm font-bold text-slate-700 mb-2 block">Event Objectives (One per line)</label>
+                <textarea
+                  value={reportDetails.objectives.join('\n')}
+                  onChange={(e) => setReportDetails(p => ({ ...p, objectives: e.target.value.split('\n').filter(Boolean) }))}
+                  rows={6}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono"
+                />
               </div>
-            )}
-            {guestFeedback.length === 0 && (
-              <p className="text-sm text-slate-500">No guest feedback added yet.</p>
+              <div>
+                <label className="text-sm font-bold text-slate-700 mb-2 block">Event Outcomes (One per line)</label>
+                <textarea
+                  value={reportDetails.outcomes.join('\n')}
+                  onChange={(e) => setReportDetails(p => ({ ...p, outcomes: e.target.value.split('\n').filter(Boolean) }))}
+                  rows={6}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               <div>
+                  <label className="text-sm font-bold text-slate-700">Technical Skills Gained</label>
+                  <input
+                    type="text"
+                    value={reportDetails.benefits.technical || ''}
+                    onChange={(e) => setReportDetails(p => ({ ...p, benefits: { ...p.benefits, technical: e.target.value } }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+               </div>
+               <div>
+                  <label className="text-sm font-bold text-slate-700">Industry Benefits</label>
+                  <input
+                    type="text"
+                    value={reportDetails.benefits.industry || ''}
+                    onChange={(e) => setReportDetails(p => ({ ...p, benefits: { ...p.benefits, industry: e.target.value } }))}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  />
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
+               <div>
+                  <label className="text-sm font-bold text-slate-700">Website Coverage Link</label>
+                  <input
+                    type="text"
+                    value={reportDetails.socialMedia.website || ''}
+                    onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, website: e.target.value } }))}
+                    placeholder="https://collegewebsite.edu/blog/..."
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                  />
+               </div>
+               <div>
+                  <label className="text-sm font-bold text-slate-700">Social Media URL</label>
+                  <input
+                    type="text"
+                    value={reportDetails.socialMedia.social || ''}
+                    onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, social: e.target.value } }))}
+                    placeholder="Instagram/LinkedIn post link..."
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                  />
+               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4 mb-2">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Section 5 - Guest Feedback (Via CSV)</h2>
+              <p className="text-sm text-slate-600">Import guest feedback collected via Google Forms or WhatsApp</p>
+            </div>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                onChange={handleGuestFeedbackCsvUpload}
+                disabled={isSubmitting}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+              <div className="flex items-center gap-2 px-5 py-2.5 bg-cse-accent text-white rounded-xl text-sm font-bold hover:bg-cse-accent/90 transition-all shadow-md shadow-blue-900/10">
+                <FileUp size={18} /> Upload Guest Feedback CSV
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8">
+            {guestFeedback.length > 0 ? (
+              <div className="overflow-hidden border border-slate-200 rounded-xl bg-white">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Guest Info</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Rating</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Feedback Comments</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white">
+                    {guestFeedback.map((feedback) => (
+                      <tr key={feedback.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="font-bold text-slate-900 text-sm">{feedback.name}</div>
+                          <div className="text-[10px] text-slate-500 font-bold uppercase truncate max-w-[150px]">{feedback.designation || 'Guest'}</div>
+                          <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{feedback.organization}</div>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <div className="inline-flex items-center gap-0.5 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 font-bold text-xs">
+                             <Star size={12} fill="currentColor" /> {feedback.rating}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <p className="text-xs text-slate-700 leading-relaxed italic line-clamp-2">"{feedback.feedback}"</p>
+                          {feedback.highlights && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {feedback.highlights.split(',').map((h, i) => (
+                                <span key={i} className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold border border-indigo-100">{h.trim()}</span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => removeGuestFeedback(feedback.id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <X size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                 <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-300 mb-4">
+                    <FileText size={32} />
+                 </div>
+                 <p className="text-slate-500 font-medium">No Guest Feedback Uploaded</p>
+                 <p className="text-xs text-slate-400 mt-1 uppercase tracking-tighter">Columns Required: Name, Feedback</p>
+              </div>
             )}
           </div>
         </section>
@@ -1245,18 +1434,94 @@ const IQACSubmission = () => {
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
-                  <label className="text-sm font-semibold text-slate-700">Organization / Institution</label>
+                  <label className="text-sm font-semibold text-slate-700">Email Address</label>
+                  <input
+                    type="email"
+                    placeholder="email@example.com"
+                    value={resourcePersonForm.email}
+                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, email: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                   <label className="text-sm font-semibold text-slate-700">Phone Number</label>
+                   <input
+                    type="text"
+                    placeholder="+91 9876543210"
+                    value={resourcePersonForm.phone}
+                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, phone: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-slate-700 mb-2 block">Areas of Expertise (e.g. AI, Cloud)</label>
+                <input
+                  type="text"
+                  placeholder="Expertise keywords"
+                  value={resourcePersonForm.expertise}
+                  onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, expertise: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="flex gap-4 items-start">
+                 <div className="flex-1">
+                   <label className="text-sm font-semibold text-slate-700 mb-2 block">Brief Bio / Credentials</label>
+                   <textarea
+                     placeholder="A few lines about the speaker's background..."
+                     value={resourcePersonForm.bio}
+                     onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, bio: e.target.value }))}
+                     rows={3}
+                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                   />
+                 </div>
+                 <div className="w-32">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-tight mb-2 block">Photo</label>
+                    <div className="relative group">
+                      <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
+                        {resourcePersonForm.photo ? (
+                          <img src={resourcePersonForm.photo.dataUrl} className="w-full h-full object-cover" alt="speaker" />
+                        ) : (
+                          <div className="text-slate-300 flex flex-col items-center gap-1">
+                             <Camera size={24} />
+                             <span className="text-[10px]">Upload</span>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={onResourcePersonPhoto}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                        />
+                      </div>
+                      {resourcePersonForm.photo && (
+                        <button 
+                          onClick={() => setResourcePersonForm(p => ({ ...p, photo: null }))}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Organization / Institution</label>
                   <input
                     type="text"
                     placeholder="Organization name"
                     value={resourcePersonForm.organization}
                     onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, organization: e.target.value }))}
                     disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 placeholder:text-slate-400"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-semibold text-slate-700">Topic / Session Handled</label>
+                  <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Topic / Session Handled</label>
                   {(() => {
                     const topics = [];
                     for(let i=1; i <= numberOfDays; i++) {
@@ -1496,6 +1761,9 @@ const IQACSubmission = () => {
             event={selectedEvent}
             resourcePersons={resourcePersons}
             registrationDetails={registrationDetails}
+            reportDetails={reportDetails}
+            feedbackStats={autoFeedbackSummary}
+            guestFeedback={guestFeedback}
             onClose={() => setShowReportModal(false)}
           />
         )}
