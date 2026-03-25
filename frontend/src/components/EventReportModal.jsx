@@ -2,6 +2,7 @@
 import { X, Printer, FileText, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SECELogo from '../assets/sece.avif';
+import SECEHeader from '../assets/sece header.jpeg';
 
 const SDG_NAMES = {
   1: "No Poverty",
@@ -99,15 +100,13 @@ const EventReportModal = ({
           {/* Report Content Wrapper */}
           <div className="p-12 text-slate-900 print:p-0 font-serif" id="printable-report">
             {/* Formal College Header */}
-            <div className="text-center mb-12 border-b-4 border-double border-slate-900 pb-8">
-              <div className="flex justify-center mb-4">
-                 <div className="w-16 h-16 border-2 border-slate-900 rounded-lg flex items-center justify-center font-black text-2xl tracking-tighter print:w-20 print:h-20">LOGO</div>
+            <div className="text-center mb-12 border-b-2 border-slate-900 pb-8">
+              <div className="flex justify-center mb-6">
+                 <img src={SECEHeader} className="w-full max-h-48 object-contain" alt="SECE Header" />
               </div>
-              <h1 className="text-2xl font-black uppercase tracking-tight mb-1 font-sans">Sample Engineering College (SEC)</h1>
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-600 mb-4 font-sans">Approved by AICTE, New Delhi & Affiliated to Anna University</p>
               
-              <div className="inline-block px-8 py-2 border-2 border-slate-900 font-sans font-black text-xl uppercase tracking-widest mb-6">
-                Event Report
+              <div className="inline-block px-10 py-1.5 border-[3px] border-slate-900 font-sans font-black text-2xl uppercase tracking-tighter mb-4">
+                Academic Event Report
               </div>
               
               <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-500 tracking-wider font-sans">
@@ -117,11 +116,10 @@ const EventReportModal = ({
               </div>
             </div>
 
-            {/* Core Section: Basic Information */}
-            <section className="mb-10">
-              <h3 className="text-sm font-black bg-slate-900 text-white px-4 py-1.5 mb-6 uppercase tracking-wider font-sans inline-block">01. General Information</h3>
+            <section className="mb-10 page-break-inside-avoid">
+              <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-2 uppercase tracking-widest font-sans inline-block">01. General Information</h3>
               
-              <div className="grid grid-cols-1 border border-slate-300 rounded-lg overflow-hidden font-sans">
+              <div className="grid grid-cols-1 border-[1.5px] border-slate-900 overflow-hidden font-sans">
                 <div className="grid grid-cols-4 border-b border-slate-300">
                   <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Title of the Event</div>
                   <div className="col-span-3 p-3 font-black text-[12px] uppercase text-slate-900">{event.title || s1.eventName || 'N/A'}</div>
@@ -149,101 +147,98 @@ const EventReportModal = ({
 
             {/* Event Brochure / Poster Page */}
             <section className="mb-10 page-break-after-always">
-              <h3 className="text-sm font-black bg-slate-100 text-slate-900 border-l-4 border-slate-900 px-4 py-1.5 mb-6 uppercase tracking-wider font-sans">02. Event Brochure / Flyer</h3>
+              <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">02. Event Brochure / Flyer</h3>
               <div className="flex justify-center flex-col items-center gap-4">
-                 <div className="relative w-full max-w-[650px] border-[1px] border-slate-300 p-1 bg-white shadow-sm overflow-hidden rounded-sm">
+                 <div className="relative w-full max-w-[650px] border-[2px] border-slate-900 p-1 bg-white shadow-sm overflow-hidden rounded-sm">
                     <img 
                       src={event.posterDataUrl || event.posterUrl || SECELogo} 
                       className="w-full h-auto object-contain" 
                       alt="Event Brochure" 
                     />
                  </div>
-                 <p className="text-[10px] font-bold text-slate-400 italic">Brochure/Flyer for the academic event</p>
+                 <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Fig 1: Official Publication Material</p>
               </div>
             </section>
 
             {/* Resource Person Info */}
             <section className="mb-10 page-break-inside-avoid">
-              <h3 className="text-sm font-black bg-slate-100 text-slate-900 border-l-4 border-slate-900 px-4 py-1.5 mb-6 uppercase tracking-wider font-sans">03. Resource Person Details</h3>
-              <div className="space-y-4 font-sans">
+              <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">03. Resource Person Details</h3>
+              <div className="border-[1.5px] border-slate-900 overflow-hidden font-sans bg-slate-50/20">
                 {resourcePersons.length > 0 ? resourcePersons.map((rp, idx) => (
-                  <div key={idx} className="flex gap-6 p-4 border border-slate-200 rounded-xl bg-slate-50/30">
-                     {rp.photo?.dataUrl && <img src={rp.photo.dataUrl} className="w-20 h-20 rounded-lg object-cover border-2 border-white shadow-sm" alt="rp" />}
+                  <div key={idx} className={`flex gap-6 p-5 ${idx !== resourcePersons.length -1 ? 'border-b-[1.5px] border-slate-900' : ''}`}>
+                     {rp.photo?.dataUrl && <img src={rp.photo.dataUrl} className="w-24 h-24 rounded-sm object-cover border-[1.5px] border-slate-900 shadow-sm" alt="rp" />}
                      <div className="flex-1">
-                        <div className="font-black uppercase text-[13px] text-slate-900">{rp.name}</div>
-                        <div className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">{rp.designation}</div>
-                        <div className="text-[11px] text-slate-500 mb-2">{rp.organization}</div>
-                        {rp.bio && <div className="text-[10px] text-slate-400 leading-relaxed line-clamp-2 italic">“{rp.bio}”</div>}
-                        {Array.isArray(rp.topicsByDay) && rp.topicsByDay.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {rp.topicsByDay.filter(Boolean).map((t, i) => (
-                               <span key={i} className="text-[9px] bg-white border border-slate-200 px-2 py-0.5 rounded font-bold uppercase text-slate-500">Day {i+1}: {t}</span>
-                            ))}
-                          </div>
-                        )}
+                        <div className="font-black uppercase text-[15px] text-slate-900 mb-1">{rp.name}</div>
+                        <div className="text-[11px] font-black text-indigo-700 uppercase tracking-tight mb-0.5">{rp.designation}</div>
+                        <div className="text-[11px] font-bold text-slate-600 mb-3">{rp.organization}</div>
+                        {rp.bio && <div className="text-[10px] text-slate-500 leading-relaxed italic border-l-2 border-slate-300 pl-3">“{rp.bio}”</div>}
                      </div>
                   </div>
                 )) : (
-                  <div className="p-4 border border-slate-200 rounded-lg italic text-slate-500 text-sm">Nil / Handled by Internal Faculty</div>
+                  <div className="p-6 text-center italic text-slate-500 text-xs font-bold uppercase tracking-widest">Nil / Handled by Internal Faculty</div>
                 )}
               </div>
             </section>
 
             <div className="space-y-10">
               <section>
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">04. Event Objectives</h3>
-                <ul className="list-decimal list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800">
-                  {getRep('objectives', ['Standard event objective placeholder.']).map((obj, i) => (
-                    <li key={i} className="pl-2">{obj}</li>
-                  ))}
-                </ul>
+                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">04. Event Objectives</h3>
+                <div className="border-[1.5px] border-slate-900 p-5 bg-slate-50/20 font-sans">
+                  <ul className="list-decimal list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800 font-bold">
+                    {getRep('objectives', ['Standard event objective placeholder.']).map((obj, i) => (
+                      <li key={i} className="pl-2">{obj}</li>
+                    ))}
+                  </ul>
+                </div>
               </section>
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">05. Detailed Description of the Event</h3>
-                <div className="text-[12px] leading-[1.8] text-slate-800 text-justify indent-12 whitespace-pre-wrap">
+                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">05. Detailed Description of the Event</h3>
+                <div className="border-[1.5px] border-slate-900 p-6 bg-white text-[12px] leading-[1.8] text-slate-800 text-justify indent-12 whitespace-pre-wrap font-serif">
                    {getRep('description', 'The event was successfully structured to provide maximum value...')}
                 </div>
               </section>
 
               <section>
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">06. Summary of Outcomes</h3>
-                <ul className="list-disc list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800">
-                  {getRep('outcomes', ['Standard outcome placeholder.']).map((out, i) => (
-                    <li key={i} className="pl-2">{out}</li>
-                  ))}
-                </ul>
+                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">06. Summary of Outcomes</h3>
+                <div className="border-[1.5px] border-slate-900 p-5 bg-slate-50/20 font-sans">
+                  <ul className="list-disc list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800 font-bold">
+                    {getRep('outcomes', ['Standard outcome placeholder.']).map((out, i) => (
+                      <li key={i} className="pl-2">{out}</li>
+                    ))}
+                  </ul>
+                </div>
               </section>
 
-              <section className="bg-slate-50 p-6 rounded-2xl border border-slate-200 page-break-inside-avoid font-sans">
-                <h3 className="text-sm font-black mb-4 uppercase tracking-wider text-slate-900">07. Learning Benefits</h3>
-                <div className="grid grid-cols-2 gap-8">
-                   <div>
-                      <p className="text-[10px] font-black uppercase text-indigo-600 mb-1">Technical Skills Gained</p>
-                      <p className="text-[12px] text-slate-700 font-bold">{reportDetails?.benefits?.technical || 'Practical exposure in the specific domain.'}</p>
+              <section className="bg-slate-50 border-[1.5px] border-slate-900 p-6 page-break-inside-avoid font-sans">
+                <h3 className="text-[11px] font-black mb-4 uppercase tracking-widest text-slate-900 border-b-[1.5px] border-slate-900 pb-2">07. Learning Benefits</h3>
+                <div className="grid grid-cols-2 gap-8 mt-4">
+                   <div className="border-r-[1.5px] border-slate-200 pr-8">
+                      <p className="text-[10px] font-black uppercase text-indigo-700 mb-2 tracking-tighter">Technical Skills Gained</p>
+                      <p className="text-[12px] text-slate-900 font-bold leading-relaxed">{reportDetails?.benefits?.technical || 'Practical exposure in the specific domain.'}</p>
                    </div>
                    <div>
-                      <p className="text-[10px] font-black uppercase text-indigo-600 mb-1">Impact on Employability</p>
-                      <p className="text-[12px] text-slate-700 font-bold">{reportDetails?.benefits?.industry || 'Alignment with current industrial competency standards.'}</p>
+                      <p className="text-[10px] font-black uppercase text-indigo-700 mb-2 tracking-tighter">Impact on Employability</p>
+                      <p className="text-[12px] text-slate-900 font-bold leading-relaxed">{reportDetails?.benefits?.industry || 'Alignment with current industrial competency standards.'}</p>
                    </div>
                 </div>
               </section>
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">08. Participant Statistics & Feedback</h3>
+                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">08. Participant Statistics & Feedback</h3>
                 
-                <div className="grid grid-cols-3 gap-0 border border-slate-300 rounded overflow-hidden font-sans mb-8">
-                   <div className="bg-slate-100 p-4 text-center border-r border-slate-300">
-                      <p className="text-[10px] font-black uppercase text-slate-500">Students</p>
-                      <p className="text-2xl font-black text-slate-900">{registrationDetails.studentsCount || 0}</p>
+                <div className="grid grid-cols-3 gap-0 border-[1.5px] border-slate-900 overflow-hidden font-sans mb-6 bg-white">
+                  <div className="p-4 text-center border-r-[1.5px] border-slate-900">
+                      <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Registered Students</p>
+                      <p className="text-3xl font-black text-slate-900">{registrationDetails.studentsCount || 0}</p>
                    </div>
-                   <div className="bg-slate-50 p-4 text-center border-r border-slate-300">
-                      <p className="text-[10px] font-black uppercase text-slate-500">Faculty</p>
-                      <p className="text-2xl font-black text-slate-900">{registrationDetails.facultyCount || 0}</p>
+                   <div className="p-4 text-center border-r-[1.5px] border-slate-900">
+                      <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Internal Faculty</p>
+                      <p className="text-3xl font-black text-slate-900">{registrationDetails.facultyCount || 0}</p>
                    </div>
-                   <div className="bg-white p-4 text-center">
-                      <p className="text-[10px] font-black uppercase text-slate-500">External</p>
-                      <p className="text-2xl font-black text-slate-900">{registrationDetails.externalCount || 0}</p>
+                   <div className="p-4 text-center">
+                      <p className="text-[10px] font-black uppercase text-slate-500 mb-1">External Members</p>
+                      <p className="text-3xl font-black text-slate-900">{registrationDetails.externalCount || 0}</p>
                    </div>
                 </div>
 
@@ -276,18 +271,18 @@ const EventReportModal = ({
 
               {guestFeedback.length > 0 && (
                 <section>
-                  <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">08. Expert Observations & Guest Feedback</h3>
-                  <div className="space-y-4 font-sans">
+                  <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">09. Expert Observations & Guest Feedback</h3>
+                  <div className="border-[1.5px] border-slate-900 overflow-hidden font-sans">
                     {guestFeedback.map((f, i) => (
-                      <div key={i} className="bg-slate-50 border border-slate-200 p-4 rounded-xl relative text-[11px]">
+                      <div key={i} className={`p-5 bg-slate-50/20 ${i !== guestFeedback.length - 1 ? 'border-b-[1.5px] border-slate-900' : ''}`}>
                          <div className="flex justify-between items-center mb-2">
-                            <span className="font-black uppercase text-slate-900 tracking-tight">{f.name} ({f.designation})</span>
-                            <div className="flex">
-                              {[1,2,3,4,5].map(s => <Star key={s} size={10} className={f.rating >= s ? 'text-amber-400 fill-amber-400' : 'text-slate-100'} />)}
+                            <span className="font-black uppercase text-slate-900 text-[12px] tracking-tight">{f.name} ({f.designation})</span>
+                            <div className="flex gap-0.5">
+                              {[1,2,3,4,5].map(s => <Star key={s} size={11} className={f.rating >= s ? 'text-amber-500 fill-amber-500' : 'text-slate-200'} />)}
                             </div>
                          </div>
-                         <p className="italic font-medium text-slate-700 leading-relaxed">"{f.feedback}"</p>
-                         {f.highlights && <p className="mt-2 text-[9px] font-black text-indigo-600 uppercase tracking-tighter">Key Highlights: {f.highlights}</p>}
+                         <p className="italic font-bold text-slate-700 text-[11px] leading-relaxed border-l-2 border-slate-300 pl-3">"{f.feedback}"</p>
+                         {f.highlights && <p className="mt-2 text-[9px] font-black text-indigo-700 uppercase tracking-tighter">Key Highlights: {f.highlights}</p>}
                       </div>
                     ))}
                   </div>
@@ -295,75 +290,78 @@ const EventReportModal = ({
               )}
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">10. Strategic Alignment (SDG & POs)</h3>
-                <div className="grid grid-cols-2 gap-6 font-sans">
-                   <div className="border border-slate-200 p-5 rounded-2xl flex gap-4 items-center">
-                      <div className="w-14 h-14 bg-indigo-600 text-white rounded-xl shadow-lg flex items-center justify-center font-black text-2xl">
+                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">10. Strategic Alignment (SDG & POs)</h3>
+                <div className="grid grid-cols-2 border-[1.5px] border-slate-900 overflow-hidden font-sans">
+                   <div className="p-6 border-r-[1.5px] border-slate-900 flex gap-5 items-center bg-white">
+                      <div className="w-16 h-16 bg-slate-900 text-white rounded-sm shadow-md flex items-center justify-center font-black text-2xl">
                         {String(reportDetails.mapping?.sdg || '04').padStart(2, '0')}
                       </div>
                       <div>
-                         <p className="text-[11px] font-black uppercase text-indigo-600">Goal Mapping</p>
-                         <p className="text-[13px] font-bold text-slate-900 leading-tight">SDG {reportDetails.mapping?.sdg || '4'}: {SDG_NAMES[reportDetails.mapping?.sdg] || 'Quality Education'}</p>
+                         <p className="text-[10px] font-black uppercase text-indigo-700 mb-0.5">Goal Mapping</p>
+                         <p className="text-[13px] font-black text-slate-900 leading-tight">SDG {reportDetails.mapping?.sdg || '4'}: {SDG_NAMES[reportDetails.mapping?.sdg] || 'Quality Education'}</p>
                       </div>
                    </div>
-                   <div className="border border-slate-200 p-5 rounded-2xl">
+                   <div className="p-6 bg-slate-50/30">
                       <p className="text-[10px] font-black uppercase text-slate-500 mb-2">Academic Alignment</p>
-                      <p className="text-[12px] font-black text-slate-900 tracking-tight">POs: {reportDetails.mapping?.po || '1, 3, 5, 8, 9, 12'} | PSOs: {reportDetails.mapping?.pso || '1, 2'}</p>
+                      <p className="text-[12px] font-black text-slate-900 tracking-tight leading-relaxed">POs: {reportDetails.mapping?.po || '1, 3, 5, 8, 9, 12'}</p>
+                      <p className="text-[12px] font-black text-slate-900 tracking-tight leading-relaxed">PSOs: {reportDetails.mapping?.pso || '1, 2'}</p>
                    </div>
                 </div>
               </section>
 
               <section>
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">11. Event Documentation / Photos</h3>
+                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">11. Event Documentation / Photos</h3>
                 {gallery.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-6">
-                    {gallery.map((img, idx) => (
-                      <div key={idx} className="space-y-3 font-sans">
-                         <div className="aspect-video w-full rounded-xl overflow-hidden border-2 border-slate-100 shadow-lg bg-slate-50">
-                            <img src={img.url || img.dataUrl} className="w-full h-full object-cover" alt="event" />
-                         </div>
-                         <div className="text-center font-bold">
-                            <p className="text-[10px] text-slate-900 uppercase">Fig {idx + 1}: {img.dayTag || 'Event Session'}</p>
-                            <p className="text-[9px] text-slate-500 italic mt-0.5">{img.title || ''}</p>
-                         </div>
-                      </div>
-                    ))}
+                  <div className="border-[1.5px] border-slate-900 p-8 bg-slate-50/10">
+                    <div className="grid grid-cols-2 gap-8">
+                      {gallery.map((img, idx) => (
+                        <div key={idx} className="space-y-4 font-sans">
+                           <div className="aspect-video w-full border-[1.5px] border-slate-900 shadow-sm bg-white overflow-hidden">
+                              <img src={img.url || img.dataUrl} className="w-full h-full object-cover" alt="event" />
+                           </div>
+                           <div className="text-center font-black">
+                              <p className="text-[10px] text-slate-900 uppercase">Fig {idx + 1}: {img.dayTag || 'Event Session'}</p>
+                              <p className="text-[9px] text-slate-500 italic mt-1 uppercase tracking-tighter">{img.title || ''}</p>
+                           </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : (
-                  <div className="p-12 border-2 border-dashed border-slate-200 rounded-2xl text-center font-sans text-slate-400 italic">No photographs available for this event records</div>
+                  <div className="p-16 border-[1.5px] border-dashed border-slate-400 text-center font-sans text-slate-400 font-bold uppercase tracking-widest text-xs">No photographs available for this event records</div>
                 )}
               </section>
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black text-center py-2.5 bg-slate-900 text-white rounded-lg mb-8 uppercase tracking-widest font-sans">Checklist of Enclosures</h3>
-                <div className="grid grid-cols-2 gap-x-12 gap-y-4 px-4 font-sans uppercase">
+                <h3 className="text-xs font-black text-center py-2 bg-slate-900 text-white mb-6 uppercase tracking-widest font-sans border-[1.5px] border-slate-900">Checklist of Enclosures</h3>
+                <div className="grid grid-cols-2 gap-x-12 gap-y-3 px-6 py-6 border-[1.5px] border-slate-900 font-sans uppercase bg-slate-50/10">
                    {[
-                    ['Event Approval Copy', true],
-                    ['Resource Person Profiles', resourcePersons.length > 0],
-                    ['Participant Attendance', registrationDetails.studentsCount > 0],
-                    ['Feedback Analysis', feedbackStats?.totalResponses > 0],
-                    ['Geotagged Photographs', gallery.length > 0],
-                    ['Press Coverage (If any)', !!reportDetails?.socialMedia?.social]
+                    ['Event Approval Letter (Original)', true],
+                    ['Resource Person CV & Acceptance', resourcePersons.length > 0],
+                    ['Student Attendance Records', registrationDetails.studentsCount > 0],
+                    ['Feedback Analysis Summary', feedbackStats?.totalResponses > 0],
+                    ['Geotagged Event Photographs', gallery.length > 0],
+                    ['Impact / Media Coverage', !!reportDetails?.socialMedia?.social]
                    ].map(([item, valid], i) => (
-                     <div key={i} className="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <span className="text-[11px] font-bold text-slate-600">{i+1}. {item}</span>
-                        {valid ? <div className="text-indigo-600 font-black text-sm">✓</div> : <div className="w-4 h-4 border border-slate-300 rounded"></div>}
-                     </div>
+                      <div key={i} className="flex items-center justify-between border-b border-slate-300 pb-1.5">
+                         <span className="text-[10px] font-black text-slate-800">{i+1}. {item}</span>
+                         {valid ? <div className="text-slate-900 font-black text-base">✓</div> : <div className="w-4 h-4 border-[1.5px] border-slate-900"></div>}
+                      </div>
                    ))}
                 </div>
               </section>
 
               {/* Verified Signatures */}
-              <div className="mt-40 grid grid-cols-2 gap-48 text-center font-sans">
-                 <div className="space-y-4">
-                    <div className="h-0.5 bg-slate-900 w-full mb-3 shadow-sm"></div>
-                    <p className="text-[12px] font-black uppercase text-slate-900 leading-none">Event Coordinator</p>
-                    <p className="text-[10px] text-slate-500 font-bold">(Name & Signature)</p>
+              <div className="mt-32 grid grid-cols-2 gap-40 text-center font-sans px-4">
+                 <div className="space-y-5">
+                    <div className="h-[2px] bg-slate-900 w-full mb-2"></div>
+                    <p className="text-[12px] font-black uppercase text-slate-900 tracking-tighter">Event Coordinator</p>
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">(Name & Signature)</p>
                  </div>
-                 <div className="space-y-4">
-                    <div className="h-0.5 bg-slate-900 w-full mb-3 shadow-sm"></div>
-                    <p className="text-[12px] font-black uppercase text-slate-900 leading-none">Head of the Department</p>
-                    <p className="text-[10px] text-slate-500 font-bold">(Seal & Signature)</p>
+                 <div className="space-y-5">
+                    <div className="h-[2px] bg-slate-900 w-full mb-2"></div>
+                    <p className="text-[12px] font-black uppercase text-slate-900 tracking-tighter">Head of the Department</p>
+                    <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">(Seal & Signature)</p>
                  </div>
               </div>
             </div>
