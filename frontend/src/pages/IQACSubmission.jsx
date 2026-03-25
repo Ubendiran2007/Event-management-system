@@ -593,7 +593,7 @@ const IQACSubmission = () => {
           averageRating: 5
         }));
         
-        alert(`Successfully imported ${mappedData.length} records.`);
+        /* Success alert removed per user request */
       } catch (err) {
         console.error('CSV Parsing failed:', err);
         setSubmitError('Failed to parse the file. Please ensure it is a valid CSV or Excel file.');
@@ -648,7 +648,7 @@ const IQACSubmission = () => {
         }));
 
         setGuestFeedback((prev) => [...prev, ...importedGuestFeedback]);
-        alert(`Successfully imported ${importedGuestFeedback.length} guest feedback entries!`);
+        /* Success alert removed per user request */
 
       } catch (err) {
         console.error('Error parsing Guest CSV:', err);
