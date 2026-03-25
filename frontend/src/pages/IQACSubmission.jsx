@@ -398,7 +398,15 @@ const IQACSubmission = () => {
       {
         id: 'report-content',
         label: 'Academic Report Content',
-        isComplete: Boolean(reportDetails.summary && reportDetails.objectives && reportDetails.outcomes && reportDetails.benefits.technical && reportDetails.benefits.industry)
+        isComplete: Boolean(
+          reportDetails.description && 
+          reportDetails.objectives.length > 0 && 
+          reportDetails.outcomes.length > 0 && 
+          reportDetails.benefits?.technical && 
+          reportDetails.benefits?.industry &&
+          reportDetails.mapping?.sdg &&
+          reportDetails.mapping?.po
+        )
       },
       {
         id: 'resource-persons',
