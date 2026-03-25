@@ -3,6 +3,7 @@ import {
   ChevronRight, Building2, Mic2, MonitorSmartphone,
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
+  Star,
   XCircle, Loader2, XCircle as XCircleIcon, ClipboardList
 } from 'lucide-react';
 
@@ -1078,19 +1079,19 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
                         <p className="text-[10px] font-semibold text-slate-500 uppercase">Documents</p>
                         <p className="mt-0.5 text-sm font-bold text-slate-900">
-                          {(event.iqacData.checklist || []).filter(i => i.status !== 'pending').length} / {(event.iqacData.checklist || []).length}
+                          {(event.iqacData?.checklist || []).filter(i => i.status !== 'pending').length} / {(event.iqacData?.checklist || []).length}
                         </p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
                         <p className="text-[10px] font-semibold text-slate-500 uppercase">Attendees</p>
                         <p className="mt-0.5 text-sm font-bold text-cse-accent">
-                          {event.iqacData.registration?.attendance?.total || 0}
+                          {event.iqacData?.registration?.attendance?.total || 0}
                         </p>
                       </div>
                     </div>
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
                       <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1">Outcome</p>
-                      <p className="text-xs text-emerald-800 leading-relaxed italic">"{event.iqacData.eventOutcome || 'No specific outcome described.'}"</p>
+                      <p className="text-xs text-emerald-800 leading-relaxed italic">"{event.iqacData?.eventOutcome || 'No specific outcome described.'}"</p>
                     </div>
                   </div>
 
@@ -1099,7 +1100,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-inner">
                       <table className="min-w-full text-xs">
                         <tbody className="divide-y divide-slate-50">
-                          {(event.iqacData.checklist || []).map((item, idx) => (
+                          {(event.iqacData?.checklist || []).map((item, idx) => (
                             <tr key={idx} className="hover:bg-slate-50 transition-colors">
                               <td className="px-3 py-2 text-slate-600 font-medium">{item.requirement}</td>
                               <td className="px-3 py-2 text-right">
@@ -1125,7 +1126,7 @@ const EventDetailModal = ({ event, onClose }) => {
                   </div>
                   
                   {/* Resource Persons Summary */}
-                  {(event.iqacData.resourcePersons || []).length > 0 && (
+                  {(event.iqacData?.resourcePersons || []).length > 0 && (
                     <div className="col-span-1 lg:col-span-2 mt-2 pt-4 border-t border-slate-100">
                       <div className="flex items-center gap-2 mb-3">
                         <Award size={16} className="text-amber-500" />
@@ -1142,7 +1143,7 @@ const EventDetailModal = ({ event, onClose }) => {
                               <p className="text-[10px] text-slate-500 truncate">{person.designation} · {person.organization}</p>
                               <div className="flex items-center gap-1 mt-0.5">
                                 {[...Array(5)].map((_, i) => (
-                                  <StarIcon 
+                                  <Star 
                                     key={i} 
                                     size={10} 
                                     fill={(person.rating || 5) > i ? 'currentColor' : 'none'}

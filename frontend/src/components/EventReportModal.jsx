@@ -110,7 +110,7 @@ const EventReportModal = ({
               </div>
               
               <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-500 tracking-wider font-sans">
-                 <span>Ref No: SEC/IQAC/{academicYear}/{event.id?.slice(-4).toUpperCase() || '000'}</span>
+                  <span>Ref No: {event.requisition?.iqacNumber || `SEC/IQAC/${academicYear}/${event.id?.slice(-4).toUpperCase() || '000'}`}</span>
                  <span>Academic Year: {academicYear}</span>
                  <span>Date: {new Date().toLocaleDateString('en-GB')}</span>
               </div>
