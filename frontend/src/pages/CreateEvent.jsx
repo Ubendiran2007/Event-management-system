@@ -317,6 +317,7 @@ const CreateEvent = () => {
     organizerName: currentUser?.name || '',
     department: '',
     mobileNumber: '',
+    registrationMode: 'In-person',
     internalParticipants: '',
     externalParticipants: '',
     studentFeedbackLink: '',
@@ -1520,6 +1521,21 @@ const CreateEvent = () => {
                 {EVENT_TYPES.map((v) => <option key={v} value={v}>{v}</option>)}
               </select>
               <FieldMsg errKey="eventType" />
+            </div>
+
+            <div className="space-y-1">
+              <Lbl required>Registration Mode</Lbl>
+              <select
+                id="registrationMode"
+                className={fieldCls('registrationMode')}
+                value={form.registrationMode || 'In-person'}
+                onChange={(e) => { setField('registrationMode', e.target.value); validateField('registrationMode', e.target.value); }}
+                onBlur={(e) => validateField('registrationMode', e.target.value)}
+              >
+                <option value="In-person">In-person</option>
+                <option value="Online">Online</option>
+                <option value="Hybrid">Hybrid</option>
+              </select>
             </div>
 
             {isResubmissionEdit && form.requirePoster ? (
