@@ -1,6 +1,7 @@
 
 import { X, Printer, FileText, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import SECELogo from '../assets/sece.avif';
 
 const SDG_NAMES = {
   1: "No Poverty",
@@ -146,9 +147,24 @@ const EventReportModal = ({
               </div>
             </section>
 
+            {/* Event Brochure / Poster Page */}
+            <section className="mb-10 page-break-after-always">
+              <h3 className="text-sm font-black bg-slate-100 text-slate-900 border-l-4 border-slate-900 px-4 py-1.5 mb-6 uppercase tracking-wider font-sans">02. Event Brochure / Flyer</h3>
+              <div className="flex justify-center flex-col items-center gap-4">
+                 <div className="relative w-full max-w-[650px] border-[1px] border-slate-300 p-1 bg-white shadow-sm overflow-hidden rounded-sm">
+                    <img 
+                      src={event.posterDataUrl || event.posterUrl || SECELogo} 
+                      className="w-full h-auto object-contain" 
+                      alt="Event Brochure" 
+                    />
+                 </div>
+                 <p className="text-[10px] font-bold text-slate-400 italic">Brochure/Flyer for the academic event</p>
+              </div>
+            </section>
+
             {/* Resource Person Info */}
             <section className="mb-10 page-break-inside-avoid">
-              <h3 className="text-sm font-black bg-slate-100 text-slate-900 border-l-4 border-slate-900 px-4 py-1.5 mb-6 uppercase tracking-wider font-sans">02. Resource Person Details</h3>
+              <h3 className="text-sm font-black bg-slate-100 text-slate-900 border-l-4 border-slate-900 px-4 py-1.5 mb-6 uppercase tracking-wider font-sans">03. Resource Person Details</h3>
               <div className="space-y-4 font-sans">
                 {resourcePersons.length > 0 ? resourcePersons.map((rp, idx) => (
                   <div key={idx} className="flex gap-6 p-4 border border-slate-200 rounded-xl bg-slate-50/30">
@@ -175,7 +191,7 @@ const EventReportModal = ({
 
             <div className="space-y-10">
               <section>
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">03. Event Objectives</h3>
+                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">04. Event Objectives</h3>
                 <ul className="list-decimal list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800">
                   {getRep('objectives', ['Standard event objective placeholder.']).map((obj, i) => (
                     <li key={i} className="pl-2">{obj}</li>
@@ -184,14 +200,14 @@ const EventReportModal = ({
               </section>
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">04. Detailed Description of the Event</h3>
+                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">05. Detailed Description of the Event</h3>
                 <div className="text-[12px] leading-[1.8] text-slate-800 text-justify indent-12 whitespace-pre-wrap">
                    {getRep('description', 'The event was successfully structured to provide maximum value...')}
                 </div>
               </section>
 
               <section>
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">05. Summary of Outcomes</h3>
+                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-4 uppercase tracking-wider font-sans">06. Summary of Outcomes</h3>
                 <ul className="list-disc list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800">
                   {getRep('outcomes', ['Standard outcome placeholder.']).map((out, i) => (
                     <li key={i} className="pl-2">{out}</li>
@@ -200,7 +216,7 @@ const EventReportModal = ({
               </section>
 
               <section className="bg-slate-50 p-6 rounded-2xl border border-slate-200 page-break-inside-avoid font-sans">
-                <h3 className="text-sm font-black mb-4 uppercase tracking-wider text-slate-900">06. Learning Benefits</h3>
+                <h3 className="text-sm font-black mb-4 uppercase tracking-wider text-slate-900">07. Learning Benefits</h3>
                 <div className="grid grid-cols-2 gap-8">
                    <div>
                       <p className="text-[10px] font-black uppercase text-indigo-600 mb-1">Technical Skills Gained</p>
@@ -214,7 +230,7 @@ const EventReportModal = ({
               </section>
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">07. Participant Statistics & Feedback</h3>
+                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">08. Participant Statistics & Feedback</h3>
                 
                 <div className="grid grid-cols-3 gap-0 border border-slate-300 rounded overflow-hidden font-sans mb-8">
                    <div className="bg-slate-100 p-4 text-center border-r border-slate-300">
@@ -279,7 +295,7 @@ const EventReportModal = ({
               )}
 
               <section className="print:break-before-page">
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">09. Strategic Alignment (SDG & POs)</h3>
+                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">10. Strategic Alignment (SDG & POs)</h3>
                 <div className="grid grid-cols-2 gap-6 font-sans">
                    <div className="border border-slate-200 p-5 rounded-2xl flex gap-4 items-center">
                       <div className="w-14 h-14 bg-indigo-600 text-white rounded-xl shadow-lg flex items-center justify-center font-black text-2xl">
@@ -298,7 +314,7 @@ const EventReportModal = ({
               </section>
 
               <section>
-                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">10. Event Documentation / Photos</h3>
+                <h3 className="text-sm font-black border-b border-slate-300 pb-2 mb-6 uppercase tracking-wider font-sans">11. Event Documentation / Photos</h3>
                 {gallery.length > 0 ? (
                   <div className="grid grid-cols-2 gap-6">
                     {gallery.map((img, idx) => (

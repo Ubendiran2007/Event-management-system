@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import defaultPoster from '../assets/sece.avif';
 import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp, Check, Circle, LayoutGrid, Globe } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
@@ -197,7 +198,7 @@ const IQACSubmission = () => {
     photo: null,
   });
 
-  const defaultPoster = "https://placehold.co/600x400/e2e8f0/64748b?text=No+Poster";
+  const today = new Date().toISOString().split('T')[0];
 
   const [showReportModal, setShowReportModal] = useState(false);
 
