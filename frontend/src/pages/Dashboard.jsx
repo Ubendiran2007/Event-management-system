@@ -795,8 +795,8 @@ const Dashboard = () => {
                     </button>
                   )}
 
-                  {/* Available Events Tab — for all students and faculty */}
-                  {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
+                  {/* Available Events Tab — for all students (general and organizer) */}
+                  {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
                     <button
                       onClick={() => setActiveTab('available')}
                       className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'available'
