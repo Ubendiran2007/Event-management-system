@@ -303,13 +303,20 @@ const EventReportModal = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 italic">
-                          {feedbackStats.comments.slice(0, 10).map((item, idx) => (
+                          {feedbackStats.comments.slice(0, 5).map((item, idx) => (
                             <tr key={idx}>
                               <td className="px-4 py-2.5 text-slate-400">{idx + 1}</td>
                               <td className="px-4 py-2.5 font-bold uppercase text-slate-900">{item.student}</td>
                               <td className="px-4 py-2.5 text-slate-700 leading-tight">"{item.comment}"</td>
                             </tr>
                           ))}
+                          {feedbackStats.comments.length > 5 && (
+                            <tr>
+                              <td colSpan="3" className="px-4 py-3 text-center text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-50">
+                                + {feedbackStats.comments.length - 5} more feedback responses recorded in the IQAC portal
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -325,9 +332,6 @@ const EventReportModal = ({
                       <div key={i} className={`p-5 bg-slate-50/20 ${i !== guestFeedback.length - 1 ? 'border-b-[1.5px] border-slate-900' : ''}`}>
                         <div className="flex justify-between items-center mb-2">
                           <span className="font-black uppercase text-slate-900 text-[12px] tracking-tight">{f.name}{f.designation ? ` (${f.designation})` : ''}</span>
-                          <div className="flex gap-0.5">
-                            {[1, 2, 3, 4, 5].map(s => <Star key={s} size={11} className={f.rating >= s ? 'text-amber-500 fill-amber-500' : 'text-slate-200'} />)}
-                          </div>
                         </div>
                         <p className="italic font-bold text-slate-700 text-[11px] leading-relaxed border-l-2 border-slate-300 pl-3">"{f.feedback}"</p>
                         {f.highlights && <p className="mt-2 text-[9px] font-black text-indigo-700 uppercase tracking-tighter">Key Highlights: {f.highlights}</p>}

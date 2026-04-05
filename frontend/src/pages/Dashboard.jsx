@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Calendar,
   Users,
+  User,
   CheckCircle2,
   Clock,
   Plus,
@@ -41,7 +42,7 @@ const formatTime12 = (t24) => {
     const suffix = hh >= 12 ? 'PM' : 'AM';
     const h12 = hh % 12 || 12;
     return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
-  } catch (e) {
+  } catch {
     return t24;
   }
 };
@@ -51,8 +52,93 @@ import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
-import cseDeptImg from '../assets/cse_b.jpg';
 import seceHeader from '../assets/sece header.jpeg';
+
+// ── IQACExtendWidget ─────────────────────────────────────────────────────────
+// Faculty-only sidebar widget to grant an IQAC submission window extension
+// for events whose 7-day window has passed.
+const IQACExtendWidget = ({ events, facultyName }) => {
+  const [open, setOpen] = useState(false);
+  const [extendingId, setExtendingId] = useState(null);
+  const [result, setResult] = useState({}); // { id: 'success' | 'error' }
+
+  const handleExtend = async (eventId) => {
+    setExtendingId(eventId);
+    setResult((prev) => ({ ...prev, [eventId]: null }));
+    try {
+      const res = await fetch(`http://localhost:5001/api/events/${eventId}/extend-iqac-window`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ extendedBy: facultyName }),
+      });
+      if (!res.ok) throw new Error('Request failed');
+      setResult((prev) => ({ ...prev, [eventId]: 'success' }));
+    } catch {
+      setResult((prev) => ({ ...prev, [eventId]: 'error' }));
+    } finally {
+      setExtendingId(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 flex flex-col overflow-hidden max-h-[500px]">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 p-3 hover:bg-cse-accent/5 transition-all group text-left shrink-0"
+      >
+        <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all shrink-0">
+          <Clock3 size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800">Extend IQAC Window</p>
+          <p className="text-xs text-slate-500 font-medium">{events.length} event{events.length !== 1 ? 's' : ''} past deadline</p>
+        </div>
+        <ChevronDown size={16} className={`text-slate-400 group-hover:text-cse-accent transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="p-3 pt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 space-y-3">
+          {events.length === 0 ? (
+            <p className="text-xs text-slate-500">No events found.</p>
+          ) : (
+            events.map(ev => {
+              const organizerName = ev.organizerName || ev.requisition?.step1?.organizerDetails?.organizerName || 'Unknown Organizer';
+              return (
+                <div key={ev.id} className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm flex flex-col gap-2 relative">
+                  <div className="pr-16">
+                    <p className="text-sm font-bold text-slate-800 line-clamp-1">{ev.title}</p>
+                    <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                      <User size={10} className="text-slate-400" /> {organizerName}
+                    </p>
+                    <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                      <Calendar size={10} className="text-slate-400" /> {ev.date || 'No Date Set'}
+                    </p>
+                  </div>
+                  
+                  {result[ev.id] === 'success' ? (
+                    <p className="text-xs font-bold text-emerald-600 flex items-center gap-1.5 py-1">
+                      <CheckCircle2 size={13} /> Extended
+                    </p>
+                  ) : (
+                    <button
+                      onClick={() => handleExtend(ev.id)}
+                      disabled={extendingId === ev.id}
+                      className="absolute right-3 top-3 px-3 py-1.5 rounded-lg text-xs font-bold bg-cse-accent text-white hover:bg-cse-accent/90 disabled:opacity-50 transition-all active:scale-95"
+                    >
+                      {extendingId === ev.id ? 'Granting...' : 'Extend'}
+                    </button>
+                  )}
+                  {result[ev.id] === 'error' && <p className="text-[10px] text-red-500 font-bold mt-1">Failed to extend window.</p>}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 const Dashboard = () => {
   const {
@@ -61,9 +147,7 @@ const Dashboard = () => {
     odRequests,
     organizerRequests,
     loading,
-    handleApproval,
-    approveOrganizer,
-    setSelectedEvent
+    approveOrganizer
   } = useAppContext();
   const navigate = useNavigate();
   const [selectedODRequest, setSelectedODRequest] = useState(null);
@@ -74,20 +158,27 @@ const Dashboard = () => {
   const [expandedRegistrationGroups, setExpandedRegistrationGroups] = useState({});
   const [bulkApprovingGroups, setBulkApprovingGroups] = useState({});
   const [copiedStates, setCopiedStates] = useState({});
-  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [searchQueries, setSearchQueries] = useState({});
+  const [, setShowAllEvents] = useState(false);
   const [eventFilter, setEventFilter] = useState('all'); // all, posted, completed, iqac
   const isMedia = currentUser?.role === UserRole.MEDIA;
+  const isDeptOfficer = currentUser?.role && currentUser.role !== UserRole.FACULTY && currentUser.role !== UserRole.STUDENT_GENERAL && currentUser.role !== UserRole.STUDENT_ORGANIZER;
   const canCreateEvent =
     currentUser?.role === UserRole.FACULTY ||
     (currentUser?.role === UserRole.STUDENT_ORGANIZER && currentUser?.isApprovedOrganizer);
 
+  const hasOrganizedEvents = useMemo(() => {
+    if (!currentUser || !events) return false;
+    return events.some(e => e.organizerId === currentUser.id);
+  }, [events, currentUser]);
+
   // ORIGINAL HOOKS START HERE
   useEffect(() => {
     if (!currentUser) return;
-    if (currentUser.role === UserRole.STUDENT_GENERAL && activeTab === 'events') {
+    if (currentUser.role === UserRole.STUDENT_GENERAL && activeTab === 'events' && !hasOrganizedEvents) {
       setActiveTab('available');
     }
-  }, [currentUser?.role, activeTab]);
+  }, [currentUser, activeTab, hasOrganizedEvents]);
 
   useEffect(() => {
     if (!selectedEventDetail) return;
@@ -119,7 +210,10 @@ const Dashboard = () => {
   const filteredEvents = useMemo(() => {
     if (!currentUser) return [];
     return events.filter(ev => {
-      if (currentUser.role === UserRole.STUDENT_ORGANIZER) return ev.organizerId === currentUser.id;
+      if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
+        if (ev.organizerId === currentUser.id) return true;
+        if (currentUser.role === UserRole.STUDENT_GENERAL) return false;
+      }
       if (currentUser.role === UserRole.FACULTY) {
         // Faculty sees events pending their approval OR events they created as organizer
         return ev.status === EventStatus.PENDING_FACULTY || ev.organizerId === currentUser.id;
@@ -161,6 +255,26 @@ const Dashboard = () => {
         return ev.status === EventStatus.PENDING_IQAC || ev.status === EventStatus.COMPLETED;
       }
 
+      return false;
+    });
+  }, [currentUser, events]);
+
+  const approvedEvents = useMemo(() => {
+    if (!currentUser) return [];
+    return events.filter(ev => {
+      const depts = ev.departmentApprovals || {};
+      const reqs = ev.requisition?.step1?.requirements || {};
+      const isReq = (key) => reqs[key] ?? ev[key] ?? false;
+
+      if (currentUser.role === UserRole.HOD) return ev.hodApproval === 'APPROVED' || ev.hodApprovedAt;
+      if (currentUser.role === UserRole.HR_TEAM) return (isReq('venueRequired') && depts.venue?.status === 'APPROVED') || (isReq('mediaRequired') && depts.media?.status === 'APPROVED');
+      if (currentUser.role === UserRole.AUDIO_TEAM) return isReq('audioRequired') && depts.audio?.status === 'APPROVED';
+      if (currentUser.role === UserRole.SYSTEM_ADMIN) return isReq('ictsRequired') && depts.icts?.status === 'APPROVED';
+      if (currentUser.role === UserRole.TRANSPORT_TEAM) return isReq('transportRequired') && depts.transport?.status === 'APPROVED';
+      if (currentUser.role === UserRole.BOYS_WARDEN) return depts.boysAccommodation?.status === 'APPROVED' && (isReq('accommodationDiningRequired') || isReq('accommodationRequired'));
+      if (currentUser.role === UserRole.GIRLS_WARDEN) return depts.girlsAccommodation?.status === 'APPROVED' && (isReq('accommodationDiningRequired') || isReq('accommodationRequired'));
+      if (currentUser.role === UserRole.IQAC_TEAM) return ev.status === EventStatus.POSTED || ev.status === EventStatus.COMPLETED || ev.iqacApprovedAt;
+      if (currentUser.role === UserRole.MEDIA) return depts.media?.status === 'APPROVED' || ['APPROVED', 'COMPLETED'].includes(String(ev.posterWorkflow?.status || '').toUpperCase());
       return false;
     });
   }, [currentUser, events]);
@@ -227,26 +341,31 @@ const Dashboard = () => {
     };
 
     try {
-      await fetch(`http://localhost:5001/api/od-requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          studentId: currentUser.id,
-          studentName: currentUser.name,
-          rollNo: currentUser.rollNo || currentUser.password || '',
-          class: currentUser.class || currentUser.className || '',
-          department: currentUser.department || '',
-          email: currentUser.email,
-          registrationType: 'PARTICIPANT'
+      const [odReq, eventReq] = await Promise.all([
+        fetch(`http://localhost:5001/api/od-requests`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId,
+            studentId: currentUser.id,
+            studentName: currentUser.name,
+            rollNo: currentUser.rollNo || currentUser.password || '',
+            class: currentUser.class || currentUser.className || '',
+            department: currentUser.department || '',
+            email: currentUser.email,
+            registrationType: 'PARTICIPANT'
+          }),
         }),
-      });
+        fetch(`http://localhost:5001/api/events/${eventId}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newEntry),
+        })
+      ]);
 
-      await fetch(`http://localhost:5001/api/events/${eventId}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEntry),
-      });
+      if (!odReq.ok || !eventReq.ok) {
+        console.warn("One or more registration systems returned non-ok status");
+      }
     } catch (error) {
       console.error('Error registering:', error);
     } finally {
@@ -291,26 +410,26 @@ const Dashboard = () => {
   const availableEvents = useMemo(() => {
     if (!currentUser) return [];
     const now = new Date();
-    
+
     return events.filter(ev => {
       // 1. Must be POSTED status
       if (ev.status !== EventStatus.POSTED) return false;
-      
+
       // 2. Must NOT be the organizer of this event (string comparison for robustness)
       if (String(ev.organizerId) === String(currentUser.id)) return false;
 
       // 3. Must NOT be already registered for this event
       const alreadyRegistered = (ev.registeredStudents || []).some(s => String(s?.userId) === String(currentUser.id));
       if (alreadyRegistered) return false;
-      
+
       // 4. Avoid ongoing and completed events (check date)
       if (!ev.date) return false;
-      
+
       try {
         const evDate = new Date(`${ev.date} ${ev.startTime || '00:00'}`);
         // If now is past or equal the event start time, it's considered ongoing/starting
         if (now >= evDate) return false;
-      } catch (e) {
+      } catch {
         // Fallback to simple date string comparison if date object fails
         const today = new Date().toISOString().split('T')[0];
         if (ev.date < today) return false;
@@ -451,7 +570,7 @@ const Dashboard = () => {
   const shareDeptList = async (dept, students, eventTitle, eventDate) => {
     const listText = students.map((s, i) => `${i + 1}. ${s.studentName} (${s.rollNo}) - ${s.class}`).join('\n');
     const shareText = `APPROVED PARTICIPANT OD LIST: ${eventTitle}\nDATE: ${eventDate || '-'}\nDEPARTMENT: ${dept}\n\n${listText}`;
-    
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -486,7 +605,7 @@ const Dashboard = () => {
 
     const event = organizerEventsById[group.eventId];
     const s1 = event?.requisition?.step1;
-    
+
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
       const parts = dateStr.split('-');
@@ -588,12 +707,12 @@ const Dashboard = () => {
     </thead>
     <tbody>
       ${sortedStudents.map((s, i) => {
-        const isFirstInClass = !renderedClasses.has(s.class);
-        if (isFirstInClass) renderedClasses.add(s.class);
-        const isFirstRow = !hodRendered;
-        if (isFirstRow) hodRendered = true;
+      const isFirstInClass = !renderedClasses.has(s.class);
+      if (isFirstInClass) renderedClasses.add(s.class);
+      const isFirstRow = !hodRendered;
+      if (isFirstRow) hodRendered = true;
 
-        return `
+      return `
         <tr>
           <td>${i + 1}</td>
           <td style="font-weight: bold; color: #1e293b;">${s.studentName}</td>
@@ -603,7 +722,7 @@ const Dashboard = () => {
           ${isFirstRow ? `<td rowspan="${sortedStudents.length}" class="sig-cell"></td>` : ''}
         </tr>
       `;
-      }).join('')}
+    }).join('')}
     </tbody>
   </table>
 
@@ -639,17 +758,47 @@ const Dashboard = () => {
     }, 500);
   };
 
+  const getDashboardSubtitle = (role) => {
+    switch (role) {
+      case UserRole.STUDENT_GENERAL:
+      case UserRole.STUDENT_ORGANIZER:
+        return "Manage and track your events and registrations";
+      case UserRole.FACULTY:
+        return "Review and forward event proposals for approval";
+      case UserRole.HOD:
+        return "Approve and oversee departmental event proposals";
+      case UserRole.HR_TEAM:
+      case UserRole.TRANSPORT_TEAM:
+      case UserRole.BOYS_WARDEN:
+      case UserRole.GIRLS_WARDEN:
+      case UserRole.MEDIA:
+      case UserRole.AUDIO_TEAM:
+      case UserRole.SYSTEM_ADMIN:
+        return "Review and approve event requirements and logistics";
+      case UserRole.IQAC_TEAM:
+        return "Finalize and approve events ensuring institutional compliance";
+      case UserRole.PRINCIPAL:
+        return "Approve and oversee institutional event proposals";
+      default:
+        return "Manage and track your events and registrations";
+    }
+  };
+
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-slate-50/50">
+    <div className="h-screen flex flex-col overflow-hidden bg-[#f5f7fa]">
       <Navbar />
 
-      <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
-        <div className="max-w-7xl mx-auto px-6 py-8 pb-20">
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="max-w-7xl mx-auto w-full h-full px-6 py-6 flex flex-col min-h-0">
           {/* Header Section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
-              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h2>
-              <p className="text-slate-500 font-medium mt-1">Manage and track your department events.</p>
+              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                {currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER ? 'Student Dashboard' : 'My Dashboard'}
+              </h2>
+              <p className="text-slate-500 font-medium mt-1">
+                {getDashboardSubtitle(currentUser.role)}
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -677,17 +826,17 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
+            <div className="lg:col-span-2 flex flex-col min-h-0 space-y-6">
               {/* Stats Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                 {(() => {
                   const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                   const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
-                  
+
                   // Base events for counts
                   const baseEvents = isOrg ? events.filter(e => e.organizerId === currentUser.id) : events;
-                  
+
                   // Value mapping based on role
                   const getStatItems = () => {
                     const stats = [];
@@ -695,24 +844,26 @@ const Dashboard = () => {
                     // 1. TOTAL EVENTS
                     stats.push({
                       label: isOrg ? 'My Total Events' : (isStud ? 'Available Events' : 'Total Events'),
-                      value: isStud ? events.filter(e => e.status === EventStatus.POSTED).length : baseEvents.length,
+                      value: isStud ? availableEvents.length : baseEvents.length,
                       icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50'
                     });
 
                     // 2. POSTED / ACTIVE
                     stats.push({
-                      label: 'Posted',
-                      value: baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length,
+                      label: isStud ? 'Approved ODs' : 'Posted',
+                      value: isStud
+                        ? filteredODRequests.filter(r => r.status === 'APPROVED').length
+                        : baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length,
                       icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50'
                     });
 
                     // 3. PENDING
                     stats.push({
-                      label: isStaff ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : (isStud ? 'My Pending ODs' : 'Pending'),
-                      value: isStaff 
-                        ? (currentUser.role === UserRole.FACULTY 
-                            ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length 
-                            : filteredEvents.length)
+                      label: (isStaff || isMedia) ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : (isStud ? 'My Pending ODs' : 'Pending'),
+                      value: (isStaff || isMedia)
+                        ? (currentUser.role === UserRole.FACULTY
+                          ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length
+                          : filteredEvents.length)
                         : (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length),
                       icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50'
                     });
@@ -720,7 +871,7 @@ const Dashboard = () => {
                     // 4. COMPLETED
                     stats.push({
                       label: isStud ? 'My Completed ODs' : 'Completed',
-                      value: isStud 
+                      value: isStud
                         ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length
                         : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length,
                       icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100'
@@ -759,312 +910,247 @@ const Dashboard = () => {
                   };
 
                   return getStatItems().map((stat, i) => (
-                    <div key={i} className="glass-panel p-4 rounded-2xl">
-                      <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-3`}>
-                        <stat.icon size={20} />
+                    <div key={i} className="glass-panel px-4 py-3 rounded-2xl flex flex-col justify-center">
+                      <div className={`w-8 h-8 ${stat.bg} ${stat.color} rounded-[10px] flex items-center justify-center mb-1.5`}>
+                        <stat.icon size={16} />
                       </div>
-                      <p className="text-2xl font-bold">{stat.value}</p>
-                      <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">{stat.label}</p>
+                      <p className="text-xl font-extrabold leading-none mb-1">{stat.value}</p>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{stat.label}</p>
                     </div>
                   ));
                 })()}
               </div>
 
               {/* Tabs */}
-              <div className="glass-panel rounded-2xl overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4">
-                  {currentUser.role !== UserRole.STUDENT_GENERAL && (
-                    <button
-                      onClick={() => setActiveTab('events')}
-                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'events'
-                        ? 'bg-cse-accent text-white'
-                        : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                    >
-                      {currentUser.role === UserRole.FACULTY ? 'My Events' : isStaff ? 'Pending Approvals' : isMedia ? 'Poster Requests' : 'My Events'}
-                      {(isStaff || isMedia) && currentUser.role !== UserRole.FACULTY && filteredEvents.length > 0 && (
-                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
-                          {filteredEvents.length}
+              <div className="rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm border border-slate-200 flex-1 min-h-0">
+                {!isDeptOfficer && (
+                  <div className="flex w-full border-b border-slate-200 bg-white sticky top-0 z-30 shrink-0">
+                    {(currentUser.role !== UserRole.STUDENT_GENERAL || hasOrganizedEvents) && (
+                      <button
+                        onClick={() => setActiveTab('events')}
+                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'events'
+                          ? 'text-blue-600 bg-white'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          }`}
+                      >
+                        {currentUser.role === UserRole.FACULTY ? 'My Events' : isStaff ? 'Pending Approvals' : 'My Events'}
+                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${((isStaff || isMedia) && currentUser.role !== UserRole.FACULTY && filteredEvents.length > 0) ||
+                          (currentUser.role === UserRole.FACULTY && events.filter(e => e.organizerId === currentUser.id).length > 0)
+                          ? 'opacity-100 bg-blue-100 text-blue-700' : 'opacity-0'
+                          }`}>
+                          {currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id).length : filteredEvents.length}
                         </span>
-                      )}
-                      {currentUser.role === UserRole.FACULTY && events.filter(e => e.organizerId === currentUser.id).length > 0 && (
-                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'events' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'}`}>
-                          {events.filter(e => e.organizerId === currentUser.id).length}
-                        </span>
-                      )}
-                    </button>
-                  )}
+                        {activeTab === 'events' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
+                      </button>
+                    )}
 
-                  {/* Available Events Tab — for all students (general and organizer) */}
-                  {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
-                    <button
-                      onClick={() => setActiveTab('available')}
-                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'available'
-                        ? 'bg-cse-accent text-white'
-                        : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                    >
-                      Available Events
-                      {availableEvents.length > 0 && (
-                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'available' ? 'bg-white text-cse-accent' : 'bg-blue-500 text-white'}`}>
+                    {/* Available Events Tab — for all students (general and organizer) */}
+                    {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
+                      <button
+                        onClick={() => setActiveTab('available')}
+                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'available'
+                          ? 'text-blue-600 bg-white'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          }`}
+                      >
+                        Available Events
+                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${availableEvents.length > 0 ? 'opacity-100 bg-blue-100 text-blue-700' : 'opacity-0'}`}>
                           {availableEvents.length}
                         </span>
-                      )}
-                    </button>
-                  )}
+                        {activeTab === 'available' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
+                      </button>
+                    )}
 
-                  {/* Approvals tab — only for faculty */}
-                  {currentUser.role === UserRole.FACULTY && (
-                    <button
-                      onClick={() => setActiveTab('approvals')}
-                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'approvals'
-                        ? 'bg-cse-accent text-white'
-                        : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                    >
-                      Approvals
-                      {events.filter(e => e.status === EventStatus.PENDING_FACULTY).length > 0 && (
-                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'approvals' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'
-                          }`}>
-                          {events.filter(e => e.status === EventStatus.PENDING_FACULTY).length}
+                    {/* Approvals tab — only for faculty */}
+                    {currentUser.role === UserRole.FACULTY && (
+                      <button
+                        onClick={() => setActiveTab('approvals')}
+                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'approvals'
+                          ? 'text-blue-600 bg-white'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          }`}
+                      >
+                        Approvals
+                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${events.filter(e => e.status === EventStatus.PENDING_FACULTY).length > 0 ? 'opacity-100 bg-amber-100 text-amber-700' : 'opacity-0'}`}>
+                          {events.filter(e => e.status === EventStatus.PENDING_FACULTY).length || 0}
                         </span>
-                      )}
-                    </button>
-                  )}
+                        {activeTab === 'approvals' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
+                      </button>
+                    )}
 
-                  {/* My Registrations tab — for all students (general and organizer) */}
-                  {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
-                    <button
-                      onClick={() => setActiveTab('od')}
-                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'od'
-                        ? 'bg-cse-accent text-white'
-                        : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                    >
-                      My Registrations
-                      {pendingODCount > 0 && (
-                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'od' ? 'bg-white text-cse-accent' : 'bg-purple-500 text-white'
-                          }`}>
+                    {/* My Registrations tab — for all students (general and organizer) */}
+                    {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
+                      <button
+                        onClick={() => setActiveTab('od')}
+                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'od'
+                          ? 'text-blue-600 bg-white'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          }`}
+                      >
+                        My Registrations
+                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${pendingODCount > 0 ? 'opacity-100 bg-purple-100 text-purple-700' : 'opacity-0'}`}>
                           {pendingODCount}
                         </span>
-                      )}
-                    </button>
-                  )}
+                        {activeTab === 'od' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
+                      </button>
+                    )}
 
-                  {/* Manage Registrations tab — for student organizer and faculty to review incoming requests */}
-                  {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
-                    <button
-                      onClick={() => setActiveTab('registrations')}
-                      className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all flex items-center gap-2 ${activeTab === 'registrations'
-                        ? 'bg-cse-accent text-white'
-                        : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                    >
-                      Manage Registrations
-                      {pendingOrganizerOD.length > 0 && (
-                        <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center ${activeTab === 'registrations' ? 'bg-white text-cse-accent' : 'bg-amber-500 text-white'
-                          }`}>
+                    {/* Manage Registrations tab — for student organizer and faculty to review incoming requests */}
+                    {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
+                      <button
+                        onClick={() => setActiveTab('registrations')}
+                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'registrations'
+                          ? 'text-blue-600 bg-white'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          }`}
+                      >
+                        Manage Registrations
+                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${pendingOrganizerOD.length > 0 ? 'opacity-100 bg-amber-100 text-amber-700' : 'opacity-0'}`}>
                           {pendingOrganizerOD.length}
                         </span>
-                      )}
-                    </button>
-                  )}
-                </div>
+                        {activeTab === 'registrations' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Fixed-height scrollable container for tab content */}
-                <div className="h-[385px] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent flex flex-col bg-[#f5f7fa]">
                   {/* Events Tab Content */}
                   {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                     let displayEvents = [];
                     if (activeTab === 'events') {
-                      const baseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) : filteredEvents;
-                      
-                      if (eventFilter === 'all') displayEvents = baseEvents;
-                      else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && (e.status.startsWith('PENDING') || e.status === EventStatus.APPROVED));
-                      else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
-                      else if (eventFilter === 'iqac') displayEvents = baseEvents.filter(e => e.iqacSubmittedAt);
+                      const rawBaseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) :
+                        isDeptOfficer ? [...filteredEvents, ...approvedEvents] :
+                          filteredEvents;
+                      const baseEvents = Array.from(new Map(rawBaseEvents.map(e => [e.id, e])).values());
+
+                      if (isDeptOfficer) {
+                        if (eventFilter === 'all') displayEvents = baseEvents;
+                        else if (eventFilter === 'pending') displayEvents = filteredEvents;
+                        else if (eventFilter === 'approved') displayEvents = approvedEvents;
+                        else displayEvents = baseEvents;
+                      } else {
+                        if (eventFilter === 'all') displayEvents = baseEvents;
+                        else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && (e.status.startsWith('PENDING') || e.status === EventStatus.APPROVED));
+                        else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
+                        else if (eventFilter === 'completed') displayEvents = baseEvents.filter(e => e.status === EventStatus.COMPLETED);
+                        else if (eventFilter === 'rejected') displayEvents = baseEvents.filter(e => e.status === EventStatus.REJECTED);
+                      }
                     } else if (activeTab === 'approvals') {
                       displayEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
                     }
 
-                    const totalEventCount = displayEvents.length;
-                    const EVENT_DISPLAY_LIMIT = 3;
-                    const needsPagination = !showAllEvents && totalEventCount > EVENT_DISPLAY_LIMIT;
-                    const limitedEvents = needsPagination ? displayEvents.slice(0, EVENT_DISPLAY_LIMIT) : displayEvents;
-
                     return (
-                      <div className="flex flex-col h-full">
+                      <div className="flex flex-col h-full flex-1 min-h-0">
                         {/* Sub-tabs for Event Categories */}
                         {activeTab === 'events' && (
-                          <div className="px-6 py-3 sticky top-0 z-20 bg-slate-50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto no-scrollbar backdrop-blur-md bg-opacity-95 shadow-sm">
-                            {[
-                              { id: 'all', label: 'Show All', color: 'bg-slate-700' },
-                              { id: 'process', label: 'In Process', color: 'bg-amber-600' },
-                              { id: 'posted', label: 'Posted', color: 'bg-emerald-600' },
-                              { id: 'iqac', label: 'IQAC Submitted', color: 'bg-purple-600' }
-                            ].map(tab => (
-                              <button
-                                key={tab.id}
-                                onClick={() => { setEventFilter(tab.id); setShowAllEvents(false); }}
-                                className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${eventFilter === tab.id
-                                    ? `${tab.color} text-white shadow-md shadow-indigo-100`
-                                    : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
-                                  }`}
-                              >
-                                {tab.label}
-                              </button>
-                            ))}
+                          <div className="px-8 py-4 sticky top-0 z-20 bg-white border-b border-slate-200 flex items-center gap-3 overflow-x-auto no-scrollbar shadow-sm shrink-0">
+                            {(() => {
+                              const tabs = isDeptOfficer ? [
+                                { id: 'all', label: 'All' },
+                                { id: 'pending', label: 'Pending Approval' },
+                                { id: 'approved', label: 'Approved Events' }
+                              ] : [
+                                { id: 'all', label: 'Show All' },
+                                { id: 'process', label: 'In Process' },
+                                { id: 'posted', label: 'Posted' },
+                                { id: 'completed', label: 'Completed' },
+                                { id: 'rejected', label: 'Rejected' }
+                              ];
+
+                              return tabs.map(tab => (
+                                <button
+                                  key={tab.id}
+                                  onClick={() => { setEventFilter(tab.id); setShowAllEvents(false); }}
+                                  className={`px-5 py-2 rounded-full text-[13px] font-bold transition-all whitespace-nowrap border ${eventFilter === tab.id
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                                    }`}
+                                >
+                                  {tab.label}
+                                </button>
+                              ));
+                            })()}
                           </div>
                         )}
-                        <div className="divide-y divide-slate-100">
-                          {limitedEvents.map(event => (
-                            <div
-                              key={event.id}
-                              className="p-6 hover:bg-slate-50/50 transition-colors group cursor-pointer"
-                              onClick={() => {
-                                setSelectedEventDetail(event);
-                              }}
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex items-start gap-4">
-                                  <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-cse-accent group-hover:text-white transition-all">
-                                    <Calendar size={24} />
-                                  </div>
-                                  <div>
-                                    <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                                      {event.title}
-                                      {event.isResubmitted && (
-                                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-md text-[10px] uppercase tracking-wider font-bold">
-                                          Resubmitted
-                                        </span>
-                                      )}
-                                      <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border ${event.creatorType === 'FACULTY' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                        }`}>
-                                        {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
-                                      </span>
-                                    </h4>
-                                    <div className="flex items-center gap-3 mt-1">
-                                      <span className="text-xs text-slate-500 flex items-center gap-1">
-                                        <MapPin size={12} /> {event.venue}
-                                      </span>
-                                      <span className="text-xs text-slate-500 flex items-center gap-1">
-                                        <Clock size={12} /> {event.date} · {formatTime12(event.startTime)}
-                                      </span>
+                        {displayEvents.length > 0 ? (
+                          <div className="flex-1 p-5 space-y-4 flex flex-col">
+                            {displayEvents.map(event => (
+                              <div
+                                key={event.id}
+                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-blue-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group cursor-pointer"
+                                onClick={() => setSelectedEventDetail(event)}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[110px]">
+                                  <div className="flex items-center gap-5 flex-1 w-full min-w-0">
+                                    <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-blue-50 group-hover:to-blue-100 group-hover:text-blue-600 group-hover:border-blue-200 transition-all shrink-0 shadow-inner">
+                                      <Calendar size={24} />
                                     </div>
-                                    <p className="text-xs text-slate-400 mt-2">By {event.organizerName}</p>
-                                    {event.status === EventStatus.REJECTED && event.rejectionReason && (
-                                      <p className="text-xs text-red-600 mt-1">
-                                        Rejection reason: {event.rejectionReason}
-                                      </p>
-                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                                        <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
+                                          {event.title}
+                                        </h4>
+                                        {event.isResubmitted && (
+                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold border border-slate-200 uppercase tracking-wider shrink-0">
+                                            Resubmitted
+                                          </span>
+                                        )}
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                          {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
+                                        <span className="flex items-center gap-1.5 min-w-0">
+                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue || 'TBD'}</span>
+                                        </span>
+                                        <span className="flex items-center gap-1.5 shrink-0">
+                                          <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <StatusBadge status={event.status} />
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedEventDetail(event);
-                                    }}
-                                    className="text-xs font-semibold text-cse-accent hover:underline flex items-center gap-1"
-                                  >
-                                    View Details <ChevronRight size={14} />
-                                  </button>
-                                  {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && event.organizerId === currentUser.id && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        navigate('/create-event', { state: { editingEvent: event } });
-                                      }}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-60"
-                                    >
-                                      Edit &amp; Resubmit
-                                    </button>
-                                  )}
-                                  {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && !event.iqacSubmittedAt && event.organizerId === currentUser.id && (event.status === EventStatus.COMPLETED || event.status === EventStatus.POSTED) && (() => {
-                                    // Use eventEndDate (not startDate) for correct multi-day event support
-                                    const endDate = event.requisition?.step1?.eventEndDate || event.date;
-                                    const endTime = event.requisition?.step1?.eventEndTime || event.endTime;
-                                    if (!endDate || !endTime) return null;
-                                    const eventEnd = new Date(`${endDate}T${endTime}`);
-                                    if (isNaN(eventEnd.getTime())) return null;
-                                    if (Date.now() <= eventEnd.getTime()) return null;
-
-                                    // Allow IQAC submission up to 7 days after event ends
-                                    const sevenDaysAfter = eventEnd.getTime() + (7 * 24 * 60 * 60 * 1000);
-                                    if (Date.now() > sevenDaysAfter) return null;
-
-                                    return (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setSelectedEvent(event); navigate('/iqac'); }}
-                                        className="btn-secondary text-xs py-1.5"
-                                      >
-                                        Submit IQAC
-                                      </button>
-                                    );
-                                  })()}
-                                  {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.IQAC_TEAM) && event.iqacSubmittedAt && (
-                                    <div className="flex items-center gap-2">
-                                      <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-100">
-                                        <FileCheck size={12} /> IQAC Submitted
-                                      </span>
-                                      {currentUser.role === UserRole.IQAC_TEAM && (
+                                  <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
+                                    <StatusBadge status={event.status} />
+                                    <div className="flex items-center gap-3">
+                                      {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && event.organizerId === currentUser.id && (
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); navigate('/explore', { state: { openIQAC: event.id } }); }}
-                                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            navigate('/create-event', { state: { editingEvent: event } });
+                                          }}
+                                          className="px-5 py-2.5 rounded-lg text-[13px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
                                         >
-                                          View Responses
+                                          Edit
                                         </button>
                                       )}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedEventDetail(event);
+                                        }}
+                                        className="px-6 py-2.5 rounded-lg text-[13px] font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm active:scale-95"
+                                      >
+                                        View Details
+                                      </button>
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-transparent min-h-[400px]">
+                            <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
+                              <Calendar size={36} />
                             </div>
-                          ))}
-                        </div>
-                        {displayEvents.length === 0 && (
-                          <div className="p-12 text-center">
-                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                              <Calendar size={32} />
-                            </div>
-                            <p className="text-slate-500 font-medium">
+                            <h3 className="text-slate-800 font-bold text-lg mb-1">No events available</h3>
+                            <p className="text-slate-500 font-medium text-sm max-w-sm mx-auto">
                               {(isStaff || isMedia)
-                                ? 'No events are currently waiting for your approval.'
-                                : 'No events found.'}
+                                ? 'There are no events currently waiting for your approval.'
+                                : 'There are no events matching your current filters.'}
                             </p>
-                            {isStaff && (
-                              <p className="text-xs text-slate-400 mt-1">
-                                {currentUser.role === UserRole.FACULTY && 'Events submitted by students will appear here.'}
-                                {currentUser.role === UserRole.HOD && 'Events approved by Faculty will appear here.'}
-                                {currentUser.role === UserRole.PRINCIPAL && 'Events approved by HOD will appear here.'}
-                              </p>
-                            )}
-                            {isMedia && (
-                              <p className="text-xs text-slate-400 mt-1">
-                                Poster requests with status Requested or Rework Requested will appear here.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        {needsPagination && (
-                          <div className="p-4 bg-slate-50 border-t border-slate-100 mt-auto">
-                            <button
-                              onClick={() => setShowAllEvents(true)}
-                              className="w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-cse-accent hover:bg-cse-accent hover:text-white hover:border-cse-accent transition-all flex items-center justify-center gap-2 shadow-sm"
-                            >
-                              View All Events ({totalEventCount}) <ChevronDown size={14} />
-                            </button>
-                          </div>
-                        )}
-                        {showAllEvents && totalEventCount > EVENT_DISPLAY_LIMIT && (
-                          <div className="p-4 bg-slate-50 border-t border-slate-100 mt-auto">
-                            <button
-                              onClick={() => setShowAllEvents(false)}
-                              className="w-full py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all flex items-center justify-center gap-2 shadow-sm"
-                            >
-                              Show Less
-                            </button>
                           </div>
                         )}
                       </div>
@@ -1073,86 +1159,95 @@ const Dashboard = () => {
 
                   {/* Available Events Tab Content */}
                   {activeTab === 'available' && (
-                    <div className="divide-y divide-slate-100 h-full overflow-y-auto">
+                    <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
                       {availableEvents.length === 0 ? (
-                        <div className="p-12 text-center h-full flex flex-col items-center justify-center">
-                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                            <Calendar size={32} />
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                          <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
+                            <Calendar size={36} />
                           </div>
-                          <p className="text-slate-500 font-medium">No available events right now.</p>
+                          <h3 className="text-slate-800 font-bold text-lg mb-1">No available events</h3>
+                          <p className="text-slate-500 font-medium text-sm">There are no new events open for registration right now.</p>
                         </div>
                       ) : (
-                        availableEvents.map(event => {
-                          const isRegistered = (event.registeredStudents || []).some(s => s.userId === currentUser.id);
-                          const isProcessing = processingEventId === event.id;
+                        <div className="flex-1 p-5 space-y-4 flex flex-col">
+                          {availableEvents.map(event => {
+                            const isRegistered = (event.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id));
+                            const isProcessing = processingEventId === event.id;
 
-                          return (
-                            <div
-                              key={event.id}
-                              className="p-6 hover:bg-slate-50/50 transition-colors group"
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex items-start gap-4 flex-1">
-                                  <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-blue-500 group-hover:text-white transition-all">
-                                    <Calendar size={24} />
-                                  </div>
-                                  <div>
-                                    <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                                      {event.title}
-                                    </h4>
-                                    <div className="flex items-center gap-3 mt-1">
-                                      <span className="text-xs text-slate-500 flex items-center gap-1">
-                                        <MapPin size={12} /> {event.venue}
-                                      </span>
-                                      <span className="text-xs text-slate-500 flex items-center gap-1">
-                                        <Clock size={12} /> {event.date} · {formatTime12(event.startTime)}
-                                      </span>
+                            return (
+                              <div
+                                key={event.id}
+                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-blue-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group cursor-pointer"
+                                onClick={() => setSelectedEventDetail(event)}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[110px]">
+                                  <div className="flex items-center gap-5 flex-1 w-full min-w-0">
+                                    <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-blue-50 group-hover:to-blue-100 group-hover:text-blue-600 group-hover:border-blue-200 transition-all shrink-0 shadow-inner">
+                                      <Calendar size={24} />
                                     </div>
-                                    <p className="text-xs text-slate-400 mt-2">By {event.organizerName}</p>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                                        <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
+                                          {event.title}
+                                        </h4>
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                          {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
+                                        <span className="flex items-center gap-1.5 min-w-0">
+                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue || 'TBD'}</span>
+                                        </span>
+                                        <span className="flex items-center gap-1.5 shrink-0">
+                                          <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  {isRegistered ? (
-                                    <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
-                                      <CheckCircle2 size={14} /> Registered
-                                    </span>
-                                  ) : (
-                                    <button
-                                      disabled={isProcessing}
-                                      onClick={() => handleRegister(event.id)}
-                                      className="px-6 py-2 bg-cse-primary text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-md shadow-blue-500/10 disabled:opacity-50"
-                                    >
-                                      {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-                                      Register Now
-                                    </button>
-                                  )}
-                                  {currentUser.role !== UserRole.STUDENT_GENERAL && 
-                                   currentUser.role !== UserRole.STUDENT_ORGANIZER && (
-                                    <button
-                                      onClick={() => setSelectedEventDetail(event)}
-                                      className="text-xs font-semibold text-slate-500 hover:text-cse-accent flex items-center gap-1"
-                                    >
-                                      Details <ChevronRight size={14} />
-                                    </button>
-                                  )}
+                                  <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
+                                    {isRegistered ? (
+                                      <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+                                        <CheckCircle2 size={14} /> Registered
+                                      </span>
+                                    ) : (
+                                      <button
+                                        disabled={isProcessing}
+                                        onClick={() => handleRegister(event.id)}
+                                        className="px-5 py-2.5 bg-cse-primary text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
+                                      >
+                                        {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                                        Register Now
+                                      </button>
+                                    )}
+                                    {currentUser.role !== UserRole.STUDENT_GENERAL &&
+                                      currentUser.role !== UserRole.STUDENT_ORGANIZER && (
+                                        <button
+                                          onClick={() => setSelectedEventDetail(event)}
+                                          className="px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                                        >
+                                          View Details <ChevronRight size={14} className="text-slate-400" />
+                                        </button>
+                                      )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   )}
 
                   {/* Registrations Tab — organizer sees incoming student OD requests */}
                   {activeTab === 'registrations' && (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
-                    <div className="divide-y divide-slate-100">
+                    <div className="divide-y divide-slate-100 flex flex-col flex-1 min-h-0">
                       {groupedOrganizerEvents.length === 0 ? (
-                        <div className="p-12 text-center">
-                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                            <Users size={32} />
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
+                          <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
+                            <Users size={36} />
                           </div>
-                          <p className="text-slate-500 font-medium">No student registrations yet.</p>
+                          <h3 className="text-slate-800 font-bold text-lg mb-1">No student registrations yet</h3>
+                          <p className="text-slate-500 font-medium text-sm">There are no OD requests to review at this time.</p>
                         </div>
                       ) : (
                         groupedOrganizerEvents.map(group => {
@@ -1231,18 +1326,15 @@ const Dashboard = () => {
                           const volunteerRequests = group.requests.filter(
                             (r) => r.registrationType === 'VOLUNTEER'
                           );
-                          const pendingParticipantRequests = participantRequests.filter((r) => r.status === 'PENDING_ORGANIZER');
-                          const pendingVolunteerRequests = volunteerRequests.filter((r) => r.status === 'PENDING_ORGANIZER');
-                          const pendingAllRequests = group.requests.filter((r) => r.status === 'PENDING_ORGANIZER');
 
                           return (
-                            <div key={group.eventId || group.eventTitle} className="p-5">
+                            <div key={group.eventId || group.eventTitle} className="px-5 py-2.5">
                               <button
                                 type="button"
                                 onClick={() => setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
                                 className={`w-full transition-all duration-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left border ${isExpanded
-                                  ? 'bg-white border-blue-100 shadow-md shadow-blue-900/5 mb-4'
-                                  : 'bg-slate-50 border-slate-100 hover:bg-slate-100/80 mb-2'
+                                  ? 'bg-white border-blue-200 shadow-md ring-1 ring-blue-100 mb-3'
+                                  : 'bg-white border-slate-200 shadow-sm hover:border-blue-300 mb-0'
                                   }`}
                               >
                                 <div>
@@ -1270,83 +1362,122 @@ const Dashboard = () => {
 
                               {isExpanded && (
                                 <div className="animate-in slide-in-from-top-2 fade-in duration-200">
-                                  {isVolunteerEnabledEvent ? (
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                      <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
-                                        <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
-                                              <Users size={16} className="text-slate-500" />
-                                              <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Participants ({participantRequests.length})</p>
-                                            </div>
-                                            {pendingParticipantRequests.length > 1 && (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleBulkOrganizerApproval(participantRequests, `${groupKey}-participants`)}
-                                                disabled={bulkApprovingGroups[`${groupKey}-participants`]}
-                                                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
-                                              >
-                                                {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve All (${pendingParticipantRequests.length})`}
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="divide-y divide-slate-100/80">
-                                          {participantRequests.length > 0 ? participantRequests.map(renderRequestRow) : (
-                                            <div className="p-8 text-center text-sm font-medium text-slate-400">No participant requests.</div>
-                                          )}
-                                        </div>
-                                      </div>
+                                  {/* Filter Search */}
+                                  <div className="mb-4">
+                                    <div className="relative">
+                                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                      <input
+                                        type="text"
+                                        placeholder="Search by student name, roll no, or class..."
+                                        value={searchQueries[groupKey] || ''}
+                                        onChange={(e) => setSearchQueries(prev => ({ ...prev, [groupKey]: e.target.value }))}
+                                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm bg-white cursor-pointer focus:cursor-text"
+                                      />
+                                    </div>
+                                  </div>
 
-                                      <div className="rounded-2xl border-2 border-indigo-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
-                                        <div className="px-5 py-4 bg-indigo-50/80 border-b-2 border-indigo-100">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
-                                              <ShieldCheck size={16} className="text-indigo-500" />
-                                              <p className="text-sm font-bold uppercase tracking-wider text-indigo-800">Volunteers ({volunteerRequests.length})</p>
+                                  {(() => {
+                                    const query = (searchQueries[groupKey] || '').toLowerCase();
+                                    const filteredParticipantRequests = participantRequests.filter(r =>
+                                      (r.studentName && r.studentName.toLowerCase().includes(query)) ||
+                                      (r.rollNo && r.rollNo.toLowerCase().includes(query)) ||
+                                      (r.class && r.class.toLowerCase().includes(query))
+                                    );
+                                    const filteredVolunteerRequests = volunteerRequests.filter(r =>
+                                      (r.studentName && r.studentName.toLowerCase().includes(query)) ||
+                                      (r.rollNo && r.rollNo.toLowerCase().includes(query)) ||
+                                      (r.class && r.class.toLowerCase().includes(query))
+                                    );
+                                    const filteredAllRequests = group.requests.filter(r =>
+                                      (r.studentName && r.studentName.toLowerCase().includes(query)) ||
+                                      (r.rollNo && r.rollNo.toLowerCase().includes(query)) ||
+                                      (r.class && r.class.toLowerCase().includes(query))
+                                    );
+
+                                    const pendingFilteredParticipant = filteredParticipantRequests.filter(r => r.status === 'PENDING_ORGANIZER');
+                                    const pendingFilteredVolunteer = filteredVolunteerRequests.filter(r => r.status === 'PENDING_ORGANIZER');
+                                    const pendingFilteredAll = filteredAllRequests.filter(r => r.status === 'PENDING_ORGANIZER');
+
+                                    return isVolunteerEnabledEvent ? (
+                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
+                                          <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-2">
+                                                <Users size={16} className="text-slate-500" />
+                                                <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Participants ({participantRequests.length})</p>
+                                              </div>
+                                              {pendingFilteredParticipant.length > 1 && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleBulkOrganizerApproval(filteredParticipantRequests, `${groupKey}-participants`)}
+                                                  disabled={bulkApprovingGroups[`${groupKey}-participants`]}
+                                                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
+                                                >
+                                                  {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve Filtered (${pendingFilteredParticipant.length})`}
+                                                </button>
+                                              )}
                                             </div>
-                                            {pendingVolunteerRequests.length > 1 && (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleBulkOrganizerApproval(volunteerRequests, `${groupKey}-volunteers`)}
-                                                disabled={bulkApprovingGroups[`${groupKey}-volunteers`]}
-                                                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
-                                              >
-                                                {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve All (${pendingVolunteerRequests.length})`}
-                                              </button>
+                                          </div>
+                                          <div className="divide-y divide-slate-100/80 max-h-[500px] overflow-y-auto scrollbar-thin">
+                                            {filteredParticipantRequests.length > 0 ? filteredParticipantRequests.map(renderRequestRow) : (
+                                              <div className="p-8 text-center text-sm font-medium text-slate-400">No participant requests found.</div>
                                             )}
                                           </div>
                                         </div>
-                                        <div className="divide-y divide-indigo-50/80">
-                                          {volunteerRequests.length > 0 ? volunteerRequests.map(renderRequestRow) : (
-                                            <div className="p-8 text-center text-sm font-medium text-slate-400">No volunteer requests.</div>
+
+                                        <div className="rounded-2xl border-2 border-indigo-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
+                                          <div className="px-5 py-4 bg-indigo-50/80 border-b-2 border-indigo-100">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="flex items-center gap-2">
+                                                <ShieldCheck size={16} className="text-indigo-500" />
+                                                <p className="text-sm font-bold uppercase tracking-wider text-indigo-800">Volunteers ({volunteerRequests.length})</p>
+                                              </div>
+                                              {pendingFilteredVolunteer.length > 1 && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleBulkOrganizerApproval(filteredVolunteerRequests, `${groupKey}-volunteers`)}
+                                                  disabled={bulkApprovingGroups[`${groupKey}-volunteers`]}
+                                                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
+                                                >
+                                                  {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve Filtered (${pendingFilteredVolunteer.length})`}
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="divide-y divide-indigo-50/80 max-h-[500px] overflow-y-auto scrollbar-thin">
+                                            {filteredVolunteerRequests.length > 0 ? filteredVolunteerRequests.map(renderRequestRow) : (
+                                              <div className="p-8 text-center text-sm font-medium text-slate-400">No volunteer requests found.</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
+                                        <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2">
+                                            <Users size={16} className="text-slate-500" />
+                                            <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Registrations ({group.requests.length})</p>
+                                          </div>
+                                          {pendingFilteredAll.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleBulkOrganizerApproval(filteredAllRequests, `${groupKey}-all`)}
+                                              disabled={bulkApprovingGroups[`${groupKey}-all`]}
+                                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm shadow-emerald-500/20"
+                                            >
+                                              {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve Filtered (${pendingFilteredAll.length})`}
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="divide-y divide-slate-100/80 max-h-[500px] overflow-y-auto scrollbar-thin">
+                                          {filteredAllRequests.length > 0 ? filteredAllRequests.map(renderRequestRow) : (
+                                            <div className="p-8 text-center text-sm font-medium text-slate-400">No requests found.</div>
                                           )}
                                         </div>
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
-                                      <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2">
-                                          <Users size={16} className="text-slate-500" />
-                                          <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Registrations ({group.requests.length})</p>
-                                        </div>
-                                        {pendingAllRequests.length > 1 && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleBulkOrganizerApproval(group.requests, `${groupKey}-all`)}
-                                            disabled={bulkApprovingGroups[`${groupKey}-all`]}
-                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm shadow-emerald-500/20"
-                                          >
-                                            {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve All (${pendingAllRequests.length})`}
-                                          </button>
-                                        )}
-                                      </div>
-                                      <div className="divide-y divide-slate-100/80">
-                                        {group.requests.map(renderRequestRow)}
-                                      </div>
-                                    </div>
-                                  )}
+                                    );
+                                  })()}
 
                                   {/* ── Approved OD Lists by Department ── */}
                                   {(() => {
@@ -1356,7 +1487,7 @@ const Dashboard = () => {
                                     const byDept = approvedRequests.reduce((acc, r) => {
                                       // Priority 1: Use student's explicit department if available
                                       let d = r.department ? r.department.toUpperCase().trim() : '';
-                                      
+
                                       // Priority 2: Try to extract from the class/section name
                                       if (!d && r.class) {
                                         const cls = r.class.toUpperCase();
@@ -1464,33 +1595,33 @@ const Dashboard = () => {
 
                   {/* My Registrations Tab — for all students */}
                   {activeTab === 'od' && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
-                    <div className="divide-y divide-slate-100">
+                    <div className="flex-1 p-5 space-y-4 flex flex-col">
                       {filteredODRequests.map(request => (
                         <div
                           key={request.id}
                           onClick={() => setSelectedODRequest(request)}
-                          className="p-6 hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                          className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-purple-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] group cursor-pointer shrink-0"
                         >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="flex items-start gap-4">
-                              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-all">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[90px]">
+                            <div className="flex items-center gap-5 flex-1 w-full min-w-0">
+                              <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-purple-50 group-hover:to-purple-100 group-hover:text-purple-600 group-hover:border-purple-200 transition-all shrink-0 shadow-inner">
                                 <FileText size={24} />
                               </div>
-                              <div>
-                                <h4 className="font-bold text-slate-900">{request.studentName}</h4>
-                                <div className="flex items-center gap-3 mt-1">
-                                  <span className="text-xs text-slate-500">{request.rollNo}</span>
-                                  <span className="text-xs text-slate-500">•</span>
-                                  <span className="text-xs text-slate-500">{request.eventName}</span>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-extrabold text-slate-900 text-[16px] truncate">{request.eventName || request.eventTitle || 'Untitled Event'}</h4>
+                                <div className="flex items-center gap-3 mt-2 flex-wrap text-slate-500">
+                                  <span className="text-xs font-semibold text-slate-600">{request.studentName}</span>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="text-xs font-semibold">{request.rollNo}</span>
                                 </div>
-                                 <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
-                                    <Clock size={12} />
-                                    {request.eventDate}
-                                 </p>
+                                <p className="text-xs font-semibold text-slate-500 mt-2 flex items-center gap-1.5">
+                                  <Clock size={14} className="text-slate-400" />
+                                  {request.eventDate}
+                                </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${request.status === ODRequestStatus.APPROVED
+                            <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${request.status === ODRequestStatus.APPROVED
                                 ? 'bg-emerald-50 text-emerald-600'
                                 : request.status === ODRequestStatus.REJECTED
                                   ? 'bg-red-50 text-red-600'
@@ -1510,17 +1641,18 @@ const Dashboard = () => {
                                   Withdraw
                                 </button>
                               )}
-                              <ChevronRight size={18} className="text-slate-300 group-hover:text-cse-accent" />
+                              <ChevronRight size={18} className="text-slate-300 group-hover:text-purple-500" />
                             </div>
                           </div>
                         </div>
                       ))}
                       {filteredODRequests.length === 0 && (
-                        <div className="p-12 text-center">
-                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
-                            <FileText size={32} />
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
+                          <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
+                            <FileText size={36} />
                           </div>
-                          <p className="text-slate-500 font-medium">No registrations found.</p>
+                          <h3 className="text-slate-800 font-bold text-lg mb-1">No registrations found</h3>
+                          <p className="text-slate-500 font-medium text-sm">You haven't registered for any events yet.</p>
                         </div>
                       )}
                     </div>
@@ -1530,7 +1662,7 @@ const Dashboard = () => {
             </div>
 
             {/* Sidebar */}
-            <div className="space-y-8">
+            <div className="space-y-6 flex flex-col min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent pr-2 pb-8">
               {/* Faculty Specific: Organizer Requests (kept for faculty sidebar) */}
               {currentUser.role === UserRole.FACULTY && (
                 <div className="glass-panel rounded-2xl p-6">
@@ -1563,7 +1695,7 @@ const Dashboard = () => {
                 <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                   <Plus size={18} className="text-cse-accent" /> Quick Actions
                 </h3>
-                
+
                 {/* 1. Explore Events - For Everyone */}
                 <div
                   onClick={() => navigate('/explore')}
@@ -1612,6 +1744,36 @@ const Dashboard = () => {
                     <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
                   </div>
                 )}
+
+                {/* 4. Extend IQAC Window — Faculty only, for events past the 7-day limit */}
+                {currentUser.role === UserRole.FACULTY && (() => {
+                  const now = Date.now();
+                  const eligibleForExtension = events.filter(ev => {
+                    if (ev.status !== EventStatus.POSTED && ev.status !== EventStatus.COMPLETED) return false;
+                    if (ev.iqacWindowExtended) {
+                      if (!ev.iqacWindowExtendedAt) return false; // Legacy events without timestamp
+                      const extEnd = new Date(ev.iqacWindowExtendedAt).getTime() + (2 * 24 * 60 * 60 * 1000);
+                      if (now <= extEnd) return false; // Still within the active 2-day extension
+                    }
+                    if (ev.iqacSubmittedAt) return false; // already submitted
+                    const eventDate = ev.date || ev.requisition?.step1?.eventStartDate;
+                    const endTime = ev.endTime || ev.requisition?.step1?.eventEndTime || '23:59';
+                    if (!eventDate) return false;
+                    const [h, m] = String(endTime).split(':').map(Number);
+                    const eventEnd = new Date(eventDate);
+                    eventEnd.setHours(h, m, 0, 0);
+                    const sevenDaysAfter = eventEnd.getTime() + (7 * 24 * 60 * 60 * 1000);
+                    return now > sevenDaysAfter; // Only show if 7-day window is passed
+                  });
+                  if (eligibleForExtension.length === 0) return null;
+
+                  return (
+                    <IQACExtendWidget
+                      events={eligibleForExtension}
+                      facultyName={currentUser.name}
+                    />
+                  );
+                })()}
               </div>
             </div>
           </div>

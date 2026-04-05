@@ -92,15 +92,15 @@ const isEventEndTimePassed = (event) => {
   const eventDate = event.date || event.requisition?.step1?.eventStartDate;
   const endTime = event.endTime || event.requisition?.step1?.eventEndTime;
   if (!eventDate || !endTime) return false;
-  
+
   const [hours, minutes] = String(endTime).split(':').map(Number);
   const eventEnd = new Date(eventDate);
   eventEnd.setHours(hours, minutes, 0, 0);
-  
+
   const now = Date.now();
   const endMs = eventEnd.getTime();
-  const sevenDaysAfter = endMs + (7 * 24 * 60 * 60 * 1000); 
-  
+  const sevenDaysAfter = endMs + (7 * 24 * 60 * 60 * 1000);
+
   // Must be after event end AND within 7 days
   return now > endMs && now <= sevenDaysAfter;
 };
@@ -130,7 +130,7 @@ const IQACSubmission = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [validationError, setValidationError] = useState('');
-  
+
   // New state for gallery, guest feedback, and registration details
   const [gallery, setGallery] = useState([]);
   const [guestFeedback, setGuestFeedback] = useState([]);
@@ -150,28 +150,20 @@ const IQACSubmission = () => {
   const [autoAttendanceStats, setAutoAttendanceStats] = useState(null);
   const [autoFeedbackSummary, setAutoFeedbackSummary] = useState(null);
   const [studentAttendanceRoster, setStudentAttendanceRoster] = useState([]);
-  const [eventOutcome, setEventOutcome] = useState('IQAC documentation checklist submitted.');
-  
+  const [eventOutcome, setEventOutcome] = useState('');
+
   // Detailed Report Content State
   const [reportDetails, setReportDetails] = useState({
     objectives: [
-      'To introduce participants to the core concepts of the event theme.',
-      'To explore advanced methodologies and modern tools within this domain.',
-      'To provide a platform for hands-on learning and skill enhancement.',
-      'To facilitate academic and industrial interactions with subject experts.',
-      'To align the curriculum outcomes with contemporary professional requirements.'
+      ''
     ],
     description: '',
     outcomes: [
-      'Understand the fundamental principles discussed during the event.',
-      'Acquire practical skills in the relevant frameworks and methodologies.',
-      'Identify the scope and applications of these technologies in the industry.',
-      'Demonstrate problem-solving abilities within the specific domain.',
-      'Strengthen professional portfolios with expert-validated knowledge.'
+      ''
     ],
     benefits: {
-      technical: 'Hands-on exposure to domain-specific tools, methodologies, and technical documentation.',
-      industry: 'Alignment with global market standards and professional role expectations.'
+      technical: '',
+      industry: ''
     },
     socialMedia: {
       website: '',
@@ -211,7 +203,7 @@ const IQACSubmission = () => {
       navigate('/dashboard');
       return;
     }
-    
+
     // Fetch OD request stats to auto-populate registration details
     const fetchODStats = async () => {
       try {
@@ -232,11 +224,11 @@ const IQACSubmission = () => {
             if (iqacData.resourcePersons) setResourcePersons(iqacData.resourcePersons.map((rp, i) => ({ ...rp, id: rp.id || `saved-rp-${i}` })));
             if (iqacData.guestFeedback) setGuestFeedback(iqacData.guestFeedback.map((gf, i) => ({ ...gf, id: gf.id || `saved-gf-${i}`, highlights: Array.isArray(gf.highlights) ? gf.highlights.join(', ') : gf.highlights })));
             if (iqacData.eventOutcome) setEventOutcome(iqacData.eventOutcome);
-            
+
             if (iqacData.reportDetails) {
               setReportDetails(prev => ({ ...prev, ...iqacData.reportDetails }));
             }
-            
+
             if (iqacData.registration) {
               setRegistrationDetails({
                 studentsCount: iqacData.registration.categories?.students || 0,
@@ -281,17 +273,17 @@ const IQACSubmission = () => {
                   : 'ATTENDED',
               }));
             } else {
-            nextRoster = rows.map((row, idx) => {
-              const baseRow = {
-                id: row.id || row.requestId || row.rollNo || `row-${idx + 1}`,
-                requestId: row.id || row.requestId || '',
-                student: row.student || '',
-                rollNo: row.rollNo || '',
-              };
-              const n = selectedEvent.requisition?.step1?.numberOfDays || 1;
-              for (let d = 1; d <= n; d++) { baseRow[`day${d}`] = 'ATTENDED'; }
-              return baseRow;
-            });
+              nextRoster = rows.map((row, idx) => {
+                const baseRow = {
+                  id: row.id || row.requestId || row.rollNo || `row-${idx + 1}`,
+                  requestId: row.id || row.requestId || '',
+                  student: row.student || '',
+                  rollNo: row.rollNo || '',
+                };
+                const n = selectedEvent.requisition?.step1?.numberOfDays || 1;
+                for (let d = 1; d <= n; d++) { baseRow[`day${d}`] = 'ATTENDED'; }
+                return baseRow;
+              });
             }
 
             setStudentAttendanceRoster(nextRoster);
@@ -319,7 +311,7 @@ const IQACSubmission = () => {
         setIsFetchingStats(false);
       }
     };
-    
+
     fetchODStats();
   }, [currentUser, selectedEvent, navigate]);
 
@@ -334,7 +326,7 @@ const IQACSubmission = () => {
         // Handle both old and new feedback formats
         const rawFeedback = r.feedback || r.studentFeedback;
         const comment = typeof rawFeedback === 'object' ? rawFeedback.comment : rawFeedback;
-        
+
         return {
           id: `auto-${r.id}`,
           name: r.studentName || 'Student',
@@ -360,6 +352,15 @@ const IQACSubmission = () => {
   const eligibleForIQAC = useMemo(() => {
     if (!selectedEvent) return false;
     const isApprovedStatus = selectedEvent.status === EventStatus.COMPLETED || selectedEvent.status === EventStatus.POSTED;
+    
+    // If it's extended properly and not yet past 2 days
+    if (selectedEvent.iqacWindowExtended) {
+      if (!selectedEvent.iqacWindowExtendedAt) return isApprovedStatus; // Legacy events
+      const extEndMs = new Date(selectedEvent.iqacWindowExtendedAt).getTime() + (2 * 24 * 60 * 60 * 1000);
+      if (Date.now() <= extEndMs) return isApprovedStatus;
+    }
+    
+    // Default 7-day window check
     const isEventEnded = isEventEndTimePassed(selectedEvent);
     return isApprovedStatus && isEventEnded;
   }, [selectedEvent]);
@@ -367,12 +368,25 @@ const IQACSubmission = () => {
   const hasStudentRoster = studentAttendanceRoster.length > 0;
   const numberOfDays = selectedEvent?.requisition?.step1?.numberOfDays || 1;
   const studentsRegisteredFromRoster = studentAttendanceRoster.length;
-  const studentsAttendedFromRoster = studentAttendanceRoster.filter((item) => {
+  const studentsAttendedFromRoster = studentAttendanceRoster.reduce((total, item) => {
+    let studentScore = 0;
+    let hasDayRecords = false;
     for (let i = 1; i <= numberOfDays; i++) {
-        if (item[`day${i}`] === 'ATTENDED') return true;
+      if (item[`day${i}`]) {
+        hasDayRecords = true;
+        if (item[`day${i}`] === 'ATTENDED') studentScore += 1;
+        else if (item[`day${i}`] === 'FN' || item[`day${i}`] === 'AN') studentScore += 0.5;
+      }
     }
-    return item.attendanceStatus === 'ATTENDED';
-  }).length;
+    
+    if (!hasDayRecords) {
+      if (item.attendanceStatus === 'ATTENDED') studentScore += 1;
+      else if (item.attendanceStatus === 'FN' || item.attendanceStatus === 'AN') studentScore += 0.5;
+    } else if (numberOfDays > 0) {
+      studentScore = studentScore / numberOfDays;
+    }
+    return total + studentScore;
+  }, 0);
   const studentsNoShowFromRoster = Math.max(studentsRegisteredFromRoster - studentsAttendedFromRoster, 0);
   const studentAttendancePercent = studentsRegisteredFromRoster > 0
     ? `${Math.round((studentsAttendedFromRoster / studentsRegisteredFromRoster) * 100)}%`
@@ -399,10 +413,10 @@ const IQACSubmission = () => {
         id: 'report-content',
         label: 'Academic Report Content',
         isComplete: Boolean(
-          reportDetails.description && 
-          reportDetails.objectives.length > 0 && 
-          reportDetails.outcomes.length > 0 && 
-          reportDetails.benefits?.technical && 
+          reportDetails.description &&
+          reportDetails.objectives.length > 0 &&
+          reportDetails.outcomes.length > 0 &&
+          reportDetails.benefits?.technical &&
           reportDetails.benefits?.industry &&
           reportDetails.mapping?.sdg &&
           reportDetails.mapping?.po
@@ -441,15 +455,15 @@ const IQACSubmission = () => {
       department: step1?.organizerDetails?.department || selectedEvent.department || 'Computer Science and Engineering',
       eventType: selectedEvent.eventType || step1?.eventType || '-',
       eventDate: toDateRange(selectedEvent),
-      venue: selectedEvent.venue && selectedEvent.venue !== 'To be allocated' 
-        ? selectedEvent.venue 
-        : (function() {
-            const requested = [];
-            const vi = selectedEvent.requisition?.annexureI_venue?.venueSelection || {};
-            Object.entries(vi).forEach(([k, v]) => { if (v.selected) requested.push(k); });
-            if (selectedEvent.requisition?.annexureII_audio?.venueName) requested.push(selectedEvent.requisition.annexureII_audio.venueName);
-            return requested.length > 0 ? [...new Set(requested)].join(', ') : 'To be allocated';
-          })(),
+      venue: selectedEvent.venue && selectedEvent.venue !== 'To be allocated'
+        ? selectedEvent.venue
+        : (function () {
+          const requested = [];
+          const vi = selectedEvent.requisition?.annexureI_venue?.venueSelection || {};
+          Object.entries(vi).forEach(([k, v]) => { if (v.selected) requested.push(k); });
+          if (selectedEvent.requisition?.annexureII_audio?.venueName) requested.push(selectedEvent.requisition.annexureII_audio.venueName);
+          return requested.length > 0 ? [...new Set(requested)].join(', ') : 'To be allocated';
+        })(),
       professionalSociety: Array.isArray(step1?.professionalSocieties) && step1.professionalSocieties.length
         ? step1.professionalSocieties.join(', ')
         : '-',
@@ -601,7 +615,7 @@ const IQACSubmission = () => {
           totalResponses: mappedData.length,
           averageRating: 5
         }));
-        
+
         /* Success alert removed per user request */
       } catch (err) {
         console.error('CSV Parsing failed:', err);
@@ -651,7 +665,6 @@ const IQACSubmission = () => {
           name: getVal(row, 'name'),
           designation: getVal(row, 'designation') || getVal(row, 'position') || '',
           organization: getVal(row, 'organization') || getVal(row, 'institution') || '',
-          rating: parseInt(getVal(row, 'rating')) || 5,
           feedback: getVal(row, 'feedback') || getVal(row, 'comments') || '',
           highlights: getVal(row, 'highlights') || getVal(row, 'highlights_tags') || '',
         }));
@@ -759,7 +772,6 @@ const IQACSubmission = () => {
       name: '',
       designation: '',
       organization: '',
-      rating: 5,
       feedback: '',
       highlights: '',
     });
@@ -772,7 +784,7 @@ const IQACSubmission = () => {
   const updateStudentAttendanceStatus = (rowId, dayField, attendanceStatus) => {
     setStudentAttendanceRoster((prev) => prev.map((row) => (
       row.id === rowId
-        ? { ...row, [dayField]: attendanceStatus === 'NOT_ATTENDED' ? 'NOT_ATTENDED' : 'ATTENDED' }
+        ? { ...row, [dayField]: attendanceStatus }
         : row
     )));
   };
@@ -954,19 +966,37 @@ const IQACSubmission = () => {
           </div>
         </header>
 
-        {!eligibleForIQAC && (
-          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="mt-0.5 text-amber-600" size={18} />
-              <div>
-                <p className="text-sm font-bold text-amber-800">IQAC checklist is not available</p>
-                <p className="mt-1 text-sm text-amber-700">
-                  IQAC submission is only available after the event has ended and must be completed within 7 days of the event end time.
-                </p>
+        {!eligibleForIQAC && (() => {
+          const eventDate = selectedEvent?.date || selectedEvent?.requisition?.step1?.eventStartDate;
+          const endTime = selectedEvent?.endTime || selectedEvent?.requisition?.step1?.eventEndTime;
+          let windowExpired = false;
+          if (eventDate && endTime) {
+            const [h, m] = String(endTime).split(':').map(Number);
+            const eventEnd = new Date(eventDate);
+            eventEnd.setHours(h, m, 0, 0);
+            const sevenDaysAfter = eventEnd.getTime() + (7 * 24 * 60 * 60 * 1000);
+            windowExpired = Date.now() > eventEnd.getTime() && Date.now() > sevenDaysAfter;
+          }
+          return (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 text-amber-600" size={18} />
+                <div>
+                  <p className="text-sm font-bold text-amber-800">IQAC checklist is not available</p>
+                  {windowExpired ? (
+                    <p className="mt-1 text-sm text-amber-700">
+                      The 7-day IQAC submission window has expired. Please contact your <strong>faculty coordinator</strong> to unlock an extension for this event.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-amber-700">
+                      IQAC submission is only available after the event has ended and must be completed within 7 days of the event end time.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          </section>
-        )}
+            </section>
+          );
+        })()}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900">Section 1 - Event Information (Read-only)</h2>
@@ -1005,7 +1035,7 @@ const IQACSubmission = () => {
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total Completion</p>
               </div>
               <div className="w-16 h-16 rounded-full border-4 border-slate-100 flex items-center justify-center relative overflow-hidden">
-                <div 
+                <div
                   className="absolute bottom-0 left-0 w-full bg-cse-accent transition-all duration-1000 ease-out"
                   style={{ height: `${progressStats.progressPercent}%` }}
                 ></div>
@@ -1016,17 +1046,15 @@ const IQACSubmission = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {progressStats.sections.map((section) => (
-              <div 
+              <div
                 key={section.id}
-                className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300 ${
-                  section.isComplete 
-                    ? 'bg-emerald-50 border-emerald-100 shadow-sm' 
-                    : 'bg-white border-slate-100'
-                }`}
+                className={`flex items-center gap-3 p-3 rounded-xl border transition-all duration-300 ${section.isComplete
+                  ? 'bg-emerald-50 border-emerald-100 shadow-sm'
+                  : 'bg-white border-slate-100'
+                  }`}
               >
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                  section.isComplete ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
-                }`}>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${section.isComplete ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                  }`}>
                   {section.isComplete ? <Check size={18} strokeWidth={3} /> : <Circle size={14} />}
                 </div>
                 <p className={`text-xs font-bold leading-tight ${section.isComplete ? 'text-emerald-700' : 'text-slate-500'}`}>
@@ -1037,13 +1065,13 @@ const IQACSubmission = () => {
           </div>
 
           <div className="mt-6 h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex gap-1 p-0.5">
-             {progressStats.sections.map((s, i) => (
-               <div 
-                 key={s.id} 
-                 className={`flex-1 rounded-full transition-all duration-700 ${s.isComplete ? 'bg-emerald-500' : 'bg-slate-200 opacity-30 shadow-inner'}`}
-                 style={{ transitionDelay: `${i * 100}ms` }}
-               ></div>
-             ))}
+            {progressStats.sections.map((s, i) => (
+              <div
+                key={s.id}
+                className={`flex-1 rounded-full transition-all duration-700 ${s.isComplete ? 'bg-emerald-500' : 'bg-slate-200 opacity-30 shadow-inner'}`}
+                style={{ transitionDelay: `${i * 100}ms` }}
+              ></div>
+            ))}
           </div>
         </section>
 
@@ -1218,6 +1246,8 @@ const IQACSubmission = () => {
                                   className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[10px] font-bold text-slate-700"
                                 >
                                   <option value="ATTENDED">P</option>
+                                  <option value="FN">FN</option>
+                                  <option value="AN">AN</option>
                                   <option value="NOT_ATTENDED">A</option>
                                 </select>
                               </td>
@@ -1242,11 +1272,11 @@ const IQACSubmission = () => {
             </div>
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-100 transition-colors">
               <Upload size={16} /> Upload Feedback CSV
-              <input 
-                type="file" 
-                accept=".csv,.xlsx,.xls" 
-                className="hidden" 
-                onChange={handleFeedbackCsvUpload} 
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={handleFeedbackCsvUpload}
                 disabled={isSubmitting}
               />
             </label>
@@ -1309,14 +1339,14 @@ const IQACSubmission = () => {
 
           <div className="mt-4 p-4 border rounded-xl bg-slate-50 flex items-center gap-4">
             <div className="w-24 h-24 rounded-lg overflow-hidden border border-slate-200">
-               <img src={selectedEvent.posterDataUrl || selectedEvent.posterUrl || defaultPoster} className="w-full h-full object-cover" alt="poster" />
+              <img src={selectedEvent.posterDataUrl || selectedEvent.posterUrl || defaultPoster} className="w-full h-full object-cover" alt="poster" />
             </div>
             <div>
               <p className="text-sm font-bold text-slate-700 uppercase tracking-tight">Official Event Poster</p>
               <p className="text-xs text-slate-500">Fetched from event creation details</p>
             </div>
           </div>
-          
+
           <div className="mt-6 space-y-4">
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-cse-accent/30 bg-cse-accent/5 px-4 py-2.5 text-sm font-semibold text-cse-accent hover:bg-cse-accent/10 disabled:opacity-60">
               <Upload size={16} /> Add Photo
@@ -1378,7 +1408,7 @@ const IQACSubmission = () => {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900">Section 5 - Detailed Event Report Content</h2>
           <p className="mt-1 text-sm text-slate-600">This content is used to generate the academic event report. Pre-filled with defaults based on event theme.</p>
-          
+
           <div className="mt-6 space-y-6">
             <div>
               <label className="text-sm font-bold text-slate-700">Event Final Outcome *</label>
@@ -1424,47 +1454,47 @@ const IQACSubmission = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                  <label className="text-sm font-bold text-slate-700">Technical Skills Gained</label>
-                  <input
-                    type="text"
-                    value={reportDetails.benefits.technical || ''}
-                    onChange={(e) => setReportDetails(p => ({ ...p, benefits: { ...p.benefits, technical: e.target.value } }))}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  />
-               </div>
-               <div>
-                  <label className="text-sm font-bold text-slate-700">Industry Benefits</label>
-                  <input
-                    type="text"
-                    value={reportDetails.benefits.industry || ''}
-                    onChange={(e) => setReportDetails(p => ({ ...p, benefits: { ...p.benefits, industry: e.target.value } }))}
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  />
-               </div>
+              <div>
+                <label className="text-sm font-bold text-slate-700">Technical Skills Gained</label>
+                <input
+                  type="text"
+                  value={reportDetails.benefits.technical || ''}
+                  onChange={(e) => setReportDetails(p => ({ ...p, benefits: { ...p.benefits, technical: e.target.value } }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-slate-700">Industry Benefits</label>
+                <input
+                  type="text"
+                  value={reportDetails.benefits.industry || ''}
+                  onChange={(e) => setReportDetails(p => ({ ...p, benefits: { ...p.benefits, industry: e.target.value } }))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
-               <div>
-                  <label className="text-sm font-bold text-slate-700">Website Coverage Link</label>
-                  <input
-                    type="text"
-                    value={reportDetails.socialMedia.website || ''}
-                    onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, website: e.target.value } }))}
-                    placeholder="https://collegewebsite.edu/blog/..."
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
-                  />
-               </div>
-               <div>
-                  <label className="text-sm font-bold text-slate-700">Social Media URL</label>
-                  <input
-                    type="text"
-                    value={reportDetails.socialMedia.social || ''}
-                    onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, social: e.target.value } }))}
-                    placeholder="Instagram/LinkedIn post link..."
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
-                  />
-               </div>
+              <div>
+                <label className="text-sm font-bold text-slate-700">Website Coverage Link</label>
+                <input
+                  type="text"
+                  value={reportDetails.socialMedia.website || ''}
+                  onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, website: e.target.value } }))}
+                  placeholder="https://collegewebsite.edu/blog/..."
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-slate-700">Social Media URL</label>
+                <input
+                  type="text"
+                  value={reportDetails.socialMedia.social || ''}
+                  onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, social: e.target.value } }))}
+                  placeholder="Instagram/LinkedIn post link..."
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                />
+              </div>
             </div>
           </div>
         </section>
@@ -1495,24 +1525,20 @@ const IQACSubmission = () => {
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
                     <tr>
+                      <th className="w-12 px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">S.No</th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Guest Info</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Rating</th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Feedback Comments</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
-                    {guestFeedback.map((feedback) => (
+                    {guestFeedback.map((feedback, index) => (
                       <tr key={feedback.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-4 text-center text-xs font-bold text-slate-400">{index + 1}</td>
                         <td className="px-4 py-4 whitespace-nowrap">
                           <div className="font-bold text-slate-900 text-sm">{feedback.name}</div>
                           <div className="text-[10px] text-slate-500 font-bold uppercase truncate max-w-[150px]">{feedback.designation || 'Guest'}</div>
                           <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{feedback.organization}</div>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <div className="inline-flex items-center gap-0.5 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 font-bold text-xs">
-                             <Star size={12} fill="currentColor" /> {feedback.rating}
-                          </div>
                         </td>
                         <td className="px-4 py-4">
                           <p className="text-xs text-slate-700 leading-relaxed italic line-clamp-2">"{feedback.feedback}"</p>
@@ -1540,11 +1566,11 @@ const IQACSubmission = () => {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-                 <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-300 mb-4">
-                    <FileText size={32} />
-                 </div>
-                 <p className="text-slate-500 font-medium">No Guest Feedback Uploaded</p>
-                 <p className="text-xs text-slate-400 mt-1 uppercase tracking-tighter">Columns Required: Name, Feedback</p>
+                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-300 mb-4">
+                  <FileText size={32} />
+                </div>
+                <p className="text-slate-500 font-medium">No Guest Feedback Uploaded</p>
+                <p className="text-xs text-slate-400 mt-1 uppercase tracking-tighter">Columns Required: Name, Feedback</p>
               </div>
             )}
           </div>
@@ -1560,7 +1586,7 @@ const IQACSubmission = () => {
               <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5">Section 6 • Strategic Mapping (SDG & POs)</p>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Primary SDG Goal</label>
@@ -1640,8 +1666,8 @@ const IQACSubmission = () => {
                   />
                 </div>
                 <div>
-                   <label className="text-sm font-semibold text-slate-700">Phone Number</label>
-                   <input
+                  <label className="text-sm font-semibold text-slate-700">Phone Number</label>
+                  <input
                     type="text"
                     placeholder="+91 9876543210"
                     value={resourcePersonForm.phone}
@@ -1663,45 +1689,45 @@ const IQACSubmission = () => {
               </div>
 
               <div className="flex gap-4 items-start">
-                 <div className="flex-1">
-                   <label className="text-sm font-semibold text-slate-700 mb-2 block">Brief Bio / Credentials</label>
-                   <textarea
-                     placeholder="A few lines about the speaker's background..."
-                     value={resourcePersonForm.bio}
-                     onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, bio: e.target.value }))}
-                     rows={3}
-                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                   />
-                 </div>
-                 <div className="w-32">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-tight mb-2 block">Photo</label>
-                    <div className="relative group">
-                      <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
-                        {resourcePersonForm.photo ? (
-                          <img src={resourcePersonForm.photo.dataUrl} className="w-full h-full object-cover" alt="speaker" />
-                        ) : (
-                          <div className="text-slate-300 flex flex-col items-center gap-1">
-                             <Camera size={24} />
-                             <span className="text-[10px]">Upload</span>
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={onResourcePersonPhoto}
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                        />
-                      </div>
-                      {resourcePersonForm.photo && (
-                        <button 
-                          onClick={() => setResourcePersonForm(p => ({ ...p, photo: null }))}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"
-                        >
-                          <X size={12} />
-                        </button>
+                <div className="flex-1">
+                  <label className="text-sm font-semibold text-slate-700 mb-2 block">Brief Bio / Credentials</label>
+                  <textarea
+                    placeholder="A few lines about the speaker's background..."
+                    value={resourcePersonForm.bio}
+                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, bio: e.target.value }))}
+                    rows={3}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-tight mb-2 block">Photo</label>
+                  <div className="relative group">
+                    <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
+                      {resourcePersonForm.photo ? (
+                        <img src={resourcePersonForm.photo.dataUrl} className="w-full h-full object-cover" alt="speaker" />
+                      ) : (
+                        <div className="text-slate-300 flex flex-col items-center gap-1">
+                          <Camera size={24} />
+                          <span className="text-[10px]">Upload</span>
+                        </div>
                       )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={onResourcePersonPhoto}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
                     </div>
-                 </div>
+                    {resourcePersonForm.photo && (
+                      <button
+                        onClick={() => setResourcePersonForm(p => ({ ...p, photo: null }))}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1720,21 +1746,21 @@ const IQACSubmission = () => {
                   <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Topic / Session Handled</label>
                   {(() => {
                     const topics = [];
-                    for(let i=1; i <= numberOfDays; i++) {
-                       topics.push(
-                         <input
-                           key={i}
-                           type="text"
-                           placeholder={`Day ${i} topic covered`}
-                           value={resourcePersonForm.topicsByDay?.[i-1] || ''}
-                           onChange={(e) => {
-                             const newTopics = [...(resourcePersonForm.topicsByDay || [])];
-                             newTopics[i-1] = e.target.value;
-                             setResourcePersonForm(prev => ({ ...prev, topicsByDay: newTopics }));
-                           }}
-                           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs mb-1"
-                         />
-                       );
+                    for (let i = 1; i <= numberOfDays; i++) {
+                      topics.push(
+                        <input
+                          key={i}
+                          type="text"
+                          placeholder={`Day ${i} topic covered`}
+                          value={resourcePersonForm.topicsByDay?.[i - 1] || ''}
+                          onChange={(e) => {
+                            const newTopics = [...(resourcePersonForm.topicsByDay || [])];
+                            newTopics[i - 1] = e.target.value;
+                            setResourcePersonForm(prev => ({ ...prev, topicsByDay: newTopics }));
+                          }}
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs mb-1"
+                        />
+                      );
                     }
                     return topics;
                   })()}
@@ -1762,7 +1788,7 @@ const IQACSubmission = () => {
                         {person.designation && <p className="text-xs text-slate-600">{person.designation}</p>}
                         {person.organization && <p className="text-xs text-slate-600">{person.organization}</p>}
                         {(person.topicsByDay || []).map((t, idx) => t ? (
-                           <p key={idx} className="text-xs text-slate-500 mt-0.5">Day {idx+1}: {t}</p>
+                          <p key={idx} className="text-xs text-slate-500 mt-0.5">Day {idx + 1}: {t}</p>
                         ) : null)}
                       </div>
                       <button
@@ -1810,11 +1836,10 @@ const IQACSubmission = () => {
               return (
                 <article
                   key={item.id}
-                  className={`rounded-xl border p-4 ${
-                    uploadErrors[item.id]
-                      ? 'border-red-300 bg-red-50/60'
-                      : 'border-slate-200 bg-slate-50/50'
-                  }`}
+                  className={`rounded-xl border p-4 ${uploadErrors[item.id]
+                    ? 'border-red-300 bg-red-50/60'
+                    : 'border-slate-200 bg-slate-50/50'
+                    }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1855,21 +1880,20 @@ const IQACSubmission = () => {
                         {item.id === 'feedback-participants' && selectedEvent?.studentFeedbackLink
                           ? `Google Form: ${selectedEvent.studentFeedbackLink}`
                           : item.id === 'feedback-resource-person' && selectedEvent?.resourcePersonFeedbackLink
-                          ? `Google Form: ${selectedEvent.resourcePersonFeedbackLink}`
-                          : file
-                          ? `File: ${file.fileName}`
-                          : item.autoGenerated
-                          ? 'Generated from workflow data'
-                          : `Max ${MAX_DOC_SIZE_LABEL} · PDF, DOC, DOCX, JPG, PNG`}
+                            ? `Google Form: ${selectedEvent.resourcePersonFeedbackLink}`
+                            : file
+                              ? `File: ${file.fileName}`
+                              : item.autoGenerated
+                                ? 'Generated from workflow data'
+                                : `Max ${MAX_DOC_SIZE_LABEL} · PDF, DOC, DOCX, JPG, PNG`}
                       </p>
                       {/* File size pill */}
                       {file && (
                         <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            file.fileSize > MAX_DOC_SIZE
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-emerald-100 text-emerald-700'
-                          }`}
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${file.fileSize > MAX_DOC_SIZE
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-emerald-100 text-emerald-700'
+                            }`}
                         >
                           {(file.fileSize / 1024).toFixed(1)} KB
                         </span>

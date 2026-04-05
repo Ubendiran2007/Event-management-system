@@ -99,7 +99,7 @@ function getRequiredDepartments(eventData) {
     const accom = eventData.requisition?.annexureV_accommodation || {};
     const males = Number(accom.maleGuests || 0);
     const females = Number(accom.femaleGuests || 0);
-    
+
     if (males > 0) requiredDepts.push('boysAccommodation');
     if (females > 0) requiredDepts.push('girlsAccommodation');
     if (males === 0 && females === 0) requiredDepts.push('boysAccommodation'); // fallback
@@ -148,7 +148,7 @@ router.post('/', async (req, res) => {
           // Faculty created event -> Notify HODs
           const officialEmails = await getOfficialEmailsByRole('HOD');
           if (officialEmails.length > 0) {
-            Promise.allSettled(officialEmails.map(email => 
+            Promise.allSettled(officialEmails.map(email =>
               sendApprovalRequestToRole(payload, email, 'HOD')
             )).catch(e => console.error('[events/create/bg] Error notifying HODs:', e.message));
           }
@@ -168,7 +168,7 @@ router.post('/', async (req, res) => {
         if (payload.posterWorkflow?.requested) {
           const mediaEmails = await getOfficialEmailsByRole('MEDIA');
           if (mediaEmails.length > 0) {
-            Promise.allSettled(mediaEmails.map(email => 
+            Promise.allSettled(mediaEmails.map(email =>
               sendPosterRequestEmail(payload, email)
             )).catch(e => console.error('[events/create/bg] Error notifying MEDIA:', e.message));
           }
@@ -288,7 +288,7 @@ router.patch('/:id/status', async (req, res) => {
             rejectionReason: `Automatically rejected: action attempted within 5 minutes of event start time.`,
           };
           await updateDoc(eventRef, autoRejectionPayload);
-          
+
           if (rawEventData.organizerEmail) {
             const { sendEventStatusNotification } = require('../services/emailService');
             // Try sending notification but don't fail if it doesn't work
@@ -298,7 +298,7 @@ router.patch('/:id/status', async (req, res) => {
               'REJECTED'
             ).catch(err => console.error('[events/status] auto-reject email error:', err.message));
           }
-          
+
           return res.status(400).json({
             success: false,
             message: 'Event has been auto-rejected because it is within 5 minutes of the start time.',
@@ -342,7 +342,7 @@ router.patch('/:id/status', async (req, res) => {
     // ── Background Notifications ─────────────────────────────────────────────
     // We execute these without awaiting so the user gets an immediate response.
     // Each block has internal catch logic to prevent unhandled rejections.
-    
+
     setImmediate(async () => {
       // 1. Status notification to organizer
       if (eventData.organizerEmail && ['PENDING_HOD', 'PENDING_DEPARTMENTS', 'PENDING_IQAC', 'POSTED', 'REJECTED'].includes(notificationStatus)) {
@@ -371,12 +371,12 @@ router.patch('/:id/status', async (req, res) => {
             if (males === 0 && females === 0) nextRoles.push('BOYS_WARDEN');
           }
         }
-        
+
         for (const nextRole of nextRoles) {
           try {
             const officialEmails = await getOfficialEmailsByRole(nextRole);
             if (officialEmails.length > 0) {
-              Promise.allSettled(officialEmails.map(email => 
+              Promise.allSettled(officialEmails.map(email =>
                 sendApprovalRequestToRole(eventData, email, nextRole)
               )).catch(e => console.error(`[events/status/bg] Error notifying ${nextRole}:`, e.message));
             }
@@ -391,7 +391,7 @@ router.patch('/:id/status', async (req, res) => {
         try {
           const mediaEmails = await getOfficialEmailsByRole('MEDIA');
           if (mediaEmails.length > 0) {
-            Promise.allSettled(mediaEmails.map(email => 
+            Promise.allSettled(mediaEmails.map(email =>
               sendPosterRequestEmail(eventData, email)
             )).catch(e => console.error('[events/status/bg] Error notifying MEDIA:', e.message));
           }
@@ -448,13 +448,13 @@ router.patch('/:id/department-approval', async (req, res) => {
 
     if (allApproved && eventData.status === 'PENDING_DEPARTMENTS') {
       updatePayload.status = 'PENDING_IQAC';
-      
+
       // Auto-notify IQAC here in background
       setImmediate(async () => {
         try {
           const iqacEmails = await getOfficialEmailsByRole('IQAC_TEAM');
           if (iqacEmails.length > 0) {
-            Promise.allSettled(iqacEmails.map(email => 
+            Promise.allSettled(iqacEmails.map(email =>
               sendApprovalRequestToRole(eventData, email, 'IQAC_TEAM')
             )).catch(e => console.error('[events/dept-approval/bg] Error notifying IQAC:', e.message));
           }
@@ -529,18 +529,18 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       status: isFacultyOrganizer ? 'PENDING_HOD' : 'PENDING_FACULTY',
       isResubmitted: true,
       updatedAt: new Date().toISOString(),
-      
+
       // Clear all stage approvals
       approvedBy: null,
       rejectionReason: null,
-      
+
       facultyApprovedAt: null,
       facultyApprovedBy: null,
       hodApprovedAt: null,
       hodApprovedBy: null,
       iqacApprovedAt: null,
       iqacApprovedBy: null,
-      
+
       // Reset department approvals (except media if poster exists)
       departmentApprovals: newDeptApprovals
     };
@@ -552,7 +552,7 @@ router.put('/:id/resubmit-edit', async (req, res) => {
         const payloadWithId = { id: req.params.id, ...updatePayload };
         let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
         if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
-        
+
         if (!facultyEmail && updatePayload.coordinator?.facultyName) {
           facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
         }
@@ -697,7 +697,7 @@ router.patch('/:id/poster', async (req, res) => {
     }
 
     const { posterDataUrl, posterFileName, posterMimeType, updatedBy } = req.body;
-    
+
     if (!posterDataUrl) {
       return res.status(400).json({ success: false, message: 'Poster data URL is required' });
     }
@@ -738,7 +738,7 @@ router.patch('/:id/poster-workflow', async (req, res) => {
 
     const eventData = eventSnap.data();
     const currentWorkflow = eventData.posterWorkflow || {};
-    
+
     const updates = req.body;
     const { updatedBy, ...workflowFields } = updates;
 
@@ -923,4 +923,44 @@ router.delete('/coordinators/:id', async (req, res) => {
   }
 });
 
+// ── PATCH /api/events/:id/extend-iqac-window ─────────────────────────────
+// Faculty can re-enable IQAC submission for an organizer who missed the 7-day window
+// Body: { extendedBy: string (faculty name) }
+router.patch('/:id/extend-iqac-window', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  const { extendedBy } = req.body;
+  if (!extendedBy) {
+    return res.status(400).json({ success: false, message: 'extendedBy (faculty name) is required' });
+  }
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+
+    if (!eventSnap.exists()) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    const updatePayload = {
+      iqacWindowExtended: true,
+      iqacWindowExtendedBy: extendedBy,
+      iqacWindowExtendedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await updateDoc(eventRef, updatePayload);
+
+    return res.json({
+      success: true,
+      message: 'IQAC submission window extended successfully',
+      event: { id: req.params.id, ...eventSnap.data(), ...updatePayload },
+    });
+  } catch (error) {
+    console.error('[events/extend-iqac-window] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to extend IQAC window', error: error.message });
+  }
+});
+
 module.exports = router;
+

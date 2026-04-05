@@ -3,7 +3,7 @@ import {
   ChevronRight, Building2, Mic2, MonitorSmartphone,
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
-  Star,
+  Star, AlertTriangle, Clock3,
   XCircle, Loader2, XCircle as XCircleIcon, ClipboardList
 } from 'lucide-react';
 
@@ -21,6 +21,7 @@ const formatTime12 = (t24) => {
 };
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
@@ -69,7 +70,9 @@ const compressImageToDataUrl = (file, maxWidth = 1200, quality = 0.82) => new Pr
 });
 
 const EventDetailModal = ({ event, onClose }) => {
-  const { currentUser, odRequests = [], handleApproval, handleDepartmentApproval } = useAppContext();
+  const { currentUser, odRequests = [], handleApproval, handleDepartmentApproval, setSelectedEvent } = useAppContext();
+  const navigate = useNavigate();
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
@@ -83,6 +86,49 @@ const EventDetailModal = ({ event, onClose }) => {
 
   const r = event.requisition;
   const s1 = r?.step1;
+
+  // ── IQAC Submission Eligibility ────────────────────────────────────────────
+  // Organizer can submit IQAC report if:
+  //   1. Event is POSTED (not yet completed/submitted)
+  //   2. They are the organizer
+  //   3. Either within 7 days of event end OR faculty has granted an extension
+  const isOrganizer = (currentUser?.id && event.organizerId === currentUser.id) || currentUser?.role === UserRole.FACULTY;
+  const iqacAlreadySubmitted = Boolean(event.iqacSubmittedAt);
+  const isPostedForIqac = event.status === EventStatus.POSTED || event.status === EventStatus.COMPLETED;
+
+  const getIqacSubmissionStatus = () => {
+    if (!isOrganizer || !isPostedForIqac || iqacAlreadySubmitted) return null;
+
+    // Compute event end datetime
+    const endDateStr = s1?.eventEndDate || s1?.eventStartDate || event.date;
+    const endTimeStr = s1?.eventEndTime || event.endTime || '23:59';
+    if (!endDateStr) return { eligible: false, reason: 'no-date' };
+
+    const [ey, em, ed] = endDateStr.split('-').map(Number);
+    const [eh, emm] = String(endTimeStr).split(':').map(Number);
+    const eventEnd = new Date(ey, em - 1, ed, eh, emm, 0);
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const windowEnd = new Date(eventEnd.getTime() + sevenDaysMs);
+    const now = new Date();
+
+    if (now < eventEnd) return { eligible: false, reason: 'not-started' }; // event not over yet
+    if (now <= windowEnd) return { eligible: true, reason: 'in-window', daysLeft: Math.ceil((windowEnd - now) / (1000 * 60 * 60 * 24)) };
+    if (event.iqacWindowExtended && event.iqacWindowExtendedAt) {
+      const extDate = new Date(event.iqacWindowExtendedAt);
+      const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+      const extWindowEnd = new Date(extDate.getTime() + twoDaysMs);
+      if (now <= extWindowEnd) {
+        return { eligible: true, reason: 'extended', extendedBy: event.iqacWindowExtendedBy, daysLeft: Math.ceil((extWindowEnd - now) / (1000 * 60 * 60 * 24)) };
+      }
+    }
+    // Backward compatibility for old extensions without a timestamp or if the 2-day window expired
+    if (event.iqacWindowExtended && !event.iqacWindowExtendedAt) {
+        return { eligible: true, reason: 'extended', extendedBy: event.iqacWindowExtendedBy };
+    }
+    return { eligible: false, reason: 'expired', extendedBy: null };
+  };
+
+  const iqacStatus = getIqacSubmissionStatus();
   const venueAnnex = r?.annexureI_venue;
   const audioAnnex = r?.annexureII_audio;
   const ictsAnnex = r?.annexureIII_icts;
@@ -1171,6 +1217,51 @@ const EventDetailModal = ({ event, onClose }) => {
           </div>
 
           {/* Action Buttons - Sticky Footer */}
+          {/* ── IQAC Submission Banner (Organizer) ── */}
+          {iqacStatus && (
+            <div className="px-6 py-4 border-t border-slate-200 bg-white">
+              {iqacStatus.eligible ? (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    {iqacStatus.reason === 'extended' ? (
+                      <div className="flex items-center gap-2 mb-1">
+                        <Clock3 size={15} className="text-emerald-500" />
+                        <p className="text-sm font-bold text-emerald-800">IQAC Window Extended by Faculty</p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle2 size={15} className="text-emerald-500" />
+                        <p className="text-sm font-bold text-emerald-800">IQAC Submission Window Open</p>
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-500 font-medium">
+                      {iqacStatus.reason === 'extended'
+                        ? `Extension granted by ${iqacStatus.extendedBy || 'Faculty'}. Submit your IQAC documentation below.`
+                        : `${iqacStatus.daysLeft} day${iqacStatus.daysLeft !== 1 ? 's' : ''} remaining to complete your IQAC documentation.`
+                      }
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedEvent(event); navigate('/iqac'); }}
+                    className="px-6 py-2.5 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all shadow-md shadow-cse-accent/20 active:scale-95 flex items-center gap-2 whitespace-nowrap shrink-0"
+                  >
+                    <FileCheck size={16} /> Submit IQAC Report
+                  </button>
+                </div>
+              ) : iqacStatus.reason === 'expired' ? (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                  <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-amber-900">IQAC Submission Window Closed</p>
+                    <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                      The 7-day submission window has passed. Contact your faculty coordinator to request an IQAC window extension.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {(canApprove() || isMediaUploadAllowed || hasAnyDeptApproval) && (
             <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-20">
 

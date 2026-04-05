@@ -247,10 +247,9 @@ const IQACSummaryModal = ({ event, onClose }) => {
       ? guestFeedback.map((fb,i) => `<tr>
           <td>${i+1}</td><td>${fb.name||'—'}</td><td>${fb.designation||'—'}</td>
           <td>${fb.organization||'—'}</td>
-          <td>${'★'.repeat(Number(fb.rating)||0)}${'☆'.repeat(5-(Number(fb.rating)||0))} ${fb.rating||'—'}/5</td>
           <td>${fb.feedback||'—'}</td>
         </tr>`).join('')
-      : '<tr><td colspan="6" style="text-align:center;color:#888">No guest feedback recorded</td></tr>';
+      : '<tr><td colspan="5" style="text-align:center;color:#888">No guest feedback recorded</td></tr>';
 
     const clRows = checklist.map(c => `<tr>
       <td>${c.requirement}</td>
@@ -335,7 +334,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
     <div class="section">
       <div class="section-title">Guest / Resource Person Feedback</div>
-      <table><thead><tr><th>#</th><th>Name</th><th>Designation</th><th>Organization</th><th>Rating</th><th>Feedback</th></tr></thead><tbody>${gfRows}</tbody></table>
+      <table><thead><tr><th>#</th><th>Name</th><th>Designation</th><th>Organization</th><th>Feedback</th></tr></thead><tbody>${gfRows}</tbody></table>
     </div>
 
     <div class="section">
