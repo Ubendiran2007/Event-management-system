@@ -580,42 +580,17 @@ const IQACSubmission = () => {
           return;
         }
 
-        // Validate required headers
         const firstRow = jsonData[0];
-        const headers = Object.keys(firstRow).map(h => h.toLowerCase());
-        const required = ['name', 'roll_no', 'class', 'feedback'];
-        const missing = required.filter(r => !headers.includes(r));
+        const headers = Object.keys(firstRow);
 
-        if (missing.length > 0) {
-          alert(`Error: Missing required columns: ${missing.join(', ')}.\n\nYour CSV must have these headers: name, roll_no, class, feedback`);
-          return;
-        }
-
-        // Map data to the exact requested structure
-        const mappedData = jsonData.map((row) => {
-          // Find fields by case-insensitive matching
-          const getVal = (field) => {
-            const key = Object.keys(row).find(k => k.toLowerCase() === field);
-            return row[key] || '';
-          };
-
-          return {
-            student: getVal('name'),
-            rollNo: getVal('roll_no'),
-            class: getVal('class'),
-            comment: getVal('feedback'),
-            isManualUpload: true
-          };
-        });
-
-        // 8. UI Behavior: Clear previous data when a new file is uploaded
         setAutoFeedbackSummary(prev => ({
           ...prev,
-          comments: mappedData,
-          totalResponses: mappedData.length,
+          comments: jsonData,
+          csvHeaders: headers,
+          isManualUpload: true,
+          totalResponses: jsonData.length,
           averageRating: 5
         }));
-
         /* Success alert removed per user request */
       } catch (err) {
         console.error('CSV Parsing failed:', err);
@@ -644,32 +619,12 @@ const IQACSubmission = () => {
           return;
         }
 
-        // Validate required headers
-        const firstRow = jsonData[0];
-        const headers = Object.keys(firstRow).map(h => h.toLowerCase());
-        const required = ['name', 'feedback'];
-        const missing = required.filter(r => !headers.includes(r));
-
-        if (missing.length > 0) {
-          alert(`Error: Missing required columns: ${missing.join(', ')}.\n\nYour CSV must have at least: name, feedback`);
-          return;
-        }
-
-        const getVal = (row, header) => {
-          const key = Object.keys(row).find(k => k.toLowerCase() === header);
-          return key ? row[key] : '';
-        };
-
         const importedGuestFeedback = jsonData.map((row, idx) => ({
           id: Date.now() + idx,
-          name: getVal(row, 'name'),
-          designation: getVal(row, 'designation') || getVal(row, 'position') || '',
-          organization: getVal(row, 'organization') || getVal(row, 'institution') || '',
-          feedback: getVal(row, 'feedback') || getVal(row, 'comments') || '',
-          highlights: getVal(row, 'highlights') || getVal(row, 'highlights_tags') || '',
+          ...row
         }));
 
-        setGuestFeedback((prev) => [...prev, ...importedGuestFeedback]);
+        setGuestFeedback(importedGuestFeedback);
         /* Success alert removed per user request */
 
       } catch (err) {
@@ -886,10 +841,21 @@ const IQACSubmission = () => {
           periodStart: registrationDetails.periodStart,
           periodEnd: registrationDetails.periodEnd,
           mode: registrationDetails.mode,
+          venue: registrationDetails.venue || '',
         },
         resourcePersons: resourcePersons.map(({ id, ...item }) => item),
         gallery: gallery.map(({ id, ...item }) => item),
         guestFeedbackList: guestFeedback.map(({ id, ...item }) => item),
+        // Preserve manually uploaded student feedback CSV
+        manualFeedbackSummary: autoFeedbackSummary?.isManualUpload
+          ? {
+              totalResponses: autoFeedbackSummary.totalResponses || 0,
+              averageRating: autoFeedbackSummary.averageRating || null,
+              comments: autoFeedbackSummary.comments || [],
+              csvHeaders: autoFeedbackSummary.csvHeaders || [],
+              isManualUpload: true,
+            }
+          : null,
         documents,
         finalReport: documents['Event Report'] || null,
         checklist,
@@ -1016,6 +982,42 @@ const IQACSubmission = () => {
                 <p className="mt-1 text-sm font-medium text-slate-900">{value || '-'}</p>
               </div>
             ))}
+          </div>
+
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2 uppercase tracking-wide">
+              Event Schedule / Agenda
+            </h3>
+            {selectedEvent?.requisition?.step1?.schedule?.length > 0 || selectedEvent?.schedule?.length > 0 ? (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm font-sans">
+                <table className="min-w-full text-sm divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider w-32 border-b border-slate-200">Time</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">Agenda / Activity</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">Speaker / In-charge</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 italic">
+                    {(selectedEvent?.requisition?.step1?.schedule || selectedEvent?.schedule || []).map((row, idx) => (
+                      <tr key={row.id || idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-cse-accent font-bold tabular-nums whitespace-nowrap">
+                          {formatTime12(row.time)}
+                        </td>
+                        <td className="px-4 py-3 text-slate-800 font-medium not-italic text-sm">
+                          {row.agenda}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600 not-italic text-sm">
+                          {row.speaker || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 italic px-2">No schedule detailed for this event.</p>
+            )}
           </div>
         </section>
 
@@ -1295,30 +1297,20 @@ const IQACSubmission = () => {
                 <thead className="bg-[#f8fafc] sticky top-0 z-10">
                   <tr>
                     <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-16 bg-slate-100/50">S.No</th>
-                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-1/4">Name</th>
-                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-1/4 text-center">Roll No</th>
-                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-1/6 text-center">Class</th>
-                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider font-sans">Feedback</th>
+                    {(autoFeedbackSummary.csvHeaders || ['student', 'rollNo', 'class', 'comment']).map((header, idx) => (
+                      <th key={idx} className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider">{header}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {autoFeedbackSummary.comments.map((item, idx) => (
-                    <tr key={`${item.rollNo}-${idx}`} className="hover:bg-blue-50/30 transition-all group border-b border-transparent last:border-0">
+                    <tr key={idx} className="hover:bg-blue-50/30 transition-all group border-b border-transparent last:border-0">
                       <td className="px-5 py-4 text-slate-400 font-bold tabular-nums group-hover:text-blue-500">{idx + 1}</td>
-                      <td className="px-5 py-4 text-slate-900 font-extrabold tracking-tight">{item.student}</td>
-                      <td className="px-5 py-4 text-slate-600 font-mono text-center bg-slate-50/40 group-hover:bg-transparent">{item.rollNo}</td>
-                      <td className="px-5 py-4 text-slate-500 font-medium text-center italic">{item.class || '-'}</td>
-                      <td className="px-5 py-4 text-slate-700 leading-relaxed font-outfit">
-                        {item.comment ? (
-                          <div className="flex items-start gap-2">
-                            <span className="text-slate-300">"</span>
-                            <span>{item.comment}</span>
-                            <span className="text-slate-300">"</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-300 font-normal italic">No feedback provided</span>
-                        )}
-                      </td>
+                      {(autoFeedbackSummary.csvHeaders || ['student', 'rollNo', 'class', 'comment']).map((header, colIdx) => (
+                        <td key={colIdx} className="px-5 py-4 text-slate-700 leading-relaxed font-outfit">
+                          {item[header] !== undefined && item[header] !== null ? item[header].toString() : '-'}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -1526,8 +1518,9 @@ const IQACSubmission = () => {
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="w-12 px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">S.No</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Guest Info</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Feedback Comments</th>
+                      {Object.keys(guestFeedback[0] || {}).filter(k => k !== 'id').map((header, idx) => (
+                        <th key={idx} className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">{header}</th>
+                      ))}
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">Action</th>
                     </tr>
                   </thead>
@@ -1535,21 +1528,13 @@ const IQACSubmission = () => {
                     {guestFeedback.map((feedback, index) => (
                       <tr key={feedback.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-4 py-4 text-center text-xs font-bold text-slate-400">{index + 1}</td>
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="font-bold text-slate-900 text-sm">{feedback.name}</div>
-                          <div className="text-[10px] text-slate-500 font-bold uppercase truncate max-w-[150px]">{feedback.designation || 'Guest'}</div>
-                          <div className="text-[9px] text-slate-400 truncate max-w-[150px]">{feedback.organization}</div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <p className="text-xs text-slate-700 leading-relaxed italic line-clamp-2">"{feedback.feedback}"</p>
-                          {feedback.highlights && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {feedback.highlights.split(',').map((h, i) => (
-                                <span key={i} className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold border border-indigo-100">{h.trim()}</span>
-                              ))}
-                            </div>
-                          )}
-                        </td>
+                        {Object.keys(feedback).filter(k => k !== 'id').map((key, colIdx) => (
+                          <td key={colIdx} className="px-4 py-4 whitespace-nowrap">
+                            <span className="text-sm font-medium text-slate-800">
+                               {feedback[key] !== undefined && feedback[key] !== null ? feedback[key].toString() : '-'}
+                            </span>
+                          </td>
+                        ))}
                         <td className="px-4 py-4 text-right">
                           <button
                             type="button"
@@ -1570,7 +1555,7 @@ const IQACSubmission = () => {
                   <FileText size={32} />
                 </div>
                 <p className="text-slate-500 font-medium">No Guest Feedback Uploaded</p>
-                <p className="text-xs text-slate-400 mt-1 uppercase tracking-tighter">Columns Required: Name, Feedback</p>
+                <p className="text-xs text-slate-400 mt-1 uppercase tracking-tighter">Upload a CSV containing guest feedback</p>
               </div>
             )}
           </div>

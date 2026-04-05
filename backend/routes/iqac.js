@@ -84,6 +84,7 @@ router.post('/:eventId', async (req, res) => {
     checklist,
     documents,
     finalReport,
+    manualFeedbackSummary,
   } = req.body;
 
   try {
@@ -152,15 +153,21 @@ router.post('/:eventId', async (req, res) => {
     const incomingStudentAttendanceList = Array.isArray(registrationDetails?.studentAttendanceList)
       ? registrationDetails.studentAttendanceList
       : [];
-    const studentAttendanceList = incomingStudentAttendanceList.map((item, idx) => ({
-      id: item?.id || item?.requestId || item?.rollNo || `att_${idx + 1}`,
-      requestId: item?.requestId || item?.id || '',
-      student: item?.student || item?.studentName || '',
-      rollNo: item?.rollNo || '',
-      attendanceStatus: String(item?.attendanceStatus || item?.status || 'ATTENDED').toUpperCase() === 'NOT_ATTENDED'
-        ? 'NOT_ATTENDED'
-        : 'ATTENDED',
-    }));
+    const studentAttendanceList = incomingStudentAttendanceList.map((item, idx) => {
+      const rawStatus = String(item?.attendanceStatus || item?.status || 'ATTENDED').toUpperCase();
+      let attendanceStatus;
+      if (rawStatus === 'NOT_ATTENDED') attendanceStatus = 'NOT_ATTENDED';
+      else if (rawStatus === 'FN') attendanceStatus = 'FN';
+      else if (rawStatus === 'AN') attendanceStatus = 'AN';
+      else attendanceStatus = 'ATTENDED';
+      return {
+        id: item?.id || item?.requestId || item?.rollNo || `att_${idx + 1}`,
+        requestId: item?.requestId || item?.id || '',
+        student: item?.student || item?.studentName || '',
+        rollNo: item?.rollNo || '',
+        attendanceStatus,
+      };
+    });
     const studentsRegistered = studentAttendanceList.length > 0 ? studentAttendanceList.length : studentsCount;
     const studentsAttended = studentAttendanceList.length > 0
       ? studentAttendanceList.filter((row) => row.attendanceStatus === 'ATTENDED').length
@@ -201,20 +208,12 @@ router.post('/:eventId', async (req, res) => {
       timestamp:   new Date().toISOString(),
     }));
 
-    // Process guest feedback — split highlights string into array
-    const processedGuestFeedback = (guestFeedbackList || []).map((gf, idx) => ({
-      id:           `guest_${idx + 1}`,
-      name:         gf.name         || '',
-      designation:  gf.designation  || '',
-      organization: gf.organization || '',
-      photo:        gf.photo        || null,
-      rating:       gf.rating       || 5,
-      feedback:     gf.feedback     || '',
-      highlights:   gf.highlights
-        ? gf.highlights.split(',').map(h => h.trim()).filter(Boolean)
-        : [],
-      date:         gf.date || '',
-    }));
+    // Process guest feedback — preserve ALL dynamic CSV columns
+    const processedGuestFeedback = (guestFeedbackList || []).map((gf, idx) => {
+      // Strip the local 'id' field, keep everything else as-is
+      const { id, ...rest } = gf;
+      return { id: `guest_${idx + 1}`, ...rest };
+    });
 
     // Process resource persons — normalise photo shape for reliable rendering
     const processedResourcePersons = (resourcePersons || []).map((rp, idx) => {
@@ -243,6 +242,12 @@ router.post('/:eventId', async (req, res) => {
       };
     });
 
+    // Resolve which feedback summary to store:
+    // Prefer manually uploaded CSV over auto-generated odRequest stats
+    const resolvedFeedbackSummary = (manualFeedbackSummary?.isManualUpload && manualFeedbackSummary.totalResponses > 0)
+      ? manualFeedbackSummary
+      : feedbackSummary;
+
     await updateDoc(eventRef, {
       status: 'COMPLETED',
       iqacSubmittedAt: new Date().toISOString(),
@@ -250,7 +255,7 @@ router.post('/:eventId', async (req, res) => {
       iqacData: {
         eventSummary,
         attendanceStats,
-        feedbackSummary,
+        feedbackSummary: resolvedFeedbackSummary,
         registration,
         resourcePersons:  processedResourcePersons,
         gallery:          processedGallery,
@@ -260,6 +265,7 @@ router.post('/:eventId', async (req, res) => {
         documents:        documents     || {},
         checklist:        Array.isArray(checklist) ? checklist : [],
         finalReport:      finalReport   || null,
+        manualFeedbackSummary: manualFeedbackSummary || null,
       },
     });
 
@@ -299,7 +305,11 @@ router.get('/:eventId', async (req, res) => {
     }
     const data = eventSnap.data();
 
-    // Always return fresh auto-stats so the organizer sees latest figures
+    // Prefer manually uploaded CSV feedback over auto-generated odRequest feedback
+    const storedFeedback  = data.iqacData?.manualFeedbackSummary || data.iqacData?.feedbackSummary || null;
+    const resolvedFeedback = (storedFeedback?.isManualUpload && storedFeedback.totalResponses > 0)
+      ? storedFeedback
+      : feedbackSummary;
 
     res.json({
       success: true,
@@ -311,7 +321,7 @@ router.get('/:eventId', async (req, res) => {
       organizerName: data.organizerName,
       description:   data.description,
       attendanceStats,
-      feedbackSummary,
+      feedbackSummary: resolvedFeedback,
       iqacData:       data.iqacData        || null,
       iqacSubmittedAt: data.iqacSubmittedAt || null,
     });

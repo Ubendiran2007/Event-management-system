@@ -40,6 +40,31 @@ const EventReportModal = ({
   const currentYear = new Date().getFullYear();
   const academicYear = s1.academicYear || `${currentYear}-${(currentYear + 1).toString().slice(-2)}`;
 
+  // Derive venue from annexure if not in registrationDetails
+  const venueFromAnnexure = (() => {
+    const venueMap = event.requisition?.annexureI_venue?.venueSelection || {};
+    const selected = Object.entries(venueMap)
+      .filter(([, v]) => v?.selected)
+      .map(([name]) => name);
+    return selected.length > 0 ? selected.join(', ') : '';
+  })();
+
+  const resolvedVenue = registrationDetails.venue || venueFromAnnexure || event.venue || '';
+
+  // Resource persons: use IQAC-submitted ones, fallback to event guests from step1
+  const resolvedResourcePersons = resourcePersons.length > 0
+    ? resourcePersons
+    : (s1.guestDetails?.guests || []).map(g => ({ name: g.name, designation: g.designation, organization: g.organization }));
+
+  // Participant counts with fallback to step1 data
+  const studentsCount = registrationDetails.studentsCount || s1.participants?.internalParticipants || '';
+  const externalCount = registrationDetails.externalCount || s1.participants?.externalParticipants || '';
+  const facultyCount = registrationDetails.facultyCount || '';
+
+  // Filter empty strings from objectives/outcomes arrays
+  const objectives = (reportDetails?.objectives || []).filter(o => o && o.trim());
+  const outcomes = (reportDetails?.outcomes || []).filter(o => o && o.trim());
+
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     const parts = dateStr.split('-');
@@ -49,12 +74,6 @@ const EventReportModal = ({
 
   const handlePrint = () => {
     window.print();
-  };
-
-  // Helper for dynamic report content with fallbacks
-  const getRep = (key, fallback) => {
-    if (reportDetails && reportDetails[key] && reportDetails[key].length > 0) return reportDetails[key];
-    return fallback;
   };
 
   return (
@@ -78,7 +97,7 @@ const EventReportModal = ({
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
               /* 1. Global Page Reset */
-              @page { size: portrait; margin: 15mm; }
+              @page { size: portrait; margin: 10mm 15mm 15mm 15mm; }
               
               /* 2. Reset Document Tree Flow */
               html, body {
@@ -138,284 +157,293 @@ const EventReportModal = ({
           </div>
 
           {/* Report Content Wrapper */}
-          <div className="p-12 text-slate-900 print:p-0 font-serif" id="printable-report">
-            {/* Formal College Header */}
-            <div className="text-center mb-8 border-b-2 border-slate-900 pb-6 print:mt-0">
-              <div className="flex justify-center mb-6">
-                <img src={SECEHeader} className="w-full max-h-52 object-contain" alt="SECE Header" />
+          <div className="px-12 pt-6 pb-12 text-black print:p-0 font-serif" id="printable-report">
+            {/* Header */}
+            <div className="text-center mb-6 print:mb-4">
+              <div className="flex justify-center mb-2">
+                <img src={SECEHeader} className="max-w-[80%] max-h-36 object-contain" alt="SECE Header" />
               </div>
-
-              <div className="inline-block px-10 py-1.5 border-[3px] border-slate-900 font-sans font-black text-2xl uppercase tracking-tighter mb-4">
-                Academic Event Report
-              </div>
-
-              <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-500 tracking-wider font-sans">
-                <span>Ref No: {event.requisition?.iqacNumber || `SEC/IQAC/${academicYear}/${event.id?.slice(-4).toUpperCase() || '000'}`}</span>
-                <span>Academic Year: {academicYear}</span>
-                <span>Date: {new Date().toLocaleDateString('en-GB')}</span>
-              </div>
+              <p className="font-bold text-lg mb-4">Department of {event.department || s1.organizerDetails?.department || 'CSE(CYBERSECURITY)'}</p>
             </div>
 
-            <section className="mb-6 page-break-inside-avoid">
-              <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-2 uppercase tracking-widest font-sans inline-block">01. General Information</h3>
+            {/* Table 1: General Info */}
+            <table className="w-full border-collapse mb-6 text-[13px] leading-relaxed">
+              <tbody>
+                <tr>
+                  <td className="border border-black p-2 font-bold w-1/3">Academic Year</td>
+                  <td className="border border-black p-2" colSpan="6">{academicYear}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Semester</td>
+                  <td className="border border-black p-2" colSpan="6">I / II / III / IV / V / VI / VII / VIII</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Event Title</td>
+                  <td className="border border-black p-2" colSpan="6">{event.title || s1.eventName || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Event Type</td>
+                  <td className="border border-black p-2" colSpan="6">{event.eventType || s1.eventType || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Professional Society involved</td>
+                  <td className="border border-black p-2" colSpan="6">{s1.professionalSocieties?.join(', ') || 'Nil'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">If the event is associated with CoE, mention the name of the CoE</td>
+                  <td className="border border-black p-2" colSpan="6">Nil</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Name of the resource person(s) with the organization and contact details:</td>
+                  <td className="border border-black p-2" colSpan="6">
+                    {resolvedResourcePersons.length > 0 ? (
+                      <ul className="list-disc pl-4 space-y-1">
+                        {resolvedResourcePersons.map((rp, i) => (
+                          <li key={i}>{rp.name}{rp.designation ? `, ${rp.designation}` : ''}{rp.organization ? `, ${rp.organization}` : ''}</li>
+                        ))}
+                      </ul>
+                    ) : 'NIL'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold" rowSpan="2">Date &amp; Duration</td>
+                  <td className="border border-black p-2 font-bold">Start Date:</td>
+                  <td className="border border-black p-2">{formatDate(s1.eventStartDate || event.date)}</td>
+                  <td className="border border-black p-2 font-bold" colSpan="2">Start Time:</td>
+                  <td className="border border-black p-2">{s1.eventStartTime || event.startTime || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">End Date:</td>
+                  <td className="border border-black p-2">{formatDate(s1.eventEndDate || event.date)}</td>
+                  <td className="border border-black p-2 font-bold" colSpan="2">End Time:</td>
+                  <td className="border border-black p-2">{s1.eventEndTime || event.endTime || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold" rowSpan="3">Participants</td>
+                  <td className="border border-black p-2 font-bold" colSpan="3">No. of Student participants</td>
+                  <td className="border border-black p-2" colSpan="3">{studentsCount || 'NIL'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold" colSpan="3">No. of Faculty participants</td>
+                  <td className="border border-black p-2" colSpan="3">{facultyCount || 'NIL'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold" colSpan="3">No. of External participants</td>
+                  <td className="border border-black p-2" colSpan="3">{externalCount || 'NIL'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Mode of Conduct (Online / Offline / Hybrid)</td>
+                  <td className="border border-black p-2" colSpan="6">{registrationDetails.mode || 'Offline'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Venue</td>
+                  <td className="border border-black p-2" colSpan="6">{resolvedVenue || 'NIL'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Online Resource (Online / Hybrid)</td>
+                  <td className="border border-black p-2" colSpan="6">Nil</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Collaborators/ Industry Partners:</td>
+                  <td className="border border-black p-2" colSpan="6">Nil</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Whether it has been conducted through MoU?</td>
+                  <td className="border border-black p-2" colSpan="6">Yes / No</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">If yes, please mention the name of MoU</td>
+                  <td className="border border-black p-2" colSpan="6"></td>
+                </tr>
+              </tbody>
+            </table>
 
-              <div className="grid grid-cols-1 border-[1.5px] border-slate-900 overflow-hidden font-sans">
-                <div className="grid grid-cols-4 border-b border-slate-300">
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Title of the Event</div>
-                  <div className="col-span-3 p-3 font-black text-[12px] uppercase text-slate-900">{event.title || s1.eventName || 'N/A'}</div>
-                </div>
-                <div className="grid grid-cols-4 border-b border-slate-300">
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Department / Cell</div>
-                  <div className="col-span-1 p-3 font-bold text-[11px] border-r border-slate-300">{event.department || s1.organizerDetails?.department || 'N/A'}</div>
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Category</div>
-                  <div className="col-span-1 p-3 font-bold text-[11px]">{event.eventType || s1.eventType || 'N/A'}</div>
-                </div>
-                <div className="grid grid-cols-4 border-b border-slate-300">
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Period & Time</div>
-                  <div className="col-span-1 p-3 font-bold text-[11px] border-r border-slate-300">{formatDate(s1.eventStartDate)} {s1.eventEndDate && s1.eventEndDate !== s1.eventStartDate ? ` - ${formatDate(s1.eventEndDate)}` : ''}</div>
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Total Hours</div>
-                  <div className="col-span-1 p-3 font-bold text-[11px] font-mono">{s1.eventStartTime} - {s1.eventEndTime}</div>
-                </div>
-                <div className="grid grid-cols-4">
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Target Audience</div>
-                  <div className="col-span-1 p-3 font-bold text-[11px] border-r border-slate-300">{registrationDetails.studentsCount > 0 ? 'Students' : ''} {registrationDetails.facultyCount > 0 ? '& Faculty' : ''}</div>
-                  <div className="bg-slate-50 p-3 font-bold text-[11px] uppercase text-slate-600 border-r border-slate-300">Venue / Location</div>
-                  <div className="col-span-1 p-3 font-bold text-[11px]">{registrationDetails.mode || 'In-person'} @ {registrationDetails.venue || event.venue || 'N/A'}</div>
-                </div>
-              </div>
-            </section>
+            {/* Table 2: IIC Details */}
+            <div className="mb-6 text-[13px]">
+              <p className="mb-2"><strong>Whether the event belongs to: {s1.isIIC === 'Yes' ? <span className="underline">IIC</span> : 'IIC'} / {s1.isIIC === 'No' ? <span className="underline">Non – IIC</span> : 'Non – IIC'}</strong></p>
+              <p className="mb-2"><strong>If the event is IIC, please fill the details below:</strong></p>
+              <table className="w-full border-collapse border border-black">
+                <tbody>
+                  <tr>
+                    <td className="border border-black p-2 w-1/2">Thrust area</td>
+                    <td className="border border-black p-2 w-1/2"></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-2">Activity / Event driven by</td>
+                    <td className="border border-black p-2"></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-2">Quarter</td>
+                    <td className="border border-black p-2"></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-2">Event Level</td>
+                    <td className="border border-black p-2"></td>
+                  </tr>
+                  <tr>
+                    <td className="border border-black p-2">Event Theme</td>
+                    <td className="border border-black p-2"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-            {/* Event Brochure / Poster Page */}
-            <section className="mb-6">
-              <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">02. Event Brochure / Flyer</h3>
-              <div className="flex justify-center flex-col items-center gap-4">
-                <div className="relative w-full max-w-[650px] border-[2px] border-slate-900 p-1 bg-white shadow-sm overflow-hidden rounded-sm">
-                  <img
-                    src={event.posterDataUrl || event.posterUrl || SECELogo}
-                    className="w-full h-auto object-contain"
-                    alt="Event Brochure"
-                  />
-                </div>
-                <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Fig 1: Official Publication Material</p>
-              </div>
-            </section>
-
-            {/* Resource Person Info */}
-            <section className="mb-6">
-              <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">03. Resource Person Details</h3>
-              <div className="border-[1.5px] border-slate-900 overflow-hidden font-sans bg-slate-50/20">
-                {resourcePersons.length > 0 ? resourcePersons.map((rp, idx) => (
-                  <div key={idx} className={`flex gap-6 p-5 ${idx !== resourcePersons.length - 1 ? 'border-b-[1.5px] border-slate-900' : ''}`}>
-                    {rp.photo?.dataUrl && <img src={rp.photo.dataUrl} className="w-24 h-24 rounded-sm object-cover border-[1.5px] border-slate-900 shadow-sm" alt="rp" />}
-                    <div className="flex-1">
-                      <div className="font-black uppercase text-[15px] text-slate-900 mb-1">{rp.name}</div>
-                      <div className="text-[11px] font-black text-indigo-700 uppercase tracking-tight mb-0.5">{rp.designation}</div>
-                      <div className="text-[11px] font-bold text-slate-600 mb-3">{rp.organization}</div>
-                      {rp.bio && <div className="text-[10px] text-slate-500 leading-relaxed italic border-l-2 border-slate-300 pl-3">“{rp.bio}”</div>}
-                    </div>
-                  </div>
-                )) : (
-                  <div className="p-6 text-center italic text-slate-500 text-xs font-bold uppercase tracking-widest">Nil / Handled by Internal Faculty</div>
-                )}
-              </div>
-            </section>
-
-            <div className="space-y-6">
-              {reportDetails?.objectives?.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">04. Event Objectives</h3>
-                  <div className="border-[1.5px] border-slate-900 p-5 bg-slate-50/20 font-sans">
-                    <ul className="list-decimal list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800 font-bold">
-                      {reportDetails.objectives.map((obj, i) => (
-                        <li key={i} className="pl-2">{obj}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </section>
-              )}
-
-              {reportDetails?.description && (
-                <section>
-                  <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">05. Detailed Description of the Event</h3>
-                  <div className="border-[1.5px] border-slate-900 p-6 bg-white text-[12px] leading-[1.8] text-slate-800 text-justify indent-12 whitespace-pre-wrap font-serif">
-                    {reportDetails.description}
-                  </div>
-                </section>
-              )}
-
-              {reportDetails?.outcomes?.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">06. Summary of Outcomes</h3>
-                  <div className="border-[1.5px] border-slate-900 p-5 bg-slate-50/20 font-sans">
-                    <ul className="list-disc list-outside ml-6 space-y-2 text-[12px] leading-relaxed text-slate-800 font-bold">
-                      {reportDetails.outcomes.map((out, i) => (
-                        <li key={i} className="pl-2">{out}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </section>
-              )}
-
-              {reportDetails?.benefits && (
-                <section className="bg-slate-50 border-[1.5px] border-slate-900 p-6 page-break-inside-avoid font-sans">
-                  <h3 className="text-[11px] font-black mb-4 uppercase tracking-widest text-slate-900 border-b-[1.5px] border-slate-900 pb-2">07. Learning Benefits</h3>
-                  <div className="grid grid-cols-2 gap-8 mt-4">
-                    <div className="border-r-[1.5px] border-slate-200 pr-8">
-                      <p className="text-[10px] font-black uppercase text-indigo-700 mb-2 tracking-tighter">Technical Skills Gained</p>
-                      <p className="text-[12px] text-slate-900 font-bold leading-relaxed">{reportDetails.benefits.technical}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-indigo-700 mb-2 tracking-tighter">Impact on Employability</p>
-                      <p className="text-[12px] text-slate-900 font-bold leading-relaxed">{reportDetails.benefits.industry}</p>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <section>
-                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">08. Participant Statistics & Feedback</h3>
-
-                <div className="grid grid-cols-3 gap-0 border-[1.5px] border-slate-900 overflow-hidden font-sans mb-6 bg-white">
-                  <div className="p-4 text-center border-r-[1.5px] border-slate-900">
-                    <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Registered Students</p>
-                    <p className="text-3xl font-black text-slate-900">{registrationDetails.studentsCount || 0}</p>
-                  </div>
-                  <div className="p-4 text-center border-r-[1.5px] border-slate-900">
-                    <p className="text-[10px] font-black uppercase text-slate-500 mb-1">Internal Faculty</p>
-                    <p className="text-3xl font-black text-slate-900">{registrationDetails.facultyCount || 0}</p>
-                  </div>
-                  <div className="p-4 text-center">
-                    <p className="text-[10px] font-black uppercase text-slate-500 mb-1">External Members</p>
-                    <p className="text-3xl font-black text-slate-900">{registrationDetails.externalCount || 0}</p>
-                  </div>
-                </div>
-
-                {feedbackStats?.comments?.length > 0 && (
-                  <div className="mb-8">
-                    <p className="text-[11px] font-black uppercase text-slate-600 mb-3 ml-1">Student Feedback Summary</p>
-                    <div className="border border-slate-300 rounded overflow-hidden">
-                      <table className="min-w-full text-[11px] font-medium font-sans">
-                        <thead className="bg-slate-100 border-b border-slate-300">
-                          <tr>
-                            <th className="px-4 py-2.5 text-left w-12">No</th>
-                            <th className="px-4 py-2.5 text-left w-1/4">Student Name</th>
-                            <th className="px-4 py-2.5 text-left">Feedback Extract</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 italic">
-                          {feedbackStats.comments.slice(0, 5).map((item, idx) => (
-                            <tr key={idx}>
-                              <td className="px-4 py-2.5 text-slate-400">{idx + 1}</td>
-                              <td className="px-4 py-2.5 font-bold uppercase text-slate-900">{item.student}</td>
-                              <td className="px-4 py-2.5 text-slate-700 leading-tight">"{item.comment}"</td>
-                            </tr>
+            {/* Table 3: Report on the Event */}
+            <div className="mb-6 text-[13px]">
+              <p className="mb-2"><strong>Report on the Event</strong></p>
+              <table className="w-full border-collapse border border-black">
+                <tbody>
+                  <tr>
+                    <td className="border border-black p-4">
+                      <p className="font-bold mb-2">Objectives:</p>
+                      {objectives.length > 0 ? (
+                        <div className="mb-4">
+                          {objectives.map((obj, i) => (
+                            <p key={i} className="mb-1">{i + 1}. {obj}</p>
                           ))}
-                          {feedbackStats.comments.length > 5 && (
-                            <tr>
-                              <td colSpan="3" className="px-4 py-3 text-center text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-50">
-                                + {feedbackStats.comments.length - 5} more feedback responses recorded in the IQAC portal
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              {guestFeedback.length > 0 && (
-                <section>
-                  <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">09. Expert Observations & Guest Feedback</h3>
-                  <div className="border-[1.5px] border-slate-900 overflow-hidden font-sans">
-                    {guestFeedback.map((f, i) => (
-                      <div key={i} className={`p-5 bg-slate-50/20 ${i !== guestFeedback.length - 1 ? 'border-b-[1.5px] border-slate-900' : ''}`}>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="font-black uppercase text-slate-900 text-[12px] tracking-tight">{f.name}{f.designation ? ` (${f.designation})` : ''}</span>
                         </div>
-                        <p className="italic font-bold text-slate-700 text-[11px] leading-relaxed border-l-2 border-slate-300 pl-3">"{f.feedback}"</p>
-                        {f.highlights && <p className="mt-2 text-[9px] font-black text-indigo-700 uppercase tracking-tighter">Key Highlights: {f.highlights}</p>}
+                      ) : <p className="mb-4">NIL</p>}
+
+                      <p className="font-bold mb-2">Description of the event:</p>
+                      <div className="mb-4 whitespace-pre-wrap leading-relaxed">
+                        {reportDetails?.description?.trim() || 'NIL'}
                       </div>
-                    ))}
-                  </div>
-                </section>
-              )}
 
-              <section>
-                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">10. Strategic Alignment (SDG & POs)</h3>
-                <div className="grid grid-cols-2 border-[1.5px] border-slate-900 overflow-hidden font-sans">
-                  <div className="p-6 border-r-[1.5px] border-slate-900 flex gap-5 items-center bg-white">
-                    <div className="w-16 h-16 bg-slate-900 text-white rounded-sm shadow-md flex items-center justify-center font-black text-2xl">
-                      {String(reportDetails.mapping?.sdg || '04').padStart(2, '0')}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-indigo-700 mb-0.5">Goal Mapping</p>
-                      <p className="text-[13px] font-black text-slate-900 leading-tight">SDG {reportDetails.mapping?.sdg || '4'}: {SDG_NAMES[reportDetails.mapping?.sdg] || 'Quality Education'}</p>
-                    </div>
-                  </div>
-                  <div className="p-6 bg-slate-50/30">
-                    <p className="text-[10px] font-black uppercase text-slate-500 mb-2">Academic Alignment</p>
-                    <p className="text-[12px] font-black text-slate-900 tracking-tight leading-relaxed">POs: {reportDetails.mapping?.po || '1, 3, 5, 8, 9, 12'}</p>
-                    <p className="text-[12px] font-black text-slate-900 tracking-tight leading-relaxed">PSOs: {reportDetails.mapping?.pso || '1, 2'}</p>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <h3 className="text-xs font-black bg-slate-900 text-white px-3 py-1 mb-4 uppercase tracking-widest font-sans inline-block">11. Event Documentation / Photos</h3>
-                {gallery.length > 0 ? (
-                  <div className="border-[1.5px] border-slate-900 p-8 bg-slate-50/10">
-                    <div className="grid grid-cols-2 gap-8">
-                      {gallery.map((img, idx) => (
-                        <div key={idx} className="space-y-4 font-sans">
-                          <div className="aspect-video w-full border-[1.5px] border-slate-900 shadow-sm bg-white overflow-hidden">
-                            <img src={img.url || img.dataUrl} className="w-full h-full object-cover" alt="event" />
-                          </div>
-                          <div className="text-center font-black">
-                            <p className="text-[10px] text-slate-900 uppercase">Fig {idx + 1}: {img.dayTag || 'Event Session'}</p>
-                            <p className="text-[9px] text-slate-500 italic mt-1 uppercase tracking-tighter">{img.title || ''}</p>
-                          </div>
+                      <p className="font-bold mb-2">Outcomes:</p>
+                      {outcomes.length > 0 ? (
+                        <div className="mb-4">
+                          {outcomes.map((out, i) => (
+                            <p key={i} className="mb-1">{i + 1}. {out}</p>
+                          ))}
                         </div>
-                      ))}
+                      ) : <p className="mb-4">NIL</p>}
+
+                      <p className="font-bold mb-2">Benefit in terms of learning/Skill/Knowledge obtained:</p>
+                      {reportDetails?.benefits?.technical || reportDetails?.benefits?.industry ? (
+                        <div className="mb-4">
+                          {reportDetails.benefits.technical && <p className="mb-1">1. {reportDetails.benefits.technical}</p>}
+                          {reportDetails.benefits.industry && <p className="mb-1">2. {reportDetails.benefits.industry}</p>}
+                        </div>
+                      ) : <p className="mb-4">NIL</p>}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table 4: SDG Goals */}
+            <table className="w-full border-collapse border border-black mb-6 text-[13px]">
+              <tbody>
+                <tr>
+                  <td className="border border-black p-2 font-bold w-1/2">NAME OF THE SDG GOALS MAPPED</td>
+                  <td className="border border-black p-2 w-1/2 uppercase">{SDG_NAMES[reportDetails?.mapping?.sdg] || ''}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">MENTION THE SDG GOALS NUMBER</td>
+                  <td className="border border-black p-2">{reportDetails?.mapping?.sdg || ''}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Table 5: POs & PSOs Mapping */}
+            <div className="mb-6 text-[13px] overflow-x-auto">
+              <p className="mb-2"><strong>POs &amp; PSOs Mapping (Put a tick mark in the mapped PO's &amp; PSO's):</strong></p>
+              <table className="w-full border-collapse border border-black text-center">
+                <tbody>
+                  <tr>
+                    <td className="border border-black p-2 font-bold" colSpan="11">Program Outcomes</td>
+                    <td className="border border-black p-2 font-bold" colSpan="2">Program Specific Outcomes</td>
+                  </tr>
+                  <tr>
+                    {Array.from({ length: 11 }).map((_, i) => (
+                      <td key={`po-h-${i}`} className="border border-black p-2 font-bold">PO{i + 1}</td>
+                    ))}
+                    <td className="border border-black p-2 font-bold">PSO1</td>
+                    <td className="border border-black p-2 font-bold">PSO2</td>
+                  </tr>
+                  <tr>
+                    {Array.from({ length: 11 }).map((_, i) => {
+                      const pos = reportDetails?.mapping?.po ? reportDetails.mapping.po.split(',').map(s=>s.trim()) : [];
+                      return (
+                        <td key={`po-v-${i}`} className="border border-black p-2 font-bold h-8">
+                          {pos.includes((i + 1).toString()) ? '✓' : ''}
+                        </td>
+                      );
+                    })}
+                    {(() => {
+                      const psos = reportDetails?.mapping?.pso ? reportDetails.mapping.pso.split(',').map(s=>s.trim()) : [];
+                      return (
+                        <>
+                          <td className="border border-black p-2 font-bold h-8">
+                            {psos.includes('1') ? '✓' : ''}
+                          </td>
+                          <td className="border border-black p-2 font-bold h-8">
+                            {psos.includes('2') ? '✓' : ''}
+                          </td>
+                        </>
+                      );
+                    })()}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table 6: Funding and Social Media */}
+            <table className="w-full border-collapse border border-black mb-8 text-[13px]">
+              <tbody>
+                <tr>
+                  <td className="border border-black p-2 font-bold" colSpan="2">Funding Details:</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 w-1/2">Funding Provided by</td>
+                  <td className="border border-black p-2 w-1/2">Institute / External / No Funding</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2">Expenditure amount (in Rs.)</td>
+                  <td className="border border-black p-2">Nil</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold" colSpan="2">Social media Coverage (Provide links):</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2">YouTube</td>
+                  <td className="border border-black p-2"></td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2">Facebook</td>
+                  <td className="border border-black p-2"></td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2">Instagram</td>
+                  <td className="border border-black p-2"></td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2">LinkedIn</td>
+                  <td className="border border-black p-2"></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Photographs */}
+            <div className="text-[13px] page-break-inside-avoid">
+              {gallery.length > 0 ? (
+                gallery.map((img, idx) => (
+                  <div key={idx} className="mb-6">
+                    <p className="font-bold mb-2">Sample Photograph {idx + 1}:</p>
+                    <div className="w-full max-w-[600px] border border-black p-2 mx-auto">
+                      <img src={img.url || img.dataUrl} alt={`Photograph ${idx + 1}`} className="w-full h-auto object-contain" />
+                    </div>
+                    {img.title && <p className="text-center mt-2 italic">{img.title}</p>}
+                  </div>
+                ))
+              ) : (
+                  <div className="mb-6">
+                    <p className="font-bold mb-2">Sample Photograph 1:</p>
+                    <div className="h-48 border border-dashed border-black flex items-center justify-center">
+                        <span className="text-slate-400">No Image Provided</span>
                     </div>
                   </div>
-                ) : (
-                  <div className="p-16 border-[1.5px] border-dashed border-slate-400 text-center font-sans text-slate-400 font-bold uppercase tracking-widest text-xs">No photographs available for this event records</div>
-                )}
-              </section>
-
-              <section>
-                <h3 className="text-xs font-black text-center py-2 bg-slate-900 text-white mb-6 uppercase tracking-widest font-sans border-[1.5px] border-slate-900">Checklist of Enclosures</h3>
-                <div className="grid grid-cols-2 gap-x-12 gap-y-3 px-6 py-6 border-[1.5px] border-slate-900 font-sans uppercase bg-slate-50/10">
-                  {[
-                    ['Event Approval Letter (Original)', true],
-                    ['Resource Person CV & Acceptance', resourcePersons.length > 0],
-                    ['Student Attendance Records', registrationDetails.studentsCount > 0],
-                    ['Feedback Analysis Summary', feedbackStats?.totalResponses > 0],
-                    ['Geotagged Event Photographs', gallery.length > 0],
-                    ['Impact / Media Coverage', !!reportDetails?.socialMedia?.social]
-                  ].map(([item, valid], i) => (
-                    <div key={i} className="flex items-center justify-between border-b border-slate-300 pb-1.5">
-                      <span className="text-[10px] font-black text-slate-800">{i + 1}. {item}</span>
-                      {valid ? <div className="text-slate-900 font-black text-base">✓</div> : <div className="w-4 h-4 border-[1.5px] border-slate-900"></div>}
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* Verified Signatures */}
-              <div className="mt-20 grid grid-cols-2 gap-40 text-center font-sans px-4">
-                <div className="space-y-5">
-                  <div className="h-[2px] bg-slate-900 w-full mb-2"></div>
-                  <p className="text-[12px] font-black uppercase text-slate-900 tracking-tighter">Event Coordinator</p>
-                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">(Name & Signature)</p>
-                </div>
-                <div className="space-y-5">
-                  <div className="h-[2px] bg-slate-900 w-full mb-2"></div>
-                  <p className="text-[12px] font-black uppercase text-slate-900 tracking-tighter">Head of the Department</p>
-                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">(Seal & Signature)</p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -423,11 +451,5 @@ const EventReportModal = ({
     </AnimatePresence>
   );
 };
-
-const Star = ({ size, className, fill }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill || "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-  </svg>
-);
 
 export default EventReportModal;

@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
@@ -10,6 +10,7 @@ import StatusBadge from '../components/StatusBadge';
 import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
 import EventDetailModal from '../components/EventDetailModal';
+import EventReportModal from '../components/EventReportModal';
 import defaultPoster from '../assets/sece.avif';
 
 const formatTime12 = (t24) => {
@@ -28,9 +29,23 @@ const formatTime12 = (t24) => {
 // ── IQAC Summary Modal ─────────────────────────────────────────────────────────
 const IQACSummaryModal = ({ event, onClose }) => {
   const { odRequests } = useAppContext();
+  const [freshIqacData, setFreshIqacData] = useState(null);
+  const [showOfficialReport, setShowOfficialReport] = useState(false);
+
+  // Fetch fresh data from backend API on mount
+  useEffect(() => {
+    if (!event?.id) return;
+    fetch(`http://localhost:5001/api/iqac/${event.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) setFreshIqacData(data);
+      })
+      .catch(() => {}); // silent fail — fallback to iqacData
+  }, [event?.id]);
+
   if (!event) return null;
 
-  // Live feedback from odRequests
+  // Live feedback from odRequests (context)
   const liveRequests = (odRequests || []).filter(r => r.eventId === event.id && r.status === 'APPROVED');
   const liveFeedbackList = liveRequests
     .filter(r => r.feedback)
@@ -47,16 +62,24 @@ const IQACSummaryModal = ({ event, onClose }) => {
     : null;
 
   const s1 = event.requisition?.step1;
-  // Backend saves all IQAC data under event.iqacData (not iqacSubmission)
-  const iqac = event.iqacData || {};
-  const reg     = iqac.registration || {};           // { categories, total, attendance, period, mode }
-  const cats    = reg.categories    || {};           // { students, faculty, external } — registered
-  const att     = reg.attendance    || {};           // { categories, total, studentAttendanceList }
-  const attCats = att.categories    || {};           // { students, faculty, external } — attended
 
-  // Checklist: submitted as iqac.checklist array, fallback: build from iqac.documents object
-  // NOTE: backend stores documents as { [labelKey]: { fileName, fileType, fileSize, dataUrl, ... } }
-  // so we normalise both paths into { id, requirement, status, file } shape
+  // Merge: prefer freshly fetched API data, fallback to iqacData stored in event
+  const iqac = freshIqacData?.iqacData || event.iqacData || {};
+  // For feedbackSummary, prefer: fresh API (which may be manual) → stored manualFeedbackSummary → stored feedbackSummary
+  const freshFeedback = freshIqacData?.feedbackSummary || null;
+  const storedManualFeedback = iqac.manualFeedbackSummary || null;
+  // Pick best available source
+  const effectiveFeedback =
+    (freshFeedback?.isManualUpload && freshFeedback.totalResponses > 0) ? freshFeedback :
+    (storedManualFeedback?.isManualUpload && storedManualFeedback.totalResponses > 0) ? storedManualFeedback :
+    freshFeedback?.totalResponses > 0 ? freshFeedback :
+    iqac.feedbackSummary || null;
+
+  const reg     = iqac.registration || {};
+  const cats    = reg.categories    || {};
+  const att     = reg.attendance    || {};
+  const attCats = att.categories    || {};
+
   const checklist = Array.isArray(iqac.checklist) && iqac.checklist.length > 0
     ? iqac.checklist
     : Object.entries(iqac.documents || {}).map(([req, val]) => ({
@@ -67,20 +90,20 @@ const IQACSummaryModal = ({ event, onClose }) => {
         file: val?.dataUrl ? { dataUrl: val.dataUrl, fileName: val.fileName || `${req}.pdf` } : null,
       }));
 
-  // Gallery: backend saves as { url, title, caption, ... } (not dataUrl)
-  const gallery       = Array.isArray(iqac.gallery)       ? iqac.gallery       : [];
-  // Guest feedback: backend saves as iqac.guestFeedback (not guestFeedbackList)
-  const guestFeedback = Array.isArray(iqac.guestFeedback) ? iqac.guestFeedback : [];
-  // Student feedback: prefer live data from odRequests
-  const autoFeedback  = iqac.feedbackSummary || null;
-  const studentFeedback = liveFeedbackList.length > 0 ? liveFeedbackList : (autoFeedback?.comments || []);
-  const studentFeedbackCount = liveFeedbackList.length > 0 ? liveFeedbackList.length : (autoFeedback?.totalResponses || 0);
-  const studentAvgRating = liveFeedbackList.length > 0 ? liveAvgRating : (autoFeedback?.averageRating || null);
-
-  // Resource persons: backend saves as iqac.resourcePersons array
+  const gallery         = Array.isArray(iqac.gallery)         ? iqac.gallery         : [];
+  const guestFeedback   = Array.isArray(iqac.guestFeedback)   ? iqac.guestFeedback   : [];
   const resourcePersons = Array.isArray(iqac.resourcePersons) ? iqac.resourcePersons : [];
-  // Attendance roster: stored under registration.attendance.studentAttendanceList
-  const studentRoster = Array.isArray(att.studentAttendanceList) ? att.studentAttendanceList : [];
+  const studentRoster   = Array.isArray(att.studentAttendanceList) ? att.studentAttendanceList : [];
+
+  // Student feedback: use effectiveFeedback (CSV or live odRequests)
+  const apiComments     = effectiveFeedback?.comments || [];
+  const studentFeedback = apiComments.length > 0
+    ? apiComments
+    : liveFeedbackList.length > 0
+      ? liveFeedbackList
+      : (iqac.feedbackSummary?.comments || []);
+  const studentFeedbackCount = effectiveFeedback?.totalResponses ?? liveFeedbackList.length ?? (iqac.feedbackSummary?.totalResponses || 0);
+  const studentAvgRating = effectiveFeedback?.averageRating ?? (liveFeedbackList.length > 0 ? liveAvgRating : (iqac.feedbackSummary?.averageRating || null));
 
   const studentsCount    = Number(cats.students)    || 0;
   const facultyCount     = Number(cats.faculty)     || 0;
@@ -364,7 +387,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     if (req.includes('feedback from resource') || req.includes('feedback-resource-person'))
       return downloadResourcePersonFeedbackExcel;
     if (req.includes('event report') || req.includes('event-report'))
-      return downloadEventReportHTML;
+      return () => setShowOfficialReport(true);
     // Uploaded files — serve from dataUrl
     // Check both item.file.dataUrl (checklist array path) and
     // item.dataUrl (documents object path where val fields are promoted)
@@ -394,8 +417,9 @@ const IQACSummaryModal = ({ event, onClose }) => {
   );
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
-      <motion.div
+    <>
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
+        <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 15 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 15 }}
@@ -448,6 +472,12 @@ const IQACSummaryModal = ({ event, onClose }) => {
                   <FileCheck size={12} className="text-emerald-500" /> Submitted on {submittedOn}
                 </div>
               )}
+              <button
+                onClick={downloadEventReportHTML}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+              >
+                <Download size={13} /> Download Summary
+              </button>
             </div>
           </div>
         </div>
@@ -464,16 +494,76 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 ['Organizer',    event.organizerName || s1?.organizerDetails?.organizerName],
                 ['Event Type',   s1?.eventType],
                 ['Department',   s1?.organizerDetails?.department || 'CSE'],
-                ['Date Range',   `${s1?.eventStartDate || '-'} to ${s1?.eventEndDate || '-'}`],
-                ['Venue',        event.venue],
+                ['Date',         `${s1?.eventStartDate || '-'} to ${s1?.eventEndDate || '-'}`],
+                ['Time',         `${formatTime12(s1?.eventStartTime)} – ${formatTime12(s1?.eventEndTime)}`],
+                ['Venue',        event.venue || s1?.venueDetails || '—'],
                 ['IIC Activity', s1?.isIIC || 'No'],
-                ['Prof. Societies', Array.isArray(s1?.professionalSocieties) && s1.professionalSocieties.length ? s1.professionalSocieties.join(', ') : '-'],
+                ['Mode',         reg.mode || '—'],
+                ['Prof. Societies', Array.isArray(s1?.professionalSocieties) && s1.professionalSocieties.length ? s1.professionalSocieties.join(', ') : '—'],
+                ['Resource Persons', s1?.guestDetails?.guests?.length > 0 ? s1.guestDetails.guests.map(g => g.name).join(', ') : (resourcePersons.length > 0 ? resourcePersons.map(r => r.name).join(', ') : '—')],
+                ['Internal Participants', s1?.participants?.internalParticipants || '—'],
+                ['External Participants', s1?.participants?.externalParticipants || '—'],
               ].map(([label, val]) => (
                 <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
                   <p className="text-sm font-semibold text-slate-800 mt-0.5">{val || '—'}</p>
                 </div>
               ))}
+            </div>
+          </SectionCard>
+
+          {/* ── Brochure / Poster ── */}
+          <SectionCard title="Event Brochure / Poster" icon={<Image size={15} />} accent="rose">
+            {event.posterDataUrl || event.posterUrl ? (
+              <div className="flex flex-col items-center gap-4">
+                <img
+                  src={event.posterDataUrl || event.posterUrl}
+                  alt="Event Poster"
+                  className="max-h-72 rounded-xl border border-rose-100 shadow-md object-contain w-full"
+                />
+                <a
+                  href={event.posterDataUrl || event.posterUrl}
+                  download={`Poster_${(event.title || 'event').replace(/\s+/g,'_')}.jpg`}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded-lg hover:bg-rose-700 transition-colors"
+                >
+                  <Download size={13} /> Download Poster
+                </a>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 italic flex-1 flex items-center">No poster/brochure was uploaded for this event.</p>
+            )}
+          </SectionCard>
+
+          {/* ── Registration Details ── */}
+          <SectionCard title="Registration Details" icon={<FileText size={15} />} accent="blue">
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['Students Registered', cats.students || s1?.participants?.internalParticipants || '—'],
+                  ['Students Attended',   attCats.students || '—'],
+                  ['Faculty Registered',  cats.faculty || '—'],
+                  ['Faculty Attended',    attCats.faculty || '—'],
+                  ['External Registered', cats.external || s1?.participants?.externalParticipants || '—'],
+                  ['External Attended',   attCats.external || '—'],
+                ].map(([label, val]) => (
+                  <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                    <p className="text-sm font-bold text-slate-800 mt-0.5">{val}</p>
+                  </div>
+                ))}
+              </div>
+              {reg.mode && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Mode of Conduct</p>
+                  <p className="text-sm font-bold text-blue-800 mt-0.5">{reg.mode}</p>
+                </div>
+              )}
+              {(reg.period?.start || reg.period?.end) && (
+                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registration Period</p>
+                  <p className="text-sm font-semibold text-slate-700 mt-0.5">{reg.period?.start || '—'} → {reg.period?.end || '—'}</p>
+                </div>
+              )}
             </div>
           </SectionCard>
 
@@ -554,9 +644,15 @@ const IQACSummaryModal = ({ event, onClose }) => {
                         <td className="px-3 py-2 text-slate-500">{row.rollNo || '—'}</td>
                         <td className="px-3 py-2">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            row.attendanceStatus === 'NOT_ATTENDED' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'
+                            row.attendanceStatus === 'NOT_ATTENDED' ? 'bg-red-50 text-red-600' :
+                            row.attendanceStatus === 'FN' ? 'bg-amber-50 text-amber-600' :
+                            row.attendanceStatus === 'AN' ? 'bg-orange-50 text-orange-600' :
+                            'bg-emerald-50 text-emerald-700'
                           }`}>
-                            {row.attendanceStatus === 'NOT_ATTENDED' ? '✗ Absent' : '✓ Present'}
+                            {row.attendanceStatus === 'NOT_ATTENDED' ? '✗ Absent' :
+                             row.attendanceStatus === 'FN' ? '◑ FN (Half)' :
+                             row.attendanceStatus === 'AN' ? '◑ AN (Half)' :
+                             '✓ Present'}
                           </span>
                         </td>
                       </tr>
@@ -572,37 +668,73 @@ const IQACSummaryModal = ({ event, onClose }) => {
           {/* ── Student Feedback — always shown ── */}
           <SectionCard title="Student Feedback" icon={<MessageSquare size={15} />} accent="purple">
             {studentFeedbackCount > 0 ? (
-              <>
-                <div className="grid grid-cols-1 gap-3 mb-4">
-                  <div className="rounded-xl border border-purple-100 bg-purple-50 px-3 py-3 text-center">
-                    <p className="text-2xl font-extrabold text-purple-700">{studentFeedbackCount}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-purple-500 mt-0.5">Total Responses</p>
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-                  {studentFeedback.map((item, idx) => (
-                    <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                      <div className="flex items-center justify-between flex-wrap gap-1">
-                        <p className="text-sm font-semibold text-slate-800">
-                          {item.student || item.name || 'Student'}{item.rollNo && <span className="text-xs text-slate-400 font-normal"> ({item.rollNo})</span>}
-                        </p>
-                        {item.rating && (
-                          <div className="flex items-center gap-0.5">
-                            {[1, 2, 3, 4, 5].map(s => (
-                              <Star key={s} size={10} className={s <= item.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <p className={`text-xs mt-1 ${item.comment || item.feedback ? 'text-slate-600 italic' : 'text-slate-400'}`}>
-                        {item.comment || item.feedback || 'No comment provided.'}
-                      </p>
+              (() => {
+                if (studentFeedback.length === 0) return <p className="text-xs text-slate-400 italic">Total responses counted but individual comments not available.</p>;
+                
+                const firstItem = studentFeedback[0];
+                const isCsvFormat = !firstItem?.student && !firstItem?.comment && !firstItem?.name && !firstItem?.feedback;
+
+                if (isCsvFormat) {
+                  const SKIP_KEYS = new Set(['id']);
+                  const csvKeys = [...new Set(studentFeedback.flatMap(r => Object.keys(r)))]
+                    .filter(k => !SKIP_KEYS.has(k))
+                    .filter(k => studentFeedback.some(r => r[k] !== undefined && r[k] !== null && String(r[k]).trim() !== ''));
+                  if (csvKeys.length === 0) return <p className="text-xs text-slate-400 italic">Total responses counted but individual data not available.</p>;
+                  
+                  return (
+                    <div className="overflow-x-auto rounded-xl border border-purple-100">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-purple-50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-bold text-purple-700 uppercase tracking-wide text-[10px]">#</th>
+                            {csvKeys.map(key => <th key={key} className="px-3 py-2 text-left font-bold text-purple-700 uppercase tracking-wide text-[10px] whitespace-nowrap">{key}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-purple-50 bg-white">
+                          {studentFeedback.map((row, i) => (
+                            <tr key={i} className="hover:bg-purple-50/50 transition-colors">
+                              <td className="px-3 py-2 text-slate-400 font-bold">{i + 1}</td>
+                              {csvKeys.map((key, ci) => <td key={ci} className="px-3 py-2 text-slate-700 max-w-xs">{row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '' ? String(row[key]) : '—'}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  ))}
-                </div>
-              </>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+                    {studentFeedback.map((item, idx) => (
+                      <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                        <div className="flex items-center justify-between flex-wrap gap-1">
+                          <p className="text-sm font-semibold text-slate-800">
+                            {item.student || item.name || 'Student'}{item.rollNo && <span className="text-xs text-slate-400 font-normal"> ({item.rollNo})</span>}
+                          </p>
+                          {item.rating && (
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map(s => <Star key={s} size={10} className={s <= item.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200 fill-slate-200'} />)}
+                            </div>
+                          )}
+                        </div>
+                        <p className={`text-xs mt-1 ${item.comment || item.feedback ? 'text-slate-600 italic' : 'text-slate-400'}`}>
+                          {item.comment || item.feedback || 'No comment provided.'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()
             ) : (
-              <p className="text-sm text-slate-400 italic flex-1 flex items-center">No student feedback has been submitted for this event yet.</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-slate-400 italic">No student feedback has been submitted via the internal system.</p>
+                {event.studentFeedbackLink && (
+                  <a href={event.studentFeedbackLink} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-purple-600 font-semibold hover:underline">
+                    <ExternalLink size={12} /> View External Feedback Form
+                  </a>
+                )}
+              </div>
             )}
           </SectionCard>
 
@@ -661,24 +793,68 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
           {/* ── Guest / Resource Person Feedback — always shown ── */}
           <SectionCard title="Guest / Resource Person Feedback" icon={<Star size={15} />} accent="amber" className="lg:col-span-2">
-            {guestFeedback.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-60 overflow-y-auto pr-2 pb-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-amber-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-                {guestFeedback.map((fb, i) => (
-                  <div key={i} className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{fb.name}</p>
-                        {fb.designation && <p className="text-xs text-slate-500 mt-0.5">{fb.designation}{fb.organization ? ` · ${fb.organization}` : ''}</p>}
-                      </div>
-                      {fb.feedback && <p className="mt-3 text-sm text-slate-700 italic border-l-[3px] border-amber-300 pl-3">"{fb.feedback}"</p>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
+            {guestFeedback.length > 0 ? (() => {
+              // System/binary fields to always skip
+              const SKIP_FIELDS = new Set(['id', 'photo', 'highlights']);
+              // Get keys that have at least one non-empty value
+              const allKeys = [...new Set(guestFeedback.flatMap(fb => Object.keys(fb)))]
+                .filter(k => !SKIP_FIELDS.has(k))
+                .filter(k => guestFeedback.some(fb => {
+                  const v = fb[k];
+                  return v !== undefined && v !== null && String(v).trim() !== '';
+                }));
+
+              if (allKeys.length === 0) {
+                return <p className="text-sm text-slate-400 italic">Guest feedback data is incomplete or uses a different format. Please re-upload the CSV.</p>;
+              }
+
+              return (
+                <div className="overflow-x-auto rounded-xl border border-amber-100">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-amber-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-bold text-amber-700 uppercase tracking-wide text-[10px]">#</th>
+                        {allKeys.map(key => (
+                          <th key={key} className="px-3 py-2 text-left font-bold text-amber-700 uppercase tracking-wide text-[10px] whitespace-nowrap">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-50 bg-white">
+                      {guestFeedback.map((fb, i) => (
+                        <tr key={i} className="hover:bg-amber-50/50 transition-colors">
+                          <td className="px-3 py-2 text-slate-400 font-bold">{i + 1}</td>
+                          {allKeys.map((key, colIdx) => (
+                            <td key={colIdx} className="px-3 py-2 text-slate-700 max-w-xs">
+                              {fb[key] !== undefined && fb[key] !== null && String(fb[key]).trim() !== '' ? String(fb[key]) : '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })() : (
               <p className="text-sm text-slate-400 italic">No guest or resource person feedback was recorded.</p>
             )}
           </SectionCard>
+
+          {/* ── Geo Tag ── */}
+          {(iqac.geoTag || event.geoTagUrl || event.locationUrl) && (
+            <SectionCard title="Geo Tag" icon={<MapPin size={15} />} accent="green">
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-slate-600">Event location tag submitted by the organizer.</p>
+                <a
+                  href={iqac.geoTag || event.geoTagUrl || event.locationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition-colors w-fit"
+                >
+                  <Link2 size={13} /> View on Map
+                </a>
+              </div>
+            </SectionCard>
+          )}
 
           {/* ── Documentation Checklist — always shown ── */}
           <SectionCard title="Documentation Checklist" icon={<FileCheck size={15} />} accent="emerald" className="lg:col-span-2 shadow-md">
@@ -699,10 +875,14 @@ const IQACSummaryModal = ({ event, onClose }) => {
                         {dlAction && (
                           <button
                             onClick={(e) => { e.stopPropagation(); dlAction(); }}
-                            title={`Download ${item.requirement}`}
+                            title={String(item.requirement).toLowerCase().includes('event report') ? 'Open Official Report' : `Download ${item.requirement}`}
                             className="ml-1 inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-[10px] font-bold transition-colors"
                           >
-                            <Download size={11} /> Download
+                            {String(item.requirement).toLowerCase().includes('event report') ? (
+                              <><ScrollText size={11} /> Event Report </>
+                            ) : (
+                              <><Download size={11} /> Download</>
+                            )}
                           </button>
                         )}
                       </div>
@@ -734,6 +914,25 @@ const IQACSummaryModal = ({ event, onClose }) => {
         </div>
       </motion.div>
     </div>
+    {showOfficialReport && (
+      <EventReportModal
+        event={event}
+        resourcePersons={resourcePersons}
+        registrationDetails={{
+          studentsCount,
+          facultyCount,
+          externalCount,
+          mode: reg.mode || '',
+          venue: event.venue || iqac.eventSummary?.venue || '',
+        }}
+        reportDetails={iqac.reportDetails || {}}
+        feedbackStats={effectiveFeedback}
+        guestFeedback={guestFeedback}
+        gallery={gallery}
+        onClose={() => setShowOfficialReport(false)}
+      />
+    )}
+    </>
   );
 };
 
@@ -762,8 +961,10 @@ const EventCard = ({
 
   return (
     <div
-      onClick={() => showIQAC && onOpenIQAC(event)}
-      className={`bg-white rounded-xl shadow-md overflow-hidden transition-shadow duration-200 ${showIQAC ? 'hover:shadow-xl cursor-pointer' : 'cursor-default'}`}
+      onClick={() => (isCompleted && event.iqacSubmittedAt) && onOpenIQAC(event)}
+      className={`bg-white rounded-xl shadow-md overflow-hidden transition-shadow duration-200 ${
+        (isCompleted && event.iqacSubmittedAt) ? 'hover:shadow-xl cursor-pointer' : 'cursor-default'
+      }`}
     >
       <div className="h-48 overflow-hidden">
         <img
@@ -1240,13 +1441,15 @@ const ExploreEvents = () => {
 
       <AnimatePresence>
         {showEventDetail && selectedEvent && (
-          <EventDetailModal
-            event={selectedEvent}
-            onClose={() => {
-              setShowEventDetail(false);
-              setSelectedEvent(null);
-            }}
-          />
+          selectedEvent.iqacSubmittedAt
+            ? <IQACSummaryModal
+                event={selectedEvent}
+                onClose={() => { setShowEventDetail(false); setSelectedEvent(null); }}
+              />
+            : <EventDetailModal
+                event={selectedEvent}
+                onClose={() => { setShowEventDetail(false); setSelectedEvent(null); }}
+              />
         )}
       </AnimatePresence>
     </div>
