@@ -467,7 +467,17 @@ const Dashboard = () => {
     if (role === UserRole.STUDENT_GENERAL || role === UserRole.STUDENT_ORGANIZER) {
       return odRequests
         .filter(r => r.studentId === currentUser.id)
-        .sort((a, b) => (b.eventDate || '').localeCompare(a.eventDate || ''));
+        .sort((a, b) => {
+          // Put WITHDRAWN and REJECTED statuses at the bottom
+          const isAInactive = a.status === 'WITHDRAWN' || a.status === 'REJECTED';
+          const isBInactive = b.status === 'WITHDRAWN' || b.status === 'REJECTED';
+          if (isAInactive !== isBInactive) return isAInactive ? 1 : -1;
+          
+          // Then sort by most recently created
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
     }
     return [];
   };
@@ -1212,7 +1222,10 @@ const Dashboard = () => {
                                     ) : (
                                       <button
                                         disabled={isProcessing}
-                                        onClick={() => handleRegister(event.id)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRegister(event.id);
+                                        }}
                                         className="px-5 py-2.5 bg-cse-primary text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
                                       >
                                         {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}

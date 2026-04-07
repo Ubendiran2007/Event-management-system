@@ -1070,21 +1070,34 @@ const EventCard = ({
           )}
           {/* Feedback — either via internal modal or external Google Form */}
           {showFeedback && (
-            <button 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                if (event.studentFeedbackLink && !linkOpened) {
-                  window.open(event.studentFeedbackLink, '_blank');
-                  setLinkOpened(true);
-                } else {
-                  onOpenFeedback(event); 
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 ${linkOpened ? 'bg-emerald-500' : 'bg-purple-500'} text-white rounded-lg hover:opacity-90 text-xs font-medium shadow-sm transition-all active:scale-95`}
-            >
-              {event.studentFeedbackLink ? (linkOpened ? <CheckCircle2 size={14} /> : <ExternalLink size={14} />) : <MessageSquare size={14} />}
-              {event.studentFeedbackLink ? (linkOpened ? 'Mark as Submitted' : 'Feedback Form') : 'Feedback'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (event.studentFeedbackLink && !linkOpened) {
+                    window.open(event.studentFeedbackLink, '_blank');
+                    setLinkOpened(true);
+                  } else {
+                    onOpenFeedback(event); 
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 ${linkOpened ? 'bg-emerald-500' : 'bg-purple-500'} text-white rounded-lg hover:opacity-90 text-xs font-medium shadow-sm transition-all active:scale-95`}
+              >
+                {event.studentFeedbackLink ? (linkOpened ? <CheckCircle2 size={14} /> : <ExternalLink size={14} />) : <MessageSquare size={14} />}
+                {event.studentFeedbackLink ? (linkOpened ? 'Mark as Submitted' : 'Feedback Form') : 'Feedback'}
+              </button>
+              {event.studentFeedbackLink && linkOpened && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(event.studentFeedbackLink, '_blank');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 border border-slate-200 text-xs font-medium shadow-sm transition-all active:scale-95"
+                >
+                  <ExternalLink size={14} /> Reopen Form
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

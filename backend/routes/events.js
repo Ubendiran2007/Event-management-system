@@ -418,7 +418,7 @@ router.patch('/:id/status', async (req, res) => {
 router.patch('/:id/department-approval', async (req, res) => {
   if (!checkDb(res)) return;
 
-  const { department, approvedBy } = req.body;
+  const { department, approvedBy, status = 'APPROVED', reason } = req.body;
 
   if (!department || !approvedBy) {
     return res.status(400).json({ success: false, message: 'Department and approvedBy are required' });
@@ -434,6 +434,42 @@ router.patch('/:id/department-approval', async (req, res) => {
 
     const eventData = eventSnap.data();
     const departmentApprovals = eventData.departmentApprovals || {};
+
+    if (status === 'REJECTED') {
+      departmentApprovals[department] = {
+        status: 'REJECTED',
+        rejectedBy: approvedBy,
+        rejectedAt: new Date().toISOString(),
+        reason,
+      };
+
+      const updatePayload = {
+        departmentApprovals,
+        status: 'REJECTED',
+        rejectionReason: `Rejected by ${department.toUpperCase()} department. Reason: ${reason}`,
+        rejectedByRole: department.toUpperCase(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(eventRef, updatePayload);
+
+      setImmediate(async () => {
+        if (eventData.organizerEmail) {
+          try {
+            const { sendEventStatusNotification } = require('../services/emailService');
+            await sendEventStatusNotification(eventData.organizerEmail, { id: req.params.id, ...eventData, ...updatePayload }, 'REJECTED');
+          } catch (e) {
+            console.error('[events/dept-approval/bg] Error sending rejection email:', e.message);
+          }
+        }
+      });
+
+      return res.json({
+        success: true,
+        message: `${department} rejected successfully`,
+        event: { id: req.params.id, ...eventData, ...updatePayload },
+      });
+    }
 
     departmentApprovals[department] = {
       status: 'APPROVED',

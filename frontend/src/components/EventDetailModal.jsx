@@ -269,6 +269,45 @@ const EventDetailModal = ({ event, onClose }) => {
     }
   };
 
+  const handleDeptReject = async (department) => {
+    const reason = String(rejectionReason || '').trim();
+    if (!reason) {
+      setApprovalError('Please enter a rejection reason before rejecting this requirement.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setApprovalError('');
+    try {
+      await handleDepartmentApproval(event.id, department, 'REJECTED', reason);
+      setTimeout(() => { onClose(); }, 300);
+    } catch (error) {
+      console.error('Error rejecting department:', error);
+      setApprovalError('Rejection failed. Check your connection or permissions and try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  const handleHRRejectBoth = async () => {
+    const reason = String(rejectionReason || '').trim();
+    if (!reason) {
+      setApprovalError('Please enter a rejection reason before rejecting these requirements.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setApprovalError('');
+    try {
+      if (canApproveVenue) await handleDepartmentApproval(event.id, 'venue', 'REJECTED', reason);
+      if (canApproveMedia) await handleDepartmentApproval(event.id, 'media', 'REJECTED', reason);
+      setTimeout(() => { onClose(); }, 300);
+    } catch (error) {
+      console.error('Error rejecting HR both:', error);
+      setApprovalError('Rejection failed.');
+      setIsProcessing(false);
+    }
+  };
+
   const handleApprove = async () => {
     setIsProcessing(true);
     setApprovalError('');
@@ -1316,79 +1355,166 @@ const EventDetailModal = ({ event, onClose }) => {
                       <XCircle size={16} className="shrink-0" /> {approvalError}
                     </div>
                   )}
-                  <p className="text-sm font-semibold text-slate-700">Approve Your Department's Requirements</p>
-                  <div className="flex flex-wrap gap-3">
+                  <p className="text-sm font-semibold text-slate-700">Approve or Reject Your Department's Requirements</p>
+
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+                      Rejection Reason (required to reject)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      placeholder="Enter why this requirement is being rejected"
+                      disabled={isProcessing}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-3">
                     {canApproveVenue && (
-                      <button
-                        onClick={() => handleDeptApprove('venue')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Venue
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('venue')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Venue
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('venue')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Venue
+                        </button>
+                      </div>
                     )}
                     {canApproveMedia && (
-                      <button
-                        onClick={() => handleDeptApprove('media')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Media Booking
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('media')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Media Booking
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('media')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Media Booking
+                        </button>
+                      </div>
                     )}
                     {canApproveVenue && canApproveMedia && (
-                      <button
-                        onClick={handleHRApproveBoth}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Both (HR)
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={handleHRRejectBoth}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Both (HR)
+                        </button>
+                        <button
+                          onClick={handleHRApproveBoth}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Both (HR)
+                        </button>
+                      </div>
                     )}
                     {canApproveAudio && (
-                      <button
-                        onClick={() => handleDeptApprove('audio')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Audio
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('audio')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Audio
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('audio')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Audio
+                        </button>
+                      </div>
                     )}
                     {canApproveICTS && (
-                      <button
-                        onClick={() => handleDeptApprove('icts')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve ICTS
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('icts')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject ICTS
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('icts')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve ICTS
+                        </button>
+                      </div>
                     )}
                     {canApproveTransport && (
-                      <button
-                        onClick={() => handleDeptApprove('transport')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Transport
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('transport')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Transport
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('transport')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Transport
+                        </button>
+                      </div>
                     )}
                     {canApproveBoysAccommodation && (
-                      <button
-                        onClick={() => handleDeptApprove('boysAccommodation')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Boys Accommodation
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('boysAccommodation')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Boys Accommodation
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('boysAccommodation')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Boys Accommodation
+                        </button>
+                      </div>
                     )}
                     {canApproveGirlsAccommodation && (
-                      <button
-                        onClick={() => handleDeptApprove('girlsAccommodation')}
-                        disabled={isProcessing}
-                        className="px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Girls Accommodation
-                      </button>
+                      <div className="flex gap-2 w-full">
+                        <button
+                          onClick={() => handleDeptReject('girlsAccommodation')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Girls Accommodation
+                        </button>
+                        <button
+                          onClick={() => handleDeptApprove('girlsAccommodation')}
+                          disabled={isProcessing}
+                          className="flex-1 px-5 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Approve Girls Accommodation
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

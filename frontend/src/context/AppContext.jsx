@@ -164,7 +164,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const handleDepartmentApproval = async (eventId, department) => {
+  const handleDepartmentApproval = async (eventId, department, status = 'APPROVED', reason = '') => {
     try {
       const response = await fetch(`http://localhost:5001/api/events/${eventId}/department-approval`, {
         method: 'PATCH',
@@ -172,6 +172,8 @@ export const AppProvider = ({ children }) => {
         body: JSON.stringify({
           department,
           approvedBy: currentUser?.name || 'Unknown Approver',
+          status,
+          reason,
         }),
       });
 
