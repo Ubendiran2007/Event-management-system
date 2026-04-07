@@ -984,42 +984,91 @@ router.delete('/coordinators/:id', async (req, res) => {
   }
 });
 
-// ── PATCH /api/events/:id/extend-iqac-window ─────────────────────────────
-// Faculty can re-enable IQAC submission for an organizer who missed the 7-day window
-// Body: { extendedBy: string (faculty name) }
-router.patch('/:id/extend-iqac-window', async (req, res) => {
+// ── PATCH /api/events/:id/request-iqac-extension ─────────────────────────────
+// Organizer requests an extension for IQAC submission with a reason
+router.patch('/:id/request-iqac-extension', async (req, res) => {
   if (!checkDb(res)) return;
-
-  const { extendedBy } = req.body;
-  if (!extendedBy) {
-    return res.status(400).json({ success: false, message: 'extendedBy (faculty name) is required' });
+  const { reason, requestedBy } = req.body;
+  if (!reason || !requestedBy) {
+    return res.status(400).json({ success: false, message: 'Reason and requestedBy are required' });
   }
-
   try {
     const eventRef = doc(db, 'events', req.params.id);
     const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
 
-    if (!eventSnap.exists()) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
-    }
+    const iqacExtensionRequest = {
+      reason,
+      requestedBy,
+      requestedAt: new Date().toISOString(),
+      status: 'PENDING'
+    };
+    const updatePayload = { iqacExtensionRequest, updatedAt: new Date().toISOString() };
+    await updateDoc(eventRef, updatePayload);
+    return res.json({ success: true, message: 'IQAC extension requested successfully', event: { id: req.params.id, ...eventSnap.data(), ...updatePayload } });
+  } catch (error) {
+    console.error('[events/request-iqac-extension] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to request extension', error: error.message });
+  }
+});
+
+// ── PATCH /api/events/:id/approve-iqac-extension ─────────────────────────────
+// HOD approves an IQAC extension request with a specific end date
+router.patch('/:id/approve-iqac-extension', async (req, res) => {
+  if (!checkDb(res)) return;
+  const { endDate, approvedBy } = req.body;
+  if (!endDate || !approvedBy) {
+    return res.status(400).json({ success: false, message: 'End date and approvedBy (HOD name) are required' });
+  }
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+
+    const eventData = eventSnap.data();
+    const updatePayload = {
+      iqacWindowExtended: true,
+      iqacWindowExtendedAt: new Date().toISOString(),
+      iqacWindowExtendedBy: approvedBy,
+      iqacExtensionEndDate: endDate,
+      'iqacExtensionRequest.status': 'APPROVED',
+      updatedAt: new Date().toISOString()
+    };
+    await updateDoc(eventRef, updatePayload);
+    return res.json({ success: true, message: 'IQAC extension approved successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
+  } catch (error) {
+    console.error('[events/approve-iqac-extension] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to approve extension', error: error.message });
+  }
+});
+
+// ── PATCH /api/events/:id/extend-iqac-window ─────────────────────────────
+// (Existing) Legacy/Faculty-only quick extension (grants 2 extra days from now)
+router.patch('/:id/extend-iqac-window', async (req, res) => {
+  if (!checkDb(res)) return;
+  const { extendedBy } = req.body;
+  if (!extendedBy) return res.status(400).json({ success: false, message: 'extendedBy is required' });
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+
+    // Legacy logic: 2 days from now
+    const twoDaysFromNow = new Date();
+    twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
 
     const updatePayload = {
       iqacWindowExtended: true,
       iqacWindowExtendedBy: extendedBy,
       iqacWindowExtendedAt: new Date().toISOString(),
+      iqacExtensionEndDate: twoDaysFromNow.toISOString().split('T')[0],
       updatedAt: new Date().toISOString(),
     };
-
     await updateDoc(eventRef, updatePayload);
-
-    return res.json({
-      success: true,
-      message: 'IQAC submission window extended successfully',
-      event: { id: req.params.id, ...eventSnap.data(), ...updatePayload },
-    });
+    return res.json({ success: true, message: 'IQAC window extended successfully', event: { id: req.params.id, ...eventSnap.data(), ...updatePayload } });
   } catch (error) {
     console.error('[events/extend-iqac-window] Error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to extend IQAC window', error: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to extend window', error: error.message });
   }
 });
 

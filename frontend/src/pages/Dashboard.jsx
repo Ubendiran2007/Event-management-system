@@ -139,6 +139,106 @@ const IQACExtendWidget = ({ events, facultyName }) => {
   );
 };
 
+// ── IQACExtensionApprovalWidget ─────────────────────────────────────────────
+// HOD-only sidebar widget to review and approve IQAC extension requests
+const IQACExtensionApprovalWidget = ({ events, hodName }) => {
+  const [open, setOpen] = useState(true);
+  const [processingId, setProcessingId] = useState(null);
+  const [selectedDates, setSelectedDates] = useState({});
+
+  const handleApprove = async (eventId) => {
+    const endDate = selectedDates[eventId];
+    if (!endDate) {
+      alert("Please select an extension end date.");
+      return;
+    }
+    setProcessingId(eventId);
+    try {
+      const res = await fetch(`http://localhost:5001/api/events/${eventId}/approve-iqac-extension`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endDate, approvedBy: hodName }),
+      });
+      if (!res.ok) throw new Error('Action failed');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 flex flex-col overflow-hidden max-h-[600px] shadow-sm">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 p-4 hover:bg-indigo-100/50 transition-all group text-left shrink-0"
+      >
+        <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20 transition-all shrink-0">
+          <Clock3 size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-slate-900">IQAC Extension Requests</p>
+          <p className="text-xs text-indigo-600 font-bold uppercase tracking-tight">{events.length} Pending Approval</p>
+        </div>
+        <ChevronDown size={18} className={`text-indigo-400 group-hover:text-indigo-600 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="p-4 pt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-indigo-200 space-y-4">
+          {events.length === 0 ? (
+            <div className="py-8 text-center bg-white/50 rounded-xl border border-dashed border-indigo-200">
+               <CheckCircle2 size={24} className="mx-auto text-indigo-400 mb-2" />
+               <p className="text-xs text-indigo-600 font-bold uppercase">No pending requests</p>
+            </div>
+          ) : (
+            events.map(ev => {
+              const req = ev.iqacExtensionRequest;
+              return (
+                <div key={ev.id} className="bg-white rounded-xl p-4 border border-indigo-100 shadow-sm flex flex-col gap-3 relative transition-all hover:border-indigo-300">
+                  <div className="space-y-1">
+                    <p className="text-sm font-extrabold text-slate-800 line-clamp-1">{ev.title}</p>
+                    <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-500">
+                       <User size={10} /> {req?.requestedBy || 'Organizer'}
+                    </div>
+                  </div>
+
+                  <div className="bg-indigo-50/70 p-2.5 rounded-lg border border-indigo-100/50">
+                    <p className="text-[11px] font-bold text-indigo-900 mb-1 flex items-center gap-1.5 uppercase tracking-tighter">
+                       <Info size={10} /> Reason for Extension
+                    </p>
+                    <p className="text-xs text-indigo-800 italic leading-snug">" {req?.reason} "</p>
+                  </div>
+
+                  <div className="space-y-2 mt-1">
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block px-1">Grant Extension Until:</label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="date"
+                        min={new Date().toISOString().split('T')[0]}
+                        value={selectedDates[ev.id] || ''}
+                        onChange={(e) => setSelectedDates(prev => ({ ...prev, [ev.id]: e.target.value }))}
+                        className="flex-1 text-xs p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                      <button
+                        onClick={() => handleApprove(ev.id)}
+                        disabled={processingId === ev.id}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-indigo-600/10 active:scale-95"
+                      >
+                        {processingId === ev.id ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={14} />}
+                        Approve
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 const Dashboard = () => {
   const {
@@ -1765,15 +1865,28 @@ const Dashboard = () => {
                   </div>
                 )}
 
-                {/* 4. Extend IQAC Window — Faculty only, for events past the 7-day limit */}
+                {/* 4. Extend IQAC Window — Context-aware approval or simple extension */}
+                {currentUser.role === UserRole.HOD && (() => {
+                  const pendingExtensions = events.filter(ev => ev.iqacExtensionRequest?.status === 'PENDING');
+                  if (pendingExtensions.length === 0) return null;
+                  return (
+                    <IQACExtensionApprovalWidget
+                      events={pendingExtensions}
+                      hodName={currentUser.name}
+                    />
+                  );
+                })()}
+
                 {currentUser.role === UserRole.FACULTY && (() => {
                   const now = Date.now();
                   const eligibleForExtension = events.filter(ev => {
                     if (ev.status !== EventStatus.POSTED && ev.status !== EventStatus.COMPLETED) return false;
                     if (ev.iqacWindowExtended) {
                       if (!ev.iqacWindowExtendedAt) return false; // Legacy events without timestamp
-                      const extEnd = new Date(ev.iqacWindowExtendedAt).getTime() + (2 * 24 * 60 * 60 * 1000);
-                      if (now <= extEnd) return false; // Still within the active 2-day extension
+                      const extEnd = ev.iqacExtensionEndDate 
+                         ? new Date(ev.iqacExtensionEndDate).getTime() + (24 * 60 * 60 * 1000) // inclusive
+                         : new Date(ev.iqacWindowExtendedAt).getTime() + (2 * 24 * 60 * 60 * 1000);
+                      if (now <= extEnd) return false; // Still within the active extension
                     }
                     if (ev.iqacSubmittedAt) return false; // already submitted
                     const eventDate = ev.date || ev.requisition?.step1?.eventStartDate;

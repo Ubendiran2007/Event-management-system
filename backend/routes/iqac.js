@@ -229,6 +229,8 @@ router.post('/:eventId', async (req, res) => {
         designation: rp?.designation || '',
         organization: rp?.organization || '',
         expertise: rp?.expertise || '',
+        topicsByDay: rp?.topicsByDay || [],
+        rating: rp?.rating || 5,
         bio: rp?.bio || '',
         email: rp?.email || '',
         phone: rp?.phone || '',

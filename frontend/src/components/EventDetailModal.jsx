@@ -4,7 +4,7 @@ import {
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
   Star, AlertTriangle, Clock3,
-  XCircle, Loader2, XCircle as XCircleIcon, ClipboardList
+  XCircle, Loader2, XCircle as XCircleIcon, ClipboardList, Eye
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -76,10 +76,12 @@ const EventDetailModal = ({ event, onClose }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [extensionReason, setExtensionReason] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [posterUploadError, setPosterUploadError] = useState('');
   const [posterUploadSuccess, setPosterUploadSuccess] = useState('');
+  const [isRequestingExtension, setIsRequestingExtension] = useState(false);
   const fileInputRef = useRef(null);
 
   if (!event) return null;
@@ -112,20 +114,43 @@ const EventDetailModal = ({ event, onClose }) => {
     const now = new Date();
 
     if (now < eventEnd) return { eligible: false, reason: 'not-started' }; // event not over yet
-    if (now <= windowEnd) return { eligible: true, reason: 'in-window', daysLeft: Math.ceil((windowEnd - now) / (1000 * 60 * 60 * 24)) };
-    if (event.iqacWindowExtended && event.iqacWindowExtendedAt) {
-      const extDate = new Date(event.iqacWindowExtendedAt);
-      const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
-      const extWindowEnd = new Date(extDate.getTime() + twoDaysMs);
-      if (now <= extWindowEnd) {
-        return { eligible: true, reason: 'extended', extendedBy: event.iqacWindowExtendedBy, daysLeft: Math.ceil((extWindowEnd - now) / (1000 * 60 * 60 * 24)) };
+    
+    // 1. Check if we have a HOD-approved end date
+    if (event.iqacWindowExtended && event.iqacExtensionEndDate) {
+      const extEndStr = event.iqacExtensionEndDate;
+      const [exy, exm, exd] = extEndStr.split('-').map(Number);
+      const extEnd = new Date(exy, exm - 1, exd, 23, 59, 59); // inclusive of end date
+      if (now <= extEnd) {
+        return { 
+          eligible: true, 
+          reason: 'extended', 
+          extendedBy: event.iqacWindowExtendedBy, 
+          daysLeft: Math.ceil((extEnd - now) / (1000 * 60 * 60 * 24)) 
+        };
       }
     }
-    // Backward compatibility for old extensions without a timestamp or if the 2-day window expired
-    if (event.iqacWindowExtended && !event.iqacWindowExtendedAt) {
-        return { eligible: true, reason: 'extended', extendedBy: event.iqacWindowExtendedBy };
+
+    // 2. Check standard 7-day window
+    if (now <= windowEnd) return { eligible: true, reason: 'in-window', daysLeft: Math.ceil((windowEnd - now) / (1000 * 60 * 60 * 24)) };
+
+    // 3. Fallback for legacy extensions (those without explicit end date but have extended flag)
+    if (event.iqacWindowExtended && !event.iqacExtensionEndDate) {
+        // Assume 2 days from when it was extended if available, otherwise just grant access
+        if (event.iqacWindowExtendedAt) {
+           const extAt = new Date(event.iqacWindowExtendedAt);
+           const extLimit = new Date(extAt.getTime() + (2 * 1440 * 60 * 1000));
+           if (now <= extLimit) return { eligible: true, reason: 'extended', extendedBy: event.iqacWindowExtendedBy };
+        } else {
+           return { eligible: true, reason: 'extended', extendedBy: event.iqacWindowExtendedBy };
+        }
     }
-    return { eligible: false, reason: 'expired', extendedBy: null };
+
+    // 4. Check for pending request
+    if (event.iqacExtensionRequest?.status === 'PENDING') {
+      return { eligible: false, reason: 'requested', request: event.iqacExtensionRequest };
+    }
+
+    return { eligible: false, reason: 'expired' };
   };
 
   const iqacStatus = getIqacSubmissionStatus();
@@ -210,6 +235,39 @@ const EventDetailModal = ({ event, onClose }) => {
       setPosterUploadError(err.message || 'An error occurred during upload.');
     } finally {
       setIsUploadingPoster(false);
+    }
+  };
+
+  const handleRequestExtension = async () => {
+    if (!extensionReason.trim()) {
+      setApprovalError('Please provide a reason for the extension.');
+      return;
+    }
+
+    setIsRequestingExtension(true);
+    setApprovalError('');
+    try {
+      const res = await fetch(`http://localhost:5001/api/events/${event.id}/request-iqac-extension`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          reason: extensionReason,
+          requestedBy: currentUser.name
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to request extension');
+      
+      const data = await res.json();
+      if (data.success) {
+        setPosterUploadSuccess('Extension request sent to HOD.');
+        setTimeout(() => { onClose(); }, 1500);
+      }
+    } catch (err) {
+      console.error(err);
+      setApprovalError(err.message || 'Error requesting extension');
+    } finally {
+      setIsRequestingExtension(false);
     }
   };
 
@@ -471,8 +529,8 @@ const EventDetailModal = ({ event, onClose }) => {
                 </div>
               </div>
 
-              {/* Detailed Timeline — for organizer view only */}
-              {event.organizerId === currentUser.id && (
+              {/* Detailed Timeline — visible to organizers, staff, or everyone once posted */}
+              {(event.organizerId === currentUser.id || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.HOD || [EventStatus.POSTED, EventStatus.COMPLETED].includes(event.status)) && (
                 <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline Details</p>
                   {[
@@ -534,9 +592,12 @@ const EventDetailModal = ({ event, onClose }) => {
 
                   <div className={`flex items-center gap-3 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-blue-700' : event.status === EventStatus.PENDING_IQAC ? 'text-amber-600' : 'text-slate-300'}`}>
                     <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-blue-500' : event.status === EventStatus.PENDING_IQAC ? 'bg-amber-400 animate-pulse' : 'bg-slate-200'}`} />
-                    <span className="font-bold">IQAC / Posting</span>
+                    <span className="font-bold min-w-[60px]">IQAC / Posting</span>
                     {['APPROVED','POSTED','COMPLETED'].includes(event.status)
-                      ? <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Finalized & Posted</span>
+                      ? <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                          Finalized & Posted {event.iqacApprovedAt ? ` · ${new Date(event.iqacApprovedAt).toLocaleString()}` : ''}
+                          {event.iqacApprovedBy ? ` · ${event.iqacApprovedBy}` : ''}
+                        </span>
                       : event.status === EventStatus.PENDING_IQAC ? <span className="italic">Reviewing...</span> : <span className="text-[10px]">Waiting</span>}
                   </div>
                 </div>
@@ -1184,21 +1245,50 @@ const EventDetailModal = ({ event, onClose }) => {
                     <p className="text-sm font-bold text-slate-900 uppercase">Uploaded Evidence</p>
                     <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-inner">
                       <table className="min-w-full text-xs">
-                        <tbody className="divide-y divide-slate-50">
-                          {(event.iqacData?.checklist || []).map((item, idx) => (
+                        <tbody>
+                          {(event.iqacData?.checklist || []).filter(item => item.status !== 'pending').map((item, idx) => (
                             <tr key={idx} className="hover:bg-slate-50 transition-colors">
                               <td className="px-3 py-2 text-slate-600 font-medium">{item.requirement}</td>
                               <td className="px-3 py-2 text-right">
                                 {item.file?.dataUrl ? (
-                                  <a
-                                    href={item.file.dataUrl}
-                                    download={item.file.fileName}
-                                    className="text-cse-accent hover:underline font-bold"
-                                  >
-                                    Download
-                                  </a>
+                                  <div className="flex items-center justify-end gap-3">
+                                    <button
+                                      onClick={() => {
+                                        const win = window.open();
+                                        win.document.write('<iframe src="' + item.file.dataUrl  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                      }}
+                                      title="View Document"
+                                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                                    >
+                                      <Eye size={16} />
+                                    </button>
+                                    <a
+                                      href={item.file.dataUrl}
+                                      download={item.file.fileName}
+                                      className="text-cse-accent hover:underline font-bold"
+                                    >
+                                      Download
+                                    </a>
+                                  </div>
                                 ) : item.autoGenerated ? (
-                                  <span className="text-slate-400 italic font-medium">Auto-gen</span>
+                                  <div className="flex items-center justify-end gap-3">
+                                    <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold">Uploaded</span>
+                                    <button
+                                      onClick={() => {
+                                        if (item.requirement?.toLowerCase().includes('brochure') && (event.posterDataUrl || event.posterUrl)) {
+                                          const url = event.posterDataUrl || event.posterUrl;
+                                          const win = window.open();
+                                          win.document.write('<iframe src="' + url  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                                        } else {
+                                          alert("System-generated " + item.requirement + " can be viewed and downloaded using the IQAC Export tools in the main Explore view.");
+                                        }
+                                      }}
+                                      className="text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-blue-50 transition-all shadow-sm border border-blue-100"
+                                      title="View"
+                                    >
+                                      <Eye size={14} />
+                                    </button>
+                                  </div>
                                 ) : (
                                   <span className="text-red-400 font-medium">—</span>
                                 )}
@@ -1275,7 +1365,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     )}
                     <p className="text-xs text-slate-500 font-medium">
                       {iqacStatus.reason === 'extended'
-                        ? `Extension granted by ${iqacStatus.extendedBy || 'Faculty'}. Submit your IQAC documentation below.`
+                        ? `Extension granted by ${iqacStatus.extendedBy || 'Faculty'}${event.iqacExtensionEndDate ? ` until ${new Date(event.iqacExtensionEndDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}. Submit your IQAC documentation below.`
                         : `${iqacStatus.daysLeft} day${iqacStatus.daysLeft !== 1 ? 's' : ''} remaining to complete your IQAC documentation.`
                       }
                     </p>
@@ -1287,14 +1377,55 @@ const EventDetailModal = ({ event, onClose }) => {
                     <FileCheck size={16} /> Submit IQAC Report
                   </button>
                 </div>
-              ) : iqacStatus.reason === 'expired' ? (
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+              ) : iqacStatus.reason === 'requested' ? (
+                <div className="flex items-start gap-4 p-4 rounded-2xl bg-indigo-50 border border-indigo-200 shadow-sm transition-all animate-in fade-in slide-in-from-bottom-2">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <Clock size={20} />
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-amber-900">IQAC Submission Window Closed</p>
-                    <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                      The 7-day submission window has passed. Contact your faculty coordinator to request an IQAC window extension.
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-bold text-indigo-900">IQAC Extension Requested</p>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-200 text-indigo-800 text-[10px] font-extrabold uppercase tracking-tighter">Pending HOD Approval</span>
+                    </div>
+                    <p className="text-xs text-indigo-700 leading-relaxed bg-white/50 p-2 rounded-lg border border-indigo-100 italic">
+                      " {iqacStatus.request?.reason} "
                     </p>
+                    <p className="text-[10px] text-indigo-500 mt-2 font-medium">Requested {new Date(iqacStatus.request?.requestedAt).toLocaleString()}</p>
+                  </div>
+                </div>
+              ) : iqacStatus.reason === 'expired' ? (
+                <div className="flex flex-col gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-500 shrink-0">
+                      <AlertTriangle size={22} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-base font-bold text-amber-900">IQAC Submission Window Closed</p>
+                      <p className="text-xs text-amber-700 mt-0.5 leading-relaxed font-medium">
+                        The 7-day submission window has passed. You must request a formal extension from the HOD to complete the documentation.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-3 mt-1 bg-white/40 p-4 rounded-xl border border-amber-100">
+                    <label className="text-[11px] font-bold text-amber-900 uppercase tracking-widest pl-1">Reason for Extension</label>
+                    <textarea 
+                      placeholder="Explain why the documentation was delayed (e.g. pending photo collection, guest details delay...)"
+                      value={extensionReason}
+                      onChange={(e) => setExtensionReason(e.target.value)}
+                      className="w-full text-sm p-3 rounded-xl border border-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500/20 bg-white min-h-[80px]"
+                    />
+                    <div className="flex justify-end gap-3 mt-1">
+                      {approvalError && <span className="text-xs text-red-600 font-bold flex-1 flex items-center">{approvalError}</span>}
+                      <button
+                        onClick={handleRequestExtension}
+                        disabled={isRequestingExtension}
+                        className="px-6 py-2.5 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition-all shadow-md shadow-amber-900/20 active:scale-95 flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {isRequestingExtension ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                        Send Request to HOD
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : null}
