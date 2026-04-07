@@ -1152,10 +1152,10 @@ const ExploreEvents = () => {
 
   const getEventStatus = (event) => {
     const now = Date.now();
-    const startDateStr = event?.requisition?.step1?.eventStartDate;
-    const startTimeStr = event?.requisition?.step1?.eventStartTime || '00:00';
-    const endDateStr = event?.requisition?.step1?.eventEndDate;
-    const endTimeStr = event?.requisition?.step1?.eventEndTime || '23:59';
+    const startDateStr = event?.requisition?.step1?.eventStartDate || event?.date;
+    const startTimeStr = event?.requisition?.step1?.eventStartTime || event?.startTime || '00:00';
+    const endDateStr = event?.requisition?.step1?.eventEndDate || event?.date;
+    const endTimeStr = event?.requisition?.step1?.eventEndTime || event?.endTime || '23:59';
 
     if (!startDateStr || !endDateStr) return 'upcoming';
 

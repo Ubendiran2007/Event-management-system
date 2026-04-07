@@ -423,16 +423,23 @@ const Dashboard = () => {
       if (alreadyRegistered) return false;
 
       // 4. Avoid ongoing and completed events (check date)
-      if (!ev.date) return false;
+      const startDateStr = ev.requisition?.step1?.eventStartDate || ev.date;
+      const startTimeStr = ev.requisition?.step1?.eventStartTime || ev.startTime || '00:00';
+      
+      if (!startDateStr) return false;
 
       try {
-        const evDate = new Date(`${ev.date} ${ev.startTime || '00:00'}`);
+        const sDP = startDateStr.split('-');
+        const sTP = startTimeStr.split(':');
+        // Month is 0-indexed in JS Date
+        const startTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+        
         // If now is past or equal the event start time, it's considered ongoing/starting
-        if (now >= evDate) return false;
+        if (now.getTime() >= startTimestamp) return false;
       } catch {
         // Fallback to simple date string comparison if date object fails
         const today = new Date().toISOString().split('T')[0];
-        if (ev.date < today) return false;
+        if (startDateStr < today) return false;
       }
 
       return true;

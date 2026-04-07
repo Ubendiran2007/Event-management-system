@@ -632,6 +632,31 @@ router.post('/:id/register', async (req, res) => {
     }
 
     const eventData = eventSnap.data();
+
+    if (eventData.status !== 'POSTED') {
+      return res.status(400).json({ success: false, message: 'Cannot register for an event that is not approved and posted.' });
+    }
+
+    const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
+    const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
+    
+    if (startDateStr) {
+      try {
+        const sDP = startDateStr.split('-');
+        const sTP = startTimeStr.split(':');
+        const startTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+        
+        if (Date.now() >= startTimestamp) {
+          return res.status(400).json({ success: false, message: 'Registration is closed. This event is already ongoing or completed.' });
+        }
+      } catch (err) {
+        const today = new Date().toISOString().split('T')[0];
+        if (startDateStr < today) {
+          return res.status(400).json({ success: false, message: 'Registration is closed. This event is already ongoing or completed.' });
+        }
+      }
+    }
+
     const registeredStudents = eventData.registeredStudents || [];
 
     // Prevent duplicate registration
