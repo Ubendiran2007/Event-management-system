@@ -165,6 +165,12 @@ const IQACSubmission = () => {
       technical: '',
       industry: ''
     },
+    collaboration: {
+      onlineResource: '',
+      collaborators: '',
+      conductedThroughMou: '',
+      mouName: '',
+    },
     socialMedia: {
       website: '',
       social: ''
@@ -179,6 +185,13 @@ const IQACSubmission = () => {
       total: '',
       fundingSupport: '',
       agency: ''
+    },
+    iicDetails: {
+      thrustArea: '',
+      drivenBy: '',
+      quarter: '',
+      eventLevel: '',
+      eventTheme: '',
     }
   });
 
@@ -222,7 +235,6 @@ const IQACSubmission = () => {
           const savedStudentAttendance = iqacData?.registration?.attendance?.studentAttendanceList || [];
 
           setAutoAttendanceStats(attendanceStats);
-          setAutoFeedbackSummary(feedbackSummary);
 
           // Populate saved data if exists
           if (iqacData) {
@@ -321,39 +333,8 @@ const IQACSubmission = () => {
     fetchODStats();
   }, [currentUser, selectedEvent, navigate]);
 
-  // Effect to fetch student feedbacks into Guest Feedback section
-  useEffect(() => {
-    if (!selectedEvent || !odRequests.length) return;
-
-    // Only auto-fetch if we haven't already or if we want to refresh
-    const studentFeedbacks = odRequests
-      .filter(r => r.eventId === selectedEvent.id && (r.feedback || r.studentFeedback))
-      .map(r => {
-        // Handle both old and new feedback formats
-        const rawFeedback = r.feedback || r.studentFeedback;
-        const comment = typeof rawFeedback === 'object' ? rawFeedback.comment : rawFeedback;
-
-        return {
-          id: `auto-${r.id}`,
-          name: r.studentName || 'Student',
-          designation: 'Participant (Student)',
-          organization: r.class || r.department || 'Internal',
-          feedback: comment || 'No comments provided',
-          isAutoFetched: true
-        };
-      });
-
-    if (studentFeedbacks.length > 0) {
-      setGuestFeedback(prev => {
-        // Keep manual entries, but refresh auto-fetched ones
-        const manual = prev.filter(f => !f.isAutoFetched);
-        // Avoid adding the same IDs again
-        const next = [...manual, ...studentFeedbacks];
-        // Deduplicate by ID
-        return Array.from(new Map(next.map(item => [item.id, item])).values());
-      });
-    }
-  }, [selectedEvent, odRequests]);
+  // Note: Student feedback + guest feedback tables should only be populated via CSV upload
+  // (or previously saved IQAC submission), not auto-fetched from OD requests.
 
   const eligibleForIQAC = useMemo(() => {
     if (!selectedEvent) return false;
@@ -742,10 +723,52 @@ const IQACSubmission = () => {
     setGuestFeedback((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const getOverallAttendanceStatus = (row) => {
+    const n = selectedEvent?.requisition?.step1?.numberOfDays || 1;
+    const dayKeys = [];
+    for (let d = 1; d <= n; d++) dayKeys.push(`day${d}`);
+
+    const dayVals = dayKeys
+      .map((k) => row?.[k])
+      .filter((v) => v === 'ATTENDED' || v === 'FN' || v === 'AN' || v === 'NOT_ATTENDED');
+
+    // If we don't have day-wise records, respect any explicit overall status
+    if (dayVals.length === 0) {
+      const raw = String(row?.attendanceStatus || '').toUpperCase();
+      if (raw === 'NOT_ATTENDED' || raw === 'FN' || raw === 'AN' || raw === 'ATTENDED') return raw;
+      return 'ATTENDED';
+    }
+
+    const score = dayVals.reduce((sum, v) => {
+      if (v === 'ATTENDED') return sum + 1;
+      if (v === 'FN' || v === 'AN') return sum + 0.5;
+      return sum + 0;
+    }, 0);
+    const avg = dayVals.length > 0 ? score / dayVals.length : 0;
+
+    if (avg === 0) return 'NOT_ATTENDED';
+    if (avg === 1) return 'ATTENDED';
+
+    // Half-day special cases
+    if (avg === 0.5) {
+      const hasFN = dayVals.includes('FN');
+      const hasAN = dayVals.includes('AN');
+      if (hasFN && !hasAN) return 'FN';
+      if (hasAN && !hasFN) return 'AN';
+    }
+
+    // Mixed values → treat as attended for reporting
+    return 'ATTENDED';
+  };
+
   const updateStudentAttendanceStatus = (rowId, dayField, attendanceStatus) => {
     setStudentAttendanceRoster((prev) => prev.map((row) => (
       row.id === rowId
-        ? { ...row, [dayField]: attendanceStatus }
+        ? (() => {
+            const next = { ...row, [dayField]: attendanceStatus };
+            next.attendanceStatus = getOverallAttendanceStatus(next);
+            return next;
+          })()
         : row
     )));
   };
@@ -841,7 +864,7 @@ const IQACSubmission = () => {
             requestId: row.requestId || '',
             student: row.student || '',
             rollNo: row.rollNo || '',
-            attendanceStatus: row.attendanceStatus,
+            attendanceStatus: getOverallAttendanceStatus(row),
             ...Object.fromEntries(Object.keys(row).filter(k => k.startsWith('day')).map(k => [k, row[k]]))
           })),
           periodStart: registrationDetails.periodStart,
@@ -1194,6 +1217,72 @@ const IQACSubmission = () => {
             </div>
           </div>
 
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <h3 className="text-sm font-bold text-slate-900 mb-3">Online Resource, Collaborators &amp; MoU</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">Online Resource (Online / Hybrid)</label>
+                <input
+                  type="url"
+                  inputMode="url"
+                  autoComplete="url"
+                  value={reportDetails.collaboration?.onlineResource || ''}
+                  onChange={(e) => setReportDetails(p => ({
+                    ...p,
+                    collaboration: { ...(p.collaboration || {}), onlineResource: e.target.value }
+                  }))}
+                  placeholder="https://meet.google.com/... or https://zoom.us/..."
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">Collaborators / Industry Partners</label>
+                <input
+                  type="text"
+                  value={reportDetails.collaboration?.collaborators || ''}
+                  onChange={(e) => setReportDetails(p => ({
+                    ...p,
+                    collaboration: { ...(p.collaboration || {}), collaborators: e.target.value }
+                  }))}
+                  placeholder="e.g., XYZ Pvt Ltd, IEEE, ..."
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">Conducted through MoU?</label>
+                <select
+                  value={reportDetails.collaboration?.conductedThroughMou || ''}
+                  onChange={(e) => setReportDetails(p => ({
+                    ...p,
+                    collaboration: { ...(p.collaboration || {}), conductedThroughMou: e.target.value }
+                  }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Select</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700">MoU Name (if Yes)</label>
+                <input
+                  type="text"
+                  value={reportDetails.collaboration?.mouName || ''}
+                  onChange={(e) => setReportDetails(p => ({
+                    ...p,
+                    collaboration: { ...(p.collaboration || {}), mouName: e.target.value }
+                  }))}
+                  placeholder="Enter MoU name"
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                  disabled={isSubmitting || (reportDetails.collaboration?.conductedThroughMou || '') !== 'Yes'}
+                />
+              </div>
+            </div>
+          </div>
+
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Registered</p>
@@ -1474,26 +1563,91 @@ const IQACSubmission = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <div>
-                <label className="text-sm font-bold text-slate-700">Website Coverage Link</label>
+                <label className="text-sm font-bold text-slate-700">LinkedIn Coverage Link</label>
                 <input
-                  type="text"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="url"
                   value={reportDetails.socialMedia.website || ''}
                   onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, website: e.target.value } }))}
-                  placeholder="https://collegewebsite.edu/blog/..."
+                  placeholder="https://www.linkedin.com/posts/..."
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
                 />
               </div>
               <div>
-                <label className="text-sm font-bold text-slate-700">Social Media URL</label>
+                <label className="text-sm font-bold text-slate-700">Instagram Post URL</label>
                 <input
-                  type="text"
+                  type="url"
+                  inputMode="url"
+                  autoComplete="url"
                   value={reportDetails.socialMedia.social || ''}
                   onChange={(e) => setReportDetails(p => ({ ...p, socialMedia: { ...p.socialMedia, social: e.target.value } }))}
-                  placeholder="Instagram/LinkedIn post link..."
+                  placeholder="https://www.instagram.com/p/..."
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
                 />
               </div>
             </div>
+
+            {selectedEvent?.requisition?.step1?.isIIC === 'Yes' && (
+              <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900 mb-1">IIC Details</h3>
+                <p className="text-xs text-slate-500 mb-4">Fill this if the event belongs to IIC. Used in the generated report.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Thrust area</label>
+                    <input
+                      type="text"
+                      value={reportDetails.iicDetails?.thrustArea || ''}
+                      onChange={(e) => setReportDetails(p => ({ ...p, iicDetails: { ...(p.iicDetails || {}), thrustArea: e.target.value } }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Activity / Event driven by</label>
+                    <input
+                      type="text"
+                      value={reportDetails.iicDetails?.drivenBy || ''}
+                      onChange={(e) => setReportDetails(p => ({ ...p, iicDetails: { ...(p.iicDetails || {}), drivenBy: e.target.value } }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Quarter</label>
+                    <input
+                      type="text"
+                      value={reportDetails.iicDetails?.quarter || ''}
+                      onChange={(e) => setReportDetails(p => ({ ...p, iicDetails: { ...(p.iicDetails || {}), quarter: e.target.value } }))}
+                      placeholder="e.g., Q1 / Q2 / Q3 / Q4"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Event Level</label>
+                    <input
+                      type="text"
+                      value={reportDetails.iicDetails?.eventLevel || ''}
+                      onChange={(e) => setReportDetails(p => ({ ...p, iicDetails: { ...(p.iicDetails || {}), eventLevel: e.target.value } }))}
+                      placeholder="e.g., Institute / State / National"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-semibold text-slate-700">Event Theme</label>
+                    <input
+                      type="text"
+                      value={reportDetails.iicDetails?.eventTheme || ''}
+                      onChange={(e) => setReportDetails(p => ({ ...p, iicDetails: { ...(p.iicDetails || {}), eventTheme: e.target.value } }))}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

@@ -136,6 +136,10 @@ const IQACSummaryModal = ({ event, onClose }) => {
   const totalAttended    = Number(att.total)        || (studentsAttended + facultyAttended + externalAttended);
   const attendancePct    = totalRegistered > 0 ? Math.round((totalAttended / totalRegistered) * 100) : 0;
 
+  const rd = iqac.reportDetails || {};
+  const rdObjectives = Array.isArray(rd?.objectives) ? rd.objectives.filter(o => String(o || '').trim()) : [];
+  const rdOutcomes = Array.isArray(rd?.outcomes) ? rd.outcomes.filter(o => String(o || '').trim()) : [];
+
   const submittedOn = event.iqacSubmittedAt
     ? new Date(event.iqacSubmittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
     : null;
@@ -183,13 +187,19 @@ const IQACSummaryModal = ({ event, onClose }) => {
   </body></html>`;
 
   const downloadAttendanceExcel = () => {
+    const statusCode = (raw) => {
+      const s = String(raw || '').toUpperCase();
+      if (s === 'NOT_ATTENDED') return 'A';
+      if (s === 'FN') return 'FN';
+      if (s === 'AN') return 'AN';
+      return 'P';
+    };
     const rows = studentRoster.length > 0
       ? studentRoster.map((r, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
           <td style='${tdStyle}'>${r.student || r.studentName || '—'}</td>
           <td style='${tdStyle}'>${r.rollNo || '—'}</td>
-          <td style='${tdStyle}color:${r.attendanceStatus === 'NOT_ATTENDED' ? '#c00' : '#007a00'};font-weight:bold'>
-            ${r.attendanceStatus === 'NOT_ATTENDED' ? 'Absent' : 'Present'}</td>
+          <td style='${tdStyle}font-weight:bold'>${statusCode(r.attendanceStatus)}</td>
         </tr>`).join('')
       : `<tr><td colspan='4' style='${tdStyle}text-align:center;color:#888'>No attendance data recorded</td></tr>`;
 
@@ -198,7 +208,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
         <th style='${thStyle}'>#</th>
         <th style='${thStyle}'>Student Name</th>
         <th style='${thStyle}'>Roll No</th>
-        <th style='${thStyle}'>Attendance</th>
+        <th style='${thStyle}'>Status (P/FN/AN/A)</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -351,10 +361,17 @@ const IQACSummaryModal = ({ event, onClose }) => {
   };
 
   const getAttendanceHTML = () => {
+    const statusCode = (raw) => {
+      const s = String(raw || '').toUpperCase();
+      if (s === 'NOT_ATTENDED') return 'A';
+      if (s === 'FN') return 'FN';
+      if (s === 'AN') return 'AN';
+      return 'P';
+    };
     const rows = studentRoster.length > 0
       ? studentRoster.map((r, i) => `<tr>
           <td>${i+1}</td><td>${r.student||'—'}</td><td>${r.rollNo||'—'}</td>
-          <td style="color:${r.attendanceStatus==='NOT_ATTENDED'?'#c00':'#007a00'};font-weight:bold">${r.attendanceStatus==='NOT_ATTENDED'?'Absent':'Present'}</td>
+          <td style="font-weight:bold">${statusCode(r.attendanceStatus)}</td>
         </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">No attendance records found.</td></tr>';
 
@@ -368,7 +385,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     </style></head><body>
       <h2>Attendance Sheet - ${event.title}</h2>
       <p style="font-size:12px;color:#666;">Generated on ${new Date().toLocaleDateString()}</p>
-      <table><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th>Status (P/FN/AN/A)</th></tr></thead><tbody>${rows}</tbody></table>
     </body></html>`;
   };
 
@@ -442,8 +459,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     const attRows = studentRoster.length > 0
       ? studentRoster.map((r, i) => `<tr>
           <td>${i+1}</td><td>${r.student||'—'}</td><td>${r.rollNo||'—'}</td>
-          <td style="color:${r.attendanceStatus==='NOT_ATTENDED'?'#c00':'#007a00'};font-weight:bold">
-          ${r.attendanceStatus==='NOT_ATTENDED'?'Absent':'Present'}</td>
+          <td style="font-weight:bold">${(['FN','AN'].includes(String(r.attendanceStatus||'').toUpperCase()) ? String(r.attendanceStatus).toUpperCase() : (String(r.attendanceStatus||'').toUpperCase()==='NOT_ATTENDED'?'A':'P'))}</td>
         </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888">No roster recorded</td></tr>';
 
@@ -567,7 +583,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       <div class="stat-row">
         <div class="stat-box"><div class="num">${totalRegistered}</div><div class="lbl">Registered</div></div>
         <div class="stat-box"><div class="num">${totalAttended}</div><div class="lbl">Attended</div></div>
-        <div class="stat-box"><div class="num">${Math.max(totalRegistered-totalAttended,0)}</div><div class="lbl">Absent</div></div>
+        <div class="stat-box"><div class="num">${Math.max(totalRegistered-totalAttended,0)}</div><div class="lbl">A</div></div>
         <div class="stat-box"><div class="num">${attendancePct}%</div><div class="lbl">Success Rate</div></div>
       </div>
       <table><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th>Status</th></tr></thead><tbody>${attRows}</tbody></table>
@@ -845,6 +861,154 @@ const IQACSummaryModal = ({ event, onClose }) => {
             </div>
           </SectionCard>
 
+          {/* ── Detailed Event Report Content (IQAC) ── */}
+          <SectionCard title="Detailed Event Report Content" icon={<ScrollText size={15} />} accent="indigo" className="lg:col-span-2">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Event Final Outcome</p>
+                <p className="text-sm font-semibold text-slate-800 mt-1 italic">
+                  {iqac.eventOutcome ? `"${iqac.eventOutcome}"` : '—'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-slate-100 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Event Objectives</p>
+                  {rdObjectives.length > 0 ? (
+                    <ul className="space-y-1.5 text-sm text-slate-700">
+                      {rdObjectives.map((obj, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="text-indigo-500 font-extrabold">{i + 1}.</span>
+                          <span className="flex-1">{obj}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">—</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-slate-100 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Event Outcomes</p>
+                  {rdOutcomes.length > 0 ? (
+                    <ul className="space-y-1.5 text-sm text-slate-700">
+                      {rdOutcomes.map((out, i) => (
+                        <li key={i} className="flex gap-2">
+                          <span className="text-indigo-500 font-extrabold">{i + 1}.</span>
+                          <span className="flex-1">{out}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">—</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-white p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Description of the Event</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                  {String(rd?.description || '').trim() || '—'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  ['Technical Skills Gained', rd?.benefits?.technical],
+                  ['Industry Benefits', rd?.benefits?.industry],
+                  ['SDG Goal', rd?.mapping?.sdg ? `Goal ${rd.mapping.sdg}` : '—'],
+                  ['Professional Societies', Array.isArray(rd?.mapping?.societies) && rd.mapping.societies.length ? rd.mapping.societies.join(', ') : '—'],
+                ].map(([label, val]) => (
+                  <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                    <p className="text-sm font-semibold text-slate-800 mt-0.5 break-words">{val || '—'}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  ['PO Mapping', rd?.mapping?.po],
+                  ['PSO Mapping', rd?.mapping?.pso],
+                  ['Total Expenditure (₹)', rd?.expenditure?.total],
+                  ['Funding Agency', rd?.expenditure?.agency],
+                ].map(([label, val]) => (
+                  <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                    <p className="text-sm font-semibold text-slate-800 mt-0.5 break-words">{String(val || '').trim() || '—'}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  ['Online Resource', rd?.collaboration?.onlineResource],
+                  ['Collaborators / Industry Partners', rd?.collaboration?.collaborators],
+                  ['Conducted through MoU?', rd?.collaboration?.conductedThroughMou],
+                  ['MoU Name', (rd?.collaboration?.conductedThroughMou === 'Yes' ? rd?.collaboration?.mouName : '')],
+                ].map(([label, val]) => (
+                  <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                    <p className="text-sm font-semibold text-slate-800 mt-0.5 break-words">{String(val || '').trim() || '—'}</p>
+                  </div>
+                ))}
+              </div>
+
+              {s1?.isIIC === 'Yes' && (
+                <div className="rounded-xl border border-slate-100 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">IIC Details</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {[
+                      ['Thrust area', rd?.iicDetails?.thrustArea],
+                      ['Driven by', rd?.iicDetails?.drivenBy],
+                      ['Quarter', rd?.iicDetails?.quarter],
+                      ['Event level', rd?.iicDetails?.eventLevel],
+                      ['Event theme', rd?.iicDetails?.eventTheme],
+                    ].map(([label, val]) => (
+                      <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                        <p className="text-sm font-semibold text-slate-800 mt-0.5 break-words">{String(val || '').trim() || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-100 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">LinkedIn Coverage Link</p>
+                  {String(rd?.socialMedia?.website || '').trim() ? (
+                    <a
+                      href={rd.socialMedia.website}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline break-all"
+                    >
+                      <ExternalLink size={14} /> {rd.socialMedia.website}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">—</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-white p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Instagram Post URL</p>
+                  {String(rd?.socialMedia?.social || '').trim() ? (
+                    <a
+                      href={rd.socialMedia.social}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline break-all"
+                    >
+                      <ExternalLink size={14} /> {rd.socialMedia.social}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-slate-400 italic">—</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
           {/* ── Brochure / Poster ── */}
           <SectionCard title="Event Brochure / Poster" icon={<Image size={15} />} accent="rose">
             {event.posterDataUrl || event.posterUrl ? (
@@ -982,10 +1146,10 @@ const IQACSummaryModal = ({ event, onClose }) => {
                             row.attendanceStatus === 'AN' ? 'bg-orange-50 text-orange-600' :
                             'bg-emerald-50 text-emerald-700'
                           }`}>
-                            {row.attendanceStatus === 'NOT_ATTENDED' ? '✗ Absent' :
-                             row.attendanceStatus === 'FN' ? '◑ FN (Half)' :
-                             row.attendanceStatus === 'AN' ? '◑ AN (Half)' :
-                             '✓ Present'}
+                            {row.attendanceStatus === 'NOT_ATTENDED' ? 'A' :
+                             row.attendanceStatus === 'FN' ? 'FN' :
+                             row.attendanceStatus === 'AN' ? 'AN' :
+                             'P'}
                           </span>
                         </td>
                       </tr>

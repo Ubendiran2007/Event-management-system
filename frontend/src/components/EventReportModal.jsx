@@ -65,6 +65,33 @@ const EventReportModal = ({
   const objectives = (reportDetails?.objectives || []).filter(o => o && o.trim());
   const outcomes = (reportDetails?.outcomes || []).filter(o => o && o.trim());
 
+  // Extra report fields: prefer IQAC input, else fallback to event data if available
+  const onlineResource =
+    reportDetails?.collaboration?.onlineResource ||
+    reportDetails?.onlineResource ||
+    s1?.onlineResource ||
+    '';
+
+  const collaborators =
+    reportDetails?.collaboration?.collaborators ||
+    reportDetails?.collaborators ||
+    s1?.collaborators ||
+    '';
+
+  const conductedThroughMou =
+    reportDetails?.collaboration?.conductedThroughMou ||
+    reportDetails?.conductedThroughMou ||
+    s1?.conductedThroughMou ||
+    '';
+
+  const mouName =
+    reportDetails?.collaboration?.mouName ||
+    reportDetails?.mouName ||
+    s1?.mouName ||
+    '';
+
+  const iic = reportDetails?.iicDetails || reportDetails?.iic || {};
+
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     const parts = dateStr.split('-');
@@ -241,19 +268,19 @@ const EventReportModal = ({
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">Online Resource (Online / Hybrid)</td>
-                  <td className="border border-black p-2" colSpan="6">Nil</td>
+                  <td className="border border-black p-2" colSpan="6">{onlineResource || 'Nil'}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">Collaborators/ Industry Partners:</td>
-                  <td className="border border-black p-2" colSpan="6">Nil</td>
+                  <td className="border border-black p-2" colSpan="6">{collaborators || 'Nil'}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">Whether it has been conducted through MoU?</td>
-                  <td className="border border-black p-2" colSpan="6">Yes / No</td>
+                  <td className="border border-black p-2" colSpan="6">{conductedThroughMou || 'Yes / No'}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">If yes, please mention the name of MoU</td>
-                  <td className="border border-black p-2" colSpan="6"></td>
+                  <td className="border border-black p-2" colSpan="6">{(conductedThroughMou === 'Yes' ? (mouName || '') : '')}</td>
                 </tr>
               </tbody>
             </table>
@@ -266,23 +293,23 @@ const EventReportModal = ({
                 <tbody>
                   <tr>
                     <td className="border border-black p-2 w-1/2">Thrust area</td>
-                    <td className="border border-black p-2 w-1/2"></td>
+                    <td className="border border-black p-2 w-1/2">{s1?.isIIC === 'Yes' ? (iic?.thrustArea || '') : ''}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Activity / Event driven by</td>
-                    <td className="border border-black p-2"></td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.drivenBy || '') : ''}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Quarter</td>
-                    <td className="border border-black p-2"></td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.quarter || '') : ''}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Event Level</td>
-                    <td className="border border-black p-2"></td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.eventLevel || '') : ''}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Event Theme</td>
-                    <td className="border border-black p-2"></td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.eventTheme || '') : ''}</td>
                   </tr>
                 </tbody>
               </table>
@@ -396,11 +423,15 @@ const EventReportModal = ({
                 </tr>
                 <tr>
                   <td className="border border-black p-2 w-1/2">Funding Provided by</td>
-                  <td className="border border-black p-2 w-1/2">Institute / External / No Funding</td>
+                  <td className="border border-black p-2 w-1/2">{reportDetails?.expenditure?.fundingSupport || 'Institute / External / No Funding'}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2">Expenditure amount (in Rs.)</td>
-                  <td className="border border-black p-2">Nil</td>
+                  <td className="border border-black p-2">{reportDetails?.expenditure?.total ? `₹ ${reportDetails.expenditure.total}` : 'Nil'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2">Funding agency (if any)</td>
+                  <td className="border border-black p-2">{reportDetails?.expenditure?.agency || 'Nil'}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold" colSpan="2">Social media Coverage (Provide links):</td>
@@ -415,11 +446,11 @@ const EventReportModal = ({
                 </tr>
                 <tr>
                   <td className="border border-black p-2">Instagram</td>
-                  <td className="border border-black p-2"></td>
+                  <td className="border border-black p-2">{reportDetails?.socialMedia?.social || ''}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2">LinkedIn</td>
-                  <td className="border border-black p-2"></td>
+                  <td className="border border-black p-2">{reportDetails?.socialMedia?.website || ''}</td>
                 </tr>
               </tbody>
             </table>

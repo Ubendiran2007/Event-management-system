@@ -160,17 +160,23 @@ router.post('/:eventId', async (req, res) => {
       else if (rawStatus === 'FN') attendanceStatus = 'FN';
       else if (rawStatus === 'AN') attendanceStatus = 'AN';
       else attendanceStatus = 'ATTENDED';
+      const dayFields = Object.fromEntries(
+        Object.keys(item || {})
+          .filter((k) => /^day\d+$/i.test(k))
+          .map((k) => [k, item[k]])
+      );
       return {
         id: item?.id || item?.requestId || item?.rollNo || `att_${idx + 1}`,
         requestId: item?.requestId || item?.id || '',
         student: item?.student || item?.studentName || '',
         rollNo: item?.rollNo || '',
         attendanceStatus,
+        ...dayFields,
       };
     });
     const studentsRegistered = studentAttendanceList.length > 0 ? studentAttendanceList.length : studentsCount;
     const studentsAttended = studentAttendanceList.length > 0
-      ? studentAttendanceList.filter((row) => row.attendanceStatus === 'ATTENDED').length
+      ? studentAttendanceList.filter((row) => row.attendanceStatus !== 'NOT_ATTENDED').length
       : (Number(registrationDetails?.studentsAttended) || 0);
     const facultyAttended = Number(registrationDetails?.facultyAttended) || 0;
     const externalAttended = Number(registrationDetails?.externalAttended) || 0;
