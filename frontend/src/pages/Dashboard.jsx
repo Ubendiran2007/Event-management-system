@@ -54,90 +54,7 @@ import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
 import seceHeader from '../assets/sece header.jpeg';
 
-// ── IQACExtendWidget ─────────────────────────────────────────────────────────
-// Faculty-only sidebar widget to grant an IQAC submission window extension
-// for events whose 7-day window has passed.
-const IQACExtendWidget = ({ events, facultyName }) => {
-  const [open, setOpen] = useState(false);
-  const [extendingId, setExtendingId] = useState(null);
-  const [result, setResult] = useState({}); // { id: 'success' | 'error' }
 
-  const handleExtend = async (eventId) => {
-    setExtendingId(eventId);
-    setResult((prev) => ({ ...prev, [eventId]: null }));
-    try {
-      const res = await fetch(`http://localhost:5001/api/events/${eventId}/extend-iqac-window`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ extendedBy: facultyName }),
-      });
-      if (!res.ok) throw new Error('Request failed');
-      setResult((prev) => ({ ...prev, [eventId]: 'success' }));
-    } catch {
-      setResult((prev) => ({ ...prev, [eventId]: 'error' }));
-    } finally {
-      setExtendingId(null);
-    }
-  };
-
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 flex flex-col overflow-hidden max-h-[500px]">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 p-3 hover:bg-cse-accent/5 transition-all group text-left shrink-0"
-      >
-        <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all shrink-0">
-          <Clock3 size={18} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800">Extend IQAC Window</p>
-          <p className="text-xs text-slate-500 font-medium">{events.length} event{events.length !== 1 ? 's' : ''} past deadline</p>
-        </div>
-        <ChevronDown size={16} className={`text-slate-400 group-hover:text-cse-accent transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div className="p-3 pt-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 space-y-3">
-          {events.length === 0 ? (
-            <p className="text-xs text-slate-500">No events found.</p>
-          ) : (
-            events.map(ev => {
-              const organizerName = ev.organizerName || ev.requisition?.step1?.organizerDetails?.organizerName || 'Unknown Organizer';
-              return (
-                <div key={ev.id} className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm flex flex-col gap-2 relative">
-                  <div className="pr-16">
-                    <p className="text-sm font-bold text-slate-800 line-clamp-1">{ev.title}</p>
-                    <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
-                      <User size={10} className="text-slate-400" /> {organizerName}
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                      <Calendar size={10} className="text-slate-400" /> {ev.date || 'No Date Set'}
-                    </p>
-                  </div>
-                  
-                  {result[ev.id] === 'success' ? (
-                    <p className="text-xs font-bold text-emerald-600 flex items-center gap-1.5 py-1">
-                      <CheckCircle2 size={13} /> Extended
-                    </p>
-                  ) : (
-                    <button
-                      onClick={() => handleExtend(ev.id)}
-                      disabled={extendingId === ev.id}
-                      className="absolute right-3 top-3 px-3 py-1.5 rounded-lg text-xs font-bold bg-cse-accent text-white hover:bg-cse-accent/90 disabled:opacity-50 transition-all active:scale-95"
-                    >
-                      {extendingId === ev.id ? 'Granting...' : 'Extend'}
-                    </button>
-                  )}
-                  {result[ev.id] === 'error' && <p className="text-[10px] text-red-500 font-bold mt-1">Failed to extend window.</p>}
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ── IQACExtensionApprovalWidget ─────────────────────────────────────────────
 // HOD-only sidebar widget to review and approve IQAC extension requests
@@ -1877,36 +1794,7 @@ const Dashboard = () => {
                   );
                 })()}
 
-                {currentUser.role === UserRole.FACULTY && (() => {
-                  const now = Date.now();
-                  const eligibleForExtension = events.filter(ev => {
-                    if (ev.status !== EventStatus.POSTED && ev.status !== EventStatus.COMPLETED) return false;
-                    if (ev.iqacWindowExtended) {
-                      if (!ev.iqacWindowExtendedAt) return false; // Legacy events without timestamp
-                      const extEnd = ev.iqacExtensionEndDate 
-                         ? new Date(ev.iqacExtensionEndDate).getTime() + (24 * 60 * 60 * 1000) // inclusive
-                         : new Date(ev.iqacWindowExtendedAt).getTime() + (2 * 24 * 60 * 60 * 1000);
-                      if (now <= extEnd) return false; // Still within the active extension
-                    }
-                    if (ev.iqacSubmittedAt) return false; // already submitted
-                    const eventDate = ev.date || ev.requisition?.step1?.eventStartDate;
-                    const endTime = ev.endTime || ev.requisition?.step1?.eventEndTime || '23:59';
-                    if (!eventDate) return false;
-                    const [h, m] = String(endTime).split(':').map(Number);
-                    const eventEnd = new Date(eventDate);
-                    eventEnd.setHours(h, m, 0, 0);
-                    const sevenDaysAfter = eventEnd.getTime() + (7 * 24 * 60 * 60 * 1000);
-                    return now > sevenDaysAfter; // Only show if 7-day window is passed
-                  });
-                  if (eligibleForExtension.length === 0) return null;
 
-                  return (
-                    <IQACExtendWidget
-                      events={eligibleForExtension}
-                      facultyName={currentUser.name}
-                    />
-                  );
-                })()}
               </div>
             </div>
           </div>
