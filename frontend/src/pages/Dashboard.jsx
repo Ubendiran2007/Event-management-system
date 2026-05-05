@@ -863,7 +863,7 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
             <div className="lg:col-span-2 flex flex-col min-h-0 space-y-6">
               {/* Stats Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 {(() => {
                   const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                   const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
@@ -918,27 +918,7 @@ const Dashboard = () => {
                       icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50'
                     });
 
-                    // 6. REGISTRATIONS / PARTICIPANTS
-                    if (isOrg) {
-                      stats.push({
-                        label: 'Total Participants',
-                        value: organizerIncomingOD.length,
-                        icon: Users, color: 'text-purple-600', bg: 'bg-purple-50'
-                      });
-                    } else if (isStud) {
-                      stats.push({
-                        label: 'My Total ODs',
-                        value: filteredODRequests.length,
-                        icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50'
-                      });
-                    } else {
-                      // For other staff, maybe show global registrations or a filler
-                      stats.push({
-                        label: 'Total Registrations',
-                        value: odRequests.length,
-                        icon: Users, color: 'text-purple-600', bg: 'bg-purple-50'
-                      });
-                    }
+
 
                     return stats;
                   };

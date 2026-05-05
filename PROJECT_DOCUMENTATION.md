@@ -139,31 +139,29 @@ PRINCIPAL
 
 ### Role Capabilities Matrix
 
-| Capability | STUDENT_GENERAL | STUDENT_ORGANIZER | FACULTY | HOD | PRINCIPAL |
-|---|:---:|:---:|:---:|:---:|:---:|
-| View landing page | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Login | ✓ | ✓ | ✓ | ✓ | ✓ |
-| View Dashboard | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Explore events | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Register for event (OD request) | ✓ | ✓ | — | — | — |
-| Withdraw OD request | ✓ | ✓ | — | — | — |
-| Submit event feedback | ✓ | ✓ | — | — | — |
-| Create event proposal | — | ✓ (if approved) | — | — | — |
-| Approve incoming OD registrations | — | ✓ | — | — | — |
-| Submit IQAC report | — | ✓ | — | — | — |
-| Approve/reject events (Faculty queue) | — | — | ✓ | — | — |
-| Approve/reject events (HOD queue) | — | — | — | ✓ | — |
-| Approve/reject events (Principal queue) | — | — | — | — | ✓ |
-| Mark event as COMPLETED | — | — | ✓ | ✓ | ✓ |
-| Manage students (grant/revoke organizer) | — | — | ✓ | ✓ | ✓ |
-| View organizer requests sidebar | — | — | ✓ | — | — |
+| Capability | STUDENT | ORGANIZER | FACULTY | HOD | DEPT TEAM | IQAC |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Create event proposal | — | ✓ | ✓ | — | — | — |
+| Approve/reject (Faculty) | — | — | ✓ | — | — | — |
+| Approve/reject (HOD) | — | — | — | ✓ | — | — |
+| Approve requisitions | — | — | — | — | ✓ | — |
+| Final Approval (Post) | — | — | — | — | — | ✓ |
+| Submit IQAC report | — | ✓ | — | — | — | — |
+| View dashboard stats | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Manage students | — | — | ✓ | ✓ | — | — |
+
+*DEPT TEAM includes HR, Audio, ICTS, Transport, and Wardens. Each approves their specific requisition items.*
 
 ### Staff Login Credentials (Hardcoded)
-| Role | Username | Password |
-|---|---|---|
 | Faculty | `faculty` | `faculty` |
 | HOD | `hod` | `hod` |
-| Principal | `principal` | `principal` |
+| IQAC | `raj220707ram@gmail.com` | (uses Firebase Auth or hardcoded) |
+| HR Team | `hr` | `hr` |
+| Audio Team | `audio` | `audio` |
+| System Admin | `sysadmin` | `sysadmin` |
+| Transport Office | `transport` | `transport` |
+| Boys Hostel Warden | `boyswarden` | `boyswarden` |
+| Girls Hostel Warden | `girlswarden` | `girlswarden` |
 
 ### Student Login
 - **Username:** student's email address (or username field)
@@ -670,7 +668,8 @@ Renders an event status as a colored pill badge.
 |---|---|
 | PENDING_FACULTY | amber bg/text/border |
 | PENDING_HOD | blue bg/text/border |
-| PENDING_PRINCIPAL | purple bg/text/border |
+| PENDING_DEPARTMENTS | orange bg/text/border |
+| PENDING_IQAC | purple bg/text/border |
 | APPROVED | emerald bg/text/border |
 | POSTED | emerald bg/text/border |
 | REJECTED | red bg/text/border |
@@ -1061,7 +1060,11 @@ All responses: `{ success: boolean, message?: string, ...data }`
 | DELETE | `/events/:id` | — | Delete event |
 
 **Allowed statuses for PATCH:**
-`PENDING_FACULTY | PENDING_HOD | PENDING_PRINCIPAL | APPROVED | POSTED | REJECTED | COMPLETED`
+`PENDING_FACULTY | PENDING_HOD | PENDING_DEPARTMENTS | PENDING_IQAC | APPROVED | POSTED | REJECTED | COMPLETED`
+
+| Method | Endpoint | Body | Description |
+|---|---|---|---|
+| PATCH | `/events/:id/department-approval` | `{ department, approvedBy }` | Approve specific dept req (venue/audio/etc.) |
 
 ---
 
@@ -1240,7 +1243,7 @@ Both have `transition-all`, `active:scale-95`, `disabled:opacity-50`
 | `/create-event` | CreateEvent | Must be logged in |
 | `/explore` | ExploreEvents | Must be logged in |
 | `/iqac` | IQACSubmission | Must be logged in + event must be COMPLETED |
-| `/manage-students` | ManageStudents | Must be FACULTY/HOD/PRINCIPAL |
+| `/manage-students` | ManageStudents | Must be FACULTY/HOD |
 
 **No 404 page** — unknown routes fall through to React Router without a catch-all route defined.
 
@@ -1321,18 +1324,16 @@ When Firestore reports a `not-found` error on an event that appeared in the loca
 
 ### Dashboard
 
-| Element | STUDENT_GENERAL | STUDENT_ORGANIZER | FACULTY | HOD | PRINCIPAL |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Create Event button | ✗ | ✓ (if approved) | ✗ | ✗ | ✗ |
-| Manage Students button | ✗ | ✗ | ✓ | ✓ | ✓ |
-| OD Requests stat | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Events tab label | "Events" | "Events" | "Pending Approvals" | "Pending Approvals" | "Pending Approvals" |
-| Events tab content | all events | their events + IQAC buttons | PENDING_FACULTY queue | PENDING_HOD queue | PENDING_PRINCIPAL queue |
-| My OD Requests tab | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Registrations tab | ✗ | ✓ | ✗ | ✗ | ✗ |
-| Organizer Requests sidebar | ✗ | ✗ | ✓ | ✗ | ✗ |
-| Quick Actions sidebar | ✗ | ✓ | ✗ | ✗ | ✗ |
-| Manage Students sidebar card | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Element | STUDENT | ORGANIZER | FACULTY | HOD | DEPT TEAM | IQAC |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Create Event button | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Manage Students button | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| OD Requests stat | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Events tab content | all events | their events | FACULTY queue | HOD queue | DEPT queue | IQAC queue |
+| My OD Requests tab | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Registrations tab | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Organizer Requests | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| Manage Students card | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
 
 ### Explore Events
 
@@ -1348,7 +1349,7 @@ When Firestore reports a `not-found` error on an event that appeared in the loca
 | Only accessible to STUDENT_ORGANIZER when event is COMPLETED |
 
 ### Manage Students
-| Only accessible to FACULTY, HOD, PRINCIPAL |
+| Only accessible to FACULTY, HOD |
 
 ---
 
