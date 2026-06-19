@@ -263,6 +263,8 @@ const CreateEvent = () => {
   // Shows red on qty=0 rows ONLY after user clicks Next and validation fails
   const [qtyErrorsVisible, setQtyErrorsVisible] = useState(false);
   const [touchedQuantities, setTouchedQuantities] = useState({});
+  const [touchedFields, setTouchedFields] = useState({});
+  const [stepSubmitAttempted, setStepSubmitAttempted] = useState(false);
   const [fetchedDepartments, setFetchedDepartments] = useState([]);
 
   const setQtyTouched = (category, item, val = true) => {
@@ -931,7 +933,7 @@ const CreateEvent = () => {
   const isPositiveInt = (v) => /^\d+$/.test(String(v).trim()) && Number(v) >= 0;
 
   // Validate a single field and update fieldErrors; returns true if ok
-  const validateField = (key, value) => {
+  const validateField = (key, value, forceShow = false) => {
     let msg = '';
     switch (key) {
       // ── Event Info ──
@@ -1047,6 +1049,21 @@ const CreateEvent = () => {
       default:
         break;
     }
+
+    const isEditing = value !== '' && value !== undefined && value !== null && String(value).trim() !== '';
+    const isTouched = touchedFields[key] || isEditing;
+    
+    if (isEditing && !touchedFields[key]) {
+      setTouchedFields(prev => ({ ...prev, [key]: true }));
+    }
+
+    const shouldShowError = forceShow || stepSubmitAttempted || isTouched;
+
+    if (!shouldShowError) {
+      setFE(key, '');
+      return true;
+    }
+
     setFE(key, msg);
     return !msg;
   };
@@ -1281,19 +1298,88 @@ const CreateEvent = () => {
     return true;
   };
 
+  const triggerStepValidation = (stepKey) => {
+    let firstInvalid = null;
+    const check = (key, val) => {
+      const isValid = validateField(key, val, true);
+      if (!isValid && !firstInvalid) firstInvalid = key;
+    };
+    
+    if (stepKey === STEP_KEYS.EVENT_INFO) {
+      check('eventName', form.eventName);
+      check('eventType', form.eventType);
+      check('startDate', form.startDate);
+      check('endDate', form.endDate);
+      check('startTime', form.startTime);
+      check('endTime', form.endTime);
+      check('organizerName', form.organizerName);
+      check('department', form.department);
+      check('mobileNumber', form.mobileNumber);
+    } else if (stepKey === STEP_KEYS.VENUE && form.venueRequired) {
+      check('numberOfVenuesRequired', form.numberOfVenuesRequired);
+    } else if (stepKey === STEP_KEYS.AUDIO && form.audioRequired) {
+      check('audioDate', form.audioDate);
+      check('audioStartTime', form.audioStartTime);
+      check('audioEndTime', form.audioEndTime);
+      check('audioVenueName', form.audioVenueName);
+    } else if (stepKey === STEP_KEYS.ICTS && form.ictsRequired) {
+      check('expectedInternetUsers', form.expectedInternetUsers);
+    } else if (stepKey === STEP_KEYS.TRANSPORT && form.transportRequired) {
+      if (form.externalTransport.facultyId) {
+        check('ext_contactNumber', form.externalTransport.contactNumber);
+        check('ext_emailId', form.externalTransport.emailId);
+      }
+      if (form.internalTransport.indenterName) {
+        check('int_contactNumber', form.internalTransport.contactNumber);
+        check('int_emailId', form.internalTransport.emailId);
+        check('int_numberOfVehicles', form.internalTransport.numberOfVehicles);
+      }
+    } else if (stepKey === STEP_KEYS.ACCOMMODATION && form.accommodationRequired) {
+      const a = form.accommodation;
+      check('accom_mobileNumber', a.mobileNumber);
+      check('accom_email', a.email);
+      check('accom_maleGuests', a.maleGuests);
+      check('accom_femaleGuests', a.femaleGuests);
+      check('accom_numberOfRooms', a.numberOfRooms);
+      check('accom_arrivalDate', a.arrivalDate);
+      check('accom_arrivalTime', a.arrivalTime);
+      check('accom_departureDate', a.departureDate);
+      check('accom_departureTime', a.departureTime);
+    }
+    return firstInvalid;
+  };
+
   const goNext = () => {
+    setStepSubmitAttempted(true);
+    const firstInvalidField = triggerStepValidation(currentStep);
+
     if (!isStepValid(currentStep)) {
-      // Reveal qty=0 errors so the user can see which rows need a count
       setQtyErrorsVisible(true);
+      if (firstInvalidField) {
+        setTimeout(() => {
+          const el = document.getElementById(firstInvalidField);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.focus({ preventScroll: true });
+          }
+        }, 100);
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
       return;
     }
+    
+    setStepSubmitAttempted(false);
     setQtyErrorsVisible(false);
     setCurrentStepIndex((prev) => advanceStep(prev, steps.length));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const goPrev = () => {
+    setStepSubmitAttempted(false);
     setQtyErrorsVisible(false);
     setCurrentStepIndex((i) => Math.max(i - 1, 0));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const buildPayload = () => {
@@ -1462,7 +1548,15 @@ const CreateEvent = () => {
       const key = steps[i].key;
       if (key === STEP_KEYS.REVIEW) continue;
       if (!isStepValid(key)) {
+        setStepSubmitAttempted(true);
         setCurrentStepIndex(i);
+        setTimeout(() => {
+          const first = triggerStepValidation(key);
+          if (first) {
+            const el = document.getElementById(first);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
         return;
       }
     }
