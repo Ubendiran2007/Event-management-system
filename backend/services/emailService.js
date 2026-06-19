@@ -46,6 +46,12 @@ function isNetworkSmtpError(error) {
   );
 }
 
+function isAuthSmtpError(error) {
+  const code = String(error?.code || '');
+  const responseCode = error?.responseCode;
+  return code === 'EAUTH' || responseCode === 535 || responseCode === 530 || responseCode === 534;
+}
+
 async function sendMailWithFallback(mailOptions) {
   const useResendOnly = String(process.env.EMAIL_PROVIDER || '').toLowerCase() === 'resend';
 
@@ -56,6 +62,18 @@ async function sendMailWithFallback(mailOptions) {
   try {
     return await transporter.sendMail(mailOptions);
   } catch (primaryError) {
+    // Auth failures (bad credentials) should NOT retry SSL — credentials will fail
+    // there too. Skip straight to Resend or throw.
+    if (isAuthSmtpError(primaryError)) {
+      console.error('[Email Service] SMTP authentication failed — credentials may be invalid or revoked. Check GMAIL_APP_PASSWORD in .env');
+      if (hasResendConfig()) {
+        console.warn('[Email Service] Falling back to Resend API...');
+        return sendMailViaResend(mailOptions);
+      }
+      throw primaryError;
+    }
+
+    // Non-network, non-auth errors (e.g. message rejected) → try Resend directly
     if (!isNetworkSmtpError(primaryError)) {
       if (hasResendConfig()) {
         console.warn('[Email Service] SMTP send failed, trying HTTPS provider fallback:', primaryError.message);
@@ -64,6 +82,7 @@ async function sendMailWithFallback(mailOptions) {
       throw primaryError;
     }
 
+    // Network errors → retry on SSL port 465, then Resend
     console.warn('[Email Service] Primary SMTP send failed, trying SSL fallback (465):', primaryError.message);
     try {
       const fallbackTransporter = createFallbackTransporter();
