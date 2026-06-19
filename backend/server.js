@@ -10,6 +10,7 @@ const exploreRoutes = require('./routes/explore');
 const iqacRoutes = require('./routes/iqac');
 const studentsRoutes = require('./routes/students');
 const odRequestsRoutes = require('./routes/odRequests');
+const correctionRequestsRoutes = require('./routes/correctionRequests');
 const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionService');
 
 const app = express();
@@ -23,9 +24,9 @@ app.use(cors({
     'http://localhost:5174'
   ].filter(Boolean) 
 }));
-// 10 MB limit — needed for base64 poster images attached to event proposals
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// 50 MB limit — needed for base64 posters and PDF attachments (OD letters)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api', authRoutes);
@@ -35,6 +36,7 @@ app.use('/api/explore', exploreRoutes);
 app.use('/api/iqac', iqacRoutes);
 app.use('/api/students', studentsRoutes);
 app.use('/api/od-requests', odRequestsRoutes);
+app.use('/api/correction-requests', correctionRequestsRoutes);
 
 // ── Start server ─────────────────────────────────────────────────────────────
 const server = http.createServer(app);

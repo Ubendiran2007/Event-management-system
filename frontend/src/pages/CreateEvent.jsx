@@ -17,15 +17,17 @@ import {
   Trash2,
   Loader2,
   Send,
+  Users,
+  Globe,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
-const DEPARTMENTS = ['CSE', 'ECE', 'EEE', 'MECH', 'CIVIL', 'AI&DS', 'IT', 'MBA', 'Other'];
+const DEPARTMENTS = ['CSE', 'ECE', 'CCE', 'Cyber', 'CSBS', 'MECH', 'IT', 'AI&DS', 'AIML', 'EEE'];
 
 const VENUE_OPTIONS = [
   'Classroom', 'Lab', 'Main Board Room', 'IQAC Board Room', 'Synapse Studio', 'Courtyard',
@@ -310,12 +312,14 @@ const CreateEvent = () => {
     posterNeededByTime: '09:00',
     professionalSocieties: [],
     isIIC: 'No',
+    audienceScope: 'Open To All',
+    selectedDepartments: [],
     startDate: '',
     endDate: '',
     startTime: '09:00',
     endTime: '17:00',
     organizerName: currentUser?.name || '',
-    department: '',
+    department: currentUser?.department || '',
     mobileNumber: '',
     registrationMode: 'In-person',
     internalParticipants: '',
@@ -597,6 +601,8 @@ const CreateEvent = () => {
       requirePoster: editingEvent.posterWorkflow?.requested || false,
       professionalSocieties: step1.professionalSocieties || [],
       isIIC: step1.isIIC || 'No',
+      audienceScope: editingEvent.audienceScope || (editingEvent.openToAllDepartments !== false ? 'Open To All' : 'Department Only'),
+      selectedDepartments: editingEvent.selectedDepartments || [],
       startDate: step1.eventStartDate || editingEvent.date || '',
       endDate: step1.eventEndDate || editingEvent.date || '',
       startTime: step1.eventStartTime || editingEvent.startTime || '',
@@ -604,7 +610,7 @@ const CreateEvent = () => {
       studentFeedbackLink: editingEvent.studentFeedbackLink || '',
       resourcePersonFeedbackLink: editingEvent.resourcePersonFeedbackLink || '',
       organizerName: step1.organizerDetails?.organizerName || editingEvent.organizerName || currentUser?.name || '',
-      department: step1.organizerDetails?.department || editingEvent.department || '',
+      department: editingEvent.department || step1.organizerDetails?.department || currentUser?.department || '',
       mobileNumber: step1.organizerDetails?.mobileNumber || '',
       internalParticipants: String(step1.participants?.internalParticipants ?? ''),
       externalParticipants: String(step1.participants?.externalParticipants ?? ''),
@@ -1098,6 +1104,11 @@ const CreateEvent = () => {
         setStepError('You must upload an event poster if you are not requesting one from the Media team.');
         return false;
       }
+
+      if (form.audienceScope === 'Selected Departments' && form.selectedDepartments.length === 0) {
+        setStepError('Please select at least one eligible department.');
+        return false;
+      }
     }
 
     if (stepKey === STEP_KEYS.SCHEDULE) {
@@ -1341,6 +1352,10 @@ const CreateEvent = () => {
       creatorType: currentUser?.role === UserRole.FACULTY ? 'FACULTY' : 'STUDENT',
       studentFeedbackLink: form.studentFeedbackLink,
       resourcePersonFeedbackLink: form.resourcePersonFeedbackLink,
+      department: form.department,
+      audienceScope: form.audienceScope,
+      selectedDepartments: form.selectedDepartments,
+      openToAllDepartments: form.audienceScope === 'Open To All',
       status: initialStatus,
       createdAt: new Date().toISOString(),
       posterWorkflow,
@@ -1356,6 +1371,8 @@ const CreateEvent = () => {
           eventType: form.eventType,
           professionalSocieties: form.professionalSocieties,
           isIIC: form.isIIC,
+          audienceScope: form.audienceScope,
+          selectedDepartments: form.selectedDepartments,
           eventStartDate: form.startDate,
           eventEndDate: form.endDate,
           numberOfDays,
@@ -1637,6 +1654,91 @@ const CreateEvent = () => {
             </div>
 
             <YesNoToggle label="Whether Event Belongs to IIC" value={form.isIIC} onChange={(value) => setField('isIIC', value)} />
+            
+            <div className="md:col-span-2 space-y-4 my-4 p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                <Globe className="text-cse-accent" size={20} />
+                Event Audience Scope
+              </h4>
+              <p className="text-sm text-slate-500 mb-4">Select who can view and register for this event.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { id: 'Department Only', title: 'Department Only', desc: 'Visible only to students in your department', icon: Building2 },
+                  { id: 'Selected Departments', title: 'Selected Departments', desc: 'Visible only to selected departments', icon: Users },
+                  { id: 'Open To All', title: 'Open To All Departments', desc: 'Visible to all students across the institution', icon: Globe }
+                ].map(opt => {
+                  const isSelected = form.audienceScope === opt.id;
+                  const Icon = opt.icon;
+                  return (
+                    <motion.div
+                      key={opt.id}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setField('audienceScope', opt.id)}
+                      className={`cursor-pointer p-4 rounded-xl border-2 transition-all ${
+                        isSelected 
+                          ? 'border-cse-accent bg-blue-50/50' 
+                          : 'border-slate-100 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${
+                        isSelected ? 'bg-blue-100 text-cse-accent' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        <Icon size={20} />
+                      </div>
+                      <h5 className={`font-semibold mb-1 ${isSelected ? 'text-slate-900' : 'text-slate-700'}`}>
+                        {opt.title}
+                      </h5>
+                      <p className="text-xs text-slate-500">{opt.desc}</p>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              <AnimatePresence>
+                {form.audienceScope === 'Selected Departments' && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden mt-4"
+                  >
+                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                      <label className="text-sm font-semibold text-slate-700 block mb-3">Select Eligible Departments</label>
+                      <div className="flex flex-wrap gap-2">
+                        {activeDepartments.map(dept => {
+                          const isSelected = form.selectedDepartments.includes(dept);
+                          return (
+                            <button
+                              key={dept}
+                              type="button"
+                              onClick={() => toggleArrayValue('selectedDepartments', dept)}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                                isSelected 
+                                  ? 'bg-cse-accent text-white border-cse-accent' 
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              {dept}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <p className="text-sm font-medium flex items-center gap-2 text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                  {form.audienceScope === 'Department Only' && `Visible only to ${form.department || 'your department'} students`}
+                  {form.audienceScope === 'Selected Departments' && `Visible to ${form.selectedDepartments.length > 0 ? form.selectedDepartments.join(', ') : 'no selected'} students`}
+                  {form.audienceScope === 'Open To All' && 'Visible to all students across the college'}
+                </p>
+              </div>
+            </div>
 
             <div className="space-y-1">
               <Lbl required>Event Start Date</Lbl>
@@ -1713,21 +1815,7 @@ const CreateEvent = () => {
               <FieldMsg errKey="organizerName" />
             </div>
 
-            <div className="space-y-1">
-              <Lbl required>Department</Lbl>
-              <select
-                id="department"
-                className={fieldCls('department')}
-                value={form.department}
-                onChange={(e) => { setField('department', e.target.value); validateField('department', e.target.value); }}
-                onBlur={(e) => validateField('department', e.target.value)}
-              >
-                <option value="">Select Department</option>
-                {activeDepartments.map((d) => <option key={d} value={d}>{d}</option>)}
-                {!activeDepartments.includes('Other') && <option value="Other">Other</option>}
-              </select>
-              <FieldMsg errKey="department" />
-            </div>
+
 
             <div className="space-y-1">
               <Lbl required>Mobile Number</Lbl>

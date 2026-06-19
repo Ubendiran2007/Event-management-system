@@ -1,11 +1,14 @@
 import { X, User, Calendar, Clock, MapPin, FileText, CheckCircle2, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ODRequestStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
+import { generateODLetterBase64 } from '../utils/pdfGenerator';
 
 const ODRequestDetailModal = ({ request, onClose }) => {
   const { currentUser, handleODApproval, events } = useAppContext();
+  const [approving, setApproving] = useState(false);
 
   if (!request) return null;
 
@@ -42,13 +45,35 @@ const ODRequestDetailModal = ({ request, onClose }) => {
   };
 
   const handleApprove = async () => {
-    await handleODApproval(request.id, true, { name: currentUser.name });
-    onClose();
+    setApproving(true);
+    try {
+      let odLetterBase64 = null;
+      
+      // If this is the final approval step (Principal -> Approved)
+      if (request.status === ODRequestStatus.PENDING_PRINCIPAL) {
+        console.log('Generating OD Letter PDF for attachment...');
+        odLetterBase64 = await generateODLetterBase64(request, event);
+      }
+
+      await handleODApproval(request.id, true, { name: currentUser.name }, odLetterBase64);
+      onClose();
+    } catch (error) {
+      console.error('Approval failed:', error);
+    } finally {
+      setApproving(false);
+    }
   };
 
   const handleReject = async () => {
-    await handleODApproval(request.id, false, { name: currentUser.name });
-    onClose();
+    setApproving(true);
+    try {
+      await handleODApproval(request.id, false, { name: currentUser.name });
+      onClose();
+    } catch (error) {
+      console.error('Rejection failed:', error);
+    } finally {
+      setApproving(false);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -212,16 +237,18 @@ const ODRequestDetailModal = ({ request, onClose }) => {
             {canApprove() && (
               <div className="flex gap-4 pt-4">
                 <button
+                   disabled={approving}
                   onClick={handleReject}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-red-200 text-red-600 hover:bg-red-50 transition-all font-semibold"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-red-200 text-red-600 hover:bg-red-50 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <XCircle size={20} /> Reject
+                  <XCircle size={20} /> {approving ? 'Processing...' : 'Reject'}
                 </button>
                 <button
+                   disabled={approving}
                   onClick={handleApprove}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-semibold"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <CheckCircle2 size={20} /> Approve
+                  <CheckCircle2 size={20} /> {approving ? 'Processing...' : 'Approve'}
                 </button>
               </div>
             )}

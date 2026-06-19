@@ -9,6 +9,7 @@ const CreateEvent = lazy(() => import('./pages/CreateEvent'));
 const ExploreEvents = lazy(() => import('./pages/ExploreEventsNew'));
 const IQACSubmission = lazy(() => import('./pages/IQACSubmission'));
 const ManageStudents = lazy(() => import('./pages/ManageStudents'));
+const ODCorrection = lazy(() => import('./pages/ODCorrection'));
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/explore" element={<ExploreEvents />} />
             <Route path="/iqac" element={<IQACSubmission />} />
             <Route path="/manage-students" element={<ManageStudents />} />
+            <Route path="/od-correction" element={<ODCorrection />} />
           </Routes>
         </Suspense>
       </AppProvider>

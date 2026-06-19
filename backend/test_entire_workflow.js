@@ -14,7 +14,7 @@ async function runTest() {
   console.log('🚀 Starting End-to-End Workflow Test...\n');
 
   try {
-    // 1. Create a mock event as Student Organizer (John Doe)
+    const futureDate = '2026-12-25';
     console.log('Step 1: Creating event proposal...');
     const eventResp = await fetch(`${API_BASE}/events`, {
       method: 'POST',
@@ -24,15 +24,15 @@ async function runTest() {
         organizerId: 'john_doe_id', // mock id
         organizerName: 'John Doe',
         organizerEmail: 'john@student.edu',
-        date: '2026-04-20',
+        date: futureDate,
         venue: 'Grand Hall',
         startTime: '10:00',
         endTime: '16:00',
         requisition: {
           step1: {
             eventName: 'E2E Workflow Test Event',
-            eventStartDate: '2026-04-20',
-            eventEndDate: '2026-04-20',
+            eventStartDate: futureDate,
+            eventEndDate: futureDate,
             eventStartTime: '10:00',
             eventEndTime: '16:00',
             organizerDetails: { organizerName: 'John Doe', department: 'CSE' }

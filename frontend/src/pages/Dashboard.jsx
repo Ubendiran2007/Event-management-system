@@ -52,6 +52,8 @@ import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
+import ConfirmationModal from '../components/ConfirmationModal';
+import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import seceHeader from '../assets/sece header.jpeg';
 
 
@@ -66,7 +68,6 @@ const IQACExtensionApprovalWidget = ({ events, hodName }) => {
   const handleApprove = async (eventId) => {
     const endDate = selectedDates[eventId];
     if (!endDate) {
-      alert("Please select an extension end date.");
       return;
     }
     setProcessingId(eventId);
@@ -78,7 +79,7 @@ const IQACExtensionApprovalWidget = ({ events, hodName }) => {
       });
       if (!res.ok) throw new Error('Action failed');
     } catch (err) {
-      alert(err.message);
+      console.error(err.message);
     } finally {
       setProcessingId(null);
     }
@@ -178,11 +179,14 @@ const Dashboard = () => {
   const [searchQueries, setSearchQueries] = useState({});
   const [, setShowAllEvents] = useState(false);
   const [eventFilter, setEventFilter] = useState('all'); // all, posted, completed, iqac
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const isDeptOfficer = currentUser?.role && currentUser.role !== UserRole.FACULTY && currentUser.role !== UserRole.STUDENT_GENERAL && currentUser.role !== UserRole.STUDENT_ORGANIZER;
   const canCreateEvent =
     currentUser?.role === UserRole.FACULTY ||
     (currentUser?.role === UserRole.STUDENT_ORGANIZER && currentUser?.isApprovedOrganizer);
+  const isStaff = currentUser?.role && ![UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER].includes(currentUser.role.toUpperCase());
 
   const hasOrganizedEvents = useMemo(() => {
     if (!currentUser || !events) return false;
@@ -273,7 +277,7 @@ const Dashboard = () => {
       }
 
       return false;
-    });
+    }).sort((a, b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')));
   }, [currentUser, events]);
 
   const approvedEvents = useMemo(() => {
@@ -293,7 +297,7 @@ const Dashboard = () => {
       if (currentUser.role === UserRole.IQAC_TEAM) return ev.status === EventStatus.POSTED || ev.status === EventStatus.COMPLETED || ev.iqacApprovedAt;
       if (currentUser.role === UserRole.MEDIA) return depts.media?.status === 'APPROVED' || ['APPROVED', 'COMPLETED'].includes(String(ev.posterWorkflow?.status || '').toUpperCase());
       return false;
-    });
+    }).sort((a, b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')));
   }, [currentUser, events]);
 
   // For organizer: incoming registrations from students for their events
@@ -321,7 +325,7 @@ const Dashboard = () => {
     }, {});
 
     return Object.values(organizerIncomingGroupedByEvent)
-      .sort((a, b) => (a.eventTitle || '').localeCompare(b.eventTitle || ''))
+      .sort((a, b) => String(b.eventDate || '').localeCompare(String(a.eventDate || '')))
       .map(group => ({
         ...group,
         requests: [...group.requests].sort((a, b) => {
@@ -478,13 +482,6 @@ const Dashboard = () => {
     );
   }
 
-  // Is this user a staff member?
-  const isStaff = [
-    UserRole.FACULTY, UserRole.HOD, UserRole.HR_TEAM,
-    UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN, UserRole.TRANSPORT_TEAM,
-    UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN, UserRole.IQAC_TEAM
-  ].includes(currentUser.role?.toUpperCase());
-
   // Filter OD requests for student view only
   const getFilteredODRequests = () => {
     const role = currentUser.role?.toUpperCase();
@@ -516,14 +513,39 @@ const Dashboard = () => {
   const handleOrganizerApproval = async (odId, approve) => {
     setTogglingOD(prev => ({ ...prev, [odId]: true }));
     try {
-      await fetch(`http://localhost:5001/api/od-requests/${odId}/status`, {
+      let odLetterBase64 = null;
+      if (approve) {
+        try {
+          const req = odRequests.find(r => r.id === odId);
+          const event = events.find(e => e.id === req?.eventId);
+          if (req && event) {
+            console.log(`[Approval] Generating PDF for ${req.studentName}...`);
+            odLetterBase64 = await generateODLetterPDF(req, event);
+          } else {
+            console.warn('[Approval] Missing req or event for PDF generation:', { odId, req: !!req, event: !!event });
+          }
+        } catch (pdfErr) {
+          console.error('[Approval] PDF generation failed, proceeding without attachment:', pdfErr);
+        }
+      }
+
+      console.log(`[Approval] Sending ${approve ? 'approval' : 'rejection'} for ${odId}...`);
+      const response = await fetch(`http://localhost:5001/api/od-requests/${odId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: approve ? 'APPROVED' : 'REJECTED',
-          approvedBy: currentUser.name,
+          approvedBy: currentUser?.name || 'Organizer',
+          odLetterBase64
         }),
       });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.message || 'Failed to update status');
+      }
+
+      console.log(`[Approval] Successfully updated status for ${odId}`);
     } catch (err) {
       console.error('Error updating OD request:', err);
     } finally {
@@ -565,26 +587,37 @@ const Dashboard = () => {
 
     try {
       const results = await Promise.allSettled(
-        pendingRequests.map((req) =>
-          fetch(`http://localhost:5001/api/od-requests/${req.id}/status`, {
+        pendingRequests.map(async (req) => {
+          let odLetterBase64 = null;
+          try {
+            const event = events.find(e => e.id === req.eventId);
+            if (event) {
+              odLetterBase64 = await generateODLetterPDF(req, event);
+            }
+          } catch (pdfErr) {
+            console.error(`[Bulk Approval] PDF generation failed for ${req.studentName}:`, pdfErr);
+          }
+
+          return fetch(`http://localhost:5001/api/od-requests/${req.id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               status: 'APPROVED',
-              approvedBy: currentUser.name,
+              approvedBy: currentUser?.name || 'Organizer',
+              odLetterBase64
             }),
           }).then((response) => {
             if (!response.ok) {
               throw new Error(`Failed to approve request ${req.id}`);
             }
             return response;
-          })
-        )
+          });
+        })
       );
 
       const failed = results.filter((r) => r.status === 'rejected').length;
       if (failed > 0) {
-        window.alert(`Approved ${pendingRequests.length - failed} registrations. ${failed} failed, please retry.`);
+        console.warn(`Approved ${pendingRequests.length - failed} registrations. ${failed} failed.`);
       }
     } catch (err) {
       console.error('Bulk approval error:', err);
@@ -780,16 +813,16 @@ const Dashboard = () => {
 </html>`;
 
     const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow pop-ups to download the OD list.');
-      return;
+    if (printWindow) {
+      printWindow.document.write(listHTML);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+    } else {
+      console.error('Pop-ups might be blocked or error in list generation');
     }
-    printWindow.document.write(listHTML);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 500);
   };
 
   const getDashboardSubtitle = (role) => {
@@ -1114,6 +1147,11 @@ const Dashboard = () => {
                                         <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                                           {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
                                         </span>
+                                        {event.department && (
+                                          <span className="px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 bg-slate-50 text-slate-700 border-slate-200">
+                                            {event.department} Department
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
                                         <span className="flex items-center gap-1.5 min-w-0">
@@ -1207,6 +1245,11 @@ const Dashboard = () => {
                                         <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                                           {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
                                         </span>
+                                        {event.department && (
+                                          <span className="px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 bg-slate-50 text-slate-700 border-slate-200">
+                                            {event.department} Department
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
                                         <span className="flex items-center gap-1.5 min-w-0">
@@ -1761,6 +1804,60 @@ const Dashboard = () => {
                     <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
                   </div>
                 )}
+                {currentUser.role === UserRole.IQAC_TEAM && (
+                  <div
+                    onClick={() => setShowResetConfirm(true)}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-red-200 hover:bg-red-50 transition-all group"
+                  >
+                    <div className="w-9 h-9 bg-red-50 text-red-600 rounded-xl flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
+                      <History size={18} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800">Reset Semester ODs</p>
+                      <p className="text-xs text-slate-500 font-medium">Clear all student usage counts</p>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-300 group-hover:text-red-500" />
+                  </div>
+                )}
+
+                <ConfirmationModal
+                  isOpen={showResetConfirm}
+                  onClose={() => setShowResetConfirm(false)}
+                  onConfirm={async () => {
+                    setIsResetting(true);
+                    try {
+                      const res = await fetch('http://localhost:5001/api/students/reset-od-usage', { method: 'POST' });
+                      const data = await res.json();
+                      if (!data.success) throw new Error(data.message);
+                      setShowResetConfirm(false);
+                      // Maybe show a success state or reload
+                      window.location.reload();
+                    } catch (err) {
+                      console.error("Failed to reset OD usage:", err.message);
+                    } finally {
+                      setIsResetting(false);
+                    }
+                  }}
+                  title="Reset All Student ODs?"
+                  message="This action will clear the OD usage count for EVERY student in the institution. This should only be performed at the beginning of a new semester. This action cannot be undone."
+                  confirmText="Yes, Reset All"
+                  type="danger"
+                  isProcessing={isResetting}
+                />
+                {/* 6. OD Correction Requests */}
+                <div
+                  onClick={() => navigate('/od-correction')}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-amber-200 hover:bg-amber-50 transition-all group"
+                >
+                  <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all">
+                    <AlertCircle size={18} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-slate-800">OD Correction</p>
+                    <p className="text-xs text-slate-500 font-medium">{(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? 'Request adjustment' : 'Review requests'}</p>
+                  </div>
+                  <ChevronRight size={16} className="text-slate-300 group-hover:text-amber-500" />
+                </div>
 
                 {/* 4. Extend IQAC Window — Context-aware approval or simple extension */}
                 {currentUser.role === UserRole.HOD && (() => {

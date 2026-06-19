@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { EventStatus, ODRequestStatus, UserRole } from '../types';
 import {
   fetchEvents,
@@ -198,7 +198,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const handleODApproval = async (requestId, approve, approverInfo = {}) => {
+  const handleODApproval = async (requestId, approve, approverInfo = {}, odLetterBase64 = null) => {
     const request = odRequests.find(r => r.id === requestId);
     if (!request) return;
 
@@ -222,12 +222,23 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
-      await updateODRequestStatus(requestId, newStatus, {
-        [`${request.status.replace('PENDING_', '').toLowerCase()}ApprovedBy`]: approverInfo.name,
-        [`${request.status.replace('PENDING_', '').toLowerCase()}ApprovedAt`]: new Date().toISOString(),
+      const response = await fetch(`http://localhost:5001/api/od-requests/${requestId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          approvedBy: approverInfo.name || currentUser?.name || 'Authorized Personnel',
+          odLetterBase64: odLetterBase64
+        }),
       });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to update OD status');
+      }
     } catch (error) {
       console.error('Error updating OD request:', error);
+      throw error;
     }
   };
 
@@ -276,9 +287,20 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const filteredEvents = useMemo(() => {
+    if (!currentUser) return [];
+    if (!currentUser.department) return events; // Global roles
+    
+    if (currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER') {
+       return events.filter(e => e.department === currentUser.department || e.openToAllDepartments);
+    }
+    
+    return events.filter(e => e.department === currentUser.department);
+  }, [events, currentUser]);
+
   const value = {
     currentUser,
-    events,
+    events: filteredEvents,
     students,
     odRequests,
     selectedEvent,

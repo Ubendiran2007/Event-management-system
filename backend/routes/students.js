@@ -11,7 +11,17 @@ const checkDb = (res) => {
   return false;
 };
 
-const CLASSES = ['CSE-B', 'CSE-D'];
+const CLASSES = [
+  'CSE-B', 'CSE-D', 
+  'ECE-A', 'ECE-B', 
+  'CCE-A', 
+  'CSBS-A', 
+  'MECH-A', 
+  'CYBER-A', 
+  'EEE-A', 
+  'AIML-A', 
+  'AIDS-A'
+];
 const VALID_ROLES = ['STUDENT_ORGANIZER', 'STUDENT_GENERAL'];
 
 // GET /api/students — fetch all students from all classes
@@ -82,6 +92,58 @@ router.patch('/:id/role', async (req, res) => {
     res.json({ success: true, message: 'Student role updated successfully', studentId: id, role });
   } catch (err) {
     console.error('Error updating student role:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/students/reset-od-usage — IQAC resets OD count for all students at start of semester
+router.post('/reset-od-usage', async (req, res) => {
+  if (checkDb(res)) return;
+  
+  try {
+    let totalReset = 0;
+    for (const className of CLASSES) {
+      const snapshot = await getDocs(collection(db, 'students', className, 'members'));
+      for (const studentDoc of snapshot.docs) {
+        const studentRef = doc(db, 'students', className, 'members', studentDoc.id);
+        await updateDoc(studentRef, {
+          odUsed: 0,
+          updatedAt: new Date().toISOString()
+        });
+        totalReset++;
+      }
+    }
+    
+    console.log(`[IQAC] OD usage reset for ${totalReset} students.`);
+    res.json({ 
+      success: true, 
+      message: `Successfully reset OD usage for ${totalReset} students.`,
+      count: totalReset 
+    });
+  } catch (err) {
+    console.error('Error resetting OD usage:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/students/:id/od-stats — IQAC updates a student's OD usage or limit
+router.patch('/:id/od-stats', async (req, res) => {
+  if (checkDb(res)) return;
+  const { id } = req.params;
+  const { className, odUsed, odLimit } = req.body;
+  
+  if (!className) return res.status(400).json({ success: false, message: 'Class name is required' });
+  
+  try {
+    const studentRef = doc(db, 'students', className, 'members', id);
+    const updates = { updatedAt: new Date().toISOString() };
+    if (odUsed !== undefined) updates.odUsed = Number(odUsed);
+    if (odLimit !== undefined) updates.odLimit = Number(odLimit);
+    
+    await updateDoc(studentRef, updates);
+    res.json({ success: true, message: 'OD stats updated successfully' });
+  } catch (err) {
+    console.error('Error updating OD stats:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

@@ -35,6 +35,8 @@
 17. [Validation Rules](#17-validation-rules)
 18. [Real-Time Data](#18-real-time-data)
 19. [Role-Based View Summary (Per Screen)](#19-role-based-view-summary-per-screen)
+20. [Automated Email Notification System](#20-automated-email-notification-system)
+21. [Multi-Department Architecture](#21-multi-department-architecture)
 
 ---
 
@@ -114,7 +116,7 @@ The **CSE Event Management System** is a full-stack web portal for the Computer 
 │  ├─ auth.js           │◄────│  ├─ events             │
 │  ├─ events.js         │     │  ├─ odRequests         │
 │  ├─ odRequests.js     │     │  ├─ users              │
-│  ├─ iqac.js           │     │  └─ students/          │
+│  ├─ iqac.js           │     │  ├─ students/          │
 │  ├─ students.js       │     │       ├─ CSE-B/members │
 │  ├─ dashboard.js      │     │       └─ CSE-D/members │
 │  └─ explore.js        │     └────────────────────────┘
@@ -1350,6 +1352,60 @@ When Firestore reports a `not-found` error on an event that appeared in the loca
 
 ### Manage Students
 | Only accessible to FACULTY, HOD |
+
+---
+
+## 20. Automated Email Notification System
+
+The system includes a robust, consolidated backend email service (`emailService.js`) designed to handle transactional emails automatically as events transition through various lifecycle stages.
+
+### Infrastructure & Fallbacks
+- **Primary Transport**: SMTP (Nodemailer) via Gmail, enforcing IPv4 (`family: 4`) resolution to mitigate `ENETUNREACH` errors on IPv6-only environments.
+- **Failover Strategy**:
+  1. Standard SMTP (port 587, TLS).
+  2. Fallback SMTP (port 465, SSL).
+  3. Resend API HTTP fallback (if configured and network errors block SMTP).
+
+### Email Workflows Triggered
+1. **Event Proposal Submitted**: `sendEventNotificationToFaculty` alerts the assigned faculty.
+2. **Event Approvals**: 
+   - `sendApprovalRequestToRole` notifies the next approver (HOD or Principal).
+   - `sendEventStatusNotification` updates the organizer upon approval or rejection (including reason).
+3. **Media Team Poster Workflow**:
+   - Immediately after **HOD Approval** (`PENDING_PRINCIPAL`), the system automatically triggers a `sendPosterRequestEmail` to the Media team detailing the event requirements.
+   - When the poster is uploaded, a `sendPosterReadyEmail` notifies the organizer.
+4. **Student Registrations**:
+   - `sendStudentRegistrationStatusEmail` notifies students of approval/rejection and attaches an **auto-generated On-Duty (OD) Letter PDF** upon approval.
+5. **Post-Event IQAC Management**:
+   - `sendPostEventFeedbackEmail`: Requests feedback from attendees post-event.
+   - `sendIQACSubmissionRequestEmail`: Reminds organizer to submit IQAC post-event.
+   - `sendIQACReminderEmail`: Chases up organizers nearing the 3-day deadline.
+   - Extension requests: Alerts HOD of requests and notifies organizers of decisions.
+
+---
+
+## 21. Multi-Department Architecture
+
+The application handles ten separate engineering departments, each with dedicated faculty and HOD roles to isolate event approvals and ensure proper delegation.
+
+### Supported Departments
+1. Computer Science & Engineering (CSE)
+2. Electronics & Communication Engineering (ECE)
+3. Computer & Communication Engineering (CCE)
+4. Cyber Security (Cyber)
+5. Computer Science & Business Systems (CSBS)
+6. Mechanical Engineering (MECH)
+7. Information Technology (IT)
+8. Artificial Intelligence & Data Science (AI&DS)
+9. Artificial Intelligence & Machine Learning (AIML)
+10. Electrical & Electronics Engineering (EEE)
+
+### Credential Mapping (Hardcoded Staff Logins)
+To support testing and unified access across departments, staff logins are mapped based on their respective roles per department:
+- **Faculty**: `{dept}_faculty` / `{dept}_faculty` (e.g., `cse_faculty` / `cse_faculty`)
+- **HOD**: `{dept}_hod` / `{dept}_hod` (e.g., `cse_hod` / `cse_hod`)
+
+*Note: The global staff accounts (like `principal`, `hr`, `media`, `audio`, etc.) remain department-agnostic to service all requests globally.*
 
 ---
 

@@ -563,7 +563,6 @@ const IQACSubmission = () => {
         const jsonData = XLSX.utils.sheet_to_json(ws);
 
         if (jsonData.length === 0) {
-          alert('The uploaded file appears to be empty.');
           return;
         }
 
@@ -602,7 +601,6 @@ const IQACSubmission = () => {
         const jsonData = XLSX.utils.sheet_to_json(ws);
 
         if (jsonData.length === 0) {
-          alert('The uploaded file appears to be empty.');
           return;
         }
 
@@ -612,11 +610,10 @@ const IQACSubmission = () => {
         }));
 
         setGuestFeedback(importedGuestFeedback);
-        /* Success alert removed per user request */
 
       } catch (err) {
-        console.error('Error parsing Guest CSV:', err);
-        alert('Failed to parse the file. Please ensure it follows the correct format.');
+        console.error('Failed to parse the file:', err);
+        setSubmitError('Failed to parse the file. Please ensure it follows the correct format.');
       } finally {
         e.target.value = '';
       }
@@ -659,7 +656,6 @@ const IQACSubmission = () => {
 
   const addResourcePerson = () => {
     if (!resourcePersonForm.name.trim()) {
-      alert('Please fill in the Resource Person Name');
       return;
     }
     setResourcePersons((prev) => [...prev, {
@@ -703,7 +699,6 @@ const IQACSubmission = () => {
 
   const addGuestFeedback = () => {
     if (!feedbackForm.name.trim() || !feedbackForm.feedback.trim()) {
-      alert('Please fill in Name and Feedback');
       return;
     }
     setGuestFeedback((prev) => [...prev, {

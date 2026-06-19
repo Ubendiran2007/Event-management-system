@@ -1560,6 +1560,11 @@ const EventCard = ({
              }`}>
                {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
              </span>
+             {event.department && (
+               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                 {event.department} Department
+               </span>
+             )}
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Calendar size={14} />
@@ -1774,7 +1779,7 @@ const ExploreEvents = () => {
 
     try {
       // 1. Create OD Request
-      await fetch(`http://localhost:5001/api/od-requests`, {
+      const odResponse = await fetch(`http://localhost:5001/api/od-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1788,6 +1793,19 @@ const ExploreEvents = () => {
           registrationType: 'PARTICIPANT'
         }),
       });
+
+      if (!odResponse.ok) {
+        const odData = await odResponse.json();
+        // Rollback optimistic update
+        setEvents(prev => prev.map(ev =>
+          ev.id === eventId
+            ? { ...ev, registeredStudents: (ev.registeredStudents || []).filter(s => s.userId !== currentUser.id) }
+            : ev
+        ));
+        console.warn(odData.message || 'Failed to register. You may have reached your OD limit.');
+        setProcessingEventId(null);
+        return;
+      }
 
       // 2. Persist registration to Firestore
       const response = await fetch(`http://localhost:5001/api/events/${eventId}/register`, {

@@ -4,7 +4,7 @@ import {
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
   Star, AlertTriangle, Clock3,
-  XCircle, Loader2, XCircle as XCircleIcon, ClipboardList, Eye
+  XCircle, Loader2, ClipboardList, Eye
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -169,6 +169,7 @@ const EventDetailModal = ({ event, onClose }) => {
 
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const isMediaUploadAllowed = isMedia && ['REQUESTED', 'REWORK_REQUESTED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
+  const canFinalizePoster = isMediaUploadAllowed && (event.posterDataUrl || event.posterUrl || posterUploadSuccess);
 
   const handlePosterUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -211,7 +212,30 @@ const EventDetailModal = ({ event, onClose }) => {
       });
 
       if (!patchRes.ok) throw new Error('Failed to upload poster data.');
+      
+      setPosterUploadSuccess('Poster uploaded! Review it above and click "Approve" to finalize.');
+      
+      // Reset file input so onChange fires even if same file is selected again
+      if (fileInputRef.current) fileInputRef.current.value = '';
 
+      // Update local event object if possible to show the new image immediately
+      if (setSelectedEvent) {
+          setSelectedEvent(prev => ({ ...prev, posterDataUrl }));
+      }
+
+    } catch (err) {
+      console.error(err);
+      setPosterUploadError(err.message || 'An error occurred during upload.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } finally {
+      setIsUploadingPoster(false);
+    }
+  };
+
+  const handleFinalizePoster = async () => {
+    setIsProcessing(true);
+    setPosterUploadError('');
+    try {
       const wfRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster-workflow`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -222,19 +246,16 @@ const EventDetailModal = ({ event, onClose }) => {
         })
       });
 
-      if (!wfRes.ok) throw new Error('Failed to update workflow status.');
+      if (!wfRes.ok) throw new Error('Failed to finalize poster workflow.');
 
-      setPosterUploadSuccess('Poster uploaded successfully! Closing...');
-
+      setPosterUploadSuccess('Poster approved successfully! Moving forward...');
       setTimeout(() => {
         onClose();
       }, 1500);
-
     } catch (err) {
-      console.error(err);
-      setPosterUploadError(err.message || 'An error occurred during upload.');
+      setPosterUploadError(err.message);
     } finally {
-      setIsUploadingPoster(false);
+      setIsProcessing(false);
     }
   };
 
@@ -483,12 +504,14 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
             </div>
 
-            {/* Approval Workflow Indicator */}
-            <div className="glass-panel p-4 rounded-xl">
-              <p className="text-xs font-bold text-slate-400 uppercase mb-3">Approval Workflow</p>
-              <div className="flex items-center gap-2 flex-wrap mb-4">
-                {/* Simple workflow steps as before */}
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+            {/* Approval Workflow & Timeline (Visible to organizer, staff, or everyone once posted) */}
+            {(event.organizerId === currentUser.id || currentUser.role !== UserRole.STUDENT || [EventStatus.POSTED, EventStatus.COMPLETED].includes(event.status)) && (
+              <>
+                <div className="glass-panel p-4 rounded-xl">
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-3">Approval Workflow</p>
+                  <div className="flex items-center gap-2 flex-wrap mb-4">
+                    {/* Simple workflow steps as before */}
+                    <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                   event.status === EventStatus.PENDING_FACULTY ? 'bg-amber-100 text-amber-700' :
                   event.status === EventStatus.REJECTED ? 'bg-red-100 text-red-700' :
                   'bg-emerald-100 text-emerald-700'
@@ -643,7 +666,7 @@ const EventDetailModal = ({ event, onClose }) => {
                 <p className="text-xs font-bold text-slate-400 uppercase mb-3">Organizer Details</p>
                 <div className="grid grid-cols-2 gap-4">
                   <InfoRow label="Organizer Name" value={s1?.organizerDetails?.organizerName} />
-                  <InfoRow label="Department" value={s1?.organizerDetails?.department} />
+                  <InfoRow label="Department" value={event.department || s1?.organizerDetails?.department} />
                   <InfoRow label="Mobile Number" value={s1?.organizerDetails?.mobileNumber} />
                 </div>
               </div>
@@ -1280,7 +1303,7 @@ const EventDetailModal = ({ event, onClose }) => {
                                           const win = window.open();
                                           win.document.write('<iframe src="' + url  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
                                         } else {
-                                          alert("System-generated " + item.requirement + " can be viewed and downloaded using the IQAC Export tools in the main Explore view.");
+                                          console.log("System-generated " + item.requirement + " can be viewed and downloaded using the IQAC Export tools in the main Explore view.");
                                         }
                                       }}
                                       className="text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-blue-50 transition-all shadow-sm border border-blue-100"
@@ -1343,8 +1366,7 @@ const EventDetailModal = ({ event, onClose }) => {
                 </div>
               </InfoSection>
             )}
-          </div>
-
+          
           {/* Action Buttons - Sticky Footer */}
           {/* ── IQAC Submission Banner (Organizer) ── */}
           {iqacStatus && (
@@ -1449,22 +1471,49 @@ const EventDetailModal = ({ event, onClose }) => {
                       className="hidden"
                       ref={fileInputRef}
                       onChange={handlePosterUpload}
-                      disabled={isUploadingPoster || !!posterUploadSuccess}
+                      disabled={isUploadingPoster || isProcessing}
                     />
                     <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploadingPoster || !!posterUploadSuccess}
-                      className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={isUploadingPoster || isProcessing}
+                      className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                     >
                       {isUploadingPoster ? (
                         <><Loader2 size={18} className="animate-spin" /> Uploading...</>
-                      ) : posterUploadSuccess ? (
-                        <><CheckCircle2 size={18} /> Done!</>
+                      ) : (event.posterDataUrl || event.posterUrl) ? (
+                        <><Camera size={18} /> Change Poster</>
                       ) : (
                         <><Camera size={18} /> Choose Poster Image</>
                       )}
                     </button>
                   </div>
+
+                  {canFinalizePoster && (
+                    <div className="mt-2 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center shadow-sm">
+                          <CheckCircle2 size={18} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-indigo-900">Poster Ready for Approval?</p>
+                          <p className="text-[10px] text-indigo-600 font-medium">Once approved, it will be visible to everyone.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleFinalizePoster}
+                        disabled={isProcessing}
+                        className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-md shadow-indigo-200 active:scale-95 disabled:opacity-50"
+                      >
+                        {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <FileCheck size={14} />}
+                        Approve & Finalize
+                      </button>
+                    </div>
+                  )}
                   {posterUploadError && (
                     <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
                       <XCircle size={16} className="shrink-0" /> {posterUploadError}
@@ -1706,15 +1755,17 @@ const EventDetailModal = ({ event, onClose }) => {
                         )}
                       </button>
                     </div>
-                  </div>
-                </>
-              )}
-
-            </div>
-          )}
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </motion.div>
+  </motion.div>
+</AnimatePresence>
   );
 };
 

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
 const { collection, getDocs, doc, getDoc, addDoc, updateDoc } = require('firebase/firestore');
+const { handleODStatusChange } = require('../services/emailHandler');
 
 const STUDENT_CLASS_DOCS = ['CSE-B', 'CSE-D'];
 
@@ -87,6 +88,17 @@ router.post('/', async (req, res) => {
     const event = eventSnap.data();
 
     const studentRecord = await findStudentInFirestore(studentId);
+    
+    // Check OD participation limit (e.g. 7 ODs per semester)
+    const odUsed = studentRecord?.odUsed || 0;
+    const odLimit = studentRecord?.odLimit || 7;
+    if (odUsed >= odLimit) {
+      return res.status(403).json({
+        success: false,
+        message: `You have reached your semester limit of ${odLimit} ODs. Please contact IQAC if you believe this is an error.`
+      });
+    }
+
     const normalizedRollNo =
       normalizeRollNo(studentRecord?.rollNo) ||
       normalizeRollNo(rollNo) ||
@@ -250,7 +262,49 @@ router.patch('/:id/status', async (req, res) => {
       update.rejectedBy = approvedBy || 'Organizer';
     }
 
+    const current = odSnap.data();
     await updateDoc(odRef, update);
+
+    // Handle OD Usage Count adjustments
+    if (current.studentId) {
+      try {
+        const student = await findStudentInFirestore(current.studentId);
+        if (student) {
+          const studentRef = doc(db, 'students', student.className, 'members', current.studentId);
+          
+          // Increment if becoming APPROVED (and wasn't already)
+          if (status === 'APPROVED' && current.status !== 'APPROVED') {
+            await updateDoc(studentRef, { 
+              odUsed: (student.odUsed || 0) + 1,
+              updatedAt: new Date().toISOString()
+            });
+            console.log(`[OD Usage] Incremented for ${current.studentName}: ${(student.odUsed || 0) + 1}`);
+          }
+          
+          // Decrement if was APPROVED and is now something else (REJECTED/WITHDRAWN)
+          else if (current.status === 'APPROVED' && status !== 'APPROVED') {
+            await updateDoc(studentRef, { 
+              odUsed: Math.max(0, (student.odUsed || 0) - 1),
+              updatedAt: new Date().toISOString()
+            });
+            console.log(`[OD Usage] Decremented for ${current.studentName}: ${Math.max(0, (student.odUsed || 0) - 1)}`);
+          }
+        }
+      } catch (err) {
+        console.error('[odRequests/status] Failed to adjust OD usage:', err.message);
+      }
+    }
+
+    setImmediate(async () => {
+      try {
+        if (current.email && (status === 'APPROVED' || status === 'REJECTED')) {
+          await handleODStatusChange({ id, ...current }, status, req.body.odLetterBase64);
+        }
+      } catch (err) {
+        console.error('[odRequests/status/bg] Error sending email:', err.message);
+      }
+    });
+
     res.json({ success: true, message: 'Status updated', id, status });
   } catch (err) {
     console.error('Error updating OD request status:', err);
@@ -279,6 +333,23 @@ router.patch('/:id/withdraw', async (req, res) => {
       withdrawnAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
+
+    // If it was already approved, decrement the student's OD usage
+    if (current.status === 'APPROVED' && current.studentId) {
+      try {
+        const student = await findStudentInFirestore(current.studentId);
+        if (student) {
+          const studentRef = doc(db, 'students', student.className, 'members', current.studentId);
+          await updateDoc(studentRef, { 
+            odUsed: Math.max(0, (student.odUsed || 0) - 1),
+            updatedAt: new Date().toISOString()
+          });
+          console.log(`[OD Usage] Decremented (Withdrawal) for ${current.studentName}: ${Math.max(0, (student.odUsed || 0) - 1)}`);
+        }
+      } catch (err) {
+        console.error('[odRequests/withdraw] Failed to decrement OD usage:', err.message);
+      }
+    }
     res.json({ success: true, message: 'OD request withdrawn successfully', id });
   } catch (err) {
     console.error('Error withdrawing OD request:', err);

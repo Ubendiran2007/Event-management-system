@@ -277,6 +277,17 @@ router.post('/:eventId', async (req, res) => {
       },
     });
 
+    setImmediate(async () => {
+      try {
+        const { handleEventStatusChange } = require('../services/emailHandler');
+        const updatedEventData = { ...event, status: 'COMPLETED', iqacSubmittedAt: new Date().toISOString() };
+        // Passing 'IQAC_SUBMITTED' as the new status so the handler can distinguish it from marking the event COMPLETED
+        await handleEventStatusChange(updatedEventData, event.status, 'IQAC_SUBMITTED');
+      } catch (e) {
+        console.error('[iqac/submit/bg] Error in email handler:', e.message);
+      }
+    });
+
     res.json({
       success: true,
       message: 'IQAC submission saved. Event marked as COMPLETED.',

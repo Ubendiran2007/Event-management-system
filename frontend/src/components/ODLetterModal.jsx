@@ -441,7 +441,7 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
   const handleDownload = () => {
     const printWindow = window.open('', '_blank', 'width=900,height=1200');
     if (!printWindow) {
-      alert('Please allow pop-ups to download the OD letter.');
+      console.warn('Please allow pop-ups to download the OD letter.');
       return;
     }
     printWindow.document.write(letterHTML);

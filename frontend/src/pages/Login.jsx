@@ -6,6 +6,8 @@ import { UserRole } from '../types';
 
 import Navbar from '../components/Navbar';
 
+
+
 const Login = () => {
   const { handleLogin } = useAppContext();
   const navigate = useNavigate();
@@ -20,6 +22,7 @@ const Login = () => {
     if (!unlockInputs) setUnlockInputs(true);
   };
 
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -32,6 +35,8 @@ const Login = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: username.trim(), password }),
       });
+
+
 
       const data = await response.json();
 
@@ -143,10 +148,15 @@ const Login = () => {
               <LogIn size={18} />
               {loading ? 'Signing in...' : 'Sign In'}
             </button>
+             
+           
           </form>
         </div>
       </div>
     </div>
+
+
+
   );
 };
 
