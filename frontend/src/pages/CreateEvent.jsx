@@ -2426,11 +2426,12 @@ const CreateEvent = () => {
                       <span className="text-sm flex-1">{v}</span>
                       <div className="flex flex-col items-end gap-0.5">
                         <input
-                          type="number"
-                          min="1"
+                          type="text"
+                          inputMode="numeric"
                           disabled={!item.selected}
                           className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
                           value={item.qty}
+                          onKeyDown={onlyDigitsKeyDown}
                           onChange={(e) => updateQtyMap('venueSelection', v, { qty: Number(e.target.value || 0) })}
                           onBlur={() => setQtyTouched('venueSelection', v, true)}
                           placeholder="Qty"
@@ -2463,11 +2464,12 @@ const CreateEvent = () => {
                       <span className="text-sm flex-1">{v}</span>
                       <div className="flex flex-col items-end gap-0.5">
                         <input
-                          type="number"
-                          min="1"
+                          type="text"
+                          inputMode="numeric"
                           disabled={!item.selected}
                           className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
                           value={item.qty}
+                          onKeyDown={onlyDigitsKeyDown}
                           onChange={(e) => updateQtyMap('hallRequirements', v, { qty: Number(e.target.value || 0) })}
                           onBlur={() => setQtyTouched('hallRequirements', v, true)}
                           placeholder="Qty"
@@ -2598,11 +2600,12 @@ const CreateEvent = () => {
                       {!isAC && (
                         <div className="flex flex-col items-end gap-0.5">
                           <input
-                            type="number"
-                            min="1"
+                            type="text"
+                            inputMode="numeric"
                             disabled={!item.selected}
                             className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
                             value={item.qty}
+                            onKeyDown={onlyDigitsKeyDown}
                             onChange={(e) => updateQtyMap('audioEquipment', v, { qty: Number(e.target.value || 0) })}
                             onBlur={() => setQtyTouched('audioEquipment', v, true)}
                             placeholder="Qty"
