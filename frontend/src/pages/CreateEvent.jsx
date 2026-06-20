@@ -547,6 +547,7 @@ const CreateEvent = () => {
     audioRequired: true,
     ictsRequired: true,
     transportRequired: false,
+    transportType: 'external', // 'external' | 'internal' | 'both'
     accommodationRequired: true,
     mediaRequired: true,
     financialRequired: false,
@@ -579,13 +580,21 @@ const CreateEvent = () => {
 
     // Step 5: Transport
     externalTransport: {
+      // Organizer (auto-filled)
       facultyId: '',
+      organizerName: '',
       organizerDesignation: '',
       contactNumber: '',
       emailId: '',
-      guestDetails: '',
+      // Guest
+      useResourcePerson: false,
+      guestName: '',
+      guestDesignation: '',
+      guestContact: '',
+      guestEmail: '',
+      // Visit
       purposeOfVisit: '',
-      modeOfTransport: 'Bus',
+      modeOfTransport: 'Car',
       onwardJourney: { ...defaultTransportJourney },
       returnJourney: { ...defaultTransportJourney },
     },
@@ -1738,6 +1747,7 @@ const CreateEvent = () => {
           : null,
         annexureIV_transport: form.transportRequired
           ? {
+              transportType: form.transportType,
               externalTransport: form.externalTransport,
               internalTransport: form.internalTransport,
             }
@@ -2610,258 +2620,357 @@ const CreateEvent = () => {
     }
 
     if (currentStep === STEP_KEYS.TRANSPORT) {
+      const tt = form.transportType;
+      const showExt = tt === 'external' || tt === 'both';
+      const showInt = tt === 'internal' || tt === 'both';
+
+      // Helper: journey sub-form
+      const JourneySection = ({ label, transportKey, journeyKey }) => (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{label}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700">Vehicle Date</label>
+              <input type="date" className={inputClass} min={journeyMinDate}
+                value={form[transportKey][journeyKey].vehicleDate}
+                onChange={(e) => updateJourney(transportKey, journeyKey, 'vehicleDate', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700">No. of Persons <span className="text-red-500">*</span></label>
+              <input type="number" min="1" className={inputClass} placeholder="e.g. 4"
+                value={form[transportKey][journeyKey].numberOfPersons}
+                onChange={(e) => updateJourney(transportKey, journeyKey, 'numberOfPersons', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700">Starting Place <span className="text-red-500">*</span></label>
+              <input className={inputClass} placeholder="e.g. Coimbatore Airport"
+                value={form[transportKey][journeyKey].startingPlace}
+                onChange={(e) => updateJourney(transportKey, journeyKey, 'startingPlace', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700">Start Time <span className="text-red-500">*</span></label>
+              <TimePicker id={`${transportKey}-${journeyKey}-start`} className={inputClass}
+                value={form[transportKey][journeyKey].startTime}
+                onChange={(e) => updateJourney(transportKey, journeyKey, 'startTime', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700">End Place <span className="text-red-500">*</span></label>
+              <input className={inputClass} placeholder="e.g. Sri Eshwar College"
+                value={form[transportKey][journeyKey].endPlace}
+                onChange={(e) => updateJourney(transportKey, journeyKey, 'endPlace', e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700">End Time <span className="text-red-500">*</span></label>
+              <TimePicker id={`${transportKey}-${journeyKey}-end`} className={inputClass}
+                value={form[transportKey][journeyKey].endTime}
+                onChange={(e) => updateJourney(transportKey, journeyKey, 'endTime', e.target.value)} />
+            </div>
+          </div>
+        </div>
+      );
+
+      const typeOptions = [
+        {
+          value: 'external', label: 'External Transport', annexure: 'Annexure IV-A',
+          icon: '🚘',
+          desc: 'For Resource Persons, Chief Guests, Industry Experts & External Visitors',
+          color: 'blue',
+        },
+        {
+          value: 'internal', label: 'Internal Transport', annexure: 'Annexure IV-B',
+          icon: '🚌',
+          desc: 'For Students, Faculty & Staff travelling to industries or external locations',
+          color: 'emerald',
+        },
+        {
+          value: 'both', label: 'Both', annexure: 'IV-A & IV-B',
+          icon: '🔁',
+          desc: 'Events requiring both guest pickup and student/faculty travel',
+          color: 'violet',
+        },
+      ];
+
       return (
-        <Card title="Step 5 - Transport Requirements (Annexure IV a & b)" icon={Car}>
-          {!form.transportRequired && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Transport requirement is marked as Not Required in Step 1. You can still fill this section if needed.
-            </div>
-          )}
+        <Card title="Step 5 – Transport Requirements" icon={Car}>
           <div className="space-y-6">
-            <div className="rounded-xl border border-slate-200 p-4 space-y-4">
-              <h4 className="font-semibold text-slate-800">External Transport (Annexure IV a)</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Lbl required>Faculty ID</Lbl>
-                  <input className={inputClass} value={form.externalTransport.facultyId} onChange={(e) => updateNested('externalTransport.facultyId', e.target.value)} placeholder="e.g. F-1001" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Organizer Designation</Lbl>
-                  <input className={inputClass} value={form.externalTransport.organizerDesignation} onChange={(e) => updateNested('externalTransport.organizerDesignation', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Contact Number</Lbl>
-                  <input
-                    id="ext_contactNumber"
-                    type="tel"
-                    className={fieldCls('ext_contactNumber')}
-                    value={form.externalTransport.contactNumber}
-                    maxLength={10}
-                    onKeyDown={onlyDigitsKeyDown}
-                    onChange={(e) => { updateNested('externalTransport.contactNumber', e.target.value); setFE('ext_contactNumber', ''); }}
-                    onBlur={(e) => validateField('ext_contactNumber', e.target.value)}
-                    placeholder="10-digit number"
-                  />
-                  <FieldMsg errKey="ext_contactNumber" hint="Exactly 10 digits, numbers only" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Email ID</Lbl>
-                  <input
-                    id="ext_emailId"
-                    type="email"
-                    className={fieldCls('ext_emailId')}
-                    value={form.externalTransport.emailId}
-                    onChange={(e) => { updateNested('externalTransport.emailId', e.target.value.toLowerCase()); setFE('ext_emailId', ''); }}
-                    onBlur={(e) => validateField('ext_emailId', e.target.value)}
-                    placeholder="lowercase@example.com"
-                  />
-                  <FieldMsg errKey="ext_emailId" hint="Must contain @ and be all lowercase" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Guest Details</Lbl>
-                  <input className={inputClass} value={form.externalTransport.guestDetails} onChange={(e) => updateNested('externalTransport.guestDetails', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Purpose of Visit</Lbl>
-                  <input className={inputClass} value={form.externalTransport.purposeOfVisit} onChange={(e) => updateNested('externalTransport.purposeOfVisit', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl required>Mode of Transport</Lbl>
-                  <select className={inputClass} value={form.externalTransport.modeOfTransport} onChange={(e) => updateNested('externalTransport.modeOfTransport', e.target.value)}>
-                    <option>Bus</option>
-                    <option>Train</option>
-                    <option>Flight</option>
-                  </select>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {['onwardJourney', 'returnJourney'].map((journey) => (
-                  <div key={journey} className="rounded-lg border border-slate-200 p-3">
-                    <p className="font-semibold text-sm mb-2">{journey === 'onwardJourney' ? 'Onward Journey' : 'Return Journey'}</p>
-                    <div className="grid grid-cols-1 gap-2">
-                      {Object.keys(defaultTransportJourney).map((field) => (
-                        <div key={field} className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">{JOURNEY_FIELD_LABELS[field] || field}</label>
-                          {field.toLowerCase().includes('time') ? (
-                            <TimePicker
-                              id={field}
-                              className={inputClass}
-                              value={form.externalTransport[journey][field]}
-                              onChange={(e) => updateJourney('externalTransport', journey, field, e.target.value)}
-                            />
-                          ) : (
-                            <input
-                              className={inputClass}
-                              type={field.toLowerCase().includes('date') ? 'date' : field === 'numberOfPersons' ? 'number' : 'text'}
-                              min={field.toLowerCase().includes('date') ? journeyMinDate : undefined}
-                              value={form.externalTransport[journey][field]}
-                              onChange={(e) => updateJourney('externalTransport', journey, field, e.target.value)}
-                            />
-                          )}
+            {/* ── Transport Type Selector ───────────────────────────────── */}
+            <div className="space-y-2">
+              <p className="text-sm font-bold text-slate-700">Transport Requirement Type <span className="text-red-500">*</span></p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {typeOptions.map((opt) => {
+                  const active = form.transportType === opt.value;
+                  const ring = {
+                    blue: active ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 hover:border-blue-300 hover:bg-blue-50/40',
+                    emerald: active ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-200' : 'border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/40',
+                    violet: active ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-200' : 'border-slate-200 hover:border-violet-300 hover:bg-violet-50/40',
+                  }[opt.color];
+                  return (
+                    <button key={opt.value} type="button"
+                      onClick={() => setField('transportType', opt.value)}
+                      className={`text-left rounded-xl border-2 p-4 transition-all cursor-pointer ${ring}`}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-2xl">{opt.icon}</span>
+                        <div>
+                          <p className="font-bold text-slate-800 text-sm">{opt.label}</p>
+                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{opt.annexure}</p>
+                          <p className="text-xs text-slate-500 leading-relaxed">{opt.desc}</p>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-4 space-y-4">
-              <h4 className="font-semibold text-slate-800">Internal Transport (Annexure IV b)</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Lbl required>Indenter Name</Lbl>
-                  <input className={inputClass} value={form.internalTransport.indenterName} onChange={(e) => updateNested('internalTransport.indenterName', e.target.value)} placeholder="Full name" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Contact Number</Lbl>
-                  <input
-                    id="int_contactNumber"
-                    type="tel"
-                    className={fieldCls('int_contactNumber')}
-                    value={form.internalTransport.contactNumber}
-                    maxLength={10}
-                    onKeyDown={onlyDigitsKeyDown}
-                    onChange={(e) => { updateNested('internalTransport.contactNumber', e.target.value); setFE('int_contactNumber', ''); }}
-                    onBlur={(e) => validateField('int_contactNumber', e.target.value)}
-                    placeholder="10-digit number"
-                  />
-                  <FieldMsg errKey="int_contactNumber" hint="Exactly 10 digits, numbers only" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Designation</Lbl>
-                  <input className={inputClass} value={form.internalTransport.designation} onChange={(e) => updateNested('internalTransport.designation', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Employee ID</Lbl>
-                  <input className={inputClass} value={form.internalTransport.employeeId} onChange={(e) => updateNested('internalTransport.employeeId', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Department</Lbl>
-                  <input className={inputClass} value={form.internalTransport.department} onChange={(e) => updateNested('internalTransport.department', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Email ID</Lbl>
-                  <input
-                    id="int_emailId"
-                    type="email"
-                    className={fieldCls('int_emailId')}
-                    value={form.internalTransport.emailId}
-                    onChange={(e) => { updateNested('internalTransport.emailId', e.target.value.toLowerCase()); setFE('int_emailId', ''); }}
-                    onBlur={(e) => validateField('int_emailId', e.target.value)}
-                    placeholder="lowercase@example.com"
-                  />
-                  <FieldMsg errKey="int_emailId" hint="Must contain @ and be all lowercase" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Number of Vehicles</Lbl>
-                  <input
-                    id="int_numberOfVehicles"
-                    type="text"
-                    inputMode="numeric"
-                    className={fieldCls('int_numberOfVehicles')}
-                    value={form.internalTransport.numberOfVehicles}
-                    onKeyDown={onlyDigitsKeyDown}
-                    onChange={(e) => { updateNested('internalTransport.numberOfVehicles', e.target.value); setFE('int_numberOfVehicles', ''); }}
-                    onBlur={(e) => validateField('int_numberOfVehicles', e.target.value)}
-                    placeholder="e.g. 2"
-                  />
-                  <FieldMsg errKey="int_numberOfVehicles" hint="Whole number only" />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Vehicle Number</Lbl>
-                  <input className={inputClass} value={form.internalTransport.vehicleNumber} onChange={(e) => updateNested('internalTransport.vehicleNumber', e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Lbl>Purpose of Visit</Lbl>
-                  <input className={inputClass} value={form.internalTransport.purposeOfVisit} onChange={(e) => updateNested('internalTransport.purposeOfVisit', e.target.value)} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {['onwardJourney', 'returnJourney'].map((journey) => (
-                  <div key={journey} className="rounded-lg border border-slate-200 p-3">
-                    <p className="font-semibold text-sm mb-2">Internal {journey === 'onwardJourney' ? 'Onward Journey' : 'Return Journey'}</p>
-                    <div className="grid grid-cols-1 gap-2">
-                      {Object.keys(defaultTransportJourney).map((field) => (
-                        <div key={field} className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">{JOURNEY_FIELD_LABELS[field] || field}</label>
-                          {field.toLowerCase().includes('time') ? (
-                            <TimePicker
-                              id={field}
-                              className={inputClass}
-                              value={form.internalTransport[journey][field]}
-                              onChange={(e) => updateJourney('internalTransport', journey, field, e.target.value)}
-                            />
-                          ) : (
-                            <input
-                              className={inputClass}
-                              type={field.toLowerCase().includes('date') ? 'date' : field === 'numberOfPersons' ? 'number' : 'text'}
-                              min={field.toLowerCase().includes('date') ? journeyMinDate : undefined}
-                              value={form.internalTransport[journey][field]}
-                              onChange={(e) => updateJourney('internalTransport', journey, field, e.target.value)}
-                            />
-                          )}
-                        </div>
-                      ))}
+            {/* ── EXTERNAL TRANSPORT ───────────────────────────────────── */}
+            <AnimatePresence>
+              {showExt && (
+                <motion.div key="ext" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.22 }}
+                  className="rounded-2xl border border-blue-200 bg-white overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
+                    <span className="text-lg">🚘</span>
+                    <div>
+                      <p className="font-bold text-white text-sm">External Transport Request</p>
+                      <p className="text-blue-200 text-[10px] font-semibold uppercase tracking-wider">Annexure IV-A</p>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="p-5 space-y-5">
 
-              <div>
-                <p className="font-semibold text-sm mb-2">Passenger Table</p>
-                <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left">S.No</th>
-                        <th className="px-3 py-2 text-left">Name</th>
-                        <th className="px-3 py-2 text-left">Employee ID</th>
-                        <th className="px-3 py-2 text-left">Designation</th>
-                        <th className="px-3 py-2 text-left">Contact Number</th>
-                        <th className="px-3 py-2 text-left">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {form.internalTransport.passengers.map((row) => (
-                        <tr key={row.id} className="border-t border-slate-200">
-                          <td className="px-3 py-2">{row.sno}</td>
-                          <td className="px-3 py-2"><input className={inputClass} value={row.name} onChange={(e) => updatePassenger(row.id, 'name', e.target.value)} /></td>
-                          <td className="px-3 py-2"><input className={inputClass} value={row.employeeId} onChange={(e) => updatePassenger(row.id, 'employeeId', e.target.value)} /></td>
-                          <td className="px-3 py-2"><input className={inputClass} value={row.designation} onChange={(e) => updatePassenger(row.id, 'designation', e.target.value)} /></td>
-                          <td className="px-3 py-2"><input className={inputClass} value={row.contactNumber} onChange={(e) => updatePassenger(row.id, 'contactNumber', e.target.value)} /></td>
-                          <td className="px-3 py-2">
-                            <button type="button" onClick={() => removePassenger(row.id)} className="text-red-600"><Trash2 size={14} /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button type="button" onClick={addPassenger} className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-blue-600">
-                  <Plus size={14} /> Add Passenger
-                </button>
-              </div>
+                    {/* Organizer info */}
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Organizer Information <span className="text-slate-300 font-normal normal-case tracking-normal">(auto-filled)</span></p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                          { lbl: 'Faculty ID', path: 'externalTransport.facultyId', placeholder: 'e.g. F-1001' },
+                          { lbl: 'Organizer Name', path: 'externalTransport.organizerName', placeholder: currentUser?.name || '' },
+                          { lbl: 'Designation', path: 'externalTransport.organizerDesignation', placeholder: currentUser?.designation || '' },
+                          { lbl: 'Department', path: 'externalTransport.department', placeholder: currentUser?.department || '' },
+                          { lbl: 'Contact Number', path: 'externalTransport.contactNumber', placeholder: '10-digit number', type: 'tel' },
+                          { lbl: 'Email ID', path: 'externalTransport.emailId', placeholder: 'lowercase@example.com', type: 'email' },
+                        ].map(({ lbl, path, placeholder, type = 'text' }) => (
+                          <div key={path} className="space-y-1">
+                            <label className="text-sm font-semibold text-slate-700">{lbl}</label>
+                            <input type={type} className={`${inputClass} bg-slate-50`} placeholder={placeholder}
+                              value={path.split('.').reduce((o, k) => o?.[k], form) || ''}
+                              onChange={(e) => updateNested(path, type === 'email' ? e.target.value.toLowerCase() : e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-              <div>
-                <p className="font-semibold text-sm mb-2">Industry / Organization Name (Multiple)</p>
-                {form.internalTransport.industries.map((industry, idx) => (
-                  <div key={idx} className="flex items-center gap-2 mb-2">
-                    <input className={inputClass} value={industry} onChange={(e) => updateIndustry(idx, e.target.value)} />
-                    <button type="button" onClick={() => removeIndustry(idx)} className="text-red-600"><Trash2 size={14} /></button>
+                    {/* Guest info */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Guest Information</p>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-blue-600 select-none">
+                          <input type="checkbox" className="w-4 h-4 accent-blue-600"
+                            checked={form.externalTransport.useResourcePerson}
+                            onChange={(e) => {
+                              updateNested('externalTransport.useResourcePerson', e.target.checked);
+                              if (e.target.checked && form.guests?.length > 0) {
+                                const rp = form.guests[0];
+                                updateNested('externalTransport.guestName', rp.name || '');
+                                updateNested('externalTransport.guestDesignation', rp.designation || '');
+                                updateNested('externalTransport.guestContact', rp.contactNumber || '');
+                                updateNested('externalTransport.guestEmail', rp.email || '');
+                              }
+                            }} />
+                          Use Resource Person Details
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {[
+                          { lbl: 'Guest Name', path: 'externalTransport.guestName', req: true },
+                          { lbl: 'Guest Designation', path: 'externalTransport.guestDesignation', req: true },
+                          { lbl: 'Guest Contact Number', path: 'externalTransport.guestContact', req: true, type: 'tel' },
+                          { lbl: 'Guest Email ID', path: 'externalTransport.guestEmail', req: true, type: 'email' },
+                        ].map(({ lbl, path, req, type = 'text' }) => (
+                          <div key={path} className="space-y-1">
+                            <label className="text-sm font-semibold text-slate-700">{lbl}{req && <span className="text-red-500 ml-0.5">*</span>}</label>
+                            <input type={type} className={inputClass}
+                              value={path.split('.').reduce((o, k) => o?.[k], form) || ''}
+                              onChange={(e) => updateNested(path, type === 'email' ? e.target.value.toLowerCase() : e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Visit info */}
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Visit Information</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-sm font-semibold text-slate-700">Purpose of Visit <span className="text-red-500">*</span></label>
+                          <input className={inputClass} placeholder="e.g. Delivering Guest Lecture on AI"
+                            value={form.externalTransport.purposeOfVisit}
+                            onChange={(e) => updateNested('externalTransport.purposeOfVisit', e.target.value)} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-sm font-semibold text-slate-700 block mb-2">Mode of Transport <span className="text-red-500">*</span></label>
+                        <div className="flex flex-wrap gap-3">
+                          {['Flight', 'Train', 'Bus', 'Car'].map((mode) => (
+                            <label key={mode} className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 cursor-pointer text-sm font-semibold transition-all ${form.externalTransport.modeOfTransport === mode ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}>
+                              <input type="radio" className="sr-only" checked={form.externalTransport.modeOfTransport === mode}
+                                onChange={() => updateNested('externalTransport.modeOfTransport', mode)} />
+                              {mode === 'Flight' ? '✈️' : mode === 'Train' ? '🚆' : mode === 'Bus' ? '🚌' : '🚗'} {mode}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Journeys */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <JourneySection label="🛫 Onward Journey" transportKey="externalTransport" journeyKey="onwardJourney" />
+                      <JourneySection label="🛬 Return Journey" transportKey="externalTransport" journeyKey="returnJourney" />
+                    </div>
                   </div>
-                ))}
-                <button type="button" onClick={addIndustry} className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600">
-                  <Plus size={14} /> Add Industry / Organization
-                </button>
-              </div>
-            </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── INTERNAL TRANSPORT ───────────────────────────────────── */}
+            <AnimatePresence>
+              {showInt && (
+                <motion.div key="int" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.22 }}
+                  className="rounded-2xl border border-emerald-200 bg-white overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 flex items-center gap-2">
+                    <span className="text-lg">🚌</span>
+                    <div>
+                      <p className="font-bold text-white text-sm">Internal Transport Request</p>
+                      <p className="text-emerald-200 text-[10px] font-semibold uppercase tracking-wider">Annexure IV-B</p>
+                    </div>
+                  </div>
+                  <div className="p-5 space-y-5">
+
+                    {/* Indenter info */}
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Indenter Information <span className="text-slate-300 font-normal normal-case tracking-normal">(auto-filled)</span></p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                          { lbl: 'Indenter Name', path: 'internalTransport.indenterName', placeholder: currentUser?.name || '' },
+                          { lbl: 'Employee ID', path: 'internalTransport.employeeId' },
+                          { lbl: 'Designation', path: 'internalTransport.designation' },
+                          { lbl: 'Department', path: 'internalTransport.department', placeholder: currentUser?.department || '' },
+                          { lbl: 'Contact Number', path: 'internalTransport.contactNumber', type: 'tel' },
+                          { lbl: 'Email ID', path: 'internalTransport.emailId', type: 'email' },
+                        ].map(({ lbl, path, placeholder = '', type = 'text' }) => (
+                          <div key={path} className="space-y-1">
+                            <label className="text-sm font-semibold text-slate-700">{lbl}</label>
+                            <input type={type} className={`${inputClass} bg-slate-50`} placeholder={placeholder}
+                              value={path.split('.').reduce((o, k) => o?.[k], form) || ''}
+                              onChange={(e) => updateNested(path, type === 'email' ? e.target.value.toLowerCase() : e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Visit + Orgs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-sm font-semibold text-slate-700">Purpose of Visit <span className="text-red-500">*</span></label>
+                        <input className={inputClass} placeholder="e.g. Industry Visit to Zoho"
+                          value={form.internalTransport.purposeOfVisit}
+                          onChange={(e) => updateNested('internalTransport.purposeOfVisit', e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-semibold text-slate-700">Number of Vehicles <span className="text-red-500">*</span></label>
+                        <input type="text" inputMode="numeric" className={inputClass} placeholder="e.g. 2"
+                          value={form.internalTransport.numberOfVehicles}
+                          onKeyDown={onlyDigitsKeyDown}
+                          onChange={(e) => updateNested('internalTransport.numberOfVehicles', e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-semibold text-slate-700">Vehicle Number <span className="text-xs text-slate-400 font-normal">(optional)</span></label>
+                        <input className={inputClass} placeholder="Assigned by Transport Dept."
+                          value={form.internalTransport.vehicleNumber}
+                          onChange={(e) => updateNested('internalTransport.vehicleNumber', e.target.value)} />
+                      </div>
+                    </div>
+
+                    {/* Organizations */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-bold text-slate-700">Industry / Organization</p>
+                        <button type="button" onClick={addIndustry}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors">
+                          <Plus size={12} /> Add Organization
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {form.internalTransport.industries.map((org, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input className={inputClass} placeholder={`e.g. ${['Zoho', 'TCS', 'Bosch'][idx % 3]}`}
+                              value={org} onChange={(e) => updateIndustry(idx, e.target.value)} />
+                            {form.internalTransport.industries.length > 1 && (
+                              <button type="button" onClick={() => removeIndustry(idx)} className="text-red-400 hover:text-red-600 shrink-0 p-1.5 hover:bg-red-50 rounded-lg transition-colors">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Journeys */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <JourneySection label="🛫 Onward Journey" transportKey="internalTransport" journeyKey="onwardJourney" />
+                      <JourneySection label="🛬 Return Journey" transportKey="internalTransport" journeyKey="returnJourney" />
+                    </div>
+
+                    {/* Passenger Table */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-700">Passenger Details</p>
+                          <p className="text-xs text-slate-400">{form.internalTransport.passengers.length} passenger{form.internalTransport.passengers.length !== 1 ? 's' : ''} added</p>
+                        </div>
+                        <button type="button" onClick={addPassenger}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors">
+                          <Plus size={12} /> Add Passenger
+                        </button>
+                      </div>
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                              {['#', 'Name', 'Roll / Employee ID', 'Designation', 'Contact Number', ''].map((h) => (
+                                <th key={h} className="px-3 py-2.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {form.internalTransport.passengers.map((row) => (
+                              <tr key={row.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-3 py-2 text-slate-400 font-medium text-xs">{row.sno}</td>
+                                <td className="px-2 py-2"><input className={inputClass} value={row.name} onChange={(e) => updatePassenger(row.id, 'name', e.target.value)} /></td>
+                                <td className="px-2 py-2"><input className={inputClass} value={row.employeeId} onChange={(e) => updatePassenger(row.id, 'employeeId', e.target.value)} /></td>
+                                <td className="px-2 py-2"><input className={inputClass} value={row.designation} onChange={(e) => updatePassenger(row.id, 'designation', e.target.value)} /></td>
+                                <td className="px-2 py-2"><input className={inputClass} value={row.contactNumber} onChange={(e) => updatePassenger(row.id, 'contactNumber', e.target.value)} /></td>
+                                <td className="px-3 py-2">
+                                  <button type="button" onClick={() => removePassenger(row.id)} className="text-red-400 hover:text-red-600 p-1 hover:bg-red-50 rounded-lg transition-colors">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
           </div>
         </Card>
       );
     }
+
+
 
     if (currentStep === STEP_KEYS.ACCOMMODATION) {
       return (

@@ -1095,105 +1095,228 @@ const EventDetailModal = ({ event, onClose }) => {
             {/* 5. Transport Requirements - Annexure IV */}
             {transportAnnex ? (
               <InfoSection title="5. Transport Requirements (Annexure IV)" icon={Car}>
-                <div className="mb-5">
-                  <p className="text-xs font-bold text-slate-400 uppercase mb-3">External Transport (Annexure IV a)</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <InfoRow label="Faculty ID" value={transportAnnex.externalTransport?.facultyId} />
-                    <InfoRow label="Designation" value={transportAnnex.externalTransport?.organizerDesignation} />
-                    <InfoRow label="Contact Number" value={transportAnnex.externalTransport?.contactNumber} />
-                    <InfoRow label="Email" value={transportAnnex.externalTransport?.emailId} />
-                    <InfoRow label="Guest Details" value={transportAnnex.externalTransport?.guestDetails} fullWidth />
-                    <InfoRow label="Purpose of Visit" value={transportAnnex.externalTransport?.purposeOfVisit} />
-                    <InfoRow label="Mode of Transport" value={transportAnnex.externalTransport?.modeOfTransport} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mt-3">
-                    {['onwardJourney', 'returnJourney'].map((jType) => {
-                      const j = transportAnnex.externalTransport?.[jType];
-                      return (
-                        <div key={jType} className="rounded-lg border border-slate-200 p-3">
-                          <p className="text-xs font-bold text-slate-500 uppercase mb-2">{jType === 'onwardJourney' ? 'Onward Journey' : 'Return Journey'}</p>
-                          <div className="space-y-2">
-                            <InfoRow label="Date" value={j?.vehicleDate} />
-                            <InfoRow label="From" value={j?.startingPlace} />
-                            <InfoRow label="Start Time" value={formatTime12(j?.startTime)} />
-                            <InfoRow label="To" value={j?.endPlace} />
-                            <InfoRow label="End Time" value={formatTime12(j?.endTime)} />
-                            <InfoRow label="No. of Persons" value={j?.numberOfPersons} />
-                          </div>
+                <div className="space-y-6">
+                  {/* External Transport Block */}
+                  {(transportAnnex.transportType === 'external' || transportAnnex.transportType === 'both') && (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/30 overflow-hidden">
+                      <div className="px-4 py-2 bg-blue-100/50 border-b border-blue-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span>🚘</span>
+                          <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">External Transport</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-slate-100">
-                  <p className="text-xs font-bold text-slate-400 uppercase mb-3">Internal Transport (Annexure IV b)</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <InfoRow label="Indenter Name" value={transportAnnex.internalTransport?.indenterName} />
-                    <InfoRow label="Contact Number" value={transportAnnex.internalTransport?.contactNumber} />
-                    <InfoRow label="Designation" value={transportAnnex.internalTransport?.designation} />
-                    <InfoRow label="Employee ID" value={transportAnnex.internalTransport?.employeeId} />
-                    <InfoRow label="Department" value={transportAnnex.internalTransport?.department} />
-                    <InfoRow label="Email" value={transportAnnex.internalTransport?.emailId} />
-                    <InfoRow label="No. of Vehicles" value={transportAnnex.internalTransport?.numberOfVehicles} />
-                    <InfoRow label="Vehicle Number" value={transportAnnex.internalTransport?.vehicleNumber} />
-                    <InfoRow label="Purpose of Visit" value={transportAnnex.internalTransport?.purposeOfVisit} fullWidth />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mt-3">
-                    {['onwardJourney', 'returnJourney'].map((jType) => {
-                      const j = transportAnnex.internalTransport?.[jType];
-                      return (
-                        <div key={jType} className="rounded-lg border border-slate-200 p-3">
-                          <p className="text-xs font-bold text-slate-500 uppercase mb-2">Internal {jType === 'onwardJourney' ? 'Onward Journey' : 'Return Journey'}</p>
-                          <div className="space-y-2">
-                            <InfoRow label="Date" value={j?.vehicleDate} />
-                            <InfoRow label="From" value={j?.startingPlace} />
-                            <InfoRow label="Start Time" value={formatTime12(j?.startTime)} />
-                            <InfoRow label="To" value={j?.endPlace} />
-                            <InfoRow label="End Time" value={formatTime12(j?.endTime)} />
-                            <InfoRow label="No. of Persons" value={j?.numberOfPersons} />
-                          </div>
+                        <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Annexure IV-A</span>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <InfoRow label="Guest" value={`${transportAnnex.externalTransport?.guestName || ''} ${transportAnnex.externalTransport?.guestDesignation ? `(${transportAnnex.externalTransport.guestDesignation})` : ''}`} fullWidth />
+                          <InfoRow label="Contact" value={transportAnnex.externalTransport?.guestContact} />
+                          <InfoRow label="Email" value={transportAnnex.externalTransport?.guestEmail} />
+                          <InfoRow label="Organizer" value={`${transportAnnex.externalTransport?.organizerName || ''} (${transportAnnex.externalTransport?.facultyId || ''})`} />
+                          <InfoRow label="Department" value={transportAnnex.externalTransport?.department} />
+                          <InfoRow label="Purpose" value={transportAnnex.externalTransport?.purposeOfVisit} fullWidth />
+                          <InfoRow label="Mode" value={transportAnnex.externalTransport?.modeOfTransport} />
                         </div>
-                      );
-                    })}
-                  </div>
-                  {transportAnnex.internalTransport?.passengers?.length > 0 && (
-                    <div className="mt-4">
-                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Passenger List</p>
-                      <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                        <table className="w-full text-sm">
-                          <thead className="bg-slate-50">
-                            <tr>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600">S.No</th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600">Name</th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600">Employee ID</th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600">Designation</th>
-                              <th className="text-left px-3 py-2 font-semibold text-slate-600">Contact</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {transportAnnex.internalTransport.passengers.map((p, idx) => (
-                              <tr key={idx} className="border-t border-slate-100">
-                                <td className="px-3 py-2">{p.sno || idx + 1}</td>
-                                <td className="px-3 py-2">{p.name || '—'}</td>
-                                <td className="px-3 py-2">{p.employeeId || '—'}</td>
-                                <td className="px-3 py-2">{p.designation || '—'}</td>
-                                <td className="px-3 py-2">{p.contactNumber || '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        
+                        <div className="grid grid-cols-2 gap-4 mt-2">
+                          {['onwardJourney', 'returnJourney'].map((jType) => {
+                            const j = transportAnnex.externalTransport?.[jType];
+                            return (
+                              <div key={jType} className="rounded-lg bg-white border border-blue-100 p-3">
+                                <p className="text-[10px] font-bold text-blue-500 uppercase mb-2">{jType === 'onwardJourney' ? '🛫 Onward' : '🛬 Return'}</p>
+                                <div className="space-y-1.5">
+                                  <InfoRow label="Date" value={j?.vehicleDate} />
+                                  <InfoRow label="From" value={j?.startingPlace} />
+                                  <InfoRow label="To" value={j?.endPlace} />
+                                  <InfoRow label="Time" value={`${formatTime12(j?.startTime)} - ${formatTime12(j?.endTime)}`} />
+                                  <InfoRow label="Persons" value={j?.numberOfPersons} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
-                  {transportAnnex.internalTransport?.industries?.filter(Boolean).length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Industries / Organizations</p>
-                      <div className="flex flex-wrap gap-2">
-                        {transportAnnex.internalTransport.industries.filter(Boolean).map((ind, idx) => (
-                          <span key={idx} className="px-3 py-1 bg-slate-100 rounded-full text-xs font-medium text-slate-700">{ind}</span>
-                        ))}
+
+                  {/* Internal Transport Block */}
+                  {(transportAnnex.transportType === 'internal' || transportAnnex.transportType === 'both') && (
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 overflow-hidden">
+                      <div className="px-4 py-2 bg-emerald-100/50 border-b border-emerald-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span>🚌</span>
+                          <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Internal Transport</span>
+                        </div>
+                        <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Annexure IV-B</span>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <InfoRow label="Indenter" value={`${transportAnnex.internalTransport?.indenterName || ''} (${transportAnnex.internalTransport?.employeeId || ''})`} />
+                          <InfoRow label="Department" value={transportAnnex.internalTransport?.department} />
+                          <InfoRow label="Purpose" value={transportAnnex.internalTransport?.purposeOfVisit} fullWidth />
+                          <InfoRow label="Vehicles" value={`${transportAnnex.internalTransport?.numberOfVehicles || ''} ${transportAnnex.internalTransport?.vehicleNumber ? `(No: ${transportAnnex.internalTransport.vehicleNumber})` : ''}`} />
+                        </div>
+                        
+                        {transportAnnex.internalTransport?.industries?.filter(Boolean).length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1.5">Destinations</p>
+                            <div className="flex flex-wrap gap-2">
+                              {transportAnnex.internalTransport.industries.filter(Boolean).map((ind, idx) => (
+                                <span key={idx} className="px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700">{ind}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4 mt-2">
+                          {['onwardJourney', 'returnJourney'].map((jType) => {
+                            const j = transportAnnex.internalTransport?.[jType];
+                            return (
+                              <div key={jType} className="rounded-lg bg-white border border-emerald-100 p-3">
+                                <p className="text-[10px] font-bold text-emerald-500 uppercase mb-2">{jType === 'onwardJourney' ? '🛫 Onward' : '🛬 Return'}</p>
+                                <div className="space-y-1.5">
+                                  <InfoRow label="Date" value={j?.vehicleDate} />
+                                  <InfoRow label="From" value={j?.startingPlace} />
+                                  <InfoRow label="To" value={j?.endPlace} />
+                                  <InfoRow label="Time" value={`${formatTime12(j?.startTime)} - ${formatTime12(j?.endTime)}`} />
+                                  <InfoRow label="Persons" value={j?.numberOfPersons} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {transportAnnex.internalTransport?.passengers?.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1.5">Passengers ({transportAnnex.internalTransport.passengers.length})</p>
+                            <div className="overflow-x-auto border border-emerald-100 rounded-lg bg-white">
+                              <table className="w-full text-xs">
+                                <thead className="bg-emerald-50/50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">#</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Name</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">ID</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-emerald-50">
+                                  {transportAnnex.internalTransport.passengers.map((p, idx) => (
+                                    <tr key={idx}>
+                                      <td className="px-3 py-1.5 text-slate-500">{p.sno || idx + 1}</td>
+                                      <td className="px-3 py-1.5 font-medium text-slate-700">{p.name || '—'}</td>
+                                      <td className="px-3 py-1.5 text-slate-600">{p.employeeId || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
+                  )}
+
+                  {/* Fallback for old schema events */}
+                  {!transportAnnex.transportType && (
+                    <>
+                      <div className="mb-5">
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-3">External Transport (Legacy Format)</p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <InfoRow label="Faculty ID" value={transportAnnex.externalTransport?.facultyId} />
+                          <InfoRow label="Designation" value={transportAnnex.externalTransport?.organizerDesignation} />
+                          <InfoRow label="Contact Number" value={transportAnnex.externalTransport?.contactNumber} />
+                          <InfoRow label="Email" value={transportAnnex.externalTransport?.emailId} />
+                          <InfoRow label="Guest Details" value={transportAnnex.externalTransport?.guestDetails} fullWidth />
+                          <InfoRow label="Purpose of Visit" value={transportAnnex.externalTransport?.purposeOfVisit} />
+                          <InfoRow label="Mode of Transport" value={transportAnnex.externalTransport?.modeOfTransport} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 mt-3">
+                          {['onwardJourney', 'returnJourney'].map((jType) => {
+                            const j = transportAnnex.externalTransport?.[jType];
+                            return (
+                              <div key={jType} className="rounded-lg border border-slate-200 p-3 bg-white">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">{jType === 'onwardJourney' ? 'Onward Journey' : 'Return Journey'}</p>
+                                <div className="space-y-1.5">
+                                  <InfoRow label="Date" value={j?.vehicleDate} />
+                                  <InfoRow label="From" value={j?.startingPlace} />
+                                  <InfoRow label="To" value={j?.endPlace} />
+                                  <InfoRow label="Time" value={`${formatTime12(j?.startTime)} - ${formatTime12(j?.endTime)}`} />
+                                  <InfoRow label="Persons" value={j?.numberOfPersons} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="pt-4 border-t border-slate-100">
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-3">Internal Transport (Legacy Format)</p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <InfoRow label="Indenter Name" value={transportAnnex.internalTransport?.indenterName} />
+                          <InfoRow label="Contact Number" value={transportAnnex.internalTransport?.contactNumber} />
+                          <InfoRow label="Designation" value={transportAnnex.internalTransport?.designation} />
+                          <InfoRow label="Employee ID" value={transportAnnex.internalTransport?.employeeId} />
+                          <InfoRow label="Department" value={transportAnnex.internalTransport?.department} />
+                          <InfoRow label="Email" value={transportAnnex.internalTransport?.emailId} />
+                          <InfoRow label="No. of Vehicles" value={transportAnnex.internalTransport?.numberOfVehicles} />
+                          <InfoRow label="Vehicle Number" value={transportAnnex.internalTransport?.vehicleNumber} />
+                          <InfoRow label="Purpose of Visit" value={transportAnnex.internalTransport?.purposeOfVisit} fullWidth />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 mt-3">
+                          {['onwardJourney', 'returnJourney'].map((jType) => {
+                            const j = transportAnnex.internalTransport?.[jType];
+                            return (
+                              <div key={jType} className="rounded-lg border border-slate-200 p-3 bg-white">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Internal {jType === 'onwardJourney' ? 'Onward Journey' : 'Return Journey'}</p>
+                                <div className="space-y-1.5">
+                                  <InfoRow label="Date" value={j?.vehicleDate} />
+                                  <InfoRow label="From" value={j?.startingPlace} />
+                                  <InfoRow label="To" value={j?.endPlace} />
+                                  <InfoRow label="Time" value={`${formatTime12(j?.startTime)} - ${formatTime12(j?.endTime)}`} />
+                                  <InfoRow label="Persons" value={j?.numberOfPersons} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {transportAnnex.internalTransport?.passengers?.length > 0 && (
+                          <div className="mt-4">
+                            <p className="text-xs font-bold text-slate-400 uppercase mb-2">Passenger List</p>
+                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                              <table className="w-full text-sm">
+                                <thead className="bg-slate-50">
+                                  <tr>
+                                    <th className="text-left px-3 py-2 font-semibold text-slate-600">S.No</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-slate-600">Name</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-slate-600">Employee ID</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-slate-600">Designation</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-slate-600">Contact</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {transportAnnex.internalTransport.passengers.map((p, idx) => (
+                                    <tr key={idx} className="border-t border-slate-100">
+                                      <td className="px-3 py-2">{p.sno || idx + 1}</td>
+                                      <td className="px-3 py-2">{p.name || '—'}</td>
+                                      <td className="px-3 py-2">{p.employeeId || '—'}</td>
+                                      <td className="px-3 py-2">{p.designation || '—'}</td>
+                                      <td className="px-3 py-2">{p.contactNumber || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                        {transportAnnex.internalTransport?.industries?.filter(Boolean).length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-xs font-bold text-slate-400 uppercase mb-2">Industries / Organizations</p>
+                            <div className="flex flex-wrap gap-2">
+                              {transportAnnex.internalTransport.industries.filter(Boolean).map((ind, idx) => (
+                                <span key={idx} className="px-3 py-1 bg-slate-100 rounded-full text-xs font-medium text-slate-700">{ind}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </InfoSection>
