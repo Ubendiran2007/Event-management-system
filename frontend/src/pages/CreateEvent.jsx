@@ -565,8 +565,8 @@ const CreateEvent = () => {
 
     // Step 3: Audio
     audioDate: '',
-    audioStartTime: '09:00',
-    audioEndTime: '17:00',
+    audioStartTime: '',
+    audioEndTime: '',
     audioVenueName: '',
     audioEquipment: createAudioQtyMap(AUDIO_EQUIPMENT),
     audioSpecialRequest: '',
@@ -737,7 +737,10 @@ const CreateEvent = () => {
     });
   }, [form.startDate, form.endDate]);
 
-  // Sync Audio Date, Venue, and Times automatically
+  // Track whether user has manually overridden audio times
+  const [audioTimesUserEdited, setAudioTimesUserEdited] = useState(false);
+
+  // Sync Audio Date, Venue, and Times automatically from Event Info
   useEffect(() => {
     setForm(prev => {
       let updated = { ...prev };
@@ -748,22 +751,24 @@ const CreateEvent = () => {
         updated.audioDate = prev.startDate;
         changed = true;
       }
-      
-      // Sync Times if not set
-      if (prev.startTime && !prev.audioStartTime) {
-        updated.audioStartTime = prev.startTime;
-        changed = true;
+
+      // Always sync times from event info UNLESS user has manually edited them
+      if (!audioTimesUserEdited) {
+        if (prev.startTime && prev.audioStartTime !== prev.startTime) {
+          updated.audioStartTime = prev.startTime;
+          changed = true;
+        }
+        if (prev.endTime && prev.audioEndTime !== prev.endTime) {
+          updated.audioEndTime = prev.endTime;
+          changed = true;
+        }
       }
-      if (prev.endTime && !prev.audioEndTime) {
-        updated.audioEndTime = prev.endTime;
-        changed = true;
-      }
-      
+
       // Sync Venue: Collect all selected venues
       const selectedVenues = Object.entries(prev.venueSelection)
         .filter(([_, data]) => data.selected)
         .map(([venue]) => venue);
-      
+
       const newVenueName = selectedVenues.join(', ');
       if (newVenueName && !prev.audioVenueName) {
         updated.audioVenueName = newVenueName;
@@ -772,7 +777,8 @@ const CreateEvent = () => {
 
       return changed ? updated : prev;
     });
-  }, [form.startDate, form.startTime, form.endTime, form.venueSelection]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, audioTimesUserEdited]);
 
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
@@ -2497,12 +2503,20 @@ const CreateEvent = () => {
               <FieldMsg errKey="audioVenueName" />
             </div>
             <div className="space-y-1">
-              <Lbl required>Start Time</Lbl>
+              <div className="flex items-center justify-between">
+                <Lbl required>Start Time</Lbl>
+                {!audioTimesUserEdited && form.startTime && (
+                  <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">⟳ Synced from Event Info</span>
+                )}
+                {audioTimesUserEdited && (
+                  <button type="button" onClick={() => { setAudioTimesUserEdited(false); setField('audioStartTime', form.startTime); setField('audioEndTime', form.endTime); }} className="text-[10px] font-semibold text-slate-400 hover:text-blue-500 transition-colors">↺ Reset to event times</button>
+                )}
+              </div>
               <TimePicker
                 id="audioStartTime"
                 className={fieldCls('audioStartTime')}
-                value={form.audioStartTime}
-                onChange={(e) => { setField('audioStartTime', e.target.value); setFE('audioStartTime', ''); }}
+                value={form.audioStartTime || form.startTime || '09:00'}
+                onChange={(e) => { setField('audioStartTime', e.target.value); setFE('audioStartTime', ''); setAudioTimesUserEdited(true); }}
                 onBlur={(e) => validateField('audioStartTime', e.target.value)}
               />
               <FieldMsg errKey="audioStartTime" />
@@ -2512,8 +2526,8 @@ const CreateEvent = () => {
               <TimePicker
                 id="audioEndTime"
                 className={fieldCls('audioEndTime')}
-                value={form.audioEndTime}
-                onChange={(e) => { setField('audioEndTime', e.target.value); setFE('audioEndTime', ''); }}
+                value={form.audioEndTime || form.endTime || '17:00'}
+                onChange={(e) => { setField('audioEndTime', e.target.value); setFE('audioEndTime', ''); setAudioTimesUserEdited(true); }}
                 onBlur={(e) => validateField('audioEndTime', e.target.value)}
               />
               <FieldMsg errKey="audioEndTime" hint="Must be after start time" />
