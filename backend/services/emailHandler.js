@@ -167,7 +167,7 @@ async function handleEventStatusChange(eventData, previousStatus, newStatus) {
     await notifyRole('HOD', eventData, eventDept);
 
     // Poster: if HOD is the first approver and poster was requested, notify media now
-    if (previousStatus === 'PENDING_FACULTY' && eventData.posterWorkflow?.requested) {
+    if (previousStatus === 'PENDING_FACULTY' && eventData.posterWorkflow?.requested && eventData.posterStatus !== 'UPLOADED') {
       await _notifyMediaForPoster(eventData);
     }
     return;
@@ -177,8 +177,8 @@ async function handleEventStatusChange(eventData, previousStatus, newStatus) {
   if (previousStatus === 'PENDING_HOD' &&
       (newStatus === 'PENDING_DEPARTMENTS' || newStatus === 'PENDING_IQAC')) {
 
-    // Notify media team for poster if requested
-    if (eventData.posterWorkflow?.requested) {
+    // Notify media team for poster if requested and not already uploaded
+    if (eventData.posterWorkflow?.requested && eventData.posterStatus !== 'UPLOADED') {
       await _notifyMediaForPoster(eventData);
     }
 

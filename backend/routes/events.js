@@ -556,8 +556,28 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     }
 
     const eventData = eventSnap.data();
+    const newEventData = req.body;
     const isFacultyOrganizer = eventData.creatorType === 'FACULTY';
     const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl);
+
+    // ── Poster Resubmission Logic ──
+    let posterWorkflow = newEventData.posterWorkflow || eventData.posterWorkflow || {};
+    let posterStatus = newEventData.posterStatus || eventData.posterStatus || 'PENDING';
+
+    if (posterWorkflow.requested) {
+      if (posterStatus === 'UPLOADED') {
+        const titleChanged = eventData.title !== newEventData.title;
+        const dateChanged = eventData.date !== newEventData.date || eventData.startDate !== newEventData.startDate;
+        const themeChanged = eventData.theme !== newEventData.theme;
+        const venueChanged = JSON.stringify(eventData.venueSelection || {}) !== JSON.stringify(newEventData.venueSelection || {});
+        const notesChanged = (eventData.media?.preEventPosterNotes || '') !== (newEventData.media?.preEventPosterNotes || '');
+
+        if (titleChanged || dateChanged || themeChanged || venueChanged || notesChanged) {
+          posterStatus = 'REVISION_REQUIRED';
+          posterWorkflow.status = 'REVISION_REQUIRED';
+        }
+      }
+    }
 
     // Reset all approvals upon resubmission
     const newDeptApprovals = {};
@@ -567,6 +587,8 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       status: isFacultyOrganizer ? 'PENDING_HOD' : 'PENDING_FACULTY',
       isResubmitted: true,
       updatedAt: new Date().toISOString(),
+      posterStatus,
+      posterWorkflow,
 
       // Clear all stage approvals
       approvedBy: null,
