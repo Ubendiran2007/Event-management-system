@@ -203,39 +203,56 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
     onChange({ target: { id, value: result } });
   };
 
+  const baseClasses = (className || '').replace(/px-\d|py-\d/g, '').trim();
+
   return (
-    <div className="flex items-center gap-1">
-      <div className="flex-1 flex gap-1 items-center">
+    <div 
+      className={`${baseClasses} overflow-hidden flex items-stretch focus-within:ring-2 focus-within:ring-cse-accent/20 focus-within:border-cse-accent transition-colors`}
+      style={{ padding: 0 }}
+      onBlur={onBlur}
+    >
+      <div className="flex-1 flex items-center justify-center bg-transparent">
         <select
           value={hour12.toString().padStart(2, '0')}
           onChange={(e) => updateTime(e.target.value, m, ampm)}
-          onBlur={onBlur}
-          className={`${className} flex-1 min-w-[65px] text-center appearance-none`}
+          className="w-full bg-transparent text-center appearance-none outline-none py-2 font-medium text-slate-700 cursor-pointer h-full"
         >
           {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(v => (
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
-        <span className="font-bold text-slate-400">:</span>
+      </div>
+      
+      <div className="flex items-center justify-center pointer-events-none text-slate-400 font-bold px-1 py-2">
+        :
+      </div>
+      
+      <div className="flex-1 flex items-center justify-center bg-transparent">
         <select
           value={m}
           onChange={(e) => updateTime(hour12, e.target.value, ampm)}
-          onBlur={onBlur}
-          className={`${className} flex-1 min-w-[65px] text-center appearance-none`}
+          className="w-full bg-transparent text-center appearance-none outline-none py-2 font-medium text-slate-700 cursor-pointer h-full"
         >
           {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(v => (
             <option key={v} value={v}>{v}</option>
           ))}
         </select>
+      </div>
+      
+      <div className="relative border-l border-slate-200 bg-slate-50 flex items-center hover:bg-slate-100 transition-colors">
         <select
           value={ampm}
           onChange={(e) => updateTime(hour12, m, e.target.value)}
-          onBlur={onBlur}
-          className={`${className} min-w-[56px] px-1 text-center font-bold text-cse-accent appearance-none text-xs`}
+          className="appearance-none bg-transparent outline-none pl-3 pr-7 py-2 font-bold text-cse-accent cursor-pointer text-sm h-full"
         >
           <option value="AM">AM</option>
           <option value="PM">PM</option>
         </select>
+        <div className="absolute right-2 pointer-events-none text-cse-accent">
+          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
       </div>
     </div>
   );
