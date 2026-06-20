@@ -152,9 +152,13 @@ async function runEventAutoRejectionOnce() {
     const autoRejectionPayload = {
       status: 'REJECTED',
       updatedAt: new Date().toISOString(),
+      rejectedAt: new Date().toISOString(),
+      rejectedByRole: 'SYSTEM',
+      rejectedByName: 'Automated System',
+      rejectedByDept: 'Portal Engine',
+      rejectionReason: `Automatically rejected: approval was not completed ${AUTO_REJECT_BEFORE_START_MINUTES} minute(s) before event start time.`,
       autoRejectedAt: new Date().toISOString(),
       autoRejectedBy: 'SYSTEM',
-      rejectionReason: `Automatically rejected: approval was not completed ${AUTO_REJECT_BEFORE_START_MINUTES} minute(s) before event start time.`,
     };
 
     await updateDoc(doc(db, 'events', eventDoc.id), autoRejectionPayload);

@@ -509,135 +509,207 @@ const EventDetailModal = ({ event, onClose }) => {
               <>
                 <div className="glass-panel p-4 rounded-xl">
                   <p className="text-xs font-bold text-slate-400 uppercase mb-3">Approval Workflow</p>
-                  <div className="flex items-center gap-2 flex-wrap mb-4">
-                    {/* Simple workflow steps as before */}
-                    <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
-                  event.status === EventStatus.PENDING_FACULTY ? 'bg-amber-100 text-amber-700' :
-                  event.status === EventStatus.REJECTED ? 'bg-red-100 text-red-700' :
-                  'bg-emerald-100 text-emerald-700'
-                }`}>
-                  {event.status === EventStatus.PENDING_FACULTY ? '⏳ Faculty Review' :
-                   event.status === EventStatus.REJECTED ? '✗ Faculty Rejected' :
-                   '✓ Faculty Approved'}
-                </div>
-                <ArrowRight size={14} className="text-slate-300" />
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
-                  event.status === EventStatus.PENDING_HOD ? 'bg-amber-100 text-amber-700' :
-                  [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
-                  'bg-slate-100 text-slate-400'
-                }`}>
-                  {event.status === EventStatus.PENDING_HOD ? '⏳ HOD Review' :
-                   [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ HOD Approved' :
-                   'HOD Review'}
-                </div>
-                <ArrowRight size={14} className="text-slate-300" />
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
-                  event.status === EventStatus.PENDING_DEPARTMENTS ? 'bg-orange-100 text-orange-700' :
-                  [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
-                  'bg-slate-100 text-slate-400'
-                }`}>
-                  {event.status === EventStatus.PENDING_DEPARTMENTS ? '⏳ Dept Review' :
-                   [EventStatus.PENDING_IQAC, EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ Depts Approved' :
-                   'Dept Review'}
-                </div>
-                <ArrowRight size={14} className="text-slate-300" />
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
-                  event.status === EventStatus.PENDING_IQAC ? 'bg-amber-100 text-amber-700' :
-                  [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? 'bg-emerald-100 text-emerald-700' :
-                  'bg-slate-100 text-slate-400'
-                }`}>
-                  {event.status === EventStatus.PENDING_IQAC ? '⏳ IQAC Review' :
-                   [EventStatus.POSTED, EventStatus.APPROVED, EventStatus.COMPLETED].includes(event.status) ? '✓ IQAC Approved' :
-                   'IQAC Review'}
-                </div>
-              </div>
+                  
+                  {(() => {
+                    const isDeptRejection = event.status === EventStatus.REJECTED && ['HR', 'AUDIO', 'ICTS', 'TRANSPORT', 'WARDEN', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'SYSTEM_ADMIN', 'HR_TEAM', 'AUDIO_TEAM', 'TRANSPORT_TEAM', 'DEPARTMENT OFFICER'].includes(String(event.rejectedByRole).toUpperCase());
 
-              {/* Detailed Timeline — visible to organizers, staff, or everyone once posted */}
-              {(event.organizerId === currentUser.id || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.HOD || [EventStatus.POSTED, EventStatus.COMPLETED].includes(event.status)) && (
-                <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline Details</p>
-                  {[
-                    { label: 'Faculty', done: !['PENDING_FACULTY','REJECTED'].includes(event.status), approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
-                    { label: 'HOD', done: ['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status), approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
-                  ].map(step => (
-                    <div key={step.label} className={`flex items-center gap-3 text-xs ${step.done ? 'text-emerald-700' : 'text-slate-400'}`}>
-                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-200'}`} />
-                      <span className="font-bold min-w-[60px]">{step.label}</span>
-                      {step.done
-                        ? <span className="text-[10px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                            {step.approvedAt ? new Date(step.approvedAt).toLocaleString() : 'Approved'}
-                            {step.approvedBy ? ` · ${step.approvedBy}` : ''}
-                          </span>
-                        : <span className="italic text-slate-300">Pending</span>}
-                    </div>
-                  ))}
+                    const isFacultyActive = event.status === EventStatus.PENDING_FACULTY;
+                    const isFacultyRejected = event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'FACULTY';
+                    const isFacultyApproved = !isFacultyActive && !isFacultyRejected && event.status !== EventStatus.PENDING_FACULTY;
 
-                  {['PENDING_DEPARTMENTS','PENDING_IQAC','APPROVED','POSTED','COMPLETED'].includes(event.status) && (() => {
-                    const dApprovals = event.departmentApprovals || {};
-                    const reqList = event.requisition?.step1?.requirements || {};
-                    const isR = k => reqList[k] ?? event[k] ?? false;
-                    const accom = event.requisition?.annexureV_accommodation || {};
-                    const hasMales = Number(accom.maleGuests || 0) > 0;
-                    const hasFemales = Number(accom.femaleGuests || 0) > 0;
-                    const isAcc = isR('accommodationDiningRequired') || isR('accommodationRequired');
+                    const isHodActive = event.status === EventStatus.PENDING_HOD;
+                    const isHodRejected = event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'HOD';
+                    const isHodApproved = ['PENDING_DEPARTMENTS', 'PENDING_IQAC', 'APPROVED', 'POSTED', 'COMPLETED'].includes(event.status) || (event.status === EventStatus.REJECTED && !isFacultyRejected && !isHodRejected);
 
-                    const deptsToShow = [
-                      isR('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
-                      isR('audioRequired') && { key: 'audio', label: 'Audio' },
-                      isR('ictsRequired') && { key: 'icts', label: 'ICTS' },
-                      isR('transportRequired') && { key: 'transport', label: 'Transport' },
-                      isAcc && (hasMales || (!hasMales && !hasFemales)) && { key: 'boysAccommodation', label: 'Boys Accom.' },
-                      isAcc && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accom.' },
-                      isR('mediaRequired') && { key: 'media', label: 'Media (HR)' },
-                    ].filter(Boolean);
+                    const isDeptActive = event.status === EventStatus.PENDING_DEPARTMENTS;
+                    const isDeptRejected = event.status === EventStatus.REJECTED && isDeptRejection;
+                    const isDeptApproved = ['PENDING_IQAC', 'APPROVED', 'POSTED', 'COMPLETED'].includes(event.status) || (event.status === EventStatus.REJECTED && !isFacultyRejected && !isHodRejected && !isDeptRejected);
 
-                    if (!deptsToShow.length) return null;
+                    const isIqacActive = event.status === EventStatus.PENDING_IQAC;
+                    const isIqacRejected = event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'IQAC';
+                    const isIqacApproved = ['POSTED', 'COMPLETED'].includes(event.status);
+
                     return (
-                      <div className="ml-1.5 pl-3 border-l-2 border-slate-100 mt-2 space-y-2">
-                        {deptsToShow.map(d => {
-                          const info = dApprovals[d.key];
-                          const isApp = info?.status === 'APPROVED';
-                          return (
-                            <div key={d.key} className={`flex items-center gap-3 text-xs ${isApp ? 'text-emerald-700' : 'text-slate-400'}`}>
-                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isApp ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-                              <span className="font-medium min-w-[100px]">{d.label}</span>
-                              {isApp
-                                ? <span className="text-[10px] bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 italic">
-                                    {info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}
+                      <>
+                        <div className="flex items-center gap-2 flex-wrap mb-4">
+                          <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                            isFacultyActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                            isFacultyRejected ? 'bg-red-100 text-red-700 border border-red-200' :
+                            isFacultyApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                            'bg-slate-100 text-slate-400 border border-slate-200'
+                          }`}>
+                            {isFacultyActive ? '⏳ Faculty Review' :
+                             isFacultyRejected ? '✗ Faculty Rejected' :
+                             isFacultyApproved ? '✓ Faculty Approved' :
+                             'Faculty Review'}
+                          </div>
+                          <ArrowRight size={14} className="text-slate-300" />
+                          <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                            isHodActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                            isHodRejected ? 'bg-red-100 text-red-700 border border-red-200' :
+                            isHodApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                            'bg-slate-100 text-slate-400 border border-slate-200'
+                          }`}>
+                            {isHodActive ? '⏳ HOD Review' :
+                             isHodRejected ? '✗ HOD Rejected' :
+                             isHodApproved ? '✓ HOD Approved' :
+                             'HOD Review'}
+                          </div>
+                          <ArrowRight size={14} className="text-slate-300" />
+                          <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                            isDeptActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                            isDeptRejected ? 'bg-red-100 text-red-700 border border-red-200' :
+                            isDeptApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                            'bg-slate-100 text-slate-400 border border-slate-200'
+                          }`}>
+                            {isDeptActive ? '⏳ Dept Review' :
+                             isDeptRejected ? '✗ Dept Rejected' :
+                             isDeptApproved ? '✓ Depts Approved' :
+                             'Dept Review'}
+                          </div>
+                          <ArrowRight size={14} className="text-slate-300" />
+                          <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                            isIqacActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                            isIqacRejected ? 'bg-red-100 text-red-700 border border-red-200' :
+                            isIqacApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                            'bg-slate-100 text-slate-400 border border-slate-200'
+                          }`}>
+                            {isIqacActive ? '⏳ IQAC Review' :
+                             isIqacRejected ? '✗ IQAC Rejected' :
+                             isIqacApproved ? '✓ IQAC Approved' :
+                             'IQAC Review'}
+                          </div>
+                        </div>
+
+                        {/* Detailed Timeline — visible to organizers, staff, or everyone once posted */}
+                        {(event.organizerId === currentUser.id || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.HOD || [EventStatus.POSTED, EventStatus.COMPLETED].includes(event.status)) && (
+                          <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline Details</p>
+                            
+                            {[
+                              { label: 'Faculty', done: isFacultyApproved, rejected: isFacultyRejected, approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
+                              { label: 'HOD', done: isHodApproved, rejected: isHodRejected, approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
+                            ].map(step => (
+                              <div key={step.label} className={`flex items-center gap-3 text-xs ${step.done ? 'text-emerald-700' : step.rejected ? 'text-red-700' : 'text-slate-400'}`}>
+                                <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : step.rejected ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-slate-200'}`} />
+                                <span className="font-bold min-w-[60px]">{step.label}</span>
+                                {step.done
+                                  ? <span className="text-[10px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                      {step.approvedAt ? new Date(step.approvedAt).toLocaleString() : 'Approved'}
+                                      {step.approvedBy ? ` · ${step.approvedBy}` : ''}
+                                    </span>
+                                  : step.rejected
+                                  ? <span className="text-[10px] bg-red-50 px-2 py-0.5 rounded-md border border-red-100">
+                                      Rejected by {event.rejectedByName || 'Approver'} {event.rejectedAt ? ` · ${new Date(event.rejectedAt).toLocaleString()}` : ''}
+                                    </span>
+                                  : <span className="italic text-slate-300">Pending</span>}
+                              </div>
+                            ))}
+
+                            {isHodApproved && (() => {
+                              const dApprovals = event.departmentApprovals || {};
+                              const reqList = event.requisition?.step1?.requirements || {};
+                              const isR = k => reqList[k] ?? event[k] ?? false;
+                              const accom = event.requisition?.annexureV_accommodation || {};
+                              const hasMales = Number(accom.maleGuests || 0) > 0;
+                              const hasFemales = Number(accom.femaleGuests || 0) > 0;
+                              const isAcc = isR('accommodationDiningRequired') || isR('accommodationRequired');
+
+                              const deptsToShow = [
+                                isR('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
+                                isR('audioRequired') && { key: 'audio', label: 'Audio' },
+                                isR('ictsRequired') && { key: 'icts', label: 'ICTS' },
+                                isR('transportRequired') && { key: 'transport', label: 'Transport' },
+                                isAcc && (hasMales || (!hasMales && !hasFemales)) && { key: 'boysAccommodation', label: 'Boys Accom.' },
+                                isAcc && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accom.' },
+                                isR('mediaRequired') && { key: 'media', label: 'Media (HR)' },
+                              ].filter(Boolean);
+
+                              if (!deptsToShow.length) return null;
+                              return (
+                                <div className="ml-1.5 pl-3 border-l-2 border-slate-100 mt-2 space-y-2">
+                                  {deptsToShow.map(d => {
+                                    const info = dApprovals[d.key];
+                                    const isApp = info?.status === 'APPROVED';
+                                    const isRej = info?.status === 'REJECTED';
+                                    return (
+                                      <div key={d.key} className={`flex items-center gap-3 text-xs ${isApp ? 'text-emerald-700' : isRej ? 'text-red-700' : 'text-slate-400'}`}>
+                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isApp ? 'bg-emerald-400' : isRej ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]' : 'bg-slate-200'}`} />
+                                        <span className="font-medium min-w-[100px]">{d.label}</span>
+                                        {isApp
+                                          ? <span className="text-[10px] bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 italic">
+                                              {info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}
+                                            </span>
+                                          : isRej 
+                                          ? <span className="text-[10px] bg-red-50/80 px-1.5 py-0.5 rounded border border-red-100 italic">
+                                              Rejected by {info.rejectedBy || 'Approver'} {info.rejectedAt ? ` · ${new Date(info.rejectedAt).toLocaleString()}` : ''}
+                                            </span>
+                                          : <span className="text-[10px] text-slate-300">Pending</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+
+                            <div className={`flex items-center gap-3 text-xs ${isIqacApproved ? 'text-blue-700' : isIqacRejected ? 'text-red-700' : isIqacActive ? 'text-amber-600 font-bold' : 'text-slate-300'}`}>
+                              <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isIqacApproved ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]' : isIqacRejected ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : isIqacActive ? 'bg-amber-400 animate-pulse' : 'bg-slate-200'}`} />
+                              <span className="font-bold min-w-[60px]">IQAC / Posting</span>
+                              {isIqacApproved
+                                ? <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                                    Finalized & Posted {event.iqacApprovedAt ? ` · ${new Date(event.iqacApprovedAt).toLocaleString()}` : ''}
+                                    {event.iqacApprovedBy ? ` · ${event.iqacApprovedBy}` : ''}
                                   </span>
-                                : <span className="text-[10px] text-slate-300">Pending</span>}
+                                : isIqacRejected 
+                                ? <span className="text-[10px] bg-red-50 px-2 py-0.5 rounded-md border border-red-100">
+                                    Rejected by IQAC {event.rejectedByName ? ` · ${event.rejectedByName}` : ''} {event.rejectedAt ? ` · ${new Date(event.rejectedAt).toLocaleString()}` : ''}
+                                  </span>
+                                : isIqacActive ? <span className="italic">Reviewing...</span> : <span className="text-[10px]">Waiting</span>}
                             </div>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
 
-                  <div className={`flex items-center gap-3 text-xs ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'text-blue-700' : event.status === EventStatus.PENDING_IQAC ? 'text-amber-600' : 'text-slate-300'}`}>
-                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${['APPROVED','POSTED','COMPLETED'].includes(event.status) ? 'bg-blue-500' : event.status === EventStatus.PENDING_IQAC ? 'bg-amber-400 animate-pulse' : 'bg-slate-200'}`} />
-                    <span className="font-bold min-w-[60px]">IQAC / Posting</span>
-                    {['APPROVED','POSTED','COMPLETED'].includes(event.status)
-                      ? <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                          Finalized & Posted {event.iqacApprovedAt ? ` · ${new Date(event.iqacApprovedAt).toLocaleString()}` : ''}
-                          {event.iqacApprovedBy ? ` · ${event.iqacApprovedBy}` : ''}
-                        </span>
-                      : event.status === EventStatus.PENDING_IQAC ? <span className="italic">Reviewing...</span> : <span className="text-[10px]">Waiting</span>}
-                  </div>
-                </div>
-              )}
+                  {/* Rejection Audit Trail Banner */}
+                  {event.status === EventStatus.REJECTED && (
+                    <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
+                      <div className="flex items-center gap-2 text-red-800">
+                        <XCircle size={18} className="shrink-0" />
+                        <span className="font-extrabold text-sm uppercase tracking-wider">Event Rejection Audit Trail</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-red-100">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Rejected By</p>
+                          <p className="font-semibold text-slate-900">{event.rejectedByName || 'Authorized Approver'}</p>
+                        </div>
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-red-100">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Role / Department</p>
+                          <p className="font-semibold text-slate-900">
+                            {event.rejectedByRole || 'Approver'} 
+                            {event.rejectedByDept && event.rejectedByDept !== 'N/A' ? ` (${event.rejectedByDept})` : ''}
+                          </p>
+                        </div>
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-red-100">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Timestamp</p>
+                          <p className="font-semibold text-slate-900">
+                            {event.rejectedAt ? new Date(event.rejectedAt).toLocaleString() : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-white/80 p-2.5 rounded-lg border border-red-100 md:col-span-2">
+                          <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Reason for Rejection</p>
+                          <p className="font-bold text-red-800 italic">"{event.rejectionReason || 'No reason specified'}"</p>
+                        </div>
+                      </div>
 
-              {/* Rejected banner */}
-              {event.status === EventStatus.REJECTED && (
-                <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs font-semibold text-red-700">
-                  ✗ This event has been rejected and will not proceed further.
-                  {event.rejectionReason && (
-                    <p className="mt-1 font-medium text-[11px] text-red-800 font-sans">
-                      Reason: {event.rejectionReason}
-                    </p>
+                      <div className="text-[11px] text-red-700 bg-red-100/50 p-2.5 rounded-lg border border-red-100 font-medium leading-relaxed">
+                        💡 <strong>Resubmission Guidance:</strong> You can edit this proposal to address the feedback. Locate this event in your Dashboard, click <strong>Edit & Resubmit</strong>, adjust the required parameters, and submit for re-routing.
+                      </div>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
             {/* 1. Event Basic Information */}
             <InfoSection title="1. Event Basic Information" icon={FileText}>
@@ -1539,7 +1611,7 @@ const EventDetailModal = ({ event, onClose }) => {
 
                   <div className="mb-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                      Rejection Reason (required to reject)
+                      Reason for Rejection *
                     </label>
                     <textarea
                       rows={2}
@@ -1556,7 +1628,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('venue')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Venue
@@ -1574,7 +1646,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('media')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Media Booking
@@ -1592,7 +1664,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={handleHRRejectBoth}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Both (HR)
@@ -1610,7 +1682,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('audio')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Audio
@@ -1628,7 +1700,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('icts')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject ICTS
@@ -1646,7 +1718,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('transport')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Transport
@@ -1664,7 +1736,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('boysAccommodation')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Boys Accommodation
@@ -1682,7 +1754,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <div className="flex gap-2 w-full">
                         <button
                           onClick={() => handleDeptReject('girlsAccommodation')}
-                          disabled={isProcessing}
+                          disabled={isProcessing || !rejectionReason.trim()}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Girls Accommodation
@@ -1711,7 +1783,7 @@ const EventDetailModal = ({ event, onClose }) => {
                   )}
                   <div className="mb-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                      Rejection Reason (required to reject)
+                      Reason for Rejection *
                     </label>
                     <textarea
                       rows={2}
@@ -1734,7 +1806,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={handleReject}
-                        disabled={isProcessing}
+                        disabled={isProcessing || !rejectionReason.trim()}
                         className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isProcessing ? (

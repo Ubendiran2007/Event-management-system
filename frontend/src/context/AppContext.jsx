@@ -142,6 +142,8 @@ export const AppProvider = ({ children }) => {
       if (!approve) {
         body.rejectionReason = String(rejectionReason || '').trim();
         body.rejectedByRole = String(currentUser?.role || 'UNKNOWN').toUpperCase();
+        body.rejectedByName = String(currentUser?.name || 'Unknown Approver');
+        body.rejectedByDept = String(currentUser?.department || 'N/A');
       }
 
       const response = await fetch(`http://localhost:5001/api/events/${eventId}/status`, {

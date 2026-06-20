@@ -124,28 +124,78 @@ module.exports = {
   },
 
   eventStatusTemplate: (eventData, statusInfo, rejectionReason) => {
-    const isRejected = statusInfo.title.toLowerCase().includes('reject');
+    const isRejected = statusInfo.title.toLowerCase().includes('reject') || eventData.status === 'REJECTED';
     const headerBg = isRejected ? 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)' : 'linear-gradient(135deg, #2563eb 0%, #1e3a8a 100%)';
+    
+    let contentHtml = `
+      <div class="alert-box ${isRejected ? 'alert-error' : 'alert-info'}">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">${eventData.title}</p>
+        <p style="margin: 0; font-size: 14px; line-height: 1.5;">${statusInfo.message}</p>
+      </div>
+    `;
+
+    if (isRejected) {
+      const rejecterName = eventData.rejectedByName || 'Authorized Approver';
+      const rejecterRole = eventData.rejectedByRole || 'Approver';
+      const rejecterDept = eventData.rejectedByDept || 'N/A';
+      const rejectReason = rejectionReason || eventData.rejectionReason || 'No reason provided';
+      const rejectDate = eventData.rejectedAt 
+        ? new Date(eventData.rejectedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+        : new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+
+      contentHtml += `
+        <div style="margin-top: 24px; border: 1px solid #fca5a5; border-radius: 8px; overflow: hidden;">
+          <div style="background-color: #fef2f2; padding: 12px 16px; border-bottom: 1px solid #fca5a5;">
+            <h3 style="margin: 0; font-size: 14px; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px;">🚫 Rejection Audit Trail</h3>
+          </div>
+          <table class="table-details" style="margin: 0; width: 100%; text-align: left; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 10px 16px; font-weight: 600; color: #475569; width: 35%; border-bottom: 1px solid #fecaca; font-size: 13px;">Rejected By</td>
+              <td style="padding: 10px 16px; color: #0f172a; font-weight: 500; border-bottom: 1px solid #fecaca; font-size: 13px;">${rejecterName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 16px; font-weight: 600; color: #475569; border-bottom: 1px solid #fecaca; font-size: 13px;">Role / Designation</td>
+              <td style="padding: 10px 16px; color: #0f172a; font-weight: 500; border-bottom: 1px solid #fecaca; font-size: 13px;">${rejecterRole}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 16px; font-weight: 600; color: #475569; border-bottom: 1px solid #fecaca; font-size: 13px;">Department</td>
+              <td style="padding: 10px 16px; color: #0f172a; font-weight: 500; border-bottom: 1px solid #fecaca; font-size: 13px;">${rejecterDept}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 16px; font-weight: 600; color: #475569; border-bottom: 1px solid #fecaca; font-size: 13px;">Rejection Date</td>
+              <td style="padding: 10px 16px; color: #0f172a; font-weight: 500; border-bottom: 1px solid #fecaca; font-size: 13px;">${rejectDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 16px; font-weight: 600; color: #475569; font-size: 13px;">Rejection Reason</td>
+              <td style="padding: 10px 16px; color: #b91c1c; font-weight: 600; font-size: 13px; font-style: italic;">"${rejectReason}"</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="margin-top: 24px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+          <h4 style="margin: 0 0 12px; color: #0f172a; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">💡 Guidance for Resubmission</h4>
+          <p style="margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: #334155;">To modify and resubmit your event proposal for re-routing:</p>
+          <ol style="margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.6; color: #334155;">
+            <li style="margin-bottom: 8px;">Log into the <strong>Sri Eshwar Event Management Portal</strong>.</li>
+            <li style="margin-bottom: 8px;">Navigate to your <strong>Dashboard</strong> under "My Organized Events".</li>
+            <li style="margin-bottom: 8px;">Locate the rejected event and click on it to open details.</li>
+            <li style="margin-bottom: 8px;">Click the <strong>Edit & Resubmit</strong> button to modify your details or annexures based on the feedback above.</li>
+            <li style="margin-bottom: 0;">Submit the updated proposal to initiate the approval workflow again.</li>
+          </ol>
+        </div>
+      `;
+    } else {
+      contentHtml += `
+        ${getEventDetailsHtml(eventData)}
+      `;
+    }
+
     return buildBaseTemplate({
       title: statusInfo.title,
       subtitle: 'Event Status Update',
       headerBg,
       preheader: `Update for '${eventData.title}': ${statusInfo.message}`,
-      contentHtml: `
-        <div class="alert-box ${isRejected ? 'alert-error' : 'alert-info'}">
-          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">${eventData.title}</p>
-          <p style="margin: 0; font-size: 14px; line-height: 1.5;">${statusInfo.message}</p>
-        </div>
-        ${rejectionReason ? `
-          <div style="margin-top: 20px;">
-            <h4 style="margin: 0 0 8px; color: #0f172a; font-size: 15px;">Reason for Rejection:</h4>
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; color: #475569; font-style: italic; font-size: 14px; line-height: 1.6;">
-              "${rejectionReason}"
-            </div>
-            <p style="margin: 16px 0 0; font-size: 14px; color: #475569;">Please review the feedback, make necessary adjustments, and resubmit your proposal.</p>
-          </div>
-        ` : ''}
-      `
+      contentHtml
     });
   },
 

@@ -304,6 +304,27 @@ router.patch('/:id/status', async (req, res) => {
     const updatePayload = { status: finalStatus, updatedAt: new Date().toISOString() };
     if (approvedBy) updatePayload.approvedBy = approvedBy;
 
+    if (finalStatus === 'REJECTED') {
+      const reason = String(req.body.rejectionReason || '').trim();
+      if (!reason) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rejection reason is mandatory.',
+        });
+      }
+
+      let displayRole = req.body.rejectedByRole || 'Approver';
+      if (displayRole === 'FACULTY') displayRole = 'Faculty';
+      else if (displayRole === 'HOD') displayRole = 'HOD';
+      else if (displayRole === 'IQAC_TEAM') displayRole = 'IQAC';
+
+      updatePayload.rejectionReason = reason;
+      updatePayload.rejectedByRole = displayRole;
+      updatePayload.rejectedByName = req.body.rejectedByName || approvedBy || 'Unknown Approver';
+      updatePayload.rejectedByDept = req.body.rejectedByDept || rawEventData.department || 'N/A';
+      updatePayload.rejectedAt = new Date().toISOString();
+    }
+
     // Record timestamped approval for each stage
     const prevStatus = eventSnap.data().status;
     if (finalStatus === 'PENDING_HOD' && prevStatus === 'PENDING_FACULTY') {
@@ -376,18 +397,56 @@ router.patch('/:id/department-approval', async (req, res) => {
     const departmentApprovals = eventData.departmentApprovals || {};
 
     if (status === 'REJECTED') {
+      const reasonStr = String(reason || '').trim();
+      if (!reasonStr) {
+        return res.status(400).json({
+          success: false,
+          message: 'Rejection reason is mandatory.',
+        });
+      }
+
       departmentApprovals[department] = {
         status: 'REJECTED',
         rejectedBy: approvedBy,
         rejectedAt: new Date().toISOString(),
-        reason,
+        reason: reasonStr,
       };
+
+      // Determine clean role and department names for display
+      let displayRole = 'Department Officer';
+      let displayDept = department.toUpperCase();
+
+      if (department === 'venue') {
+        displayRole = 'HR';
+        displayDept = 'Venue';
+      } else if (department === 'media') {
+        displayRole = 'HR';
+        displayDept = 'Media';
+      } else if (department === 'audio') {
+        displayRole = 'Audio';
+        displayDept = 'Audio';
+      } else if (department === 'icts') {
+        displayRole = 'ICTS';
+        displayDept = 'ICTS';
+      } else if (department === 'transport') {
+        displayRole = 'Transport';
+        displayDept = 'Transport';
+      } else if (department === 'boysAccommodation') {
+        displayRole = 'Warden';
+        displayDept = 'Boys Hostel';
+      } else if (department === 'girlsAccommodation') {
+        displayRole = 'Warden';
+        displayDept = 'Girls Hostel';
+      }
 
       const updatePayload = {
         departmentApprovals,
         status: 'REJECTED',
-        rejectionReason: `Rejected by ${department.toUpperCase()} department. Reason: ${reason}`,
-        rejectedByRole: department.toUpperCase(),
+        rejectionReason: reasonStr,
+        rejectedByRole: displayRole,
+        rejectedByName: approvedBy,
+        rejectedByDept: displayDept,
+        rejectedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
@@ -512,6 +571,10 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       // Clear all stage approvals
       approvedBy: null,
       rejectionReason: null,
+      rejectedByRole: null,
+      rejectedByName: null,
+      rejectedByDept: null,
+      rejectedAt: null,
 
       facultyApprovedAt: null,
       facultyApprovedBy: null,
