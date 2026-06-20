@@ -1092,9 +1092,9 @@ const EventDetailModal = ({ event, onClose }) => {
               </InfoSection>
             )}
 
-            {/* 5. Transport Requirements - Annexure IV */}
+            {/* 5. Transport Requirements */}
             {transportAnnex ? (
-              <InfoSection title="5. Transport Requirements (Annexure IV)" icon={Car}>
+              <InfoSection title="5. Transport Requirements" icon={Car}>
                 <div className="space-y-6">
                   {/* External Transport Block */}
                   {(transportAnnex.transportType === 'external' || transportAnnex.transportType === 'both') && (
@@ -1104,7 +1104,6 @@ const EventDetailModal = ({ event, onClose }) => {
                           <span>🚘</span>
                           <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">External Transport</span>
                         </div>
-                        <span className="text-[10px] font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Annexure IV-A</span>
                       </div>
                       <div className="p-4 space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -1140,13 +1139,12 @@ const EventDetailModal = ({ event, onClose }) => {
 
                   {/* Internal Transport Block */}
                   {(transportAnnex.transportType === 'internal' || transportAnnex.transportType === 'both') && (
-                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 overflow-hidden">
-                      <div className="px-4 py-2 bg-emerald-100/50 border-b border-emerald-100 flex items-center justify-between">
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/30 overflow-hidden">
+                      <div className="px-4 py-2 bg-blue-100/50 border-b border-blue-100 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span>🚌</span>
-                          <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Internal Transport</span>
+                          <span className="text-xs font-bold text-blue-800 uppercase tracking-wider">Internal Transport</span>
                         </div>
-                        <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Annexure IV-B</span>
                       </div>
                       <div className="p-4 space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -1158,10 +1156,10 @@ const EventDetailModal = ({ event, onClose }) => {
                         
                         {transportAnnex.internalTransport?.industries?.filter(Boolean).length > 0 && (
                           <div>
-                            <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1.5">Destinations</p>
+                            <p className="text-[10px] font-bold text-blue-500 uppercase mb-1.5">Destinations</p>
                             <div className="flex flex-wrap gap-2">
                               {transportAnnex.internalTransport.industries.filter(Boolean).map((ind, idx) => (
-                                <span key={idx} className="px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700">{ind}</span>
+                                <span key={idx} className="px-2.5 py-1 bg-white border border-blue-200 rounded-lg text-xs font-medium text-blue-700">{ind}</span>
                               ))}
                             </div>
                           </div>
@@ -1171,8 +1169,8 @@ const EventDetailModal = ({ event, onClose }) => {
                           {['onwardJourney', 'returnJourney'].map((jType) => {
                             const j = transportAnnex.internalTransport?.[jType];
                             return (
-                              <div key={jType} className="rounded-lg bg-white border border-emerald-100 p-3">
-                                <p className="text-[10px] font-bold text-emerald-500 uppercase mb-2">{jType === 'onwardJourney' ? '🛫 Onward' : '🛬 Return'}</p>
+                              <div key={jType} className="rounded-lg bg-white border border-blue-100 p-3">
+                                <p className="text-[10px] font-bold text-blue-500 uppercase mb-2">{jType === 'onwardJourney' ? '🛫 Onward' : '🛬 Return'}</p>
                                 <div className="space-y-1.5">
                                   <InfoRow label="Date" value={j?.vehicleDate} />
                                   <InfoRow label="From" value={j?.startingPlace} />
@@ -1187,17 +1185,17 @@ const EventDetailModal = ({ event, onClose }) => {
 
                         {transportAnnex.internalTransport?.passengers?.length > 0 && (
                           <div className="mt-2">
-                            <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1.5">Passengers ({transportAnnex.internalTransport.passengers.length})</p>
-                            <div className="overflow-x-auto border border-emerald-100 rounded-lg bg-white">
+                            <p className="text-[10px] font-bold text-blue-500 uppercase mb-1.5">Passengers ({transportAnnex.internalTransport.passengers.length})</p>
+                            <div className="overflow-x-auto border border-blue-100 rounded-lg bg-white">
                               <table className="w-full text-xs">
-                                <thead className="bg-emerald-50/50">
+                                <thead className="bg-blue-50/50">
                                   <tr>
-                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">#</th>
-                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">Name</th>
-                                    <th className="text-left px-3 py-2 font-semibold text-emerald-700">ID</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">#</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">Name</th>
+                                    <th className="text-left px-3 py-2 font-semibold text-blue-700">ID</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-emerald-50">
+                                <tbody className="divide-y divide-blue-50">
                                   {transportAnnex.internalTransport.passengers.map((p, idx) => (
                                     <tr key={idx}>
                                       <td className="px-3 py-1.5 text-slate-500">{p.sno || idx + 1}</td>
@@ -1321,7 +1319,7 @@ const EventDetailModal = ({ event, onClose }) => {
                 </div>
               </InfoSection>
             ) : (
-              <InfoSection title="5. Transport Requirements (Annexure IV)" icon={Car}>
+              <InfoSection title="5. Transport Requirements" icon={Car}>
                 <p className="text-sm text-slate-400">Not required for this event.</p>
               </InfoSection>
             )}

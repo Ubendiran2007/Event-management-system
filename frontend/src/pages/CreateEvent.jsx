@@ -2671,22 +2671,22 @@ const CreateEvent = () => {
 
       const typeOptions = [
         {
-          value: 'external', label: 'External Transport', annexure: 'Annexure IV-A',
+          value: 'external', label: 'External Transport',
           icon: '🚘',
           desc: 'For Resource Persons, Chief Guests, Industry Experts & External Visitors',
           color: 'blue',
         },
         {
-          value: 'internal', label: 'Internal Transport', annexure: 'Annexure IV-B',
+          value: 'internal', label: 'Internal Transport',
           icon: '🚌',
           desc: 'For Students, Faculty & Staff travelling to industries or external locations',
-          color: 'emerald',
+          color: 'blue',
         },
         {
-          value: 'both', label: 'Both', annexure: 'IV-A & IV-B',
+          value: 'both', label: 'Both',
           icon: '🔁',
           desc: 'Events requiring both guest pickup and student/faculty travel',
-          color: 'violet',
+          color: 'blue',
         },
       ];
 
@@ -2713,7 +2713,6 @@ const CreateEvent = () => {
                         <span className="text-2xl">{opt.icon}</span>
                         <div>
                           <p className="font-bold text-slate-800 text-sm">{opt.label}</p>
-                          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{opt.annexure}</p>
                           <p className="text-xs text-slate-500 leading-relaxed">{opt.desc}</p>
                         </div>
                       </div>
@@ -2732,7 +2731,6 @@ const CreateEvent = () => {
                     <span className="text-lg">🚘</span>
                     <div>
                       <p className="font-bold text-white text-sm">External Transport Request</p>
-                      <p className="text-blue-200 text-[10px] font-semibold uppercase tracking-wider">Annexure IV-A</p>
                     </div>
                   </div>
                   <div className="p-5 space-y-5">
@@ -2835,12 +2833,11 @@ const CreateEvent = () => {
             <AnimatePresence>
               {showInt && (
                 <motion.div key="int" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.22 }}
-                  className="rounded-2xl border border-emerald-200 bg-white overflow-hidden shadow-sm">
-                  <div className="px-5 py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 flex items-center gap-2">
+                  className="rounded-2xl border border-blue-200 bg-white overflow-hidden shadow-sm">
+                  <div className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
                     <span className="text-lg">🚌</span>
                     <div>
                       <p className="font-bold text-white text-sm">Internal Transport Request</p>
-                      <p className="text-emerald-200 text-[10px] font-semibold uppercase tracking-wider">Annexure IV-B</p>
                     </div>
                   </div>
                   <div className="p-5 space-y-5">
@@ -2895,7 +2892,7 @@ const CreateEvent = () => {
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-bold text-slate-700">Industry / Organization</p>
                         <button type="button" onClick={addIndustry}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors">
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
                           <Plus size={12} /> Add Organization
                         </button>
                       </div>
@@ -2928,7 +2925,7 @@ const CreateEvent = () => {
                           <p className="text-xs text-slate-400">{form.internalTransport.passengers.length} passenger{form.internalTransport.passengers.length !== 1 ? 's' : ''} added</p>
                         </div>
                         <button type="button" onClick={addPassenger}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors">
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
                           <Plus size={12} /> Add Passenger
                         </button>
                       </div>
