@@ -19,6 +19,7 @@ const { db } = require('../firebase');
 const {
   sendEventNotificationToFaculty,
   sendEventStatusNotification,
+  sendEventCreationNotification,
   sendApprovalRequestToRole,
   sendPosterRequestEmail,
   sendStudentRegistrationStatusEmail,
@@ -119,13 +120,22 @@ async function handleEventStatusChange(eventData, previousStatus, newStatus) {
     '──────────────────────────────────────────────────────────'
   );
 
-  // ── Always notify organizer on any status change (except creation) ─────────
-  if (newStatus !== 'PENDING_FACULTY' && isValidEmail(eventData.organizerEmail)) {
-    await safeSend(
-      'Status update to organizer [' + newStatus + ']',
-      eventData.organizerEmail,
-      () => sendEventStatusNotification(eventData.organizerEmail, eventData, newStatus)
-    );
+  // ── Always notify organizer on any status change ─────────
+  if (isValidEmail(eventData.organizerEmail)) {
+    if (previousStatus === null) {
+      // It's a new event creation
+      await safeSend(
+        'Event creation confirmation to organizer',
+        eventData.organizerEmail,
+        () => sendEventCreationNotification(eventData.organizerEmail, eventData)
+      );
+    } else if (newStatus !== 'PENDING_FACULTY') {
+      await safeSend(
+        'Status update to organizer [' + newStatus + ']',
+        eventData.organizerEmail,
+        () => sendEventStatusNotification(eventData.organizerEmail, eventData, newStatus)
+      );
+    }
   }
 
   // ── Per-transition logic ───────────────────────────────────────────────────

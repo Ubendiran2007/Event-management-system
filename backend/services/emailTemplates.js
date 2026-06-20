@@ -349,5 +349,26 @@ module.exports = {
           : '<p style="margin: 20px 0 0; font-size: 14px; color: #475569;">Please ensure that your report is submitted as soon as possible to remain compliant.</p>'}
       `
     });
+  },
+
+  eventCreationTemplate: (eventData) => {
+    return buildBaseTemplate({
+      title: 'Event Proposal Submitted',
+      subtitle: 'Successfully created and routed for approval',
+      headerBg: 'linear-gradient(135deg, #2563eb 0%, #1e3a8a 100%)',
+      preheader: `Success! Your event '${eventData.title}' has been created.`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear Organizer,</p>
+        <p style="margin: 0 0 16px; font-size: 15px; color: #475569; line-height: 1.6;">Your event proposal for <strong>"${eventData.title}"</strong> has been successfully created and submitted to the approval workflow.</p>
+        
+        ${getEventDetailsHtml(eventData)}
+
+        <div class="alert-box alert-info" style="margin-top: 24px;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600; margin-bottom: 8px;">🚀 What's Next?</p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.5;">Your proposal is now pending review. You will receive email notifications as it progresses through the designated approvers (Faculty, HOD, Departments, IQAC).</p>
+        </div>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #475569;">You can track the live approval status at any time from your Dashboard in the Event Management Portal.</p>
+      `
+    });
   }
 };

@@ -271,6 +271,27 @@ async function sendEventStatusNotification(organizerEmail, eventData, status) {
   }
 }
 
+async function sendEventCreationNotification(organizerEmail, eventData) {
+  if (!organizerEmail) return { success: false, message: 'Organizer email not provided' };
+
+  try {
+    const html = templates.eventCreationTemplate(eventData);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: organizerEmail,
+      subject: `Event Proposal Submitted: ${eventData.title}`,
+      html,
+      text: `Event Proposal Submitted\n\nEvent: ${eventData.title}\nYour event proposal has been successfully created and submitted.\n\n---\nThis is an automated email.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    console.log('[Email Service] Event creation notification sent successfully:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send event creation email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 async function sendStudentRegistrationStatusEmail(studentEmail, studentName, eventData, status, odLetterBase64) {
   if (!studentEmail) return { success: false, message: 'Student email not provided' };
   try {
@@ -407,6 +428,7 @@ async function sendIQACExtensionStatusEmail(organizerEmail, eventData, isApprove
 module.exports = {
   sendEventNotificationToFaculty,
   sendEventStatusNotification,
+  sendEventCreationNotification,
   sendApprovalRequestToRole,
   sendPosterRequestEmail,
   sendPosterReadyEmail,
