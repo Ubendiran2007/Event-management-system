@@ -1389,6 +1389,17 @@ const CreateEvent = () => {
         setStepError(`Quantity for "${venueZeroQty[0]}" must be at least 1.`);
         return false;
       }
+      
+      const totalAllocated = Object.values(form.venueSelection || {}).reduce((acc, v) => acc + (v.selected ? Number(v.qty || 0) : 0), 0);
+      const requiredVenues = Number(form.numberOfVenuesRequired);
+      if (totalAllocated < requiredVenues) {
+        setStepError(`Total Venue Allocation (${totalAllocated}) is less than Required (${requiredVenues}). Please match the required count.`);
+        return false;
+      }
+      if (totalAllocated > requiredVenues) {
+        setStepError(`Total Venue Allocation (${totalAllocated}) exceeds Required (${requiredVenues}). Please match the required count.`);
+        return false;
+      }
       // Every selected hall requirement must have qty >= 1
       const hallZeroQty = Object.entries(form.hallRequirements || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
       if (hallZeroQty) {
@@ -2380,7 +2391,10 @@ const CreateEvent = () => {
                       <input
                         type="checkbox"
                         checked={item.selected}
-                        onChange={(e) => updateQtyMap('venueSelection', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 })}
+                        onChange={(e) => {
+                          updateQtyMap('venueSelection', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 });
+                          setQtyErrorsVisible(false);
+                        }}
                       />
                       <span className="text-sm flex-1">{v}</span>
                       <div className="flex flex-col items-end gap-0.5">
@@ -2414,7 +2428,10 @@ const CreateEvent = () => {
                       <input
                         type="checkbox"
                         checked={item.selected}
-                        onChange={(e) => updateQtyMap('hallRequirements', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 })}
+                        onChange={(e) => {
+                          updateQtyMap('hallRequirements', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 });
+                          setQtyErrorsVisible(false);
+                        }}
                       />
                       <span className="text-sm flex-1">{v}</span>
                       <div className="flex flex-col items-end gap-0.5">
