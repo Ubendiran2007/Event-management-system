@@ -759,8 +759,10 @@ const CreateEvent = () => {
   const [audioTimesUserEdited, setAudioTimesUserEdited] = useState(false);
   // Track whether user has manually overridden the audio venue name
   const [audioVenueUserEdited, setAudioVenueUserEdited] = useState(false);
+  // Track whether user has manually overridden external transport guest details
+  const [extGuestUserEdited, setExtGuestUserEdited] = useState(false);
 
-  // Sync Audio Date, Venue, and Times automatically from Event Info
+  // Sync Audio Date, Venue, Times, and Transport Guest automatically from Event Info
   useEffect(() => {
     setForm(prev => {
       let updated = { ...prev };
@@ -796,10 +798,25 @@ const CreateEvent = () => {
         }
       }
 
+      // Sync External Transport Guest Details: only if user hasn't edited them manually
+      if (!extGuestUserEdited && prev.guests?.length > 0) {
+        const rp = prev.guests[0];
+        if (rp.name && prev.externalTransport.guestName !== rp.name) {
+          updated.externalTransport = { ...updated.externalTransport, guestName: rp.name };
+          changed = true;
+        }
+        if (rp.designation && prev.externalTransport.guestDesignation !== rp.designation) {
+          updated.externalTransport = { ...updated.externalTransport, guestDesignation: rp.designation };
+          changed = true;
+        }
+        // Note: form.guests doesn't natively include contactNumber or email, 
+        // but if it did for legacy reasons, we could sync them here too.
+      }
+
       return changed ? updated : prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, audioTimesUserEdited, audioVenueUserEdited]);
+  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, form.guests, audioTimesUserEdited, audioVenueUserEdited, extGuestUserEdited]);
 
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
@@ -2835,22 +2852,22 @@ const CreateEvent = () => {
                     {/* Guest info */}
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Guest Information</p>
-                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-blue-600 select-none">
-                          <input type="checkbox" className="w-4 h-4 accent-blue-600"
-                            checked={form.externalTransport.useResourcePerson}
-                            onChange={(e) => {
-                              updateNested('externalTransport.useResourcePerson', e.target.checked);
-                              if (e.target.checked && form.guests?.length > 0) {
-                                const rp = form.guests[0];
-                                updateNested('externalTransport.guestName', rp.name || '');
-                                updateNested('externalTransport.guestDesignation', rp.designation || '');
-                                updateNested('externalTransport.guestContact', rp.contactNumber || '');
-                                updateNested('externalTransport.guestEmail', rp.email || '');
-                              }
-                            }} />
-                          Use Resource Person Details
-                        </label>
+                        <div className="flex items-center gap-3">
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Guest Information</p>
+                          {!extGuestUserEdited && form.guests?.length > 0 && form.guests[0]?.name && (
+                            <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">⟳ Synced from Event Info</span>
+                          )}
+                        </div>
+                        {extGuestUserEdited && (
+                          <button type="button" onClick={() => { 
+                            setExtGuestUserEdited(false); 
+                            const rp = form.guests?.[0];
+                            if (rp) {
+                              updateNested('externalTransport.guestName', rp.name || '');
+                              updateNested('externalTransport.guestDesignation', rp.designation || '');
+                            }
+                          }} className="text-[10px] font-semibold text-slate-400 hover:text-blue-500 transition-colors">↺ Reset to event guest</button>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {[
@@ -2863,7 +2880,10 @@ const CreateEvent = () => {
                             <label className="text-sm font-semibold text-slate-700">{lbl}{req && <span className="text-red-500 ml-0.5">*</span>}</label>
                             <input type={type} className={inputClass}
                               value={path.split('.').reduce((o, k) => o?.[k], form) || ''}
-                              onChange={(e) => updateNested(path, type === 'email' ? e.target.value.toLowerCase() : e.target.value)} />
+                              onChange={(e) => {
+                                updateNested(path, type === 'email' ? e.target.value.toLowerCase() : e.target.value);
+                                setExtGuestUserEdited(true);
+                              }} />
                           </div>
                         ))}
                       </div>
