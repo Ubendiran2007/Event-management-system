@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
@@ -186,74 +186,265 @@ const formatTime12 = (t24) => {
     return t24;
   }
 };
+// ── Wheel Column ─────────────────────────────────────────────────────────────
+const ITEM_H = 44;
+const VISIBLE = 5; // must be odd
+const PAD = Math.floor(VISIBLE / 2); // = 2 padding rows top & bottom
 
-const TimePicker = ({ id, value, onChange, onBlur, className }) => {
-  // Ensure value is HH:mm
-  const val = value || '09:00';
-  const [h, m] = val.split(':');
-  const hh = parseInt(h, 10);
-  const hour12 = hh % 12 || 12;
-  const ampm = hh >= 12 ? 'PM' : 'AM';
+const WheelColumn = ({ items, selectedIndex, onSelect }) => {
+  const containerH = ITEM_H * VISIBLE;
+  const ref = React.useRef(null);
+  const settling = React.useRef(false); // suppresses onScroll during programmatic scroll
+  const debounceTimer = React.useRef(null);
 
-  const updateTime = (newH12, newM, newAmpm) => {
-    let h24 = parseInt(newH12, 10);
-    if (newAmpm === 'PM' && h24 < 12) h24 += 12;
-    if (newAmpm === 'AM' && h24 === 12) h24 = 0;
-    const result = `${h24.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
-    onChange({ target: { id, value: result } });
-  };
+  // Programmatic scroll: selectedIndex → scrollTop = selectedIndex * ITEM_H
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    settling.current = true;
+    el.scrollTo({ top: selectedIndex * ITEM_H, behavior: 'smooth' });
+    const t = setTimeout(() => { settling.current = false; }, 350);
+    return () => clearTimeout(t);
+  }, [selectedIndex]);
 
-  const baseClasses = (className || '').replace(/px-\d|py-\d/g, '').trim();
+  const handleScroll = React.useCallback(() => {
+    if (settling.current) return;
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      const el = ref.current;
+      if (!el) return;
+      // scrollTop = selectedIndex * ITEM_H  →  index = round(scrollTop / ITEM_H)
+      const idx = Math.round(el.scrollTop / ITEM_H);
+      const clamped = Math.max(0, Math.min(items.length - 1, idx));
+      onSelect(clamped);
+    }, 80); // wait for scroll to settle
+  }, [items.length, onSelect]);
 
   return (
-    <div 
-      className={`${baseClasses} overflow-hidden flex items-stretch focus-within:ring-2 focus-within:ring-cse-accent/20 focus-within:border-cse-accent transition-colors`}
-      style={{ padding: 0 }}
-      onBlur={onBlur}
-    >
-      <div className="flex-1 flex items-center justify-center bg-transparent">
-        <select
-          value={hour12.toString().padStart(2, '0')}
-          onChange={(e) => updateTime(e.target.value, m, ampm)}
-          className="w-full bg-transparent text-center appearance-none outline-none py-2 font-medium text-slate-700 cursor-pointer h-full"
-        >
-          {Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0')).map(v => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
+    <div className="relative" style={{ height: containerH, width: 68, overflowX: 'hidden' }}>
+      {/* Selection highlight band — centered in the container */}
+      <div
+        className="absolute left-0 right-0 pointer-events-none z-10 rounded-xl"
+        style={{
+          top: ITEM_H * PAD,
+          height: ITEM_H,
+          background: 'rgba(37,99,235,0.08)',
+          borderTop: '1.5px solid rgba(37,99,235,0.22)',
+          borderBottom: '1.5px solid rgba(37,99,235,0.22)',
+        }}
+      />
+      {/* Top gradient fade */}
+      <div className="absolute top-0 left-0 right-0 pointer-events-none z-10"
+        style={{ height: ITEM_H * 2, background: 'linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)' }} />
+      {/* Bottom gradient fade */}
+      <div className="absolute bottom-0 left-0 right-0 pointer-events-none z-10"
+        style={{ height: ITEM_H * 2, background: 'linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)' }} />
+
+      <div
+        ref={ref}
+        onScroll={handleScroll}
+        className="h-full overflow-y-scroll"
+        style={{ scrollSnapType: 'y mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+      >
+        {/* Top spacer — allows first real item to sit in centre row */}
+        {Array.from({ length: PAD }).map((_, i) => (
+          <div key={`t${i}`} style={{ height: ITEM_H, scrollSnapAlign: 'start', flexShrink: 0 }} />
+        ))}
+
+        {items.map((item, idx) => {
+          const active = idx === selectedIndex;
+          return (
+            <div
+              key={item}
+              onClick={() => { settling.current = true; onSelect(idx); }}
+              className="flex items-center justify-center cursor-pointer select-none"
+              style={{
+                height: ITEM_H,
+                scrollSnapAlign: 'start',
+                fontWeight: active ? 700 : 400,
+                fontSize: active ? 19 : 15,
+                color: active ? '#1d4ed8' : '#94a3b8',
+                transform: active ? 'scale(1.08)' : 'scale(1)',
+                transition: 'all 0.18s cubic-bezier(0.34,1.4,0.64,1)',
+                letterSpacing: active ? '0.04em' : '0',
+              }}
+            >
+              {item}
+            </div>
+          );
+        })}
+
+        {/* Bottom spacer */}
+        {Array.from({ length: PAD }).map((_, i) => (
+          <div key={`b${i}`} style={{ height: ITEM_H, scrollSnapAlign: 'start', flexShrink: 0 }} />
+        ))}
       </div>
-      
-      <div className="flex items-center justify-center pointer-events-none text-slate-400 font-bold px-1 py-2">
-        :
-      </div>
-      
-      <div className="flex-1 flex items-center justify-center bg-transparent">
-        <select
-          value={m}
-          onChange={(e) => updateTime(hour12, e.target.value, ampm)}
-          className="w-full bg-transparent text-center appearance-none outline-none py-2 font-medium text-slate-700 cursor-pointer h-full"
-        >
-          {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0')).map(v => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-      </div>
-      
-      <div className="relative border-l border-slate-200 bg-slate-50 flex items-center hover:bg-slate-100 transition-colors">
-        <select
-          value={ampm}
-          onChange={(e) => updateTime(hour12, m, e.target.value)}
-          className="appearance-none bg-transparent outline-none pl-3 pr-7 py-2 font-bold text-cse-accent cursor-pointer text-sm h-full"
-        >
-          <option value="AM">AM</option>
-          <option value="PM">PM</option>
-        </select>
-        <div className="absolute right-2 pointer-events-none text-cse-accent">
-          <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-      </div>
+    </div>
+  );
+};
+
+// ── TimePicker ─────────────────────────────────────────────────────────────
+const HOURS   = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
+const MINUTES = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+
+const parseVal = (v) => {
+  const safe = v || '09:00';
+  const [hStr, mStr] = safe.split(':');
+  const hh = parseInt(hStr, 10) || 9;
+  const mm = parseInt(mStr, 10) || 0;
+  return {
+    hourIdx: (hh % 12 || 12) - 1,   // 0-indexed into HOURS array
+    minIdx: mm,                        // 0-indexed into MINUTES array
+    ampm: hh >= 12 ? 'PM' : 'AM',
+  };
+};
+
+const TimePicker = ({ id, value, onChange, onBlur, className }) => {
+  const { hourIdx, minIdx, ampm: initAmpm } = parseVal(value);
+
+  const [open, setOpen]         = React.useState(false);
+  const [draftHour, setDraftHour] = React.useState(hourIdx);
+  const [draftMin,  setDraftMin]  = React.useState(minIdx);
+  const [draftAmpm, setDraftAmpm] = React.useState(initAmpm);
+  const popupRef = React.useRef(null);
+
+  // Keep draft in sync with external value (e.g. form reset)
+  React.useEffect(() => {
+    const { hourIdx: h, minIdx: m, ampm: a } = parseVal(value);
+    setDraftHour(h);
+    setDraftMin(m);
+    setDraftAmpm(a);
+  }, [value]);
+
+  // Close on outside click
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (popupRef.current && !popupRef.current.contains(e.target)) {
+        setOpen(false);
+        onBlur && onBlur();
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
+  }, [open, onBlur]);
+
+  const commit = () => {
+    let h24 = draftHour + 1; // HOURS is 1-indexed (01–12), draftHour is 0-indexed
+    if (draftAmpm === 'PM' && h24 < 12) h24 += 12;
+    if (draftAmpm === 'AM' && h24 === 12) h24 = 0;
+    onChange({ target: { id, value: `${h24.toString().padStart(2,'0')}:${draftMin.toString().padStart(2,'0')}` } });
+    setOpen(false);
+    onBlur && onBlur();
+  };
+
+  const cancel = () => {
+    const { hourIdx: h, minIdx: m, ampm: a } = parseVal(value);
+    setDraftHour(h); setDraftMin(m); setDraftAmpm(a);
+    setOpen(false);
+  };
+
+  // Live preview — always derived directly from the three draft state values
+  const previewH  = HOURS[draftHour]   ?? '09';
+  const previewM  = MINUTES[draftMin]  ?? '00';
+  const previewKey = `${previewH}${previewM}${draftAmpm}`;
+
+  const displayTime = formatTime12(value || '09:00');
+
+  return (
+    <div className="relative inline-block" ref={popupRef}>
+      {/* ── Trigger button ─────────────────────────────────────────────── */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${(className || '').replace(/w-full/g, '').trim()} inline-flex items-center gap-2.5 cursor-pointer select-none transition-colors`}
+        style={{ width: 'max-content', minWidth: 130 }}
+      >
+        <svg className="text-slate-400 shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span className="font-semibold text-slate-700 text-sm tracking-wide">{displayTime}</span>
+        <svg className="text-slate-400 shrink-0 ml-auto" width="12" height="12" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {/* ── Wheel Popup ────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+            className="absolute z-50 mt-2 left-0 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
+            style={{ minWidth: 268 }}
+          >
+            {/* Live Preview Header — key forces re-render animation on every change */}
+            <div className="bg-gradient-to-br from-cse-accent to-blue-800 px-5 py-4 flex flex-col items-center gap-0.5">
+              <span className="text-blue-200 text-[10px] font-bold uppercase tracking-[0.18em]">Selected Time</span>
+              <motion.span
+                key={previewKey}
+                initial={{ opacity: 0.4, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.12 }}
+                className="text-white font-bold tabular-nums"
+                style={{ fontSize: 32, lineHeight: 1, letterSpacing: '0.04em', textShadow: '0 2px 8px rgba(0,0,0,0.18)' }}
+              >
+                {previewH}:{previewM}
+                <span className="ml-2 text-blue-200" style={{ fontSize: 18, fontWeight: 600 }}>{draftAmpm}</span>
+              </motion.span>
+            </div>
+
+            {/* Column labels */}
+            <div className="flex items-center justify-center gap-1 pt-2 px-4">
+              <div className="w-[68px] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hour</div>
+              <div className="w-4" />
+              <div className="w-[68px] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Min</div>
+              <div className="w-[70px]" />
+            </div>
+
+            {/* Wheels */}
+            <div className="flex items-center justify-center gap-1 px-4 pb-2">
+              <WheelColumn items={HOURS}   selectedIndex={draftHour} onSelect={setDraftHour} />
+              <div className="text-2xl font-bold text-slate-300 shrink-0 mb-0.5">:</div>
+              <WheelColumn items={MINUTES} selectedIndex={draftMin}  onSelect={setDraftMin} />
+
+              {/* AM / PM segmented toggle */}
+              <div className="flex flex-col gap-2 ml-3 shrink-0">
+                {['AM', 'PM'].map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setDraftAmpm(p)}
+                    className={`w-[54px] py-2.5 rounded-xl text-sm font-bold transition-all border ${
+                      draftAmpm === p
+                        ? 'bg-cse-accent text-white border-cse-accent shadow-md shadow-blue-200'
+                        : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 px-4 pb-4 pt-1">
+              <button type="button" onClick={cancel}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+              <button type="button" onClick={commit}
+                className="flex-1 py-2 rounded-xl text-sm font-bold bg-cse-accent text-white hover:bg-blue-700 transition-colors shadow-sm">
+                Apply
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
