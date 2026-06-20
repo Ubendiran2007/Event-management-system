@@ -187,17 +187,16 @@ const formatTime12 = (t24) => {
   }
 };
 // ── Wheel Column ─────────────────────────────────────────────────────────────
-const ITEM_H = 44;
-const VISIBLE = 5; // must be odd
-const PAD = Math.floor(VISIBLE / 2); // = 2 padding rows top & bottom
+const ITEM_H = 40;
+const VISIBLE = 3; // must be odd
+const PAD = Math.floor(VISIBLE / 2); // = 1 padding row top & bottom
 
 const WheelColumn = ({ items, selectedIndex, onSelect }) => {
   const containerH = ITEM_H * VISIBLE;
   const ref = React.useRef(null);
-  const settling = React.useRef(false); // suppresses onScroll during programmatic scroll
+  const settling = React.useRef(false);
   const debounceTimer = React.useRef(null);
 
-  // Programmatic scroll: selectedIndex → scrollTop = selectedIndex * ITEM_H
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -213,18 +212,17 @@ const WheelColumn = ({ items, selectedIndex, onSelect }) => {
     debounceTimer.current = setTimeout(() => {
       const el = ref.current;
       if (!el) return;
-      // scrollTop = selectedIndex * ITEM_H  →  index = round(scrollTop / ITEM_H)
       const idx = Math.round(el.scrollTop / ITEM_H);
       const clamped = Math.max(0, Math.min(items.length - 1, idx));
       onSelect(clamped);
-    }, 80); // wait for scroll to settle
+    }, 80);
   }, [items.length, onSelect]);
 
   return (
-    <div className="relative" style={{ height: containerH, width: 68, overflowX: 'hidden' }}>
-      {/* Selection highlight band — centered in the container */}
+    <div className="relative" style={{ height: containerH, width: 64, overflowX: 'hidden' }}>
+      {/* Selection highlight band */}
       <div
-        className="absolute left-0 right-0 pointer-events-none z-10 rounded-xl"
+        className="absolute left-0 right-0 pointer-events-none z-10 rounded-lg"
         style={{
           top: ITEM_H * PAD,
           height: ITEM_H,
@@ -235,10 +233,10 @@ const WheelColumn = ({ items, selectedIndex, onSelect }) => {
       />
       {/* Top gradient fade */}
       <div className="absolute top-0 left-0 right-0 pointer-events-none z-10"
-        style={{ height: ITEM_H * 2, background: 'linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)' }} />
+        style={{ height: ITEM_H, background: 'linear-gradient(to bottom, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)' }} />
       {/* Bottom gradient fade */}
       <div className="absolute bottom-0 left-0 right-0 pointer-events-none z-10"
-        style={{ height: ITEM_H * 2, background: 'linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)' }} />
+        style={{ height: ITEM_H, background: 'linear-gradient(to top, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 100%)' }} />
 
       <div
         ref={ref}
@@ -246,7 +244,6 @@ const WheelColumn = ({ items, selectedIndex, onSelect }) => {
         className="h-full overflow-y-scroll"
         style={{ scrollSnapType: 'y mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
       >
-        {/* Top spacer — allows first real item to sit in centre row */}
         {Array.from({ length: PAD }).map((_, i) => (
           <div key={`t${i}`} style={{ height: ITEM_H, scrollSnapAlign: 'start', flexShrink: 0 }} />
         ))}
@@ -262,9 +259,9 @@ const WheelColumn = ({ items, selectedIndex, onSelect }) => {
                 height: ITEM_H,
                 scrollSnapAlign: 'start',
                 fontWeight: active ? 700 : 400,
-                fontSize: active ? 19 : 15,
+                fontSize: active ? 18 : 14,
                 color: active ? '#1d4ed8' : '#94a3b8',
-                transform: active ? 'scale(1.08)' : 'scale(1)',
+                transform: active ? 'scale(1.06)' : 'scale(1)',
                 transition: 'all 0.18s cubic-bezier(0.34,1.4,0.64,1)',
                 letterSpacing: active ? '0.04em' : '0',
               }}
@@ -274,7 +271,6 @@ const WheelColumn = ({ items, selectedIndex, onSelect }) => {
           );
         })}
 
-        {/* Bottom spacer */}
         {Array.from({ length: PAD }).map((_, i) => (
           <div key={`b${i}`} style={{ height: ITEM_H, scrollSnapAlign: 'start', flexShrink: 0 }} />
         ))}
@@ -293,8 +289,8 @@ const parseVal = (v) => {
   const hh = parseInt(hStr, 10) || 9;
   const mm = parseInt(mStr, 10) || 0;
   return {
-    hourIdx: (hh % 12 || 12) - 1,   // 0-indexed into HOURS array
-    minIdx: mm,                        // 0-indexed into MINUTES array
+    hourIdx: (hh % 12 || 12) - 1,
+    minIdx: mm,
     ampm: hh >= 12 ? 'PM' : 'AM',
   };
 };
@@ -302,13 +298,15 @@ const parseVal = (v) => {
 const TimePicker = ({ id, value, onChange, onBlur, className }) => {
   const { hourIdx, minIdx, ampm: initAmpm } = parseVal(value);
 
-  const [open, setOpen]         = React.useState(false);
+  const [open, setOpen]           = React.useState(false);
   const [draftHour, setDraftHour] = React.useState(hourIdx);
   const [draftMin,  setDraftMin]  = React.useState(minIdx);
   const [draftAmpm, setDraftAmpm] = React.useState(initAmpm);
-  const popupRef = React.useRef(null);
+  const [openUpward, setOpenUpward] = React.useState(false);
+  const triggerRef = React.useRef(null);
+  const popupRef   = React.useRef(null);
 
-  // Keep draft in sync with external value (e.g. form reset)
+  // Keep draft in sync with external value
   React.useEffect(() => {
     const { hourIdx: h, minIdx: m, ampm: a } = parseVal(value);
     setDraftHour(h);
@@ -316,11 +314,25 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
     setDraftAmpm(a);
   }, [value]);
 
+  // Decide open direction before showing
+  const handleOpen = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // popup is ~280px tall; flip if less than 290px space below
+      setOpenUpward(spaceBelow < 290);
+    }
+    setOpen((o) => !o);
+  };
+
   // Close on outside click
   React.useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (popupRef.current && !popupRef.current.contains(e.target)) {
+      if (
+        popupRef.current && !popupRef.current.contains(e.target) &&
+        triggerRef.current && !triggerRef.current.contains(e.target)
+      ) {
         setOpen(false);
         onBlur && onBlur();
       }
@@ -330,7 +342,7 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
   }, [open, onBlur]);
 
   const commit = () => {
-    let h24 = draftHour + 1; // HOURS is 1-indexed (01–12), draftHour is 0-indexed
+    let h24 = draftHour + 1;
     if (draftAmpm === 'PM' && h24 < 12) h24 += 12;
     if (draftAmpm === 'AM' && h24 === 12) h24 = 0;
     onChange({ target: { id, value: `${h24.toString().padStart(2,'0')}:${draftMin.toString().padStart(2,'0')}` } });
@@ -344,84 +356,89 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
     setOpen(false);
   };
 
-  // Live preview — always derived directly from the three draft state values
-  const previewH  = HOURS[draftHour]   ?? '09';
-  const previewM  = MINUTES[draftMin]  ?? '00';
+  const previewH   = HOURS[draftHour]  ?? '09';
+  const previewM   = MINUTES[draftMin] ?? '00';
   const previewKey = `${previewH}${previewM}${draftAmpm}`;
-
   const displayTime = formatTime12(value || '09:00');
 
   return (
-    <div className="relative inline-block" ref={popupRef}>
-      {/* ── Trigger button ─────────────────────────────────────────────── */}
+    <div className="relative inline-block">
+      {/* ── Trigger button ── */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`${(className || '').replace(/w-full/g, '').trim()} inline-flex items-center gap-2.5 cursor-pointer select-none transition-colors`}
-        style={{ width: 'max-content', minWidth: 130 }}
+        onClick={handleOpen}
+        className={`${(className || '').replace(/w-full/g, '').trim()} inline-flex items-center gap-2 cursor-pointer select-none transition-colors`}
+        style={{ width: 'max-content', minWidth: 120 }}
       >
-        <svg className="text-slate-400 shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none"
+        <svg className="text-slate-400 shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
         <span className="font-semibold text-slate-700 text-sm tracking-wide">{displayTime}</span>
-        <svg className="text-slate-400 shrink-0 ml-auto" width="12" height="12" viewBox="0 0 24 24" fill="none"
+        <svg className="text-slate-400 shrink-0 ml-auto" width="11" height="11" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
 
-      {/* ── Wheel Popup ────────────────────────────────────────────────── */}
+      {/* ── Wheel Popup ── */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            ref={popupRef}
+            initial={{ opacity: 0, y: openUpward ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.97 }}
-            transition={{ duration: 0.16, ease: 'easeOut' }}
-            className="absolute z-50 mt-2 left-0 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
-            style={{ minWidth: 268 }}
+            exit={{ opacity: 0, y: openUpward ? 6 : -6, scale: 0.97 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
+            className="absolute z-50 left-0 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
+            style={{
+              minWidth: 252,
+              ...(openUpward
+                ? { bottom: 'calc(100% + 6px)' }
+                : { top: 'calc(100% + 6px)' }),
+            }}
           >
-            {/* Live Preview Header — key forces re-render animation on every change */}
-            <div className="bg-gradient-to-br from-cse-accent to-blue-800 px-5 py-4 flex flex-col items-center gap-0.5">
-              <span className="text-blue-200 text-[10px] font-bold uppercase tracking-[0.18em]">Selected Time</span>
+            {/* Header */}
+            <div className="bg-gradient-to-br from-blue-400 to-blue-500 px-4 py-3 flex flex-col items-center gap-0.5">
+              <span className="text-blue-100 text-[10px] font-bold uppercase tracking-[0.18em]">Selected Time</span>
               <motion.span
                 key={previewKey}
-                initial={{ opacity: 0.4, y: 4 }}
+                initial={{ opacity: 0.4, y: 3 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.12 }}
                 className="text-white font-bold tabular-nums"
-                style={{ fontSize: 32, lineHeight: 1, letterSpacing: '0.04em', textShadow: '0 2px 8px rgba(0,0,0,0.18)' }}
+                style={{ fontSize: 29, lineHeight: 1, letterSpacing: '0.04em' }}
               >
                 {previewH}:{previewM}
-                <span className="ml-2 text-blue-200" style={{ fontSize: 18, fontWeight: 600 }}>{draftAmpm}</span>
+                <span className="ml-1.5 text-blue-100" style={{ fontSize: 16, fontWeight: 600 }}>{draftAmpm}</span>
               </motion.span>
             </div>
 
             {/* Column labels */}
-            <div className="flex items-center justify-center gap-1 pt-2 px-4">
-              <div className="w-[68px] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hour</div>
-              <div className="w-4" />
-              <div className="w-[68px] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Min</div>
-              <div className="w-[70px]" />
+            <div className="flex items-center justify-center gap-1 pt-2 px-3">
+              <div className="w-[64px] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hour</div>
+              <div className="w-3" />
+              <div className="w-[64px] text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">Min</div>
+              <div className="w-[66px]" />
             </div>
 
             {/* Wheels */}
-            <div className="flex items-center justify-center gap-1 px-4 pb-2">
+            <div className="flex items-center justify-center gap-1 px-3 pb-1.5">
               <WheelColumn items={HOURS}   selectedIndex={draftHour} onSelect={setDraftHour} />
-              <div className="text-2xl font-bold text-slate-300 shrink-0 mb-0.5">:</div>
+              <div className="text-xl font-bold text-slate-300 shrink-0">:</div>
               <WheelColumn items={MINUTES} selectedIndex={draftMin}  onSelect={setDraftMin} />
 
-              {/* AM / PM segmented toggle */}
-              <div className="flex flex-col gap-2 ml-3 shrink-0">
+              {/* AM / PM */}
+              <div className="flex flex-col gap-1.5 ml-2 shrink-0">
                 {['AM', 'PM'].map((p) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setDraftAmpm(p)}
-                    className={`w-[54px] py-2.5 rounded-xl text-sm font-bold transition-all border ${
+                    className={`w-[50px] py-2.5 rounded-lg text-xs font-bold transition-all border ${
                       draftAmpm === p
-                        ? 'bg-cse-accent text-white border-cse-accent shadow-md shadow-blue-200'
+                        ? 'bg-cse-accent text-white border-cse-accent shadow-sm shadow-blue-200'
                         : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
                     }`}
                   >
@@ -432,13 +449,13 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
             </div>
 
             {/* Actions */}
-            <div className="flex gap-2 px-4 pb-4 pt-1">
+            <div className="flex gap-2 px-3 pb-3 pt-0.5">
               <button type="button" onClick={cancel}
-                className="flex-1 py-2 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+                className="flex-1 py-2 rounded-lg text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
                 Cancel
               </button>
               <button type="button" onClick={commit}
-                className="flex-1 py-2 rounded-xl text-sm font-bold bg-cse-accent text-white hover:bg-blue-700 transition-colors shadow-sm">
+                className="flex-1 py-2 rounded-lg text-sm font-bold bg-cse-accent text-white hover:bg-blue-700 transition-colors shadow-sm">
                 Apply
               </button>
             </div>
@@ -448,6 +465,7 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
     </div>
   );
 };
+
 
 const RequirementToggle = ({ label, checked, onToggle }) => (
   <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer bg-white">
@@ -739,6 +757,8 @@ const CreateEvent = () => {
 
   // Track whether user has manually overridden audio times
   const [audioTimesUserEdited, setAudioTimesUserEdited] = useState(false);
+  // Track whether user has manually overridden the audio venue name
+  const [audioVenueUserEdited, setAudioVenueUserEdited] = useState(false);
 
   // Sync Audio Date, Venue, and Times automatically from Event Info
   useEffect(() => {
@@ -764,21 +784,22 @@ const CreateEvent = () => {
         }
       }
 
-      // Sync Venue: Collect all selected venues
-      const selectedVenues = Object.entries(prev.venueSelection)
-        .filter(([_, data]) => data.selected)
-        .map(([venue]) => venue);
-
-      const newVenueName = selectedVenues.join(', ');
-      if (newVenueName && !prev.audioVenueName) {
-        updated.audioVenueName = newVenueName;
-        changed = true;
+      // Sync Venue Name: only if user hasn't typed their own value
+      if (!audioVenueUserEdited) {
+        const selectedVenues = Object.entries(prev.venueSelection)
+          .filter(([_, data]) => data.selected)
+          .map(([venue]) => venue);
+        const newVenueName = selectedVenues.join(', ');
+        if (newVenueName && prev.audioVenueName !== newVenueName) {
+          updated.audioVenueName = newVenueName;
+          changed = true;
+        }
       }
 
       return changed ? updated : prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, audioTimesUserEdited]);
+  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, audioTimesUserEdited, audioVenueUserEdited]);
 
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
@@ -2491,12 +2512,32 @@ const CreateEvent = () => {
               <FieldMsg errKey="audioDate" />
             </div>
             <div className="space-y-1">
-              <Lbl required>Venue Name</Lbl>
+              <div className="flex items-center justify-between">
+                <Lbl required>Venue Name</Lbl>
+                {!audioVenueUserEdited && form.audioVenueName && (
+                  <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">⟳ Synced from Venue Step</span>
+                )}
+                {audioVenueUserEdited && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAudioVenueUserEdited(false);
+                      const selectedVenues = Object.entries(form.venueSelection)
+                        .filter(([_, data]) => data.selected)
+                        .map(([venue]) => venue);
+                      setField('audioVenueName', selectedVenues.join(', '));
+                    }}
+                    className="text-[10px] font-semibold text-slate-400 hover:text-blue-500 transition-colors"
+                  >
+                    ↺ Reset to selected venues
+                  </button>
+                )}
+              </div>
               <input
                 id="audioVenueName"
                 className={fieldCls('audioVenueName')}
                 value={form.audioVenueName}
-                onChange={(e) => { setField('audioVenueName', e.target.value); setFE('audioVenueName', ''); }}
+                onChange={(e) => { setField('audioVenueName', e.target.value); setFE('audioVenueName', ''); setAudioVenueUserEdited(true); }}
                 onBlur={(e) => validateField('audioVenueName', e.target.value)}
                 placeholder="e.g. Auditorium I Floor"
               />
