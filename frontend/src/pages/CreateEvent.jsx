@@ -2717,7 +2717,7 @@ const CreateEvent = () => {
       const showInt = tt === 'internal' || tt === 'both';
 
       // Helper: journey sub-form
-      const JourneySection = ({ label, transportKey, journeyKey }) => (
+      const renderJourneySection = (label, transportKey, journeyKey) => (
         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{label}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2818,8 +2818,8 @@ const CreateEvent = () => {
             <AnimatePresence>
               {showExt && (
                 <motion.div key="ext" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.22 }}
-                  className="rounded-2xl border border-blue-200 bg-white overflow-hidden shadow-sm">
-                  <div className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
+                  className="rounded-2xl border border-blue-200 bg-white shadow-sm">
+                  <div className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2 rounded-t-[15px]">
                     <span className="text-lg">🚘</span>
                     <div>
                       <p className="font-bold text-white text-sm">External Transport Request</p>
@@ -2916,8 +2916,8 @@ const CreateEvent = () => {
 
                     {/* Journeys */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <JourneySection label="🛫 Onward Journey" transportKey="externalTransport" journeyKey="onwardJourney" />
-                      <JourneySection label="🛬 Return Journey" transportKey="externalTransport" journeyKey="returnJourney" />
+                      {renderJourneySection("🛫 Onward Journey", "externalTransport", "onwardJourney")}
+                      {renderJourneySection("🛬 Return Journey", "externalTransport", "returnJourney")}
                     </div>
                   </div>
                 </motion.div>
@@ -2928,8 +2928,8 @@ const CreateEvent = () => {
             <AnimatePresence>
               {showInt && (
                 <motion.div key="int" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.22 }}
-                  className="rounded-2xl border border-blue-200 bg-white overflow-hidden shadow-sm">
-                  <div className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
+                  className="rounded-2xl border border-blue-200 bg-white shadow-sm">
+                  <div className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2 rounded-t-[15px]">
                     <span className="text-lg">🚌</span>
                     <div>
                       <p className="font-bold text-white text-sm">Internal Transport Request</p>
@@ -3008,8 +3008,8 @@ const CreateEvent = () => {
 
                     {/* Journeys */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <JourneySection label="🛫 Onward Journey" transportKey="internalTransport" journeyKey="onwardJourney" />
-                      <JourneySection label="🛬 Return Journey" transportKey="internalTransport" journeyKey="returnJourney" />
+                      {renderJourneySection("🛫 Onward Journey", "internalTransport", "onwardJourney")}
+                      {renderJourneySection("🛬 Return Journey", "internalTransport", "returnJourney")}
                     </div>
 
                     {/* Passenger Table */}
