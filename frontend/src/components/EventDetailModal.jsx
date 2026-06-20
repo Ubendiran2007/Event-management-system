@@ -849,30 +849,71 @@ const EventDetailModal = ({ event, onClose }) => {
 
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <p className="text-xs font-bold text-slate-400 uppercase mb-3">Event Poster</p>
-                {eventPosterSrc ? (
-                  <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
-                    <img
-                      src={eventPosterSrc}
-                      alt={`${event.title} poster`}
-                      className="w-full max-h-[420px] object-contain bg-slate-100"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="px-3 py-2 bg-white border-t border-slate-200">
-                      <a
-                        href={eventPosterSrc}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-cse-accent hover:underline"
-                      >
-                        <ExternalLink size={13} /> View full poster
-                      </a>
+                {(() => {
+                  const posterWorkflow = event.posterWorkflow || {};
+                  const isPosterRequired = posterWorkflow.requested === true;
+                  
+                  // Scenario 3: Media uploaded a poster (or organizer manually uploaded)
+                  if (eventPosterSrc) {
+                    return (
+                      <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
+                        <img
+                          src={eventPosterSrc}
+                          alt={`${event.title} poster`}
+                          className="w-full max-h-[420px] object-contain bg-slate-100"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="px-4 py-3 flex items-center justify-between bg-white border-t border-slate-200">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Uploaded By</span>
+                            <span className="text-xs font-medium text-slate-700">
+                              {posterWorkflow.finalUploadedBy || event.posterUploadedBy || 'Media Team'} 
+                              <span className="text-slate-400 ml-1 font-normal">
+                                {posterWorkflow.finalUploadedAt || event.posterUploadedAt ? `on ${new Date(posterWorkflow.finalUploadedAt || event.posterUploadedAt).toLocaleDateString()}` : ''}
+                              </span>
+                            </span>
+                          </div>
+                          <a
+                            href={eventPosterSrc}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 bg-cse-accent text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                          >
+                            <ExternalLink size={14} /> Download / View Full
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Scenario 2: Poster requested but not uploaded yet
+                  if (isPosterRequired) {
+                    return (
+                      <div className="rounded-xl border border-blue-200 bg-blue-50 overflow-hidden shadow-sm">
+                        <div className="px-4 py-3 bg-white border-b border-blue-100 flex items-center gap-2">
+                          <span className="text-xl">🎨</span>
+                          <span className="font-bold text-sm text-slate-800">Poster Requested from Media Team</span>
+                        </div>
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold uppercase tracking-wider animate-pulse">Status</span>
+                            <span className="text-sm font-semibold text-slate-700">Awaiting Media Upload</span>
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed max-w-lg">
+                            The organizer has requested the Media Team to create and upload the official event poster. The poster will appear here once available.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Scenario 1: Not required and no poster uploaded manually
+                  return (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500 flex items-center justify-center italic">
+                      Poster not required for this event.
                     </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                    No poster uploaded for this event.
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </InfoSection>
 

@@ -227,7 +227,7 @@ module.exports = {
       contentHtml: `
         <div class="alert-box alert-success">
           <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">The poster for your event is ready!</p>
-          <p style="margin: 0; font-size: 14px; line-height: 1.5;">The Media Team has completed and uploaded the poster for <strong>${eventData.title}</strong>.</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your official event poster has been uploaded successfully by the Media Team.</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569; line-height: 1.6;">Please log into the portal to review the design and finalize the event details.</p>
       `

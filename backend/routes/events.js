@@ -763,22 +763,53 @@ router.patch('/:id/poster', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    const eventData = eventSnap.data();
     const { posterDataUrl, posterFileName, posterMimeType, updatedBy } = req.body;
 
     if (!posterDataUrl) {
       return res.status(400).json({ success: false, message: 'Poster data URL is required' });
     }
 
+    const now = new Date().toISOString();
     const updatePayload = {
       posterDataUrl,
       posterFileName,
       posterMimeType,
-      updatedAt: new Date().toISOString()
+      updatedAt: now,
+      posterUploadedAt: now,
+      posterStatus: 'UPLOADED'
     };
 
-    if (updatedBy) updatePayload.posterUpdatedBy = updatedBy;
+    if (updatedBy) {
+      updatePayload.posterUpdatedBy = updatedBy;
+      updatePayload.posterUploadedBy = updatedBy;
+    }
+
+    const currentWorkflow = eventData.posterWorkflow || {};
+    let isMediaUpload = false;
+    
+    // If a poster was requested from media team, update the workflow to reflect completion
+    if (currentWorkflow.requested) {
+      isMediaUpload = true;
+      updatePayload.posterWorkflow = {
+        ...currentWorkflow,
+        status: 'UPLOADED',
+        finalUploadedAt: now,
+        finalUploadedBy: updatedBy || 'Media Team'
+      };
+    }
 
     await updateDoc(eventRef, updatePayload);
+
+    // Send notification if this was a requested media poster upload
+    if (isMediaUpload && eventData.organizerEmail) {
+      const refreshedData = { id: req.params.id, ...eventData, ...updatePayload };
+      try {
+        await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
+      } catch (emailErr) {
+        console.error('[events/poster] Error sending email to organizer:', emailErr);
+      }
+    }
 
     return res.json({
       success: true,

@@ -1445,6 +1445,8 @@ const CreateEvent = () => {
       status: initialStatus,
       createdAt: new Date().toISOString(),
       posterWorkflow,
+      posterRequired: form.requirePoster || false,
+      posterStatus: form.requirePoster ? 'AWAITING_MEDIA_UPLOAD' : (form.posterDataUrl ? 'UPLOADED' : 'NOT_REQUIRED'),
       posterDataUrl: form.posterDataUrl || null,
       posterFileName: form.posterFileName || null,
       posterMimeType: form.posterMimeType || null,
