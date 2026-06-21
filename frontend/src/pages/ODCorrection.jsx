@@ -189,7 +189,7 @@ const ODCorrection = () => {
             <div className="relative pl-8 pb-4 border-l-2 border-slate-100 last:border-0 last:pb-0">
                 <div className="absolute -left-[13px] top-0">{icon}</div>
                 <div className="flex flex-col">
-                    <span className={\`text-sm font-bold \${isApproved ? 'text-emerald-700' : isSelfRejected ? 'text-red-700' : isPending ? 'text-amber-600' : 'text-slate-500'}\`}>
+                    <span className={`text-sm font-bold \${isApproved ? 'text-emerald-700' : isSelfRejected ? 'text-red-700' : isPending ? 'text-amber-600' : 'text-slate-500'}`}>
                         {title}
                     </span>
                     {decisionData && (
@@ -240,19 +240,19 @@ const ODCorrection = () => {
                     <div className="flex gap-4 mb-6 border-b border-slate-200 pb-2">
                         <button 
                             onClick={() => setActiveTab('pending')}
-                            className={\`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'pending' ? 'text-cse-accent border-cse-accent' : 'text-slate-400 border-transparent hover:text-slate-600'}\`}
+                            className={`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'pending' ? 'text-cse-accent border-cse-accent' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
                         >
                             Pending Requests
                         </button>
                         <button 
                             onClick={() => setActiveTab('approved')}
-                            className={\`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'approved' ? 'text-emerald-600 border-emerald-600' : 'text-slate-400 border-transparent hover:text-slate-600'}\`}
+                            className={`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'approved' ? 'text-emerald-600 border-emerald-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
                         >
                             Approved History
                         </button>
                         <button 
                             onClick={() => setActiveTab('rejected')}
-                            className={\`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'rejected' ? 'text-red-600 border-red-600' : 'text-slate-400 border-transparent hover:text-slate-600'}\`}
+                            className={`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'rejected' ? 'text-red-600 border-red-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
                         >
                             Rejected History
                         </button>
@@ -443,8 +443,8 @@ const ODCorrection = () => {
             {actionModal.isOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-100">
-                        <div className={\`px-6 py-4 border-b \${actionModal.action === 'APPROVE' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}\`}>
-                            <h3 className={\`font-bold text-lg flex items-center gap-2 \${actionModal.action === 'APPROVE' ? 'text-emerald-800' : 'text-red-800'}\`}>
+                        <div className={`px-6 py-4 border-b \${actionModal.action === 'APPROVE' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                            <h3 className={`font-bold text-lg flex items-center gap-2 \${actionModal.action === 'APPROVE' ? 'text-emerald-800' : 'text-red-800'}`}>
                                 {actionModal.action === 'APPROVE' ? <ShieldCheck /> : <XCircle />}
                                 Confirm {actionModal.action === 'APPROVE' ? 'Approval' : 'Rejection'}
                             </h3>
@@ -484,11 +484,11 @@ const ODCorrection = () => {
                             <button 
                                 onClick={submitAction}
                                 disabled={processingId !== null}
-                                className={\`px-6 py-2.5 rounded-xl font-bold text-white flex items-center gap-2 transition-all \${
+                                className={`px-6 py-2.5 rounded-xl font-bold text-white flex items-center gap-2 transition-all \${
                                     actionModal.action === 'APPROVE' 
                                         ? 'bg-emerald-500 hover:bg-emerald-600 shadow-md shadow-emerald-500/20' 
                                         : 'bg-red-500 hover:bg-red-600 shadow-md shadow-red-500/20'
-                                }\`}
+                                }`}
                             >
                                 {processingId !== null ? <Loader2 size={18} className="animate-spin" /> : actionModal.action === 'APPROVE' ? <Check size={18} /> : <X size={18} />}
                                 Confirm {actionModal.action === 'APPROVE' ? 'Approval' : 'Rejection'}
