@@ -15,7 +15,8 @@ import {
     ChevronRight,
     HelpCircle,
     Check,
-    History
+    History,
+    X
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
