@@ -68,14 +68,6 @@ const Navbar = () => {
             </button>
           </>
         )}
-        {!currentUser && (
-          <button
-            onClick={() => navigate('/login')}
-            className="px-4 py-1.5 bg-cse-primary text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition-all border border-transparent shadow-sm hover:shadow-md"
-          >
-            Login
-          </button>
-        )}
       </div>
     </nav>
   );
