@@ -54,6 +54,7 @@ import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
+import { formatRollNo } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
 
 
@@ -1332,7 +1333,7 @@ const Dashboard = () => {
                                     <div className="flex flex-col justify-center min-h-[48px]">
                                       <p className="font-bold text-slate-800 leading-tight">{req.studentName}</p>
                                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{req.rollNo}</span>
+                                        <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{formatRollNo(req.rollNo, req.studentId)}</span>
                                         <span className="text-xs text-slate-400 font-medium">{req.class}</span>
                                         {req.registrationType && (
                                           <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${req.registrationType === 'VOLUNTEER' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
@@ -1631,7 +1632,7 @@ const Dashboard = () => {
                                                         <span className="text-[10px] font-bold text-slate-400 mt-0.5 w-4 shrink-0">{idx + 1}.</span>
                                                         <div className="min-w-0">
                                                           <span className="font-semibold text-slate-800">{s.studentName}</span>
-                                                          <span className="text-[10px] text-slate-500 ml-1.5">{s.rollNo} · {s.class}</span>
+                                                          <span className="text-[10px] text-slate-500 ml-1.5">{formatRollNo(s.rollNo, s.userId)} · {s.class}</span>
                                                         </div>
                                                       </li>
                                                     ))}
@@ -1672,7 +1673,7 @@ const Dashboard = () => {
                                 <div className="flex items-center gap-3 mt-2 flex-wrap text-slate-500">
                                   <span className="text-xs font-semibold text-slate-600">{request.studentName}</span>
                                   <span className="text-slate-300">•</span>
-                                  <span className="text-xs font-semibold">{request.rollNo}</span>
+                                  <span className="text-xs font-semibold">{formatRollNo(request.rollNo, request.studentId)}</span>
                                 </div>
                                 <p className="text-xs font-semibold text-slate-500 mt-2 flex items-center gap-1.5">
                                   <Clock size={14} className="text-slate-400" />

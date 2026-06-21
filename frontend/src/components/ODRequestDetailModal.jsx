@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ODRequestStatus, UserRole } from '../types';
+import { formatRollNo } from '../utils/formatters';
 import StatusBadge from './StatusBadge';
 import { generateODLetterBase64 } from '../utils/pdfGenerator';
 
@@ -148,7 +149,7 @@ const ODRequestDetailModal = ({ request, onClose }) => {
                 </div>
                 <div>
                   <p className="text-slate-500">Roll Number</p>
-                  <p className="font-medium">{request.rollNo}</p>
+                  <p className="font-medium">{formatRollNo(request.rollNo, request.studentId)}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Class</p>

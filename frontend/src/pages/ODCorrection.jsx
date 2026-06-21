@@ -21,6 +21,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
 import Navbar from '../components/Navbar';
+import { formatRollNo } from '../utils/formatters';
 
 const ODCorrection = () => {
     const { currentUser } = useAppContext();
@@ -352,7 +353,7 @@ const ODCorrection = () => {
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-slate-900 text-lg">{req.studentName}</h4>
-                                                    <p className="text-sm text-slate-500 font-bold font-mono tracking-wider">{req.rollNo} • {req.department}</p>
+                                                    <p className="text-sm text-slate-500 font-bold font-mono tracking-wider">{formatRollNo(req.rollNo, req.studentId)} • {req.department}</p>
                                                 </div>
                                                 <div className="ml-auto">
                                                     {getStatusBadge(req.status)}

@@ -234,7 +234,7 @@ module.exports = {
     });
   },
 
-  studentRegistrationTemplate: (studentName, eventData, status, isApproved) => {
+  studentRegistrationTemplate: (student, eventData, status, isApproved) => {
     const headerBg = isApproved ? 'linear-gradient(135deg, #10b981 0%, #064e3b 100%)' : 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)';
     return buildBaseTemplate({
       title: `Registration ${isApproved ? 'Approved' : 'Rejected'}`,
@@ -242,7 +242,23 @@ module.exports = {
       headerBg,
       preheader: `Your registration for ${eventData.title} has been ${status.toLowerCase()}`,
       contentHtml: `
-        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${studentName}</strong>,</p>
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${student.name}</strong>,</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 35%; color: #475569;">Student Name</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">${student.name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Roll Number</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-family: monospace; font-size: 14px;">${student.rollNo || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Department/Class</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a;">${student.department || 'N/A'}</td>
+          </tr>
+        </table>
+        
         <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Your registration request for the event <strong>"${eventData.title}"</strong> has been <strong style="color: ${isApproved ? '#10b981' : '#ef4444'}">${status.toLowerCase()}</strong>.</p>
         
         ${isApproved ? `
@@ -262,14 +278,30 @@ module.exports = {
     });
   },
 
-  feedbackRequestTemplate: (studentName, eventData, feedbackLink) => {
+  feedbackRequestTemplate: (student, eventData, feedbackLink) => {
     return buildBaseTemplate({
       title: 'Feedback Requested',
       subtitle: 'Help us improve future events',
       headerBg: 'linear-gradient(135deg, #f59e0b 0%, #78350f 100%)',
       preheader: `Please share your feedback for '${eventData.title}'`,
       contentHtml: `
-        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${studentName}</strong>,</p>
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${student.name}</strong>,</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 35%; color: #475569;">Student Name</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">${student.name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Roll Number</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-family: monospace; font-size: 14px;">${student.rollNo || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Department/Class</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a;">${student.department || 'N/A'}</td>
+          </tr>
+        </table>
+        
         <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Thank you for participating in <strong>"${eventData.title}"</strong>. We hope you had a great experience!</p>
         <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">To help us improve the quality of future programs, please take a few minutes to share your feedback.</p>
         <div style="text-align: center; margin: 32px 0;">

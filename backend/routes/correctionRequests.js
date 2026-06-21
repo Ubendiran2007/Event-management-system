@@ -7,6 +7,12 @@ const {
 } = require('firebase/firestore');
 const { sendEmail } = require('../services/emailService');
 
+const normalizeRollNo = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/^student_/i, '')
+    .toUpperCase();
+
 // ─── Guards ──────────────────────────────────────────────────────────────────
 const checkDb = (res) => {
   if (!db) {
@@ -189,7 +195,7 @@ router.post('/', async (req, res) => {
           color: '#2563eb',
           rows: [
             ['Student Name',    studentName],
-            ['Roll Number',     rollNo],
+            ['Roll Number',     normalizeRollNo(rollNo)],
             ['Department',      department],
             ['Current OD Used', currentOdUsed],
             ['Current OD Limit',currentOdLimit],
@@ -219,7 +225,7 @@ router.post('/', async (req, res) => {
           color: '#1e293b',
           rows: [
             ['Student Name',    studentName],
-            ['Roll Number',     rollNo],
+            ['Roll Number',     normalizeRollNo(rollNo)],
             ['Class',           className],
             ['Department',      department],
             ['Current OD Used', currentOdUsed],
@@ -400,7 +406,7 @@ router.patch('/:id/status', async (req, res) => {
               color: '#334155',
               rows: [
                 ['Student Name',       data.studentName],
-                ['Roll Number',        data.rollNo],
+                ['Roll Number',        normalizeRollNo(data.rollNo)],
                 ['Department',         data.department],
                 ['Current OD Used',    data.currentOdUsed],
                 ['Current OD Limit',   data.currentOdLimit],
@@ -432,7 +438,7 @@ router.patch('/:id/status', async (req, res) => {
               color: '#0ea5e9',
               rows: [
                 ['Student Name',       data.studentName],
-                ['Roll Number',        data.rollNo],
+                ['Roll Number',        normalizeRollNo(data.rollNo)],
                 ['Department',         data.department],
                 ['Current OD Used',    data.currentOdUsed],
                 ['Current OD Limit',   data.currentOdLimit],

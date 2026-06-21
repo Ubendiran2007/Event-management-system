@@ -3,15 +3,10 @@ import { X, Download, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
+import { formatRollNo } from '../utils/formatters';
 
 const ODLetterModal = ({ odRequest, event, onClose }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
-
-  const formatRollNo = (value) =>
-    String(value || '')
-      .trim()
-      .replace(/^student_/i, '')
-      .toUpperCase();
 
   const formatClassSection = (value) =>
     String(value || '')
@@ -19,7 +14,7 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
       .replace(/[^a-zA-Z0-9]/g, '')
       .toUpperCase();
 
-  const displayRollNo = formatRollNo(odRequest?.rollNo || odRequest?.studentId) || 'N/A';
+  const displayRollNo = formatRollNo(odRequest?.rollNo, odRequest?.studentId) || 'N/A';
   const displayClassSection = formatClassSection(odRequest?.class || odRequest?.section) || 'N/A';
 
   const eventTitle  = odRequest?.eventTitle  || odRequest?.eventName  || 'N/A';
@@ -484,7 +479,7 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
             <div className="flex-1 bg-slate-50 rounded-xl p-4 space-y-2.5 text-sm">
               {[
                 ['Student',    odRequest.studentName],
-                ['Roll No',    odRequest.rollNo],
+                ['Roll No',    displayRollNo],
                 ['Class',      odRequest.class || 'N/A'],
                 ['Event',      eventTitle],
                 ['Date',       eventDate],

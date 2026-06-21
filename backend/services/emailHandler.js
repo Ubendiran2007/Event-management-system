@@ -14,6 +14,12 @@
 
 'use strict';
 
+const normalizeRollNo = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/^student_/i, '')
+    .toUpperCase();
+
 const { collection, getDocs, query, where } = require('firebase/firestore');
 const { db } = require('../firebase');
 const {
@@ -304,7 +310,12 @@ async function _sendFeedbackToStudents(eventData) {
         safeSend(
           'Post-event feedback to student ' + (student.studentName || student.email),
           student.email,
-          () => sendPostEventFeedbackEmail(student.email, student.studentName, eventData, feedbackLink)
+          () => sendPostEventFeedbackEmail(
+            student.email, 
+            { name: student.studentName, rollNo: normalizeRollNo(student.rollNo || student.id), department: student.department || student.class }, 
+            eventData, 
+            feedbackLink
+          )
         )
       )
     );
@@ -326,7 +337,11 @@ async function _sendFeedbackToStudents(eventData) {
  */
 async function handleODStatusChange(odRequest, newStatus, odLetterBase64 = null) {
   const studentEmail = odRequest.email;
-  const studentName  = odRequest.studentName || 'Student';
+  const studentInfo  = {
+    name: odRequest.studentName || 'Student',
+    rollNo: normalizeRollNo(odRequest.rollNo || odRequest.studentId),
+    department: odRequest.department || odRequest.class || 'N/A'
+  };
   const eventData    = {
     id:    odRequest.eventId,
     title: odRequest.eventTitle || 'Event',
@@ -335,7 +350,7 @@ async function handleODStatusChange(odRequest, newStatus, odLetterBase64 = null)
   console.log(
     '\n[EMAIL_TRIGGER] OD Status ─────────────────────────────────\n' +
     '  OD ID   : ' + (odRequest.id || '(unknown)') + '\n' +
-    '  Student : ' + studentName + ' <' + studentEmail + '>\n' +
+    '  Student : ' + studentInfo.name + ' <' + studentEmail + '>\n' +
     '  Event   : ' + eventData.title + '\n' +
     '  Status  : → ' + newStatus + '\n' +
     '  OD PDF  : ' + (odLetterBase64 ? 'YES (attached)' : 'NO') + '\n' +
@@ -347,7 +362,7 @@ async function handleODStatusChange(odRequest, newStatus, odLetterBase64 = null)
     studentEmail,
     () => sendStudentRegistrationStatusEmail(
       studentEmail,
-      studentName,
+      studentInfo,
       eventData,
       newStatus,
       newStatus === 'APPROVED' ? odLetterBase64 : null

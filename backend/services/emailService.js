@@ -292,18 +292,18 @@ async function sendEventCreationNotification(organizerEmail, eventData) {
   }
 }
 
-async function sendStudentRegistrationStatusEmail(studentEmail, studentName, eventData, status, odLetterBase64) {
+async function sendStudentRegistrationStatusEmail(studentEmail, student, eventData, status, odLetterBase64) {
   if (!studentEmail) return { success: false, message: 'Student email not provided' };
   try {
     const isApproved = status === 'APPROVED';
-    const html = templates.studentRegistrationTemplate(studentName, eventData, status, isApproved);
+    const html = templates.studentRegistrationTemplate(student, eventData, status, isApproved);
     
     const mailOptions = {
       from: getSenderAddress(),
       to: studentEmail,
       subject: isApproved ? 'Registration Approved - ' + eventData.title : 'Registration Update - ' + eventData.title,
       html,
-      text: `Registration ${status}\n\nDear ${studentName},\nYour registration for "${eventData.title}" has been ${status.toLowerCase()}.\n---\nThis is an automated email.`,
+      text: `Registration ${status}\n\nDear ${student.name},\nYour registration for "${eventData.title}" has been ${status.toLowerCase()}.\n---\nThis is an automated email.`,
     };
 
     if (isApproved && odLetterBase64) {
@@ -324,16 +324,16 @@ async function sendStudentRegistrationStatusEmail(studentEmail, studentName, eve
   }
 }
 
-async function sendPostEventFeedbackEmail(studentEmail, studentName, eventData, feedbackLink) {
+async function sendPostEventFeedbackEmail(studentEmail, student, eventData, feedbackLink) {
   if (!studentEmail) return { success: false };
   try {
-    const html = templates.feedbackRequestTemplate(studentName, eventData, feedbackLink);
+    const html = templates.feedbackRequestTemplate(student, eventData, feedbackLink);
     const mailOptions = {
       from: getSenderAddress(),
       to: studentEmail,
       subject: 'Feedback Requested - ' + eventData.title,
       html,
-      text: `Feedback Requested\n\nDear ${studentName},\nPlease submit your feedback here: ${feedbackLink}\n\n---\nThis is an automated email.`,
+      text: `Feedback Requested\n\nDear ${student.name},\nPlease submit your feedback here: ${feedbackLink}\n\n---\nThis is an automated email.`,
     };
     const result = await sendMailWithFallback(mailOptions);
     console.log('[Email Service] Feedback request email sent:', result.messageId);

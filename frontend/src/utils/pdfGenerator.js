@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
+import { formatRollNo } from './formatters';
 
 /**
  * Generates an OD Letter PDF and returns it as a Base64 string.
@@ -10,19 +11,9 @@ import seceHeader from '../assets/sece header.jpeg';
  */
 export const generateODLetterBase64 = async (odRequest, event) => {
   try {
-    const formatRollNo = (value) =>
-      String(value || '')
-        .trim()
-        .replace(/^student_/i, '')
-        .toUpperCase();
-
+    const displayRollNo = formatRollNo(odRequest?.rollNo, odRequest?.studentId) || 'N/A';
     const formatClassSection = (value) =>
-      String(value || '')
-        .trim()
-        .replace(/[^a-zA-Z0-9]/g, '')
-        .toUpperCase();
-
-    const displayRollNo = formatRollNo(odRequest?.rollNo || odRequest?.studentId) || 'N/A';
+      String(value || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     const displayClassSection = formatClassSection(odRequest?.class || odRequest?.section) || 'N/A';
 
     const eventTitle = odRequest?.eventTitle || odRequest?.eventName || event?.title || 'N/A';

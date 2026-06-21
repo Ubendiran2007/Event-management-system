@@ -16,6 +16,7 @@ import { UserRole } from '../types';
 import Navbar from '../components/Navbar';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { STUDENTS } from '../studentData';
+import { formatRollNo } from '../utils/formatters';
 
 const ManageStudents = () => {
     const { currentUser, students, loading } = useAppContext();
@@ -118,7 +119,7 @@ const ManageStudents = () => {
     // Filter students by search query
     const filteredClassStudents = classStudents.filter(s =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.rollNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        formatRollNo(s.rollNo, s.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
         (s.email && s.email.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
@@ -357,7 +358,7 @@ const ManageStudents = () => {
                                                     <div className="min-w-0">
                                                         <p className="font-bold text-slate-900 text-sm truncate">{student.name}</p>
                                                         <div className="flex items-center gap-2 mt-0.5">
-                                                            <span className="text-xs text-slate-500 font-mono font-medium">{student.rollNo}</span>
+                                                            <span className="text-xs text-slate-500 font-mono font-medium">{formatRollNo(student.rollNo, student.id)}</span>
                                                             {student.email && (
                                                                 <>
                                                                     <span className="text-slate-300">•</span>
