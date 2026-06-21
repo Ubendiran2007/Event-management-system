@@ -62,35 +62,48 @@ router.post('/', async (req, res) => {
   if (checkDb(res)) return;
   const { studentId, studentName, rollNo, className, department, description, requestedCount, requestedLimit } = req.body;
 
+  if (!studentId || !studentName || !description) {
+    return res.status(400).json({ success: false, message: 'studentId, studentName and description are required' });
+  }
+
   try {
     const newRequest = {
       studentId,
       studentName,
-      rollNo,
-      className,
-      department,
+      rollNo: rollNo || '',
+      className: className || '',
+      department: department || '',
       description,
-      requestedCount: Number(requestedCount),
-      requestedLimit: Number(requestedLimit),
+      requestedCount: Number(requestedCount) || 0,
+      requestedLimit: Number(requestedLimit) || 0,
       status: 'PENDING_FACULTY',
       createdAt: new Date().toISOString(),
       history: [{ status: 'PENDING_FACULTY', time: new Date().toISOString(), user: studentName }]
     };
 
     const docRef = await addDoc(collection(db, 'correctionRequests'), newRequest);
-    
-    // Notify Faculty (Actual registered emails)
-    const facultyEmails = await getDeptStaffEmails(department, 'FACULTY');
-    for (const email of facultyEmails) {
-      await sendEmail({
-        to: email,
-        subject: `New OD Correction Request: ${studentName}`,
-        text: `Student ${studentName} (${rollNo}) has requested an OD count correction.\nDescription: ${description}`
-      });
+
+    // Notify Faculty — non-fatal: email failure must NOT crash the submission
+    try {
+      const facultyEmails = await getDeptStaffEmails(department, 'FACULTY');
+      for (const email of facultyEmails) {
+        try {
+          await sendEmail({
+            to: email,
+            subject: `New OD Correction Request: ${studentName}`,
+            text: `Student ${studentName} (${rollNo}) has requested an OD count correction.\nDescription: ${description}`
+          });
+        } catch (mailErr) {
+          console.warn('[correctionRequests/POST] Email to faculty failed:', mailErr.message);
+        }
+      }
+    } catch (emailLookupErr) {
+      console.warn('[correctionRequests/POST] Faculty email lookup failed:', emailLookupErr.message);
     }
 
     res.json({ success: true, id: docRef.id });
   } catch (err) {
+    console.error('[correctionRequests/POST] Error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -124,39 +137,69 @@ router.patch('/:id/status', async (req, res) => {
 
     await updateDoc(requestRef, updates);
 
-    // Final Action: Update student count if COMPLETED
+    // Final Action: Update student OD count if COMPLETED
     if (nextStatus === 'COMPLETED') {
-      const studentRef = doc(db, 'students', requestData.className, 'members', requestData.studentId);
-      const studentUpdates = {};
-      if (requestData.requestedCount !== undefined) studentUpdates.odUsed = requestData.requestedCount;
-      if (requestData.requestedLimit !== undefined) studentUpdates.odLimit = requestData.requestedLimit;
-      await updateDoc(studentRef, studentUpdates);
+      try {
+        // Query top-level users collection by studentId
+        const usersSnap = await getDocs(query(collection(db, 'users'), where('id', '==', requestData.studentId)));
+        if (!usersSnap.empty) {
+          const studentDocRef = usersSnap.docs[0].ref;
+          const studentUpdates = {};
+          if (requestData.requestedCount !== undefined) studentUpdates.odUsed = requestData.requestedCount;
+          if (requestData.requestedLimit !== undefined) studentUpdates.odLimit = requestData.requestedLimit;
+          await updateDoc(studentDocRef, studentUpdates);
+        } else {
+          console.warn('[correctionRequests/PATCH] Student user doc not found for id:', requestData.studentId);
+        }
+      } catch (updateErr) {
+        console.error('[correctionRequests/PATCH] Failed to update student OD counts:', updateErr.message);
+      }
     }
 
-    // Email Notifications
-    const studentEmail = `${requestData.rollNo.toLowerCase()}@sece.ac.in`; // Mock
-    await sendEmail({
-      to: studentEmail,
-      subject: `OD Correction Request Update: ${nextStatus}`,
-      text: `Your OD correction request status has been updated to: ${nextStatus}.\nRemarks: ${remarks || 'None'}`
-    });
-
-    // Notify next in line
-    if (nextStatus === 'PENDING_HOD') {
-      const hodEmails = await getDeptStaffEmails(requestData.department, 'HOD');
-      for (const email of hodEmails) {
+    // Email Notifications — all non-fatal
+    try {
+      const studentEmail = requestData.rollNo
+        ? `${String(requestData.rollNo).toLowerCase()}@sece.ac.in`
+        : null;
+      if (studentEmail) {
         await sendEmail({
-          to: email,
-          subject: `Pending OD Correction Approval: ${requestData.studentName}`,
-          text: `Faculty has approved a correction request for ${requestData.studentName}. Please review.`
+          to: studentEmail,
+          subject: `OD Correction Request Update: ${nextStatus}`,
+          text: `Your OD correction request status has been updated to: ${nextStatus}.\nRemarks: ${remarks || 'None'}`
         });
       }
-    } else if (nextStatus === 'PENDING_IQAC') {
-      await sendEmail({
-        to: 'iqac@sece.ac.in',
-        subject: `Pending OD Correction Approval: ${requestData.studentName}`,
-        text: `HOD has approved a correction request for ${requestData.studentName}. Final IQAC approval required.`
-      });
+    } catch (mailErr) {
+      console.warn('[correctionRequests/PATCH] Student email failed:', mailErr.message);
+    }
+
+    // Notify next approver in line
+    try {
+      if (nextStatus === 'PENDING_HOD') {
+        const hodEmails = await getDeptStaffEmails(requestData.department, 'HOD');
+        for (const email of hodEmails) {
+          try {
+            await sendEmail({
+              to: email,
+              subject: `Pending OD Correction Approval: ${requestData.studentName}`,
+              text: `Faculty has approved a correction request for ${requestData.studentName}. Please review.`
+            });
+          } catch (e) { console.warn('[correctionRequests/PATCH] HOD email failed:', e.message); }
+        }
+      } else if (nextStatus === 'PENDING_IQAC') {
+        const iqacEmails = await getDeptStaffEmails(null, 'IQAC_TEAM').catch(() => []);
+        const targets = iqacEmails.length > 0 ? iqacEmails : ['iqac@sece.ac.in'];
+        for (const email of targets) {
+          try {
+            await sendEmail({
+              to: email,
+              subject: `Pending OD Correction Approval: ${requestData.studentName}`,
+              text: `HOD has approved a correction request for ${requestData.studentName}. Final IQAC approval required.`
+            });
+          } catch (e) { console.warn('[correctionRequests/PATCH] IQAC email failed:', e.message); }
+        }
+      }
+    } catch (notifyErr) {
+      console.warn('[correctionRequests/PATCH] Next-approver notification failed:', notifyErr.message);
     }
 
     res.json({ success: true, nextStatus });
