@@ -390,7 +390,7 @@ const ODCorrection = () => {
                                                 </button>
                                                 <button 
                                                     onClick={() => openActionModal(req.id, 'REJECT')}
-                                                    className="w-full bg-white border-2 border-red-100 text-red-500 px-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-50 transition-all"
+                                                    className="w-full bg-red-500 text-white px-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-600 transition-all shadow-md shadow-red-500/20"
                                                 >
                                                     <XCircle size={18} /> Reject
                                                 </button>
