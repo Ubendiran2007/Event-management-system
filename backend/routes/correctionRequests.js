@@ -1,9 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
-const { collection, addDoc, getDocs, doc, updateDoc, getDoc, query, where } = require('firebase/firestore');
+const {
+  collection, addDoc, getDocs, doc, updateDoc,
+  getDoc, query, where,
+} = require('firebase/firestore');
 const { sendEmail } = require('../services/emailService');
 
+// ─── Guards ──────────────────────────────────────────────────────────────────
 const checkDb = (res) => {
   if (!db) {
     res.status(503).json({ success: false, message: 'Firebase is not configured' });
@@ -12,61 +16,142 @@ const checkDb = (res) => {
   return false;
 };
 
-async function getDeptStaffEmails(dept, role) {
-  if (!dept || !db) return [];
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+async function getUsersByRole(role, dept = null) {
+  if (!db) return [];
   try {
-    const q = query(
-      collection(db, 'users'), 
-      where('role', '==', role), 
-      where('department', '==', dept)
-    );
+    let q = query(collection(db, 'users'), where('role', '==', role));
+    if (dept) q = query(q, where('department', '==', dept));
     const snap = await getDocs(q);
-    return snap.docs.map(doc => doc.data().email).filter(Boolean);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.email);
   } catch (err) {
-    console.error('Error fetching staff emails:', err);
+    console.warn('[correctionRequests] getUsersByRole error:', err.message);
     return [];
   }
 }
 
-// GET /api/corrections - Fetch requests based on role and department
+function fmtDate(iso) {
+  if (!iso) return 'N/A';
+  return new Date(iso).toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+}
+
+// ─── Email Helpers ────────────────────────────────────────────────────────────
+async function safeMail(opts) {
+  try { await sendEmail(opts); }
+  catch (e) { console.warn('[correctionRequests] Email failed:', e.message); }
+}
+
+function buildEmailHtml({ heading, subheading, color = '#2563eb', rows = [], alertHtml = '', footerNote = '' }) {
+  const rowsHtml = rows.map(([label, val]) => `
+    <tr>
+      <td style="padding:10px 16px;font-weight:600;color:#475569;width:38%;font-size:13px;border-bottom:1px solid #e2e8f0;">${label}</td>
+      <td style="padding:10px 16px;color:#0f172a;font-weight:500;font-size:13px;border-bottom:1px solid #e2e8f0;">${val || '—'}</td>
+    </tr>`).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',sans-serif;}
+    .wrap{max-width:600px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.08);}
+    .hdr{background:${color};padding:28px 32px;color:#fff;}
+    .hdr h1{margin:0;font-size:22px;font-weight:700;}
+    .hdr p{margin:6px 0 0;font-size:14px;opacity:.85;}
+    .body{padding:28px 32px;}
+    table{width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:16px 0;}
+    .alert{border-radius:8px;padding:14px 18px;margin:20px 0;font-size:14px;line-height:1.5;}
+    .footer{background:#0f172a;padding:18px 32px;text-align:center;color:#64748b;font-size:11px;}
+  </style></head><body>
+  <div class="wrap">
+    <div class="hdr"><h1>${heading}</h1>${subheading ? `<p>${subheading}</p>` : ''}</div>
+    <div class="body">
+      ${rows.length ? `<table><tbody>${rowsHtml}</tbody></table>` : ''}
+      ${alertHtml}
+      ${footerNote ? `<p style="font-size:13px;color:#475569;margin-top:16px;">${footerNote}</p>` : ''}
+    </div>
+    <div class="footer">© ${new Date().getFullYear()} Sri Eshwar College of Engineering — OD Correction Workflow</div>
+  </div></body></html>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/correction-requests
+// Query params: role, department, userId, view (pending | history)
+// ─────────────────────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
-  const { role, department, userId } = req.query;
+  const { role, department, userId, view = 'pending' } = req.query;
 
   try {
+    const ref = collection(db, 'correctionRequests');
     let q;
-    const correctionsRef = collection(db, 'correctionRequests');
 
     if (role === 'STUDENT_GENERAL' || role === 'STUDENT_ORGANIZER') {
-      q = query(correctionsRef, where('studentId', '==', userId));
-    } else if (role === 'FACULTY') {
-      q = query(correctionsRef, where('department', '==', department), where('status', '==', 'PENDING_FACULTY'));
-    } else if (role === 'HOD') {
-      q = query(correctionsRef, where('department', '==', department), where('status', '==', 'PENDING_HOD'));
-    } else if (role === 'IQAC_TEAM') {
-      q = query(correctionsRef, where('status', '==', 'PENDING_IQAC'));
+      // Students see all their own requests regardless of view
+      q = query(ref, where('studentId', '==', userId));
+    } else if (view === 'history') {
+      // Staff history: requests they processed (approved/rejected/completed)
+      const STAGE_MAP = { FACULTY: 'faculty', HOD: 'hod', IQAC_TEAM: 'iqac' };
+      const stage = STAGE_MAP[role];
+      if (!stage) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+      // Fetch all non-pending statuses in the department
+      const terminalStatuses = ['COMPLETED', 'REJECTED'];
+      // We need approved-by-this-stage too — easiest is to pull by dept and filter in memory
+      const deptFilter = department && role !== 'IQAC_TEAM'
+        ? query(ref, where('department', '==', department))
+        : ref;
+      const snap = await getDocs(deptFilter);
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Include requests where this stage has a decision recorded
+      const history = all.filter(r => r[`${stage}Decision`]);
+      return res.json({ success: true, requests: history });
     } else {
-      return res.status(403).json({ success: false, message: 'Unauthorized role' });
+      // Pending requests for this role
+      const STATUS_MAP = {
+        FACULTY:   'PENDING_FACULTY',
+        HOD:       'PENDING_HOD',
+        IQAC_TEAM: 'PENDING_IQAC',
+      };
+      const pendingStatus = STATUS_MAP[role];
+      if (!pendingStatus) return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+      if (role === 'IQAC_TEAM') {
+        q = query(ref, where('status', '==', pendingStatus));
+      } else {
+        q = query(ref,
+          where('status', '==', pendingStatus),
+          where('department', '==', department)
+        );
+      }
     }
 
-    const snapshot = await getDocs(q);
-    const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snap = q ? await getDocs(q) : { docs: [] };
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     res.json({ success: true, requests });
   } catch (err) {
+    console.error('[correctionRequests/GET] Error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-// POST /api/corrections - Student submits a request
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/correction-requests
+// Student submits a new OD correction request
+// ─────────────────────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   if (checkDb(res)) return;
-  const { studentId, studentName, rollNo, className, department, description, requestedCount, requestedLimit } = req.body;
+  const {
+    studentId, studentName, rollNo, className, department,
+    description, requestedCount, requestedLimit,
+    currentOdUsed, currentOdLimit,
+  } = req.body;
 
   if (!studentId || !studentName || !description) {
-    return res.status(400).json({ success: false, message: 'studentId, studentName and description are required' });
+    return res.status(400).json({ success: false, message: 'studentId, studentName and description are required.' });
   }
 
   try {
+    const now = new Date().toISOString();
     const newRequest = {
       studentId,
       studentName,
@@ -76,29 +161,80 @@ router.post('/', async (req, res) => {
       description,
       requestedCount: Number(requestedCount) || 0,
       requestedLimit: Number(requestedLimit) || 0,
+      currentOdUsed:  Number(currentOdUsed)  || 0,
+      currentOdLimit: Number(currentOdLimit)  || 0,
       status: 'PENDING_FACULTY',
-      createdAt: new Date().toISOString(),
-      history: [{ status: 'PENDING_FACULTY', time: new Date().toISOString(), user: studentName }]
+      createdAt: now,
+      updatedAt: now,
+      // Stage decisions — populated as each approver acts
+      facultyDecision: null,
+      hodDecision: null,
+      iqacDecision: null,
+      history: [{ status: 'PENDING_FACULTY', time: now, user: studentName, action: 'SUBMITTED' }],
     };
 
     const docRef = await addDoc(collection(db, 'correctionRequests'), newRequest);
 
-    // Notify Faculty — non-fatal: email failure must NOT crash the submission
-    try {
-      const facultyEmails = await getDeptStaffEmails(department, 'FACULTY');
-      for (const email of facultyEmails) {
-        try {
-          await sendEmail({
-            to: email,
-            subject: `New OD Correction Request: ${studentName}`,
-            text: `Student ${studentName} (${rollNo}) has requested an OD count correction.\nDescription: ${description}`
-          });
-        } catch (mailErr) {
-          console.warn('[correctionRequests/POST] Email to faculty failed:', mailErr.message);
-        }
-      }
-    } catch (emailLookupErr) {
-      console.warn('[correctionRequests/POST] Faculty email lookup failed:', emailLookupErr.message);
+    // ── Email: Student confirmation ───────────────────────────────────────────
+    const facultyUsers = await getUsersByRole('FACULTY', department);
+    const facultyNameStr = facultyUsers.map(f => f.name || f.email).join(', ') || 'Your Faculty Advisor';
+
+    if (rollNo) {
+      await safeMail({
+        to: `${String(rollNo).toLowerCase()}@sece.ac.in`,
+        subject: `OD Correction Request Submitted — Pending Faculty Verification`,
+        html: buildEmailHtml({
+          heading: 'OD Correction Request Submitted',
+          subheading: 'Your request has been received and is pending Faculty verification.',
+          color: '#2563eb',
+          rows: [
+            ['Student Name',    studentName],
+            ['Roll Number',     rollNo],
+            ['Department',      department],
+            ['Current OD Used', currentOdUsed],
+            ['Current OD Limit',currentOdLimit],
+            ['Requested Used',  requestedCount],
+            ['Requested Limit', requestedLimit],
+            ['Reason',          description],
+            ['Current Status',  'Pending Faculty Verification'],
+            ['Assigned To',     facultyNameStr],
+            ['Submitted On',    fmtDate(now)],
+          ],
+          alertHtml: `<div class="alert" style="background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a8a;">
+            <strong>What happens next?</strong><br>Your Faculty Advisor will review your request. You will receive an email at each stage of the approval process.
+          </div>`,
+        }),
+        text: `OD Correction Request Submitted\nStatus: Pending Faculty Verification\nAssigned To: ${facultyNameStr}`,
+      });
+    }
+
+    // ── Email: Faculty notification ───────────────────────────────────────────
+    for (const faculty of facultyUsers) {
+      await safeMail({
+        to: faculty.email,
+        subject: `OD Correction Verification Required — ${studentName} (${rollNo})`,
+        html: buildEmailHtml({
+          heading: 'OD Correction Request — Action Required',
+          subheading: `A student has submitted an OD count correction request requiring your verification.`,
+          color: '#1e293b',
+          rows: [
+            ['Student Name',    studentName],
+            ['Roll Number',     rollNo],
+            ['Class',           className],
+            ['Department',      department],
+            ['Current OD Used', currentOdUsed],
+            ['Current OD Limit',currentOdLimit],
+            ['Requested Used',  requestedCount],
+            ['Requested Limit', requestedLimit],
+            ['Reason',          description],
+            ['Submitted On',    fmtDate(now)],
+          ],
+          alertHtml: `<div class="alert" style="background:#fffbeb;border-left:4px solid #f59e0b;color:#92400e;">
+            <strong>⚡ Action Required</strong><br>Please log into the portal to review, approve, or reject this request. A rejection reason is mandatory if you reject.
+          </div>`,
+        }),
+        text: `OD Correction Verification Required for ${studentName} (${rollNo}). Please log into the portal.`,
+      });
     }
 
     res.json({ success: true, id: docRef.id });
@@ -108,102 +244,249 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PATCH /api/corrections/:id/status - Approve/Reject workflow
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/correction-requests/:id/status
+// Faculty / HOD / IQAC approves or rejects
+// Body: { action: 'APPROVE'|'REJECT', role, approverName, approverDept, comments, rejectionReason }
+// ─────────────────────────────────────────────────────────────────────────────
 router.patch('/:id/status', async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
-  const { status, remarks, approvedBy, role } = req.body;
+  const { action, role, approverName, approverDept, comments = '', rejectionReason = '' } = req.body;
+
+  if (!action || !['APPROVE', 'REJECT'].includes(action)) {
+    return res.status(400).json({ success: false, message: 'action must be APPROVE or REJECT' });
+  }
+  if (!role) return res.status(400).json({ success: false, message: 'role is required' });
+  if (action === 'REJECT' && !rejectionReason.trim()) {
+    return res.status(400).json({ success: false, message: 'Rejection reason is mandatory.' });
+  }
+
+  const STAGE_MAP = { FACULTY: 'faculty', HOD: 'hod', IQAC_TEAM: 'iqac' };
+  const stage = STAGE_MAP[role];
+  if (!stage) return res.status(403).json({ success: false, message: 'Unauthorized role' });
 
   try {
-    const requestRef = doc(db, 'correctionRequests', id);
-    const requestSnap = await getDoc(requestRef);
-    if (!requestSnap.exists()) return res.status(404).json({ success: false, message: 'Request not found' });
-    const requestData = requestSnap.data();
+    const reqRef  = doc(db, 'correctionRequests', id);
+    const reqSnap = await getDoc(reqRef);
+    if (!reqSnap.exists()) return res.status(404).json({ success: false, message: 'Request not found' });
+    const data = reqSnap.data();
 
-    let nextStatus = status;
-    if (status === 'APPROVED') {
-      if (role === 'FACULTY') nextStatus = 'PENDING_HOD';
-      else if (role === 'HOD') nextStatus = 'PENDING_IQAC';
-      else if (role === 'IQAC_TEAM') nextStatus = 'COMPLETED';
-    } else if (status === 'REJECTED') {
+    const now = new Date().toISOString();
+
+    // ── Determine next status ─────────────────────────────────────────────────
+    let nextStatus;
+    if (action === 'REJECT') {
       nextStatus = 'REJECTED';
+    } else {
+      if (role === 'FACULTY')    nextStatus = 'PENDING_HOD';
+      else if (role === 'HOD')   nextStatus = 'PENDING_IQAC';
+      else if (role === 'IQAC_TEAM') nextStatus = 'COMPLETED';
     }
+
+    // ── Build decision object ─────────────────────────────────────────────────
+    const decision = {
+      action,
+      approverName: approverName || role,
+      approverRole: role,
+      approverDept: approverDept || data.department || 'N/A',
+      comments: comments.trim(),
+      rejectionReason: action === 'REJECT' ? rejectionReason.trim() : null,
+      decidedAt: now,
+    };
+
+    const historyEntry = {
+      status: nextStatus,
+      time: now,
+      user: approverName || role,
+      action,
+      role,
+      comments: comments.trim(),
+      rejectionReason: decision.rejectionReason,
+    };
 
     const updates = {
       status: nextStatus,
-      [`${role.toLowerCase()}Remarks`]: remarks,
-      history: [...requestData.history, { status: nextStatus, time: new Date().toISOString(), user: approvedBy, remarks }]
+      updatedAt: now,
+      [`${stage}Decision`]: decision,
+      history: [...(data.history || []), historyEntry],
     };
 
-    await updateDoc(requestRef, updates);
-
-    // Final Action: Update student OD count if COMPLETED
+    // ── OD count update ONLY on IQAC COMPLETE ────────────────────────────────
     if (nextStatus === 'COMPLETED') {
+      updates.odUpdatedAt = now;
+      updates.odUpdatedBy = approverName || 'IQAC';
+      updates.finalOdUsed  = data.requestedCount;
+      updates.finalOdLimit = data.requestedLimit;
+
+      // Update the student's user document
       try {
-        // Query top-level users collection by studentId
-        const usersSnap = await getDocs(query(collection(db, 'users'), where('id', '==', requestData.studentId)));
+        const usersSnap = await getDocs(query(collection(db, 'users'), where('id', '==', data.studentId)));
         if (!usersSnap.empty) {
-          const studentDocRef = usersSnap.docs[0].ref;
-          const studentUpdates = {};
-          if (requestData.requestedCount !== undefined) studentUpdates.odUsed = requestData.requestedCount;
-          if (requestData.requestedLimit !== undefined) studentUpdates.odLimit = requestData.requestedLimit;
-          await updateDoc(studentDocRef, studentUpdates);
+          await updateDoc(usersSnap.docs[0].ref, {
+            odUsed:  data.requestedCount,
+            odLimit: data.requestedLimit,
+          });
+          console.log('[correctionRequests] OD counts updated for student:', data.studentId);
         } else {
-          console.warn('[correctionRequests/PATCH] Student user doc not found for id:', requestData.studentId);
+          console.warn('[correctionRequests] Student user doc not found:', data.studentId);
         }
-      } catch (updateErr) {
-        console.error('[correctionRequests/PATCH] Failed to update student OD counts:', updateErr.message);
+      } catch (odErr) {
+        console.error('[correctionRequests] OD update error:', odErr.message);
       }
     }
 
-    // Email Notifications — all non-fatal
-    try {
-      const studentEmail = requestData.rollNo
-        ? `${String(requestData.rollNo).toLowerCase()}@sece.ac.in`
-        : null;
+    await updateDoc(reqRef, updates);
+
+    // ── Send Emails ───────────────────────────────────────────────────────────
+    const studentEmail = data.rollNo ? `${String(data.rollNo).toLowerCase()}@sece.ac.in` : null;
+
+    if (action === 'APPROVE') {
+      // — Notify Student of this stage's approval ——————————————————————————
+      const stageLabel = { FACULTY: 'Faculty', HOD: 'HOD', IQAC_TEAM: 'IQAC' }[role] || role;
+      const nextLabel  = { PENDING_HOD: 'HOD Verification', PENDING_IQAC: 'IQAC Review', COMPLETED: 'Completed' }[nextStatus] || nextStatus;
+
       if (studentEmail) {
-        await sendEmail({
+        const isCompleted = nextStatus === 'COMPLETED';
+        await safeMail({
           to: studentEmail,
-          subject: `OD Correction Request Update: ${nextStatus}`,
-          text: `Your OD correction request status has been updated to: ${nextStatus}.\nRemarks: ${remarks || 'None'}`
+          subject: isCompleted
+            ? `✅ OD Correction Approved — Your OD Count Has Been Updated`
+            : `OD Correction Verified by ${stageLabel} — Pending ${nextLabel}`,
+          html: buildEmailHtml({
+            heading: isCompleted ? 'OD Correction Approved' : `Verified by ${stageLabel}`,
+            subheading: isCompleted
+              ? 'Your OD correction has been fully approved and your OD count has been updated.'
+              : `Your request has passed ${stageLabel} verification and is now pending ${nextLabel}.`,
+            color: isCompleted ? '#10b981' : '#2563eb',
+            rows: [
+              ['Approved By',   approverName || stageLabel],
+              ['Role',          stageLabel],
+              ['Department',    approverDept || data.department],
+              ['Comments',      comments || '—'],
+              ['Approved On',   fmtDate(now)],
+              ...(isCompleted ? [
+                ['Previous OD Used',  data.currentOdUsed],
+                ['Previous OD Limit', data.currentOdLimit],
+                ['New OD Used',       data.requestedCount],
+                ['New OD Limit',      data.requestedLimit],
+                ['Effective Date',    fmtDate(now)],
+              ] : [
+                ['Next Stage', nextLabel],
+              ]),
+            ],
+            alertHtml: isCompleted
+              ? `<div class="alert" style="background:#f0fdf4;border-left:4px solid #10b981;color:#065f46;">
+                  <strong>✅ Your OD count has been officially updated.</strong><br>The new values are now reflected in your student profile.
+                 </div>`
+              : `<div class="alert" style="background:#eff6ff;border-left:4px solid #3b82f6;color:#1e3a8a;">
+                  Your request is progressing through the approval workflow. You will be notified at each stage.
+                 </div>`,
+          }),
+          text: `OD Correction ${isCompleted ? 'Approved' : 'Verified by ' + stageLabel}. Status: ${nextStatus}`,
         });
       }
-    } catch (mailErr) {
-      console.warn('[correctionRequests/PATCH] Student email failed:', mailErr.message);
-    }
 
-    // Notify next approver in line
-    try {
+      // — Notify next approver ————————————————————————————————————————————
       if (nextStatus === 'PENDING_HOD') {
-        const hodEmails = await getDeptStaffEmails(requestData.department, 'HOD');
-        for (const email of hodEmails) {
-          try {
-            await sendEmail({
-              to: email,
-              subject: `Pending OD Correction Approval: ${requestData.studentName}`,
-              text: `Faculty has approved a correction request for ${requestData.studentName}. Please review.`
-            });
-          } catch (e) { console.warn('[correctionRequests/PATCH] HOD email failed:', e.message); }
+        const hodUsers = await getUsersByRole('HOD', data.department);
+        for (const hod of hodUsers) {
+          await safeMail({
+            to: hod.email,
+            subject: `OD Correction Requires HOD Review — ${data.studentName} (${data.rollNo})`,
+            html: buildEmailHtml({
+              heading: 'OD Correction Request — HOD Review Required',
+              subheading: 'Faculty has verified this request. Your approval is now required.',
+              color: '#334155',
+              rows: [
+                ['Student Name',       data.studentName],
+                ['Roll Number',        data.rollNo],
+                ['Department',         data.department],
+                ['Current OD Used',    data.currentOdUsed],
+                ['Current OD Limit',   data.currentOdLimit],
+                ['Requested Used',     data.requestedCount],
+                ['Requested Limit',    data.requestedLimit],
+                ['Reason',             data.description],
+                ['Faculty Approved By',approverName],
+                ['Faculty Comments',   comments || '—'],
+                ['Faculty Approved On',fmtDate(now)],
+              ],
+              alertHtml: `<div class="alert" style="background:#fffbeb;border-left:4px solid #f59e0b;color:#92400e;">
+                <strong>⚡ Action Required</strong><br>Please log into the portal to approve or reject this request. Rejection reason is mandatory.
+              </div>`,
+            }),
+            text: `OD Correction HOD Review Required for ${data.studentName} (${data.rollNo}).`,
+          });
         }
       } else if (nextStatus === 'PENDING_IQAC') {
-        const iqacEmails = await getDeptStaffEmails(null, 'IQAC_TEAM').catch(() => []);
-        const targets = iqacEmails.length > 0 ? iqacEmails : ['iqac@sece.ac.in'];
-        for (const email of targets) {
-          try {
-            await sendEmail({
-              to: email,
-              subject: `Pending OD Correction Approval: ${requestData.studentName}`,
-              text: `HOD has approved a correction request for ${requestData.studentName}. Final IQAC approval required.`
-            });
-          } catch (e) { console.warn('[correctionRequests/PATCH] IQAC email failed:', e.message); }
+        const iqacUsers = await getUsersByRole('IQAC_TEAM');
+        const targets = iqacUsers.length > 0 ? iqacUsers : [{ email: 'iqac@sece.ac.in' }];
+        const facultyDec = data.facultyDecision || {};
+        for (const iqac of targets) {
+          await safeMail({
+            to: iqac.email,
+            subject: `OD Correction Awaiting IQAC Approval — ${data.studentName} (${data.rollNo})`,
+            html: buildEmailHtml({
+              heading: 'OD Correction Request — IQAC Final Approval',
+              subheading: 'Faculty and HOD have verified this request. IQAC final approval is required.',
+              color: '#0ea5e9',
+              rows: [
+                ['Student Name',       data.studentName],
+                ['Roll Number',        data.rollNo],
+                ['Department',         data.department],
+                ['Current OD Used',    data.currentOdUsed],
+                ['Current OD Limit',   data.currentOdLimit],
+                ['Requested Used',     data.requestedCount],
+                ['Requested Limit',    data.requestedLimit],
+                ['Reason',             data.description],
+                ['Faculty Approved By',facultyDec.approverName || '—'],
+                ['Faculty Comments',   facultyDec.comments || '—'],
+                ['HOD Approved By',    approverName],
+                ['HOD Comments',       comments || '—'],
+                ['HOD Approved On',    fmtDate(now)],
+              ],
+              alertHtml: `<div class="alert" style="background:#fffbeb;border-left:4px solid #f59e0b;color:#92400e;">
+                <strong>⚡ Final Approval Required</strong><br>This request has completed Faculty and HOD verification. Please log into the portal to give final approval.
+              </div>`,
+            }),
+            text: `OD Correction IQAC Approval Required for ${data.studentName} (${data.rollNo}).`,
+          });
         }
       }
-    } catch (notifyErr) {
-      console.warn('[correctionRequests/PATCH] Next-approver notification failed:', notifyErr.message);
+    } else {
+      // — REJECTED: Notify Student —————————————————————————————————————————
+      const stageLabel = { FACULTY: 'Faculty Advisor', HOD: 'Head of Department', IQAC_TEAM: 'IQAC' }[role] || role;
+      if (studentEmail) {
+        await safeMail({
+          to: studentEmail,
+          subject: `OD Correction Request Rejected by ${stageLabel}`,
+          html: buildEmailHtml({
+            heading: 'OD Correction Request Rejected',
+            subheading: `Your OD correction request has been rejected at the ${stageLabel} stage.`,
+            color: '#ef4444',
+            rows: [
+              ['Rejected By',       approverName || stageLabel],
+              ['Role / Designation',stageLabel],
+              ['Department',        approverDept || data.department],
+              ['Rejection Reason',  rejectionReason],
+              ['Comments',          comments || '—'],
+              ['Rejected On',       fmtDate(now)],
+              ['Your Request',      data.description],
+              ['Requested OD Used', data.requestedCount],
+              ['Requested Limit',   data.requestedLimit],
+            ],
+            alertHtml: `<div class="alert" style="background:#fef2f2;border-left:4px solid #ef4444;color:#991b1b;">
+              <strong>Status: Rejected</strong><br>Your OD count has not been changed. If you believe this rejection is incorrect, please contact your ${stageLabel} directly.
+            </div>`,
+          }),
+          text: `OD Correction Request Rejected by ${stageLabel}. Reason: ${rejectionReason}`,
+        });
+      }
     }
 
-    res.json({ success: true, nextStatus });
+    res.json({ success: true, nextStatus, requestId: id });
   } catch (err) {
+    console.error('[correctionRequests/PATCH] Error:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
