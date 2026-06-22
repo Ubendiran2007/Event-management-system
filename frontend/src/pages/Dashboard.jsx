@@ -444,6 +444,15 @@ const Dashboard = () => {
       const alreadyRegistered = (ev.registeredStudents || []).some(s => String(s?.userId) === String(currentUser.id));
       if (alreadyRegistered) return false;
 
+      // 4. Must match the student's department, or be "Overall", or be mixed including their department.
+      const isOpenToAll = ev.openToAllDepartments === true || ev.audienceScope === 'Open To All' || String(ev.department).toLowerCase() === 'overall';
+      const isMyDept = ev.department === currentUser.department || (ev.requisition?.step1?.department === currentUser.department);
+      const isSelectedDept = Array.isArray(ev.selectedDepartments) && ev.selectedDepartments.includes(currentUser.department);
+      
+      if (!isOpenToAll && !isMyDept && !isSelectedDept) {
+        return false;
+      }
+
       // 4. Avoid ongoing and completed events (check date)
       const startDateStr = ev.requisition?.step1?.eventStartDate || ev.date;
       const startTimeStr = ev.requisition?.step1?.eventStartTime || ev.startTime || '00:00';
