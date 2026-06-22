@@ -1931,8 +1931,9 @@ const ExploreEvents = () => {
     // 3. Prevent duplicate submission if feedback already exists in internal system
     if (odReq.feedback) return false;
 
-    // 4. Feedback is only available after the event has ended
-    if (now < end) return false;
+    // 4. Feedback is only available after the event has ended and up to 2 days after
+    const twoDaysAfter = end + (2 * 24 * 60 * 60 * 1000);
+    if (now < end || now > twoDaysAfter) return false;
 
     // 5. Case: Google Form Link (External feedback)
     if (event.studentFeedbackLink) {
@@ -1940,9 +1941,7 @@ const ExploreEvents = () => {
     }
 
     // 6. Case: Internal feedback (Internal FeedbackModal)
-    const sevenDaysAfter = end + (7 * 24 * 60 * 60 * 1000); 
-    // Show internal feedback button once event has ended and within 7 days
-    return now <= sevenDaysAfter;
+    return true;
   };
   // Shared props for the stable module-level EventCard
   const cardSharedProps = {

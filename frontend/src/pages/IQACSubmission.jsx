@@ -1676,7 +1676,6 @@ const IQACSubmission = () => {
                       {Object.keys(guestFeedback[0] || {}).filter(k => k !== 'id').map((header, idx) => (
                         <th key={idx} className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">{header}</th>
                       ))}
-                      <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
@@ -1690,15 +1689,6 @@ const IQACSubmission = () => {
                             </span>
                           </td>
                         ))}
-                        <td className="px-4 py-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => removeGuestFeedback(feedback.id)}
-                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <X size={16} />
-                          </button>
-                        </td>
                       </tr>
                     ))}
                   </tbody>

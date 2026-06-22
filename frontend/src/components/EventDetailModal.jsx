@@ -760,7 +760,8 @@ const EventDetailModal = ({ event, onClose }) => {
                 const eventEnd = new Date(parseInt(eDP[0]), parseInt(eDP[1])-1, parseInt(eDP[2]), parseInt(eTP[0]), parseInt(eTP[1]));
                 
                 const isIQAC = currentUser?.role === UserRole.IQAC_TEAM;
-                const isPastEvent = (!isNaN(eventEnd.getTime()) && Date.now() >= eventEnd.getTime()) || isIQAC;
+                const isWithinLimit = !isNaN(eventEnd.getTime()) && Date.now() <= (eventEnd.getTime() + 2 * 24 * 60 * 60 * 1000);
+                const isPastEvent = (!isNaN(eventEnd.getTime()) && Date.now() >= eventEnd.getTime() && isWithinLimit) || isIQAC;
                 
                 // Hide if no link OR feedback already submitted by this student
                 // 1. User must have an APPROVED participation request
