@@ -218,7 +218,14 @@ router.post('/:eventId', async (req, res) => {
     const processedGuestFeedback = (guestFeedbackList || []).map((gf, idx) => {
       // Strip the local 'id' field, keep everything else as-is
       const { id, ...rest } = gf;
-      return { id: `guest_${idx + 1}`, ...rest };
+      
+      // Sanitize keys to prevent Firestore 'Invalid field path' errors
+      const sanitized = {};
+      for (const [k, v] of Object.entries(rest)) {
+        sanitized[k.replace(/\./g, '')] = v;
+      }
+
+      return { id: `guest_${idx + 1}`, ...sanitized };
     });
 
     // Process resource persons — normalise photo shape for reliable rendering
