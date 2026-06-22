@@ -54,6 +54,13 @@ const ODCorrection = () => {
             navigate('/');
             return;
         }
+
+        const allowedRoles = [UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER, UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM];
+        if (!allowedRoles.includes(currentUser.role)) {
+            navigate('/dashboard');
+            return;
+        }
+
         fetchRequests();
     }, [currentUser, activeTab]);
 
