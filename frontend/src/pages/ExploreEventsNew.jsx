@@ -351,18 +351,18 @@ const IQACSummaryModal = ({ event, onClose }) => {
     const rows = schedule.length > 0
       ? schedule.map((s, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
-          <td style='${tdStyle}'>${s.date}</td>
-          <td style='${tdStyle}'>${s.time}</td>
-          <td style='${tdStyle}'>${s.activity}</td>
+          <td style='${tdStyle}'>${s.time || s.date || '—'}</td>
+          <td style='${tdStyle}'>${s.agenda || s.activity || '—'}</td>
+          <td style='${tdStyle}'>${s.speaker || '—'}</td>
         </tr>`).join('')
       : `<tr><td colspan='4' style='${tdStyle}text-align:center;color:#888'>No schedule recorded in requisition</td></tr>`;
 
     const table = `<table style='${tableStyle}'>
       <thead><tr>
         <th style='${thStyle}'>#</th>
-        <th style='${thStyle}'>Date</th>
-        <th style='${thStyle}'>Time</th>
-        <th style='${thStyle}'>Activity / Session</th>
+        <th style='${thStyle}'>Time / Date</th>
+        <th style='${thStyle}'>Agenda / Activity</th>
+        <th style='${thStyle}'>Speaker</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -513,7 +513,12 @@ const IQACSummaryModal = ({ event, onClose }) => {
   const getScheduleHTML = () => {
     const schedule = s1?.schedule || [];
     const rows = schedule.length > 0
-      ? schedule.map((s, i) => `<tr><td>${i+1}</td><td>${formatDate(s.date)}</td><td>${s.time}</td><td>${s.activity}</td></tr>`).join('')
+      ? schedule.map((s, i) => `<tr>
+          <td>${i+1}</td>
+          <td>${s.time || s.date || '—'}</td>
+          <td>${s.agenda || s.activity || '—'}</td>
+          <td>${s.speaker || '—'}</td>
+        </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">No schedule defined in requisition.</td></tr>';
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -524,7 +529,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       td{padding:12px;border-bottom:1px solid #f0f9ff;font-size:14px;}
     </style></head><body>
       <h2>Event Schedule - ${event.title}</h2>
-      <table><thead><tr><th>#</th><th>Date</th><th>Day/Time</th><th>Activity</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>#</th><th>Time / Date</th><th>Agenda / Activity</th><th>Speaker</th></tr></thead><tbody>${rows}</tbody></table>
     </body></html>`;
   };
 
