@@ -158,17 +158,32 @@ router.post('/', async (req, res) => {
 
   try {
     const now = new Date().toISOString();
+    
+    // Fetch real-time student details from DB to ensure accuracy
+    let dbRollNo = rollNo || '';
+    let dbOdUsed = Number(currentOdUsed) || 0;
+    let dbOdLimit = Number(currentOdLimit) || 0;
+    
+    const userQuery = query(collection(db, 'users'), where('id', '==', studentId));
+    const userSnap = await getDocs(userQuery);
+    if (!userSnap.empty) {
+      const userData = userSnap.docs[0].data();
+      dbRollNo = userData.rollNo || dbRollNo;
+      dbOdUsed = userData.odUsed !== undefined ? Number(userData.odUsed) : dbOdUsed;
+      dbOdLimit = userData.odLimit !== undefined ? Number(userData.odLimit) : dbOdLimit;
+    }
+
     const newRequest = {
       studentId,
       studentName,
-      rollNo: rollNo || '',
+      rollNo: dbRollNo,
       className: className || '',
       department: department || '',
       description,
       requestedCount: Number(requestedCount) || 0,
       requestedLimit: Number(requestedLimit) || 0,
-      currentOdUsed:  Number(currentOdUsed)  || 0,
-      currentOdLimit: Number(currentOdLimit)  || 0,
+      currentOdUsed: dbOdUsed,
+      currentOdLimit: dbOdLimit,
       status: 'PENDING_FACULTY',
       createdAt: now,
       updatedAt: now,
@@ -185,9 +200,9 @@ router.post('/', async (req, res) => {
     const facultyUsers = await getUsersByRole('FACULTY', department);
     const facultyNameStr = facultyUsers.map(f => f.name || f.email).join(', ') || 'Your Faculty Advisor';
 
-    if (rollNo) {
+    if (dbRollNo) {
       await safeMail({
-        to: `${String(rollNo).toLowerCase()}@sece.ac.in`,
+        to: `${String(dbRollNo).toLowerCase()}@sece.ac.in`,
         subject: `OD Correction Request Submitted — Pending Faculty Verification`,
         html: buildEmailHtml({
           heading: 'OD Correction Request Submitted',
@@ -195,10 +210,10 @@ router.post('/', async (req, res) => {
           color: '#2563eb',
           rows: [
             ['Student Name',    studentName],
-            ['Roll Number',     normalizeRollNo(rollNo)],
+            ['Roll Number',     normalizeRollNo(dbRollNo)],
             ['Department',      department],
-            ['Current OD Used', currentOdUsed],
-            ['Current OD Limit',currentOdLimit],
+            ['Current OD Used', dbOdUsed],
+            ['Current OD Limit',dbOdLimit],
             ['Requested Used',  requestedCount],
             ['Requested Limit', requestedLimit],
             ['Reason',          description],
@@ -218,18 +233,18 @@ router.post('/', async (req, res) => {
     for (const faculty of facultyUsers) {
       await safeMail({
         to: faculty.email,
-        subject: `OD Correction Verification Required — ${studentName} (${rollNo})`,
+        subject: `OD Correction Verification Required — ${studentName} (${dbRollNo})`,
         html: buildEmailHtml({
           heading: 'OD Correction Request — Action Required',
           subheading: `A student has submitted an OD count correction request requiring your verification.`,
           color: '#1e293b',
           rows: [
             ['Student Name',    studentName],
-            ['Roll Number',     normalizeRollNo(rollNo)],
+            ['Roll Number',     normalizeRollNo(dbRollNo)],
             ['Class',           className],
             ['Department',      department],
-            ['Current OD Used', currentOdUsed],
-            ['Current OD Limit',currentOdLimit],
+            ['Current OD Used', dbOdUsed],
+            ['Current OD Limit',dbOdLimit],
             ['Requested Used',  requestedCount],
             ['Requested Limit', requestedLimit],
             ['Reason',          description],
@@ -239,7 +254,7 @@ router.post('/', async (req, res) => {
             <strong>⚡ Action Required</strong><br>Please log into the portal to review, approve, or reject this request. A rejection reason is mandatory if you reject.
           </div>`,
         }),
-        text: `OD Correction Verification Required for ${studentName} (${rollNo}). Please log into the portal.`,
+        text: `OD Correction Verification Required for ${studentName} (${dbRollNo}). Please log into the portal.`,
       });
     }
 

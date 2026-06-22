@@ -1846,19 +1846,21 @@ const Dashboard = () => {
                   isProcessing={isResetting}
                 />
                 {/* 6. OD Correction Requests */}
-                <div
-                  onClick={() => navigate('/od-correction')}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-amber-200 hover:bg-amber-50 transition-all group"
-                >
-                  <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all">
-                    <AlertCircle size={18} />
+                {[UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER, UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role) && (
+                  <div
+                    onClick={() => navigate('/od-correction')}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-amber-200 hover:bg-amber-50 transition-all group"
+                  >
+                    <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all">
+                      <AlertCircle size={18} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800">OD Correction</p>
+                      <p className="text-xs text-slate-500 font-medium">{(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? 'Request adjustment' : 'Review requests'}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-300 group-hover:text-amber-500" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-800">OD Correction</p>
-                    <p className="text-xs text-slate-500 font-medium">{(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? 'Request adjustment' : 'Review requests'}</p>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300 group-hover:text-amber-500" />
-                </div>
+                )}
 
                 {/* 4. Extend IQAC Window — Context-aware approval or simple extension */}
                 {currentUser.role === UserRole.HOD && (() => {

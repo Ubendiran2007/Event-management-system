@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
-const { collection, getDocs, doc, updateDoc } = require('firebase/firestore');
+const { collection, getDocs, doc, updateDoc, writeBatch } = require('firebase/firestore');
 
 const checkDb = (res) => {
   if (!db) {
@@ -102,16 +102,32 @@ router.post('/reset-od-usage', async (req, res) => {
   
   try {
     let totalReset = 0;
+    let batch = writeBatch(db);
+    let batchCount = 0;
+
     for (const className of CLASSES) {
       const snapshot = await getDocs(collection(db, 'students', className, 'members'));
       for (const studentDoc of snapshot.docs) {
         const studentRef = doc(db, 'students', className, 'members', studentDoc.id);
-        await updateDoc(studentRef, {
+        batch.update(studentRef, {
           odUsed: 0,
           updatedAt: new Date().toISOString()
         });
         totalReset++;
+        batchCount++;
+
+        // Firestore batches support up to 500 operations. We commit at 490 to be safe.
+        if (batchCount >= 490) {
+          await batch.commit();
+          batch = writeBatch(db);
+          batchCount = 0;
+        }
       }
+    }
+
+    // Commit any remaining operations in the last batch
+    if (batchCount > 0) {
+      await batch.commit();
     }
     
     console.log(`[IQAC] OD usage reset for ${totalReset} students.`);
