@@ -223,7 +223,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
     let keys = ['student', 'rollNo', 'comment'];
     
     if (studentFeedback.length > 0) {
-      const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => k !== 'id' && k !== 'submittedAt');
+      const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => {
+        if (k === 'id' || k === 'submittedAt') return false;
+        const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+      });
       if (dynamicKeys.length > 3 || !dynamicKeys.some(k => ['student', 'name'].includes(k))) {
         keys = dynamicKeys;
         headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
@@ -263,7 +267,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
     let keys = ['name', 'designation', 'organization', 'rating', 'feedback'];
 
     if (guestFeedback.length > 0) {
-      const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => k !== 'id' && k !== 'highlights');
+      const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => {
+        if (k === 'id' || k === 'highlights') return false;
+        const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+      });
       if (dynamicKeys.length > 0 && !dynamicKeys.includes('name')) {
         keys = dynamicKeys;
         headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
@@ -420,7 +428,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
     let keys = ['student', 'rollNo', 'comment'];
     
     if (studentFeedback.length > 0) {
-      const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => k !== 'id' && k !== 'submittedAt');
+      const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => {
+        if (k === 'id' || k === 'submittedAt') return false;
+        const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+      });
       if (dynamicKeys.length > 3 || !dynamicKeys.some(k => ['student', 'name'].includes(k))) {
         keys = dynamicKeys;
         headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
@@ -460,7 +472,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
     let keys = ['name', 'designation', 'organization', 'rating', 'feedback'];
 
     if (guestFeedback.length > 0) {
-      const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => k !== 'id' && k !== 'highlights');
+      const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => {
+        if (k === 'id' || k === 'highlights') return false;
+        const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+      });
       if (dynamicKeys.length > 0 && !dynamicKeys.includes('name')) {
         keys = dynamicKeys;
         headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
