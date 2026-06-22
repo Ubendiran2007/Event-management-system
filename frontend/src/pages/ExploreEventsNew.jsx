@@ -219,22 +219,36 @@ const IQACSummaryModal = ({ event, onClose }) => {
   };
 
   const downloadParticipantFeedbackExcel = () => {
-    const commentsList = studentFeedback;
-    const rows = commentsList.length > 0
-      ? commentsList.map((c, i) => `<tr>
+    let headers = ['Student Name', 'Roll No', 'Feedback'];
+    let keys = ['student', 'rollNo', 'comment'];
+    
+    if (studentFeedback.length > 0) {
+      const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => k !== 'id' && k !== 'submittedAt');
+      if (dynamicKeys.length > 3 || !dynamicKeys.some(k => ['student', 'name'].includes(k))) {
+        keys = dynamicKeys;
+        headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+      }
+    }
+
+    const ths = headers.map(h => `<th style='${thStyle}'>${h}</th>`).join('');
+
+    const rows = studentFeedback.length > 0
+      ? studentFeedback.map((c, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
-          <td style='${tdStyle}'>${c.student || c.name || '—'}</td>
-          <td style='${tdStyle}'>${c.rollNo || '—'}</td>
-          <td style='${tdStyle}'>${c.comment || c.feedback || 'No comment'}</td>
+          ${keys.map(k => {
+             const val = c[k] !== undefined && c[k] !== null ? c[k] : (
+               k === 'student' ? (c.name || '—') :
+               k === 'comment' ? (c.feedback || 'No comment') : '—'
+             );
+             return `<td style='${tdStyle}'>${val}</td>`;
+          }).join('')}
         </tr>`).join('')
-      : `<tr><td colspan='4' style='${tdStyle}text-align:center;color:#888'>No participant feedback submitted</td></tr>`;
+      : `<tr><td colspan='${keys.length + 1}' style='${tdStyle}text-align:center;color:#888'>No participant feedback submitted</td></tr>`;
 
     const table = `<table style='${tableStyle}'>
       <thead><tr>
         <th style='${thStyle}'>#</th>
-        <th style='${thStyle}'>Student Name</th>
-        <th style='${thStyle}'>Roll No</th>
-        <th style='${thStyle}'>Feedback</th>
+        ${ths}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -245,25 +259,37 @@ const IQACSummaryModal = ({ event, onClose }) => {
   };
 
   const downloadResourcePersonFeedbackExcel = () => {
+    let headers = ['Name', 'Designation', 'Organization', 'Rating', 'Feedback'];
+    let keys = ['name', 'designation', 'organization', 'rating', 'feedback'];
+
+    if (guestFeedback.length > 0) {
+      const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => k !== 'id' && k !== 'highlights');
+      if (dynamicKeys.length > 0 && !dynamicKeys.includes('name')) {
+        keys = dynamicKeys;
+        headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+      }
+    }
+
+    const ths = headers.map(h => `<th style='${thStyle}'>${h}</th>`).join('');
+
     const rows = guestFeedback.length > 0
       ? guestFeedback.map((fb, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
-          <td style='${tdStyle}'>${fb.name || '—'}</td>
-          <td style='${tdStyle}'>${fb.designation || '—'}</td>
-          <td style='${tdStyle}'>${fb.organization || '—'}</td>
-          <td style='${tdStyle}text-align:center'>${'★'.repeat(Number(fb.rating) || 0)}${'☆'.repeat(5 - (Number(fb.rating) || 0))} (${fb.rating || '—'}/5)</td>
-          <td style='${tdStyle}'>${fb.feedback || 'No comment'}</td>
+          ${keys.map(k => {
+            let val = fb[k] !== undefined && fb[k] !== null ? fb[k] : '—';
+            if (k === 'rating' && !isNaN(Number(val))) {
+              val = `${'★'.repeat(Number(val))}${'☆'.repeat(5 - Number(val))} (${val}/5)`;
+              return `<td style='${tdStyle}text-align:center'>${val}</td>`;
+            }
+            return `<td style='${tdStyle}'>${val}</td>`;
+          }).join('')}
         </tr>`).join('')
-      : `<tr><td colspan='6' style='${tdStyle}text-align:center;color:#888'>No resource person feedback recorded</td></tr>`;
+      : `<tr><td colspan='${keys.length + 1}' style='${tdStyle}text-align:center;color:#888'>No resource person feedback recorded</td></tr>`;
 
     const table = `<table style='${tableStyle}'>
       <thead><tr>
         <th style='${thStyle}'>#</th>
-        <th style='${thStyle}'>Name</th>
-        <th style='${thStyle}'>Designation</th>
-        <th style='${thStyle}'>Organization</th>
-        <th style='${thStyle}'>Rating</th>
-        <th style='${thStyle}'>Feedback</th>
+        ${ths}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -390,12 +416,31 @@ const IQACSummaryModal = ({ event, onClose }) => {
   };
 
   const getParticipantFeedbackHTML = () => {
+    let headers = ['Name', 'Roll No', 'Feedback'];
+    let keys = ['student', 'rollNo', 'comment'];
+    
+    if (studentFeedback.length > 0) {
+      const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => k !== 'id' && k !== 'submittedAt');
+      if (dynamicKeys.length > 3 || !dynamicKeys.some(k => ['student', 'name'].includes(k))) {
+        keys = dynamicKeys;
+        headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+      }
+    }
+
+    const ths = headers.map(h => `<th>${h}</th>`).join('');
+
     const rows = studentFeedback.length > 0
-      ? studentFeedback.map((f, i) => `<tr>
-          <td>${i+1}</td><td>${f.student||f.name||'—'}</td><td>${f.rollNo||'—'}</td>
-          <td>${'★'.repeat(f.rating||0)}${'☆'.repeat(5-(f.rating||0))}</td><td>${f.comment||f.feedback||'—'}</td>
+      ? studentFeedback.map((c, i) => `<tr>
+          <td>${i + 1}</td>
+          ${keys.map(k => {
+             const val = c[k] !== undefined && c[k] !== null ? c[k] : (
+               k === 'student' ? (c.name || '—') :
+               k === 'comment' ? (c.feedback || 'No comment') : '—'
+             );
+             return `<td>${val}</td>`;
+          }).join('')}
         </tr>`).join('')
-      : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px;">No feedback responses found.</td></tr>';
+      : `<tr><td colspan="${keys.length + 1}" style="text-align:center;color:#888;padding:20px;">No feedback responses found.</td></tr>`;
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
       body{font-family:sans-serif;padding:40px;color:#333;line-height:1.5;}
@@ -406,16 +451,36 @@ const IQACSummaryModal = ({ event, onClose }) => {
       tr:hover td{background:#fdf4ff;}
     </style></head><body>
       <h2>Participant Feedback - ${event.title}</h2>
-      <table><thead><tr><th>#</th><th>Name</th><th>Roll No</th><th>Rating</th><th>Comment</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
     </body></html>`;
   };
 
   const getResourcePersonFeedbackHTML = () => {
+    let headers = ['Name', 'Designation', 'Organization', 'Rating', 'Feedback'];
+    let keys = ['name', 'designation', 'organization', 'rating', 'feedback'];
+
+    if (guestFeedback.length > 0) {
+      const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => k !== 'id' && k !== 'highlights');
+      if (dynamicKeys.length > 0 && !dynamicKeys.includes('name')) {
+        keys = dynamicKeys;
+        headers = dynamicKeys.map(k => k.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+      }
+    }
+
+    const ths = headers.map(h => `<th>${h}</th>`).join('');
+
     const rows = guestFeedback.length > 0
-      ? guestFeedback.map((f, i) => `<tr>
-          <td>${i+1}</td><td>${f.name||'—'}</td><td>${f.designation||'—'}</td><td>${f.organization||'—'}</td><td>${f.feedback||'—'}</td>
+      ? guestFeedback.map((fb, i) => `<tr>
+          <td>${i + 1}</td>
+          ${keys.map(k => {
+            let val = fb[k] !== undefined && fb[k] !== null ? fb[k] : '—';
+            if (k === 'rating' && !isNaN(Number(val))) {
+              val = `${'★'.repeat(Number(val))}${'☆'.repeat(5 - Number(val))} (${val}/5)`;
+            }
+            return `<td>${val}</td>`;
+          }).join('')}
         </tr>`).join('')
-      : '<tr><td colspan="5" style="text-align:center;color:#888;padding:20px;">No resource person feedback found.</td></tr>';
+      : `<tr><td colspan="${keys.length + 1}" style="text-align:center;color:#888;padding:20px;">No resource person feedback found.</td></tr>`;
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
       body{font-family:sans-serif;padding:40px;color:#333;line-height:1.5;}
@@ -425,7 +490,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       td{padding:12px;border-bottom:1px solid #fff7ed;font-size:14px;}
     </style></head><body>
       <h2>Resource Person Feedback - ${event.title}</h2>
-      <table><thead><tr><th>#</th><th>Name</th><th>Designation</th><th>Org</th><th>Feedback</th></tr></thead><tbody>${rows}</tbody></table>
+      <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
     </body></html>`;
   };
 
@@ -697,7 +762,20 @@ const IQACSummaryModal = ({ event, onClose }) => {
       }
       return;
     }
-    if (req.includes('schedule')) {
+    if (req.includes('schedule') || req.includes('agenda')) {
+      const scheduleUrl = event.requisition?.step2?.scheduleUrl || event.requisition?.scheduleUrl;
+      if (scheduleUrl) {
+        if (type === 'view') {
+          window.open(scheduleUrl, '_blank');
+        } else {
+          // Attempt to extract extension from URL, fallback to .pdf
+          const ext = scheduleUrl.split('.').pop().split(/#|\?/)[0] || 'pdf';
+          const validExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx'].includes(ext.toLowerCase()) ? ext : 'pdf';
+          triggerDownload(scheduleUrl, `Event_Schedule_${fileName}.${validExt}`);
+        }
+        return;
+      }
+
       if (type === 'view') {
         const win = window.open();
         win.document.write(getScheduleHTML());
