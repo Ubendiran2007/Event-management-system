@@ -226,7 +226,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => {
         if (k === 'id' || k === 'submittedAt') return false;
         const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index', ''].includes(norm) && !k.includes('#');
       });
       if (dynamicKeys.length > 3 || !dynamicKeys.some(k => ['student', 'name'].includes(k))) {
         keys = dynamicKeys;
@@ -317,30 +317,33 @@ const IQACSummaryModal = ({ event, onClose }) => {
   const getRequisitionLetterHTML = () => {
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
       <style>
-        body{font-family:'Times New Roman',serif;padding:60px;line-height:1.6;color:#111;}
+        body{background:#f1f5f9;font-family:'Times New Roman',serif;padding:40px 20px;}
+        .container{max-width:800px;margin:0 auto;background:#fff;padding:60px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-radius:8px;line-height:1.6;color:#111;}
         .header{text-align:center;margin-bottom:40px;}
         .content{margin-top:20px;font-size:16px;}
         .footer{margin-top:80px;display:flex;justify-content:space-between;}
         .subject{font-weight:bold;text-decoration:underline;margin:20px 0;}
       </style></head>
       <body>
-        <div class="header">
-          <h1 style="margin:0;font-size:20px;">REQUISITION LETTER</h1>
-          <p style="margin:5px 0;opacity:0.8;font-size:14px;">Department of ${event.department || s1?.organizerDetails?.department || 'CSE'}</p>
-        </div>
-        <div class="content">
-          <p>From,<br/>${event.organizerName || s1?.organizerDetails?.organizerName || 'Event Coordinator'}<br/>${event.department || 'CSE'}</p>
-          <p style="margin-top:30px;">To,<br/>The Head of Department,<br/>${event.department || 'CSE'}</p>
-          <p class="subject">Sub: Request for permission to conduct ${s1?.eventType || 'event'} – Reg.</p>
-          <p>Respected Sir/Madam,</p>
-          <p>We are writing to request your kind permission to organize a ${s1?.eventType || 'program'} titled "<strong>${event.title || s1?.eventName}</strong>". The event is scheduled to be held from ${formatDate(s1?.eventStartDate)} to ${formatDate(s1?.eventEndDate)} at ${event.venue || 'college premises'}.</p>
-          <p>This event aims to provide our students with practical exposure to ${event.description || 'relevant domain technologies'}. We have already identified the resource persons and finalized the event schedule.</p>
-          <p>We request you to kindly grant us permission to proceed with the event arrangements and provide the necessary institutional support.</p>
-        </div>
-        <div class="footer">
-          <div><p>Thanking you,</p></div>
-          <div style="text-align:right;">
-            <p>Yours faithfully,<br/><br/><br/><strong>${event.organizerName || 'Coordinator'}</strong></p>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin:0;font-size:20px;">REQUISITION LETTER</h1>
+            <p style="margin:5px 0;opacity:0.8;font-size:14px;">Department of ${event.department || s1?.organizerDetails?.department || 'CSE'}</p>
+          </div>
+          <div class="content">
+            <p>From,<br/>${event.organizerName || s1?.organizerDetails?.organizerName || 'Event Coordinator'}<br/>${event.department || 'CSE'}</p>
+            <p style="margin-top:30px;">To,<br/>The Head of Department,<br/>${event.department || 'CSE'}</p>
+            <p class="subject">Sub: Request for permission to conduct ${s1?.eventType || 'event'} – Reg.</p>
+            <p>Respected Sir/Madam,</p>
+            <p>We are writing to request your kind permission to organize a ${s1?.eventType || 'program'} titled "<strong>${event.title || s1?.eventName}</strong>". The event is scheduled to be held from ${formatDate(s1?.eventStartDate)} to ${formatDate(s1?.eventEndDate)} at ${event.venue || 'college premises'}.</p>
+            <p>This event aims to provide our students with practical exposure to ${event.description || 'relevant domain technologies'}. We have already identified the resource persons and finalized the event schedule.</p>
+            <p>We request you to kindly grant us permission to proceed with the event arrangements and provide the necessary institutional support.</p>
+          </div>
+          <div class="footer">
+            <div><p>Thanking you,</p></div>
+            <div style="text-align:right;">
+              <p>Yours faithfully,<br/><br/><br/><strong>${event.organizerName || 'Coordinator'}</strong></p>
+            </div>
           </div>
         </div>
       </body></html>`;
@@ -384,13 +387,16 @@ const IQACSummaryModal = ({ event, onClose }) => {
     
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
       <style>
-        body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;padding:50px;background:#fefefe;color:#222;}
+        body{background:#f1f5f9;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;padding:40px 20px;}
+        .container{max-width:900px;margin:0 auto;background:#fff;padding:50px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-radius:8px;color:#222;}
         h2{color:#1a3a5c;text-align:center;font-size:28px;border-bottom:3px solid #1a3a5c;padding-bottom:15px;margin-bottom:40px;text-transform:uppercase;letter-spacing:1px;}
       </style></head>
       <body>
-        <h2>Geotagged Photographs - ${event.title}</h2>
-        <p style="text-align:center;color:#666;margin-bottom:30px;">Event Date: ${s1?.eventStartDate || event.date} | Venue: ${event.venue}</p>
-        ${images}
+        <div class="container">
+          <h2>Geotagged Photographs - ${event.title}</h2>
+          <p style="text-align:center;color:#666;margin-bottom:30px;">Event Date: ${s1?.eventStartDate || event.date} | Venue: ${event.venue}</p>
+          ${images}
+        </div>
       </body></html>`;
   };
 
@@ -410,16 +416,19 @@ const IQACSummaryModal = ({ event, onClose }) => {
       : '<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">No attendance records found.</td></tr>';
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-      body{font-family:sans-serif;padding:40px;color:#333;line-height:1.5;}
+      body{background:#f1f5f9;font-family:sans-serif;padding:40px 20px;}
+      .container{max-width:900px;margin:0 auto;background:#fff;padding:40px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-radius:8px;color:#333;line-height:1.5;}
       h2{color:#1e3a8a;border-bottom:2px solid #e2e8f0;padding-bottom:10px;}
       table{width:100%;border-collapse:collapse;margin-top:20px;}
       th{background:#f8fafc;color:#64748b;text-align:left;padding:12px;font-size:12px;text-transform:uppercase;border-bottom:2px solid #e2e8f0;}
       td{padding:12px;border-bottom:1px solid #f1f5f9;font-size:14px;}
       tr:hover td{background:#f8fafc;}
     </style></head><body>
-      <h2>Attendance Sheet - ${event.title}</h2>
-      <p style="font-size:12px;color:#666;">Generated on ${new Date().toLocaleDateString()}</p>
-      <table><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th>Status (P/FN/AN/A)</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="container">
+        <h2>Attendance Sheet - ${event.title}</h2>
+        <p style="font-size:12px;color:#666;">Generated on ${new Date().toLocaleDateString()}</p>
+        <table><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th>Status (P/FN/AN/A)</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
     </body></html>`;
   };
 
@@ -431,7 +440,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       const dynamicKeys = Object.keys(studentFeedback[0]).filter(k => {
         if (k === 'id' || k === 'submittedAt') return false;
         const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index', ''].includes(norm) && !k.includes('#');
       });
       if (dynamicKeys.length > 3 || !dynamicKeys.some(k => ['student', 'name'].includes(k))) {
         keys = dynamicKeys;
@@ -455,15 +464,18 @@ const IQACSummaryModal = ({ event, onClose }) => {
       : `<tr><td colspan="${keys.length + 1}" style="text-align:center;color:#888;padding:20px;">No feedback responses found.</td></tr>`;
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-      body{font-family:sans-serif;padding:40px;color:#333;line-height:1.5;}
+      body{background:#f1f5f9;font-family:sans-serif;padding:40px 20px;}
+      .container{max-width:900px;margin:0 auto;background:#fff;padding:40px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-radius:8px;color:#333;line-height:1.5;}
       h2{color:#7c3aed;border-bottom:2px solid #f3e8ff;padding-bottom:10px;}
       table{width:100%;border-collapse:collapse;margin-top:20px;}
       th{background:#f9fafb;color:#4b5563;text-align:left;padding:12px;font-size:12px;text-transform:uppercase;border-bottom:1px solid #e5e7eb;}
       td{padding:12px;border-bottom:1px solid #f3f4f6;font-size:14px;}
       tr:hover td{background:#fdf4ff;}
     </style></head><body>
-      <h2>Participant Feedback - ${event.title}</h2>
-      <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
+      <div class="container">
+        <h2>Participant Feedback - ${event.title}</h2>
+        <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
+      </div>
     </body></html>`;
   };
 
@@ -475,7 +487,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       const dynamicKeys = Object.keys(guestFeedback[0]).filter(k => {
         if (k === 'id' || k === 'highlights') return false;
         const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return !['sno', 'slno', 'serialno', 'serialnumber', 'index'].includes(norm);
+        return !['sno', 'slno', 'serialno', 'serialnumber', 'index', ''].includes(norm) && !k.includes('#');
       });
       if (dynamicKeys.length > 0 && !dynamicKeys.includes('name')) {
         keys = dynamicKeys;
@@ -499,14 +511,17 @@ const IQACSummaryModal = ({ event, onClose }) => {
       : `<tr><td colspan="${keys.length + 1}" style="text-align:center;color:#888;padding:20px;">No resource person feedback found.</td></tr>`;
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-      body{font-family:sans-serif;padding:40px;color:#333;line-height:1.5;}
+      body{background:#f1f5f9;font-family:sans-serif;padding:40px 20px;}
+      .container{max-width:900px;margin:0 auto;background:#fff;padding:40px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-radius:8px;color:#333;line-height:1.5;}
       h2{color:#ea580c;border-bottom:2px solid #ffedd5;padding-bottom:10px;}
       table{width:100%;border-collapse:collapse;margin-top:20px;}
       th{background:#fffaf3;color:#9a3412;text-align:left;padding:12px;font-size:12px;text-transform:uppercase;border-bottom:1px solid #fed7aa;}
       td{padding:12px;border-bottom:1px solid #fff7ed;font-size:14px;}
     </style></head><body>
-      <h2>Resource Person Feedback - ${event.title}</h2>
-      <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
+      <div class="container">
+        <h2>Resource Person Feedback - ${event.title}</h2>
+        <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
+      </div>
     </body></html>`;
   };
 
@@ -522,14 +537,17 @@ const IQACSummaryModal = ({ event, onClose }) => {
       : '<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">No schedule defined in requisition.</td></tr>';
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-      body{font-family:sans-serif;padding:40px;color:#333;line-height:1.5;}
+      body{background:#f1f5f9;font-family:sans-serif;padding:40px 20px;}
+      .container{max-width:900px;margin:0 auto;background:#fff;padding:40px;box-shadow:0 10px 25px rgba(0,0,0,0.1);border-radius:8px;color:#333;line-height:1.5;}
       h2{color:#0891b2;border-bottom:2px solid #ecfeff;padding-bottom:10px;}
       table{width:100%;border-collapse:collapse;margin-top:20px;}
       th{background:#f0f9ff;color:#0369a1;text-align:left;padding:12px;font-size:12px;text-transform:uppercase;border-bottom:1px solid #bae6fd;}
       td{padding:12px;border-bottom:1px solid #f0f9ff;font-size:14px;}
     </style></head><body>
-      <h2>Event Schedule - ${event.title}</h2>
-      <table><thead><tr><th>#</th><th>Time / Date</th><th>Agenda / Activity</th><th>Speaker</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="container">
+        <h2>Event Schedule - ${event.title}</h2>
+        <table><thead><tr><th>#</th><th>Time / Date</th><th>Agenda / Activity</th><th>Speaker</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
     </body></html>`;
   };
 
