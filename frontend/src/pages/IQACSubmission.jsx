@@ -197,17 +197,7 @@ const IQACSubmission = () => {
 
   // Resource persons state
   const [resourcePersons, setResourcePersons] = useState([]);
-  const [resourcePersonForm, setResourcePersonForm] = useState({
-    name: '',
-    designation: '',
-    organization: '',
-    topicsByDay: [],
-    email: '',
-    phone: '',
-    expertise: '',
-    bio: '',
-    photo: null,
-  });
+
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -655,38 +645,37 @@ const IQACSubmission = () => {
   };
 
   const addResourcePerson = () => {
-    if (!resourcePersonForm.name.trim()) {
-      return;
-    }
     setResourcePersons((prev) => [...prev, {
-      id: Date.now(),
-      ...resourcePersonForm,
+      id: `rp-${Date.now()}`,
+      name: '', designation: '', organization: '', topicsByDay: [], email: '', phone: '', expertise: '', bio: '', photo: null
     }]);
-    setResourcePersonForm({
-      name: '',
-      designation: '',
-      organization: '',
-      topicsByDay: [],
-      email: '',
-      phone: '',
-      expertise: '',
-      bio: '',
-      photo: null,
-      rating: 5,
-    });
   };
 
-  const onResourcePersonPhoto = (e) => {
+  const updateResourcePerson = (id, field, value) => {
+    setResourcePersons((prev) => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const updateResourcePersonTopic = (id, dayIndex, value) => {
+    setResourcePersons((prev) => prev.map(p => {
+      if (p.id === id) {
+        const newTopics = [...(p.topicsByDay || [])];
+        newTopics[dayIndex] = value;
+        return { ...p, topicsByDay: newTopics };
+      }
+      return p;
+    }));
+  };
+
+  const onResourcePersonPhoto = (id, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      setResourcePersonForm(prev => ({
-        ...prev,
-        photo: {
-          dataUrl: event.target.result,
-          fileName: file.name
+      setResourcePersons(prev => prev.map(p => {
+        if (p.id === id) {
+          return { ...p, photo: { dataUrl: event.target.result, fileName: file.name } };
         }
+        return p;
       }));
     };
     reader.readAsDataURL(file);
@@ -1798,198 +1787,165 @@ const IQACSubmission = () => {
           <p className="mt-1 text-sm text-slate-600">Add details of all resource persons and speakers who participated in the event</p>
 
           <div className="mt-4 space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Name *</label>
-                  <input
-                    type="text"
-                    placeholder="Full name"
-                    value={resourcePersonForm.name}
-                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, name: e.target.value }))}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Designation</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., Professor, Industry Expert"
-                    value={resourcePersonForm.designation}
-                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, designation: e.target.value }))}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="email@example.com"
-                    value={resourcePersonForm.email}
-                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, email: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Phone Number</label>
-                  <input
-                    type="text"
-                    placeholder="+91 9876543210"
-                    value={resourcePersonForm.phone}
-                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, phone: e.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                   <label className="text-sm font-semibold text-slate-700 mb-2 block">Areas of Expertise (e.g. AI, Cloud)</label>
-                   <input
-                     type="text"
-                     placeholder="Expertise keywords"
-                     value={resourcePersonForm.expertise}
-                     onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, expertise: e.target.value }))}
-                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                   />
-                </div>
-                <div>
-                   <label className="text-sm font-semibold text-slate-700 mb-2 block">Session Rating / Feedback</label>
-                   <div className="flex items-center gap-4 mt-2">
-                      <input 
-                        type="range" min="1" max="5" 
-                        value={resourcePersonForm.rating || 5} 
-                        onChange={(e) => setResourcePersonForm(p => ({ ...p, rating: parseInt(e.target.value) }))}
-                        className="w-full accent-cse-accent"
-                      />
-                      <span className="text-sm font-bold text-cse-accent">{resourcePersonForm.rating || 5}/5</span>
-                   </div>
-                </div>
-              </div>
-
-              <div className="flex gap-4 items-start">
-                <div className="flex-1">
-                  <label className="text-sm font-semibold text-slate-700 mb-2 block">Brief Bio / Credentials</label>
-                  <textarea
-                    placeholder="A few lines about the speaker's background..."
-                    value={resourcePersonForm.bio}
-                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, bio: e.target.value }))}
-                    rows={3}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="w-32">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-tight mb-2 block">Photo</label>
-                  <div className="relative group">
-                    <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
-                      {resourcePersonForm.photo ? (
-                        <img src={resourcePersonForm.photo.dataUrl} className="w-full h-full object-cover" alt="speaker" />
-                      ) : (
-                        <div className="text-slate-300 flex flex-col items-center gap-1">
-                          <Camera size={24} />
-                          <span className="text-[10px]">Upload</span>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={onResourcePersonPhoto}
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                      />
-                    </div>
-                    {resourcePersonForm.photo && (
-                      <button
-                        onClick={() => setResourcePersonForm(p => ({ ...p, photo: null }))}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
+            {resourcePersons.map((person, index) => (
+              <div key={person.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3 relative">
+                <button
+                  type="button"
+                  onClick={() => removeResourcePerson(person.id)}
+                  className="absolute top-3 right-3 text-red-500 hover:text-red-700 bg-white rounded-full p-1 shadow-sm border border-red-100 z-10"
+                >
+                  <X size={16} />
+                </button>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 pr-8">
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Name *</label>
+                    <input
+                      type="text"
+                      placeholder="Full name"
+                      value={person.name}
+                      onChange={(e) => updateResourcePerson(person.id, 'name', e.target.value)}
+                      disabled={isSubmitting}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Designation</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Professor, Industry Expert"
+                      value={person.designation}
+                      onChange={(e) => updateResourcePerson(person.id, 'designation', e.target.value)}
+                      disabled={isSubmitting}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                    />
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Organization / Institution</label>
-                  <input
-                    type="text"
-                    placeholder="Organization name"
-                    value={resourcePersonForm.organization}
-                    onChange={(e) => setResourcePersonForm((prev) => ({ ...prev, organization: e.target.value }))}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 placeholder:text-slate-400"
-                  />
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="email@example.com"
+                      value={person.email}
+                      onChange={(e) => updateResourcePerson(person.id, 'email', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Phone Number</label>
+                    <input
+                      type="text"
+                      placeholder="+91 9876543210"
+                      value={person.phone}
+                      onChange={(e) => updateResourcePerson(person.id, 'phone', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Topic / Session Handled</label>
-                  {(() => {
-                    const topics = [];
-                    for (let i = 1; i <= numberOfDays; i++) {
-                      topics.push(
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                     <label className="text-sm font-semibold text-slate-700 mb-2 block">Areas of Expertise (e.g. AI, Cloud)</label>
+                     <input
+                       type="text"
+                       placeholder="Expertise keywords"
+                       value={person.expertise}
+                       onChange={(e) => updateResourcePerson(person.id, 'expertise', e.target.value)}
+                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                     />
+                  </div>
+                </div>
+
+                <div className="flex gap-4 items-start">
+                  <div className="flex-1">
+                    <label className="text-sm font-semibold text-slate-700 mb-2 block">Brief Bio / Credentials</label>
+                    <textarea
+                      placeholder="A few lines about the speaker's background..."
+                      value={person.bio}
+                      onChange={(e) => updateResourcePerson(person.id, 'bio', e.target.value)}
+                      rows={3}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="w-32">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-tight mb-2 block">Photo</label>
+                    <div className="relative group">
+                      <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
+                        {person.photo ? (
+                          <img src={person.photo.dataUrl || person.photo.url || person.photo} className="w-full h-full object-cover" alt="speaker" />
+                        ) : (
+                          <div className="text-slate-300 flex flex-col items-center gap-1">
+                            <Camera size={24} />
+                            <span className="text-[10px]">Upload</span>
+                          </div>
+                        )}
                         <input
-                          key={i}
-                          type="text"
-                          placeholder={`Day ${i} topic covered`}
-                          value={resourcePersonForm.topicsByDay?.[i - 1] || ''}
-                          onChange={(e) => {
-                            const newTopics = [...(resourcePersonForm.topicsByDay || [])];
-                            newTopics[i - 1] = e.target.value;
-                            setResourcePersonForm(prev => ({ ...prev, topicsByDay: newTopics }));
-                          }}
-                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs mb-1"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => onResourcePersonPhoto(person.id, e)}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
                         />
-                      );
-                    }
-                    return topics;
-                  })()}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={addResourcePerson}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 rounded-lg bg-cse-accent px-4 py-2 text-sm font-semibold text-white hover:bg-cse-accent/90 disabled:opacity-60"
-              >
-                <Plus size={16} /> Add Resource Person
-              </button>
-            </div>
-
-            {resourcePersons.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-700">Added Resource Persons ({resourcePersons.length})</p>
-                {resourcePersons.map((person) => (
-                  <div key={person.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900">{person.name}</p>
-                        {person.designation && <p className="text-xs text-slate-600">{person.designation}</p>}
-                        {person.organization && <p className="text-xs text-slate-600">{person.organization}</p>}
-                        {(person.topicsByDay || []).map((t, idx) => t ? (
-                          <p key={idx} className="text-xs text-slate-500 mt-0.5">Day {idx + 1}: {t}</p>
-                        ) : null)}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeResourcePerson(person.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <X size={18} />
-                      </button>
+                      {person.photo && (
+                        <button
+                          onClick={() => updateResourcePerson(person.id, 'photo', null)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg z-10"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
                     </div>
                   </div>
-                ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Organization / Institution</label>
+                    <input
+                      type="text"
+                      placeholder="Organization name"
+                      value={person.organization}
+                      onChange={(e) => updateResourcePerson(person.id, 'organization', e.target.value)}
+                      disabled={isSubmitting}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 placeholder:text-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700 uppercase tracking-tighter text-[10px]">Topic / Session Handled</label>
+                    {(() => {
+                      const topics = [];
+                      for (let i = 1; i <= numberOfDays; i++) {
+                        topics.push(
+                          <input
+                            key={i}
+                            type="text"
+                            placeholder={`Day ${i} topic covered`}
+                            value={person.topicsByDay?.[i - 1] || ''}
+                            onChange={(e) => updateResourcePersonTopic(person.id, i - 1, e.target.value)}
+                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs mb-1"
+                          />
+                        );
+                      }
+                      return topics;
+                    })()}
+                  </div>
+                </div>
               </div>
-            )}
+            ))}
+
             {resourcePersons.length === 0 && (
               <p className="text-sm text-slate-500">No resource persons added yet.</p>
             )}
+
+            <button
+              type="button"
+              onClick={addResourcePerson}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-cse-accent px-4 py-2 text-sm font-semibold text-white hover:bg-cse-accent/90 disabled:opacity-60"
+            >
+              <Plus size={16} /> Add Resource Person
+            </button>
           </div>
         </section>
 

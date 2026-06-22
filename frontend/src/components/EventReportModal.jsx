@@ -200,10 +200,7 @@ const EventReportModal = ({
                   <td className="border border-black p-2 font-bold w-1/3">Academic Year</td>
                   <td className="border border-black p-2" colSpan="6">{academicYear}</td>
                 </tr>
-                <tr>
-                  <td className="border border-black p-2 font-bold">Semester</td>
-                  <td className="border border-black p-2" colSpan="6">I / II / III / IV / V / VI / VII / VIII</td>
-                </tr>
+
                 <tr>
                   <td className="border border-black p-2 font-bold">Event Title</td>
                   <td className="border border-black p-2" colSpan="6">{event.title || s1.eventName || '-'}</td>
@@ -436,14 +433,7 @@ const EventReportModal = ({
                 <tr>
                   <td className="border border-black p-2 font-bold" colSpan="2">Social media Coverage (Provide links):</td>
                 </tr>
-                <tr>
-                  <td className="border border-black p-2">YouTube</td>
-                  <td className="border border-black p-2"></td>
-                </tr>
-                <tr>
-                  <td className="border border-black p-2">Facebook</td>
-                  <td className="border border-black p-2"></td>
-                </tr>
+
                 <tr>
                   <td className="border border-black p-2">Instagram</td>
                   <td className="border border-black p-2">{reportDetails?.socialMedia?.social || ''}</td>
@@ -460,7 +450,7 @@ const EventReportModal = ({
               {gallery.length > 0 ? (
                 gallery.map((img, idx) => (
                   <div key={idx} className="mb-6">
-                    <p className="font-bold mb-2">Sample Photograph {idx + 1}:</p>
+                    <p className="font-bold mb-2">Photograph {idx + 1}:</p>
                     <div className="w-full max-w-[600px] border border-black p-2 mx-auto">
                       <img src={img.url || img.dataUrl} alt={`Photograph ${idx + 1}`} className="w-full h-auto object-contain" />
                     </div>
@@ -469,7 +459,7 @@ const EventReportModal = ({
                 ))
               ) : (
                   <div className="mb-6">
-                    <p className="font-bold mb-2">Sample Photograph 1:</p>
+                    <p className="font-bold mb-2">Photograph 1:</p>
                     <div className="h-48 border border-dashed border-black flex items-center justify-center">
                         <span className="text-slate-400">No Image Provided</span>
                     </div>
