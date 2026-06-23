@@ -209,6 +209,13 @@ router.post('/verify-otp', async (req, res) => {
     
     await logSecurityEvent(found.userObj, 'OTP Verified', 'SUCCESS', reqDetails);
     
+    await setDoc(otpRef, {
+      ...data,
+      verified: true,
+      verifiedAt: Date.now(),
+      expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes to reset password
+    });
+    
     res.json({ success: true, message: 'OTP verified' });
   } catch (error) {
     console.error(error);
@@ -243,7 +250,11 @@ router.post('/reset-password', async (req, res) => {
     const data = otpDoc.data();
     if (data.type !== 'RESET' || data.expiresAt < Date.now()) {
       await deleteDoc(otpRef);
-      return res.status(400).json({ success: false, message: 'OTP expired' });
+      return res.status(400).json({ success: false, message: 'Verified session expired' });
+    }
+    
+    if (!data.verified) {
+      return res.status(400).json({ success: false, message: 'Session not verified' });
     }
     
     if (String(data.otp).trim() !== String(otp).trim()) {
@@ -346,7 +357,11 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
     const data = otpDoc.data();
     if (data.type !== 'CHANGE' || data.expiresAt < Date.now()) {
       await deleteDoc(otpRef);
-      return res.status(400).json({ success: false, message: 'OTP expired' });
+      return res.status(400).json({ success: false, message: 'Verified session expired' });
+    }
+    
+    if (!data.verified) {
+      return res.status(400).json({ success: false, message: 'Session not verified' });
     }
     
     if (String(data.otp).trim() !== String(otp).trim()) {
