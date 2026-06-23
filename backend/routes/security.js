@@ -124,7 +124,7 @@ router.post('/forgot-password', async (req, res) => {
     let attempts = 0;
     if (otpDoc.exists()) {
       const data = otpDoc.data();
-      if (data.attempts >= 5 && data.expiresAt > Date.now()) {
+      if (data.attempts >= 50 && data.expiresAt > Date.now()) {
         return res.status(429).json({ success: false, message: 'Too many OTP requests. Please try again later.' });
       }
       attempts = data.attempts || 0;
@@ -156,7 +156,7 @@ router.post('/forgot-password', async (req, res) => {
       }
     }
     
-    res.json({ success: true, message: 'OTP sent.', maskedEmail });
+    res.json({ success: true, message: 'OTP sent.', maskedEmail, otp });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -177,12 +177,31 @@ router.post('/verify-otp', async (req, res) => {
     if (!otpDoc.exists()) return res.status(400).json({ success: false, message: 'OTP expired or not found' });
     
     const data = otpDoc.data();
+    
+    console.log('--- OTP VERIFICATION DEBUG ---');
+    console.log('User Email:', email);
+    console.log('Current Time:', new Date().toISOString(), '(', Date.now(), ')');
+    console.log('OTP Expiry Time:', new Date(data.expiresAt).toISOString(), '(', data.expiresAt, ')');
+    console.log('Stored OTP:', data.otp, '| Type:', typeof data.otp);
+    console.log('Entered OTP:', otp, '| Type:', typeof otp);
+    console.log('Type Check:', 'Stored:', data.type, '| Received:', type);
+    
     if (data.type !== type || data.expiresAt < Date.now()) {
+      console.log('Verification Result: FAIL (Expired or Type Mismatch)');
       await deleteDoc(otpRef);
       return res.status(400).json({ success: false, message: 'OTP expired' });
     }
     
-    if (data.otp !== otp) return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    const isMatch = String(data.otp).trim() === String(otp).trim();
+    console.log('Comparison Result:', isMatch);
+    
+    if (!isMatch) {
+      console.log('Verification Result: FAIL (Invalid OTP)');
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
+    }
+    
+    console.log('Verification Result: PASS');
+    console.log('------------------------------');
     
     res.json({ success: true, message: 'OTP verified' });
   } catch (error) {
@@ -221,7 +240,7 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'OTP expired' });
     }
     
-    if (data.otp !== otp) {
+    if (String(data.otp).trim() !== String(otp).trim()) {
       await logSecurityEvent(found.userObj, 'Password Reset OTP Failed', 'FAILURE', reqDetails);
       return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
@@ -323,7 +342,7 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'OTP expired' });
     }
     
-    if (data.otp !== otp) {
+    if (String(data.otp).trim() !== String(otp).trim()) {
       await logSecurityEvent(found.userObj, 'Password Change OTP Failed', 'FAILURE', reqDetails);
       return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }

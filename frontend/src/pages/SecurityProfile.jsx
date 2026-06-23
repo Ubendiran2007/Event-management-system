@@ -110,7 +110,7 @@ const SecurityProfile = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
         },
-        body: JSON.stringify({ email: currentUser.email, otp, type: 'CHANGE' })
+        body: JSON.stringify({ identifier: currentUser.email, otp, type: 'CHANGE' })
       });
       const data = await res.json();
       if (data.success) {
