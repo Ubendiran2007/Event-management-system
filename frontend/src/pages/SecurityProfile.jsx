@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import Navbar from '../components/Navbar';
 import AlertCard from '../components/AlertCard';
@@ -183,10 +183,10 @@ const SecurityProfile = () => {
 
   if (!currentUser) return null;
 
-  const getProcessedTimeline = () => {
+  const getProcessedTimeline = (isFullHistory) => {
     let filtered = securityTimeline;
 
-    if (timelineFilter !== 'All') {
+    if (isFullHistory && timelineFilter !== 'All') {
       filtered = filtered.filter(log => {
         const act = log.activity.toLowerCase();
         if (timelineFilter === 'Login') return act.includes('login');
@@ -196,7 +196,7 @@ const SecurityProfile = () => {
         if (timelineFilter === 'Account Lock') return act.includes('lock');
         return true;
       });
-    } else if (!showFullHistory) {
+    } else if (!isFullHistory) {
       const highValuePatterns = ['login', 'password changed', 'password reset', 'account locked', 'suspicious'];
       filtered = filtered.filter(log => {
         const act = log.activity.toLowerCase();
@@ -217,16 +217,17 @@ const SecurityProfile = () => {
     });
     if (currentGroup) grouped.push(currentGroup);
 
-    if (!showFullHistory) {
+    if (!isFullHistory) {
       grouped = grouped.slice(0, 20);
     }
 
     return grouped;
   };
 
-  const processedTimeline = getProcessedTimeline();
-  const totalPages = Math.ceil(processedTimeline.length / ITEMS_PER_PAGE);
-  const currentTimelinePage = processedTimeline.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const previewTimeline = getProcessedTimeline(false);
+  const fullTimeline = getProcessedTimeline(true);
+  const totalPages = Math.ceil(fullTimeline.length / ITEMS_PER_PAGE);
+  const currentTimelinePage = fullTimeline.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
@@ -323,21 +324,6 @@ const SecurityProfile = () => {
                     <AlertTriangle size={18} className="text-indigo-500" />
                     Security Activity Timeline
                   </h3>
-                  {showFullHistory && (
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
-                      {['All', 'Login', 'Password', 'OTP', 'Security Alerts', 'Account Lock'].map(f => (
-                        <button
-                          key={f}
-                          onClick={() => { setTimelineFilter(f); setCurrentPage(1); }}
-                          className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap transition-colors ${
-                            timelineFilter === f ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
-                          {f}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 <div className="p-0">
                   <table className="w-full text-left border-collapse">
@@ -350,7 +336,7 @@ const SecurityProfile = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {currentTimelinePage.map((log) => (
+                      {previewTimeline.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-50/50">
                           <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
                             {new Date(log.timestamp).toLocaleString()}
@@ -372,10 +358,10 @@ const SecurityProfile = () => {
                           </td>
                         </tr>
                       ))}
-                      {currentTimelinePage.length === 0 && (
+                      {previewTimeline.length === 0 && (
                         <tr>
                           <td colSpan="4" className="px-6 py-8 text-center text-slate-500">
-                            No security activities recorded for this filter.
+                            No high-value security activities recorded recently.
                           </td>
                         </tr>
                       )}
@@ -384,42 +370,12 @@ const SecurityProfile = () => {
                 </div>
                 
                 <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
-                  {!showFullHistory ? (
-                    <button 
-                      onClick={() => setShowFullHistory(true)}
-                      className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors w-full text-center"
-                    >
-                      View Full History
-                    </button>
-                  ) : (
-                    <>
-                      <div className="text-xs text-slate-500 font-medium">
-                        Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, processedTimeline.length)} of {processedTimeline.length}
-                      </div>
-                      <div className="flex gap-2">
-                        <button 
-                          disabled={currentPage === 1}
-                          onClick={() => setCurrentPage(prev => prev - 1)}
-                          className="px-3 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
-                        >
-                          Prev
-                        </button>
-                        <button 
-                          disabled={currentPage === totalPages || totalPages === 0}
-                          onClick={() => setCurrentPage(prev => prev + 1)}
-                          className="px-3 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
-                        >
-                          Next
-                        </button>
-                        <button 
-                          onClick={() => { setShowFullHistory(false); setTimelineFilter('All'); setCurrentPage(1); }}
-                          className="ml-4 px-3 py-1 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100"
-                        >
-                          Close History
-                        </button>
-                      </div>
-                    </>
-                  )}
+                  <button 
+                    onClick={() => setShowFullHistory(true)}
+                    className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors w-full text-center py-1"
+                  >
+                    View Full History
+                  </button>
                 </div>
               </div>
             </div>
@@ -629,6 +585,130 @@ const SecurityProfile = () => {
             </div>
           </div>
         )}
+        {/* History Modal */}
+        {showFullHistory && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+            <div className="w-full max-w-5xl h-[75vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white shrink-0">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <AlertTriangle size={20} className="text-indigo-500" />
+                  Security Activity History
+                </h3>
+                
+                <div className="flex items-center gap-4">
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                    {['All', 'Login', 'Password', 'OTP', 'Security Alerts', 'Account Lock'].map(f => (
+                      <button
+                        key={f}
+                        onClick={() => { setTimelineFilter(f); setCurrentPage(1); }}
+                        className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap transition-colors ${
+                          timelineFilter === f ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={() => { setShowFullHistory(false); setTimelineFilter('All'); setCurrentPage(1); }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors shrink-0"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body (Scrollable) */}
+              <div className="flex-1 overflow-y-auto p-0 bg-slate-50/50">
+                <table className="w-full text-left border-collapse bg-white">
+                  <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Activity</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">IP Address</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {currentTimelinePage.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-800">
+                          {log.activity} {log.count > 1 && <span className="text-xs text-slate-500 ml-1 font-semibold bg-slate-100 px-2 py-0.5 rounded-full">({log.count} Times)</span>}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            log.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600' :
+                            log.status === 'WARNING' ? 'bg-amber-50 text-amber-600' :
+                            'bg-red-50 text-red-600'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-500 font-mono">
+                          {log.ip || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                    {currentTimelinePage.length === 0 && (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
+                          <div className="flex flex-col items-center justify-center gap-3">
+                            <AlertTriangle size={32} className="text-slate-300" />
+                            <p>No security activities recorded for this filter.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Modal Footer (Sticky) */}
+              <div className="px-6 py-4 border-t border-slate-100 bg-white shrink-0 flex items-center justify-between shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
+                <div className="text-sm text-slate-500 font-medium">
+                  {fullTimeline.length > 0 ? (
+                    <>Showing <span className="text-slate-800 font-semibold">{(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, fullTimeline.length)}</span> of <span className="text-slate-800 font-semibold">{fullTimeline.length}</span></>
+                  ) : (
+                    'No results'
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <button 
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => prev - 1)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-2 text-sm font-medium text-slate-400">
+                    Page {currentPage} of {Math.max(1, totalPages)}
+                  </span>
+                  <button 
+                    disabled={currentPage === totalPages || totalPages === 0}
+                    onClick={() => setCurrentPage(prev => prev + 1)}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
+                  >
+                    Next
+                  </button>
+                  <div className="w-px h-6 bg-slate-200 mx-2"></div>
+                  <button 
+                    onClick={() => { setShowFullHistory(false); setTimelineFilter('All'); setCurrentPage(1); }}
+                    className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
+                  >
+                    Close History
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   );
