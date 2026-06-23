@@ -478,7 +478,7 @@ module.exports = {
         <div style="margin: 24px 0; padding: 20px; background-color: #fffbeb; border: 1px dashed #fcd34d; border-radius: 8px; text-align: center;">
           <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold; color: #b45309; text-transform: uppercase; letter-spacing: 1px;">Your OTP Code</p>
           <div style="font-size: 32px; font-weight: 800; color: #d97706; letter-spacing: 4px; font-family: monospace;">${otp}</div>
-          <p style="margin: 8px 0 0; font-size: 12px; color: #92400e;">Valid for 10 minutes. Do not share this code.</p>
+          <p style="margin: 8px 0 0; font-size: 12px; color: #92400e;">This OTP is valid for 1 minute only.</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
           If this request was not made by you, contact IQAC immediately.
@@ -524,7 +524,7 @@ module.exports = {
         <div style="margin: 24px 0; padding: 20px; background-color: #eef2ff; border: 1px dashed #c7d2fe; border-radius: 8px; text-align: center;">
           <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold; color: #4338ca; text-transform: uppercase; letter-spacing: 1px;">Your Reset OTP</p>
           <div style="font-size: 32px; font-weight: 800; color: #4f46e5; letter-spacing: 4px; font-family: monospace;">${otp}</div>
-          <p style="margin: 8px 0 0; font-size: 12px; color: #3730a3;">Valid for 10 minutes. Do not share this code.</p>
+          <p style="margin: 8px 0 0; font-size: 12px; color: #3730a3;">This OTP is valid for 1 minute only.</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
           If you did not initiate this request, contact IQAC immediately.

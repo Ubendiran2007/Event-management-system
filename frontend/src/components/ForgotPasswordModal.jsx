@@ -9,6 +9,7 @@ const ForgotPasswordModal = ({ onClose }) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [timer, setTimer] = useState(60);
@@ -81,8 +82,8 @@ const ForgotPasswordModal = ({ onClose }) => {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (newPassword.length < 7) return setError('Password must be at least 7 characters long.');
-    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-      return setError('Password must contain uppercase, lowercase, and a number.');
+    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      return setError('Password must contain uppercase, lowercase, a number, and a special character.');
     }
     if (newPassword !== confirmPassword) return setError('Passwords do not match.');
 
@@ -172,7 +173,7 @@ const ForgotPasswordModal = ({ onClose }) => {
             {step === 2 && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <p className="text-sm text-slate-600 mb-4">
-                  An OTP has been sent to <strong>{email}</strong>. Valid for 10 minutes.
+                  An OTP has been sent to <strong>{email}</strong>. OTP expires in 1 minute.
                 </p>
                 
                 <div className="space-y-1.5">
@@ -229,7 +230,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                     <input
                       type={showPassword ? 'text' : 'password'}
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                      placeholder="Min 7 chars, 1 Upper, 1 Lower, 1 Num"
+                      placeholder="Min 7 chars, 1 Upper, 1 Lower, 1 Num, 1 Spec"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       autoComplete="new-password"
@@ -242,14 +243,19 @@ const ForgotPasswordModal = ({ onClose }) => {
 
                 <div className="space-y-1.5 mt-4">
                   <label className="text-sm font-medium text-slate-700">Confirm New Password</label>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                    placeholder="Repeat new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+                      placeholder="Repeat new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
+                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <button

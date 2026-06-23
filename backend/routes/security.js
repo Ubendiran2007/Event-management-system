@@ -9,6 +9,15 @@ const emailTemplates = require('../services/emailTemplates');
 
 const router = express.Router();
 
+function validateStrongPassword(password) {
+  if (!password || password.length < 7) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[a-z]/.test(password)) return false;
+  if (!/[0-9]/.test(password)) return false;
+  if (!/[^A-Za-z0-9]/.test(password)) return false;
+  return true;
+}
+
 function getRequestDetails(req) {
   const parser = new UAParser(req.headers['user-agent']);
   const result = parser.getResult();
@@ -117,7 +126,7 @@ router.post('/forgot-password', async (req, res) => {
     const otp = generateOtp();
     await setDoc(otpRef, {
       otp,
-      expiresAt: Date.now() + 10 * 60 * 1000,
+      expiresAt: Date.now() + 1 * 60 * 1000,
       attempts: attempts + 1,
       type: 'RESET'
     });
@@ -167,6 +176,10 @@ router.post('/reset-password', async (req, res) => {
   
   if (!email || !otp || !newPassword) {
     return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
+  }
+
+  if (!validateStrongPassword(newPassword)) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 7 characters long, containing uppercase, lowercase, numbers, and special characters.' });
   }
   
   try {
@@ -231,11 +244,21 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
     }
     
     const otpRef = doc(db, 'otps', email.toLowerCase());
+    const otpDoc = await getDoc(otpRef);
+    let attempts = 0;
+    if (otpDoc.exists()) {
+      const data = otpDoc.data();
+      if (data.attempts >= 5 && data.expiresAt > Date.now()) {
+        return res.status(429).json({ success: false, message: 'Too many OTP requests. Please try again later.' });
+      }
+      attempts = data.attempts || 0;
+    }
+    
     const otp = generateOtp();
     await setDoc(otpRef, {
       otp,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-      attempts: 0,
+      expiresAt: Date.now() + 1 * 60 * 1000,
+      attempts: attempts + 1,
       type: 'CHANGE'
     });
     
@@ -258,6 +281,10 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
   const { otp, newPassword } = req.body;
   const email = req.user.email;
   const reqDetails = getRequestDetails(req);
+
+  if (!validateStrongPassword(newPassword)) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 7 characters long, containing uppercase, lowercase, numbers, and special characters.' });
+  }
   
   try {
     const found = await findUserByEmail(email);
