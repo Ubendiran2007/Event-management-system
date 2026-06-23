@@ -124,7 +124,8 @@ router.post('/forgot-password', async (req, res) => {
     let attempts = 0;
     if (otpDoc.exists()) {
       const data = otpDoc.data();
-      if (data.attempts >= 50 && data.expiresAt > Date.now()) {
+      if (data.attempts >= 5 && data.expiresAt > Date.now()) {
+        await logSecurityEvent(found.userObj, 'Maximum OTP Attempts Reached', 'FAILURE', reqDetails);
         return res.status(429).json({ success: false, message: 'Too many OTP requests. Please try again later.' });
       }
       attempts = data.attempts || 0;
@@ -156,7 +157,7 @@ router.post('/forgot-password', async (req, res) => {
       }
     }
     
-    res.json({ success: true, message: 'OTP sent.', maskedEmail, otp });
+    res.json({ success: true, message: 'OTP sent.', maskedEmail });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -165,6 +166,7 @@ router.post('/forgot-password', async (req, res) => {
 
 router.post('/verify-otp', async (req, res) => {
   const { identifier, otp, type } = req.body;
+  const reqDetails = getRequestDetails(req);
   if (!identifier || !otp || !type) return res.status(400).json({ success: false, message: 'Missing parameters' });
   
   try {
@@ -188,6 +190,7 @@ router.post('/verify-otp', async (req, res) => {
     
     if (data.type !== type || data.expiresAt < Date.now()) {
       console.log('Verification Result: FAIL (Expired or Type Mismatch)');
+      await logSecurityEvent(found.userObj, 'OTP Expired', 'FAILURE', reqDetails);
       await deleteDoc(otpRef);
       return res.status(400).json({ success: false, message: 'OTP expired' });
     }
@@ -197,11 +200,14 @@ router.post('/verify-otp', async (req, res) => {
     
     if (!isMatch) {
       console.log('Verification Result: FAIL (Invalid OTP)');
+      await logSecurityEvent(found.userObj, 'OTP Verification Failed', 'FAILURE', reqDetails);
       return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
     
     console.log('Verification Result: PASS');
     console.log('------------------------------');
+    
+    await logSecurityEvent(found.userObj, 'OTP Verified', 'SUCCESS', reqDetails);
     
     res.json({ success: true, message: 'OTP verified' });
   } catch (error) {
@@ -290,6 +296,7 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
     if (otpDoc.exists()) {
       const data = otpDoc.data();
       if (data.attempts >= 5 && data.expiresAt > Date.now()) {
+        await logSecurityEvent(found.userObj, 'Maximum OTP Attempts Reached', 'FAILURE', reqDetails);
         return res.status(429).json({ success: false, message: 'Too many OTP requests. Please try again later.' });
       }
       attempts = data.attempts || 0;
