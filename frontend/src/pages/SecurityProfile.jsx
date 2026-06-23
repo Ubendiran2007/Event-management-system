@@ -218,7 +218,7 @@ const SecurityProfile = () => {
     if (currentGroup) grouped.push(currentGroup);
 
     if (!isFullHistory) {
-      grouped = grouped.slice(0, 20);
+      grouped = grouped.slice(0, 4);
     }
 
     return grouped;
