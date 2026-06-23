@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, KeyRound, CheckCircle2, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
-
+import AlertCard from './AlertCard';
 const ForgotPasswordModal = ({ onClose }) => {
   const [step, setStep] = useState(1);
   const [identifier, setIdentifier] = useState('');
@@ -12,7 +12,7 @@ const ForgotPasswordModal = ({ onClose }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [alert, setAlert] = useState(null);
   const [timer, setTimer] = useState(60);
   const [isResendActive, setIsResendActive] = useState(false);
 
@@ -31,9 +31,9 @@ const ForgotPasswordModal = ({ onClose }) => {
 
   const handleRequestOtp = async (e) => {
     e.preventDefault();
-    if (!identifier) return setError('Please enter your Account Identifier.');
+    if (!identifier) return setAlert({ type: 'error', title: 'Validation Error', message: 'Please enter your Account Identifier.' });
     setLoading(true);
-    setError('');
+    setAlert(null);
     try {
       const res = await fetch('http://localhost:5001/api/security/forgot-password', {
         method: 'POST',
@@ -46,11 +46,16 @@ const ForgotPasswordModal = ({ onClose }) => {
         setStep(2);
         setTimer(60);
         setIsResendActive(false);
+        setAlert({ type: 'success', title: 'OTP Sent Successfully', message: 'A verification code has been sent to your registered email address.' });
       } else {
-        setError(data.message || 'Failed to send OTP.');
+        if (data.message && data.message.toLowerCase().includes('not found')) {
+          setAlert({ type: 'error', title: 'Account Not Found', message: 'No account is associated with the information provided.\nPlease verify your College Email, Roll Number, or Employee ID.' });
+        } else {
+          setAlert({ type: 'error', title: 'Error', message: data.message || 'Failed to send OTP.' });
+        }
       }
     } catch (err) {
-      setError('Connection error. Please try again.');
+      setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -58,10 +63,10 @@ const ForgotPasswordModal = ({ onClose }) => {
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
-    if (!otp) return setError('Please enter the OTP.');
+    if (!otp) return setAlert({ type: 'error', title: 'Validation Error', message: 'Please enter the OTP.' });
     
     setLoading(true);
-    setError('');
+    setAlert(null);
     try {
       const res = await fetch('http://localhost:5001/api/security/verify-otp', {
         method: 'POST',
@@ -71,11 +76,16 @@ const ForgotPasswordModal = ({ onClose }) => {
       const data = await res.json();
       if (data.success) {
         setStep(3);
+        setAlert(null);
       } else {
-        setError(data.message || 'Invalid OTP.');
+        if (data.message && data.message.toLowerCase().includes('expired')) {
+          setAlert({ type: 'error', title: 'OTP Expired', message: 'Your verification code has expired.\nPlease request a new OTP and try again.' });
+        } else {
+          setAlert({ type: 'error', title: 'Verification Failed', message: 'The OTP entered is incorrect.\nPlease check the code sent to your registered email and try again.' });
+        }
       }
     } catch (err) {
-      setError('Connection error. Please try again.');
+      setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -83,14 +93,19 @@ const ForgotPasswordModal = ({ onClose }) => {
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
-    if (newPassword.length < 7) return setError('Password must be at least 7 characters long.');
-    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
-      return setError('Password must contain uppercase, lowercase, a number, and a special character.');
+    if (newPassword.length < 7 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      return setAlert({ 
+        type: 'error', 
+        title: 'Password Requirements Not Met', 
+        message: 'Your password must contain:\n✓ Minimum 7 Characters\n✓ One Uppercase Letter\n✓ One Lowercase Letter\n✓ One Number\n✓ One Special Character' 
+      });
     }
-    if (newPassword !== confirmPassword) return setError('Passwords do not match.');
+    if (newPassword !== confirmPassword) {
+      return setAlert({ type: 'error', title: 'Password Confirmation Failed', message: 'The New Password and Confirm Password fields do not match.' });
+    }
 
     setLoading(true);
-    setError('');
+    setAlert(null);
     try {
       const res = await fetch('http://localhost:5001/api/security/reset-password', {
         method: 'POST',
@@ -100,11 +115,12 @@ const ForgotPasswordModal = ({ onClose }) => {
       const data = await res.json();
       if (data.success) {
         setStep(4);
+        setAlert({ type: 'success', title: 'Password Reset Successful', message: 'Your password has been reset successfully.' });
       } else {
-        setError(data.message || 'Failed to reset password.');
+        setAlert({ type: 'error', title: 'Reset Failed', message: data.message || 'Failed to reset password.' });
       }
     } catch (err) {
-      setError('Connection error. Please try again.');
+      setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -137,10 +153,13 @@ const ForgotPasswordModal = ({ onClose }) => {
           </div>
 
           <div className="p-6">
-            {error && (
-              <div className="p-3 mb-4 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm text-center">
-                {error}
-              </div>
+            {alert && (
+              <AlertCard 
+                type={alert.type} 
+                title={alert.title} 
+                message={alert.message} 
+                onClose={() => setAlert(null)} 
+              />
             )}
 
             {step === 1 && (
@@ -272,17 +291,10 @@ const ForgotPasswordModal = ({ onClose }) => {
             )}
 
             {step === 4 && (
-              <div className="text-center py-6">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 size={32} />
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2">Password Reset Successful</h3>
-                <p className="text-slate-600 mb-6">
-                  Your password has been changed. You can now use your new password to sign in.
-                </p>
+              <div className="py-2">
                 <button
                   onClick={onClose}
-                  className="w-full btn-primary py-3"
+                  className="w-full btn-primary py-3 mt-4"
                 >
                   Return to Login
                 </button>

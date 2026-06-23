@@ -6,6 +6,7 @@ import { UserRole } from '../types';
 
 import Navbar from '../components/Navbar';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
+import AlertCard from '../components/AlertCard';
 
 
 
@@ -15,7 +16,7 @@ const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [alert, setAlert] = useState(null);
   const [loading, setLoading] = useState(false);
   const [unlockInputs, setUnlockInputs] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
@@ -27,7 +28,7 @@ const Login = () => {
   
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setAlert(null);
     setLoading(true);
 
     try {
@@ -56,11 +57,27 @@ const Login = () => {
         navigate('/dashboard');
 
       } else {
-        setError(data.message || 'Invalid username or password');
+        if (data.message && (data.message.toLowerCase().includes('lock') || data.message.toLowerCase().includes('too many'))) {
+          setAlert({
+            type: 'error',
+            title: 'Account Temporarily Locked',
+            message: 'Multiple unsuccessful login attempts have been detected.\nFor security reasons, your account has been temporarily locked for 15 minutes.'
+          });
+        } else {
+          setAlert({
+            type: 'error',
+            title: 'Authentication Failed',
+            message: 'The username/email or password entered is incorrect.\nPlease verify your credentials and try again.'
+          });
+        }
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError('Unable to connect to the server. Please try again.');
+      setAlert({
+        type: 'error',
+        title: 'Connection Error',
+        message: 'Unable to connect to the server. Please try again.'
+      });
     } finally {
       setLoading(false);
     }
@@ -141,10 +158,13 @@ const Login = () => {
               </div>
             </div>
 
-            {error && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm text-center">
-                {error}
-              </div>
+            {alert && (
+              <AlertCard 
+                type={alert.type} 
+                title={alert.title} 
+                message={alert.message} 
+                onClose={() => setAlert(null)} 
+              />
             )}
 
             <div className="flex justify-end mt-2">

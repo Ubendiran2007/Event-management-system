@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import Navbar from '../components/Navbar';
+import AlertCard from '../components/AlertCard';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const SecurityProfile = () => {
@@ -17,7 +18,7 @@ const SecurityProfile = () => {
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
+  const [alert, setAlert] = useState(null);
   const [timer, setTimer] = useState(60);
   const [isResendActive, setIsResendActive] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -69,7 +70,7 @@ const SecurityProfile = () => {
 
   const handleChangePasswordRequest = async (e) => {
     e.preventDefault();
-    setMessage({ type: '', text: '' });
+    setAlert(null);
     setLoading(true);
     try {
       const res = await fetch('http://localhost:5001/api/security/change-password/request', {
@@ -85,12 +86,12 @@ const SecurityProfile = () => {
         setStep(2);
         setTimer(60);
         setIsResendActive(false);
-        setMessage({ type: 'success', text: 'OTP sent to your email.' });
+        setAlert({ type: 'success', title: 'OTP Sent Successfully', message: 'A verification code has been sent to your registered email address.' });
       } else {
-        setMessage({ type: 'error', text: data.message });
+        setAlert({ type: 'error', title: 'Authentication Failed', message: data.message || 'Invalid current password' });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Connection error' });
+      setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -98,8 +99,8 @@ const SecurityProfile = () => {
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
-    setMessage({ type: '', text: '' });
-    if (!otp) return setMessage({ type: 'error', text: 'Please enter the OTP.' });
+    setAlert(null);
+    if (!otp) return setAlert({ type: 'error', title: 'Validation Error', message: 'Please enter the OTP.' });
     
     setLoading(true);
     try {
@@ -114,11 +115,16 @@ const SecurityProfile = () => {
       const data = await res.json();
       if (data.success) {
         setStep(3);
+        setAlert(null);
       } else {
-        setMessage({ type: 'error', text: data.message || 'Invalid OTP' });
+        if (data.message && data.message.toLowerCase().includes('expired')) {
+          setAlert({ type: 'error', title: 'OTP Expired', message: 'Your verification code has expired.\nPlease request a new OTP and try again.' });
+        } else {
+          setAlert({ type: 'error', title: 'Verification Failed', message: 'The OTP entered is incorrect.\nPlease check the code sent to your registered email and try again.' });
+        }
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Connection error' });
+      setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -126,12 +132,17 @@ const SecurityProfile = () => {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setMessage({ type: '', text: '' });
-    if (newPassword.length < 7) return setMessage({ type: 'error', text: 'Password must be at least 7 characters long.' });
-    if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
-      return setMessage({ type: 'error', text: 'Password must contain uppercase, lowercase, a number, and a special character.' });
+    setAlert(null);
+    if (newPassword.length < 7 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      return setAlert({ 
+        type: 'error', 
+        title: 'Password Requirements Not Met', 
+        message: 'Your password must contain:\n✓ Minimum 7 Characters\n✓ One Uppercase Letter\n✓ One Lowercase Letter\n✓ One Number\n✓ One Special Character' 
+      });
     }
-    if (newPassword !== confirmPassword) return setMessage({ type: 'error', text: 'Passwords do not match.' });
+    if (newPassword !== confirmPassword) {
+      return setAlert({ type: 'error', title: 'Password Confirmation Failed', message: 'The New Password and Confirm Password fields do not match.' });
+    }
     
     setLoading(true);
     try {
@@ -150,11 +161,12 @@ const SecurityProfile = () => {
         setNewPassword('');
         setConfirmPassword('');
         setOtp('');
+        setAlert({ type: 'success', title: 'Password Updated Successfully', message: 'Your password has been changed successfully.' });
       } else {
-        setMessage({ type: 'error', text: data.message });
+        setAlert({ type: 'error', title: 'Update Failed', message: data.message });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Connection error' });
+      setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
       setLoading(false);
     }
@@ -316,12 +328,13 @@ const SecurityProfile = () => {
               <p className="text-slate-500 mt-2">Secure your account with a strong password.</p>
             </div>
 
-            {message.text && (
-              <div className={`mb-6 p-4 rounded-xl text-sm font-medium ${
-                message.type === 'error' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
-              }`}>
-                {message.text}
-              </div>
+            {alert && (
+              <AlertCard 
+                type={alert.type} 
+                title={alert.title} 
+                message={alert.message} 
+                onClose={() => setAlert(null)} 
+              />
             )}
 
             {step === 1 && (
@@ -438,15 +451,10 @@ const SecurityProfile = () => {
             )}
 
             {step === 4 && (
-              <div className="text-center py-6">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 size={32} />
-                </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-2">Success!</h3>
-                <p className="text-slate-600 mb-6">Your password has been changed securely.</p>
+              <div className="py-2">
                 <button
-                  onClick={() => { setStep(1); setActiveTab('overview'); }}
-                  className="w-full btn-secondary py-3"
+                  onClick={() => { setStep(1); setActiveTab('overview'); setAlert(null); }}
+                  className="w-full btn-secondary py-3 mt-4"
                 >
                   Back to Security
                 </button>
