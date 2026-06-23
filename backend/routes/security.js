@@ -136,6 +136,7 @@ router.post('/forgot-password', async (req, res) => {
       otp,
       expiresAt: Date.now() + 1 * 60 * 1000,
       attempts: attempts + 1,
+      verificationAttempts: 0,
       type: 'RESET'
     });
     
@@ -200,8 +201,17 @@ router.post('/verify-otp', async (req, res) => {
     
     if (!isMatch) {
       console.log('Verification Result: FAIL (Invalid OTP)');
-      await logSecurityEvent(found.userObj, 'OTP Verification Failed', 'FAILURE', reqDetails);
-      return res.status(400).json({ success: false, message: 'Invalid OTP' });
+      
+      const newVerificationAttempts = (data.verificationAttempts || 0) + 1;
+      if (newVerificationAttempts >= 5) {
+        await deleteDoc(otpRef);
+        await logSecurityEvent(found.userObj, 'Maximum OTP Verification Attempts Reached', 'FAILURE', reqDetails);
+        return res.status(400).json({ success: false, message: 'Maximum verification attempts reached. Please request a new OTP.' });
+      } else {
+        await setDoc(otpRef, { ...data, verificationAttempts: newVerificationAttempts });
+        await logSecurityEvent(found.userObj, 'OTP Verification Failed', 'FAILURE', reqDetails);
+        return res.status(400).json({ success: false, message: 'Invalid OTP' });
+      }
     }
     
     console.log('Verification Result: PASS');
@@ -318,6 +328,7 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
       otp,
       expiresAt: Date.now() + 1 * 60 * 1000,
       attempts: attempts + 1,
+      verificationAttempts: 0,
       type: 'CHANGE'
     });
     
