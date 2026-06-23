@@ -263,6 +263,21 @@ router.post('/:eventId', async (req, res) => {
       ? manualFeedbackSummary
       : feedbackSummary;
 
+    // Update odRequest documents with attendanceStatus so frontend knows if student attended
+    if (studentAttendanceList && studentAttendanceList.length > 0) {
+      for (const att of studentAttendanceList) {
+        if (att.requestId && typeof att.requestId === 'string') {
+          try {
+            await updateDoc(doc(db, 'odRequests', att.requestId), {
+              attendanceStatus: att.attendanceStatus
+            });
+          } catch(e) {
+            console.error('Failed to update odRequest attendance:', e);
+          }
+        }
+      }
+    }
+
     await updateDoc(eventRef, {
       status: 'COMPLETED',
       iqacSubmittedAt: new Date().toISOString(),

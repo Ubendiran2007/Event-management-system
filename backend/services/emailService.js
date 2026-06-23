@@ -219,6 +219,7 @@ transporter.verify((error, success) => {
 
 function getEventReference(eventData = {}) {
   return (
+    eventData.referenceId ||
     eventData.eventReference ||
     eventData.requisition?.iqacNumber ||
     eventData.iqacNumber ||

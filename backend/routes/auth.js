@@ -20,7 +20,7 @@ const router = express.Router();
 
 const STAFF_CREDENTIALS = {
   // ── CSE ──────────────────────────────────────────────────
-  'faculty.cse':  { username: 'faculty.cse',  password: 'password', user: { id: 'f_cse',   name: 'Dr. Arul Kumar',     email: 'ubendirankumar@gmail.com',   role: 'FACULTY', department: 'CSE'   } },
+  'faculty.cse':  { username: 'faculty.cse',  password: 'password', user: { id: 'f_cse',   name: 'Dr. Arul Kumar',     email: 'ubendirankumar@gmail.com',   role: 'FACULTY', department: 'CSE', assignedClasses: ['CSE B', 'CSE D'] } },
   'hod.cse':      { username: 'hod.cse',      password: 'password', user: { id: 'h_cse',   name: 'Dr. Meena Iyer',     email: 'ubendirankumar@gmail.com',       role: 'HOD',     department: 'CSE'   } },
 
   // ── ECE ──────────────────────────────────────────────────
@@ -84,6 +84,7 @@ async function syncStaffUserToFirestore(staffUser, password) {
     email: String(staffUser.email || '').toLowerCase(),
     role: String(staffUser.role || '').toUpperCase(),
     department: staffUser.department || null,
+    assignedClasses: staffUser.assignedClasses || [],
     password: current.password || password,
     updatedAt: new Date().toISOString(),
     createdAt: current.createdAt || new Date().toISOString(),

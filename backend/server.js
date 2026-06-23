@@ -13,6 +13,7 @@ const odRequestsRoutes = require('./routes/odRequests');
 const correctionRequestsRoutes = require('./routes/correctionRequests');
 const securityRoutes = require('./routes/security');
 const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionService');
+const { startFeedbackReminderJob } = require('./services/feedbackReminderService');
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -55,4 +56,5 @@ server.on('error', (err) => {
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   startEventAutoRejectionJob();
+  startFeedbackReminderJob();
 }); // Triggered restart to load .env

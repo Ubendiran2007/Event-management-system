@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
-import { formatRollNo, formatStudentNameWithRoll, formatEventRef, fallbackValue } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue } from '../utils/formatters';
 import { EventStatus, UserRole } from '../types';
 import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
@@ -198,7 +198,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     const rows = studentRoster.length > 0
       ? studentRoster.map((r, i) => `<tr>
           <td style='${tdStyle}'>${i + 1}</td>
-          <td style='${tdStyle}'>${formatStudentNameWithRoll(r.student || r.studentName, r.rollNo, r.userId || r.studentId)}</td>
+          <td style='${tdStyle}'>${formatStudentNameOnly(r.student || r.studentName)}</td>
           <td style='${tdStyle}'>${fallbackValue(r.rollNo, 'general')}</td>
           <td style='${tdStyle}font-weight:bold'>${statusCode(r.attendanceStatus)}</td>
         </tr>`).join('')
@@ -411,7 +411,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     };
     const rows = studentRoster.length > 0
       ? studentRoster.map((r, i) => `<tr>
-          <td>${i+1}</td><td>${r.student||'—'}</td><td>${r.rollNo||'—'}</td>
+          <td>${i+1}</td><td>${formatStudentNameOnly(r.student)}</td><td>${r.rollNo||'—'}</td>
           <td style="font-weight:bold">${statusCode(r.attendanceStatus)}</td>
         </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888;padding:20px;">No attendance records found.</td></tr>';
@@ -563,14 +563,14 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
     const attRows = studentRoster.length > 0
       ? studentRoster.map((r, i) => `<tr>
-          <td>${i+1}</td><td>${r.student||'—'}</td><td>${r.rollNo||'—'}</td>
+          <td>${i+1}</td><td>${formatStudentNameOnly(r.student)}</td><td>${r.rollNo||'—'}</td>
           <td style="font-weight:bold">${(['FN','AN'].includes(String(r.attendanceStatus||'').toUpperCase()) ? String(r.attendanceStatus).toUpperCase() : (String(r.attendanceStatus||'').toUpperCase()==='NOT_ATTENDED'?'A':'P'))}</td>
         </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888">No roster recorded</td></tr>';
 
     const fbRows = studentFeedback.length > 0
       ? studentFeedback.map((c,i) => `<tr>
-          <td>${i+1}</td><td>${c.student||c.name||'—'}</td><td>${c.rollNo||'—'}</td>
+          <td>${i+1}</td><td>${formatStudentNameOnly(c.student||c.name)}</td><td>${c.rollNo||'—'}</td>
           <td>${c.comment||c.feedback||'—'}</td>
         </tr>`).join('')
       : '<tr><td colspan="4" style="text-align:center;color:#888">No feedback submitted</td></tr>';
@@ -1256,7 +1256,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
                       <tr key={row.id || idx} className="hover:bg-slate-50">
                         <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
                         <td className="px-3 py-2 font-medium text-slate-800">
-                          {formatStudentNameWithRoll(row.student || row.studentName, row.rollNo, row.userId || row.studentId)}
+                          {formatStudentNameOnly(row.student || row.studentName)}
                         </td>
                         <td className="px-3 py-2 text-slate-500">{fallbackValue(row.rollNo, 'general')}</td>
                         <td className="px-3 py-2">

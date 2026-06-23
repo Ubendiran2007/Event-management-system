@@ -609,5 +609,32 @@ module.exports = {
         </p>
       `
     });
+  },
+
+  feedbackReminderTemplate: ({ studentName, eventName, reminderType, link }) => {
+    const isUrgent = reminderType === '72h';
+    return buildBaseTemplate({
+      title: 'Action Required: Event Feedback',
+      subtitle: isUrgent ? 'Final Reminder' : 'Reminder',
+      headerBg: isUrgent ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)' : 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
+      preheader: `Pending feedback for '${eventName}'`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear ${safeVal(studentName, 'Student')},</p>
+        <p style="margin: 0 0 16px; font-size: 14px; color: #334155; line-height: 1.6;">
+          This is an automated reminder that your feedback for the event <strong>${eventName}</strong> is still pending. 
+          As per institutional policy, student feedback is mandatory for all attended events.
+        </p>
+        <div class="alert-box ${isUrgent ? 'alert-error' : 'alert-warning'}" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Important Notice</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">
+            Until feedback is submitted, your participation certificate and event completion status will remain blocked on the portal.
+          </p>
+        </div>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${link}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-weight: 600; border-radius: 6px;">Submit Feedback Now</a>
+        </div>
+        <p style="margin: 20px 0 0; font-size: 13px; color: #64748b; line-height: 1.5;">If you have already submitted your feedback, please disregard this email.</p>
+      `
+    });
   }
 };

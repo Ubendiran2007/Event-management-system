@@ -46,6 +46,7 @@ function issueToken(user) {
     id: user.id,
     role: String(user.role || '').toUpperCase(),
     department: user.department || null,
+    assignedClasses: user.assignedClasses || [],
     name: user.name || '',
     email: user.email || '',
     iat: Date.now(),
@@ -74,6 +75,7 @@ function requireAuth(req, res, next) {
     id: payload.id,
     role: payload.role,
     department: payload.department,
+    assignedClasses: payload.assignedClasses || [],
     name: payload.name,
     email: payload.email,
   };

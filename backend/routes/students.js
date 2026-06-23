@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
 const { collection, getDocs, doc, updateDoc, writeBatch } = require('firebase/firestore');
+const { requireAuth, requireRole } = require('../middleware/auth');
+
+// Protect all Manage Students APIs
+router.use(requireAuth);
+router.use(requireRole(['FACULTY', 'HOD', 'IQAC_TEAM']));
 
 const checkDb = (res) => {
   if (!db) {

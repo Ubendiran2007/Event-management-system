@@ -4,7 +4,7 @@ import defaultPoster from '../assets/sece.avif';
 import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp, Check, Circle, LayoutGrid, Globe, Eye } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
-import { formatRollNo, formatStudentNameWithRoll, formatEventRef, fallbackValue } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue } from '../utils/formatters';
 import { EventStatus } from '../types';
 import EventReportModal from '../components/EventReportModal';
 import * as XLSX from 'xlsx';
@@ -1329,7 +1329,7 @@ const IQACSubmission = () => {
                     {studentAttendanceRoster.map((row, idx) => (
                       <tr key={row.id || `${row.rollNo}-${idx + 1}`} className="border-t border-slate-100">
                         <td className="px-3 py-2 text-slate-700">{idx + 1}</td>
-                        <td className="px-3 py-2 text-slate-800">{formatStudentNameWithRoll(row.student, row.rollNo, row.requestId)}</td>
+                        <td className="px-3 py-2 text-slate-800">{formatStudentNameOnly(row.student)}</td>
                         <td className="px-3 py-2 text-slate-600">{fallbackValue(row.rollNo, 'general')}</td>
                         {(() => {
                           const selects = [];
@@ -1379,12 +1379,33 @@ const IQACSubmission = () => {
             </label>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4 mb-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Responses</p>
-              <p className="mt-1 text-sm font-bold text-slate-900">{autoFeedbackSummary?.totalResponses ?? 0}</p>
-            </div>
-          </div>
+          {(() => {
+            const fbAttended = hasStudentRoster ? studentsAttendedFromRoster : (parseInt(registrationDetails.studentsAttended) || 0);
+            const fbSubmitted = autoFeedbackSummary?.totalResponses ?? 0;
+            const fbPending = Math.max(0, fbAttended - fbSubmitted);
+            const fbPercent = fbAttended > 0 ? Math.round((fbSubmitted / fbAttended) * 100) : 0;
+            
+            return (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4 mb-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Attendees</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{fbAttended}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Feedback Submitted</p>
+                  <p className="mt-1 text-sm font-bold text-emerald-900">{fbSubmitted}</p>
+                </div>
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Feedback Pending</p>
+                  <p className="mt-1 text-sm font-bold text-amber-900">{fbPending}</p>
+                </div>
+                <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Completion %</p>
+                  <p className="mt-1 text-sm font-bold text-purple-900">{fbPercent}%</p>
+                </div>
+              </div>
+            );
+          })()}
 
           {autoFeedbackSummary?.comments?.length > 0 ? (
             <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md custom-scrollbar">

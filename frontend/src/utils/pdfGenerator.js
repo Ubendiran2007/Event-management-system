@@ -177,7 +177,10 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       scale: 1.5,
       useCORS: true,
       logging: false,
-      backgroundColor: '#ffffff'
+      backgroundColor: '#ffffff',
+      scrollY: -window.scrollY,
+      windowWidth: container.scrollWidth,
+      windowHeight: container.scrollHeight
     });
 
     const imgData = canvas.toDataURL('image/png');
@@ -190,15 +193,31 @@ export const generateODLetterBase64 = async (odRequest, event) => {
 
     const imgProps = pdf.getImageProperties(imgData);
     const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    const pdfHeight = pdf.internal.pageSize.getHeight();
     
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    const imgRatio = imgProps.width / imgProps.height;
+    
+    let renderWidth = pdfWidth;
+    let renderHeight = pdfWidth / imgRatio;
+    
+    // If the image is taller than the A4 page, scale it down to fit
+    if (renderHeight > pdfHeight) {
+      renderHeight = pdfHeight;
+      renderWidth = renderHeight * imgRatio;
+    }
+    
+    // Center horizontally if scaled down by height
+    const xOffset = (pdfWidth - renderWidth) / 2;
+    const yOffset = 0;
+
+    pdf.addImage(imgData, 'PNG', xOffset, yOffset, renderWidth, renderHeight);
     
     document.body.removeChild(container);
 
     return pdf.output('datauristring');
   } catch (error) {
     console.error('Error generating OD PDF:', error);
+    if (document.body.contains(container)) document.body.removeChild(container);
     return null;
   }
 };

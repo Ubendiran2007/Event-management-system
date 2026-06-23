@@ -56,7 +56,7 @@ import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
-import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, fallbackValue } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
 
 
@@ -190,6 +190,7 @@ const Dashboard = () => {
     currentUser?.role === UserRole.FACULTY ||
     (currentUser?.role === UserRole.STUDENT_ORGANIZER && currentUser?.isApprovedOrganizer);
   const isStaff = currentUser?.role && ![UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER].includes(currentUser.role.toUpperCase());
+  const canManageStudents = [UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser?.role);
 
   const hasOrganizedEvents = useMemo(() => {
     if (!currentUser || !events) return false;
@@ -702,124 +703,165 @@ const Dashboard = () => {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title></title>
+  <title>Approved OD Participant List</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { 
       size: A4; 
-      margin: 0; 
+      margin: 10mm; 
     }
     body { 
       font-family: 'Times New Roman', Times, serif; 
       color: #1a202c; 
       background: #fff; 
-      padding: 18mm 15mm;
+      padding: 0;
     }
-    .header { border-bottom: 3px double #1a3a6b; margin-bottom: 25px; padding-bottom: 12px; }
-    .header-image { width: 100%; max-height: 90px; object-fit: contain; }
-    .doc-title { text-align: center; font-size: 16pt; font-weight: bold; color: #1a3a6b; margin-top: 15px; text-decoration: underline; text-transform: uppercase; letter-spacing: 0.5px; }
-    .meta-info { margin-bottom: 25px; font-size: 13pt; line-height: 1.6; color: #2d3748; border: 1px solid #cbd5e0; padding: 20px; border-radius: 8px; background: #f8fafc; }
+    .page-border {
+      border: 1.5px solid #1a3a6b;
+      padding: 25px; /* Inner Padding */
+      min-height: 270mm; /* roughly A4 height minus margin */
+      position: relative;
+    }
+    .header { 
+      border-bottom: 2px solid #1a3a6b; /* 2px blue divider line */
+      margin-bottom: 25px; 
+      padding-bottom: 15px; 
+      text-align: center; 
+    }
+    .header-image { 
+      width: 100%; 
+      max-height: 90px; 
+      object-fit: contain; 
+      margin: 0 auto; 
+      display: block; 
+    }
+    .doc-title { 
+      text-align: center; 
+      font-size: 14pt; 
+      font-weight: bold; 
+      color: #1a3a6b; 
+      margin-top: 15px; 
+      text-decoration: underline; 
+      text-transform: uppercase; 
+      letter-spacing: 0.5px; 
+    }
+    .meta-info { 
+      margin-bottom: 25px; 
+      font-size: 11pt; 
+      line-height: 1.6; 
+      color: #1e293b; 
+    }
+    .meta-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e0; }
     th, td { border: 1px solid #cbd5e0; padding: 10px 12px; text-align: left; font-size: 10pt; }
     th { background-color: #f1f5f9; color: #1e293b; font-weight: bold; text-transform: uppercase; font-size: 9pt; }
     .sig-cell { vertical-align: middle; text-align: center; color: #718096; font-size: 8pt; font-weight: normal; background: #fff !important; }
     tr:nth-child(even) { background-color: #f8fafc; }
-    .footer { margin-top: 40px; font-size: 9.5pt; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px; }
-    .sig-space { margin-top: 50px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 40px 20px; align-items: flex-end; }
-    .sig-box { text-align: center; }
-    .sig-label { font-size: 10pt; font-weight: bold; margin-top: 8px; color: #1e293b; }
     
-    .e-stamp {
-      display: inline-block;
-      border: 2px solid #059669;
-      border-radius: 8px;
-      padding: 6px 12px;
-      background: #ecfdf5;
-      margin-bottom: 4px;
-      min-width: 140px;
+    .sig-space { 
+      margin-top: 60px; 
+      display: flex; 
+      justify-content: flex-end; 
     }
-    .e-stamp .check { font-size: 16pt; color: #059669; display: block; line-height: 1; margin-bottom: 2px; }
-    .e-stamp .esigned { font-size: 8pt; font-weight: bold; color: #059669; text-transform: uppercase; letter-spacing: 0.5px; }
-    .e-stamp .ename { font-size: 10pt; font-weight: bold; color: #1a3a6b; display: block; margin-top: 4px; }
-    .e-stamp .edate { font-size: 8pt; color: #475569; font-family: 'Courier New', monospace; display: block; }
+    .sig-box { 
+      text-align: center; 
+      width: 250px;
+    }
+    .sig-line { 
+      border-top: 1.5px solid #1e293b; 
+      width: 100%; 
+      margin-bottom: 8px; 
+    }
+    .sig-label { 
+      font-size: 11pt; 
+      color: #1e293b; 
+      line-height: 1.4;
+    }
     
-    .sig-line { border-top: 1.5px solid #1e293b; width: 180px; margin: 30px auto 5px; }
+    .footer { 
+      margin-top: 40px; 
+      font-size: 9.5pt; 
+      color: #64748b; 
+      text-align: center; 
+      border-top: 1.5px solid #cbd5e0; 
+      padding-top: 15px; 
+    }
 
     @media print {
-      body { padding: 0; }
-      .meta-info { background: #fff !important; }
       th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
-      .e-stamp { background: #ecfdf5 !important; border-color: #059669 !important; -webkit-print-color-adjust: exact; }
+      tr:nth-child(even) { background-color: #f8fafc !important; -webkit-print-color-adjust: exact; }
+      .page-border { border: 1.5px solid #1a3a6b !important; -webkit-print-color-adjust: exact; }
+      .header { border-bottom: 2px solid #1a3a6b !important; -webkit-print-color-adjust: exact; }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <img src="${seceHeader}" alt="Sri Eshwar College header" class="header-image" />
-    <div class="doc-title">Approved On-Duty (OD) Participant List</div>
-  </div>
-  
-  <div class="meta-info">
-    <div style="display: flex; justify-content: space-between;">
-      <span><strong>Event Title:</strong> ${group.eventTitle}</span>
-      <span><strong>Event Date:</strong> ${displayDate}</span>
+  <div class="page-border">
+    <div class="header">
+      <img src="${seceHeader}" alt="Sri Eshwar College header" class="header-image" />
+      <div class="doc-title">Approved On-Duty (OD) Participant List</div>
     </div>
-    <div style="margin-top: 10px; display: flex; justify-content: space-between;">
-      <span><strong>Department:</strong> ${dept}</span>
-      <span><strong>Total Students:</strong> ${students.length}</span>
-    </div>
-    <div style="margin-top: 10px;">
-      <strong>Academic Year:</strong> ${new Date().getFullYear()} - ${new Date().getFullYear() + 1}
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th style="width: 50px;">S.No</th>
-        <th>Student Name</th>
-        <th>Roll Number</th>
-        <th style="width: 100px;">Class / Section</th>
-        <th style="width: 140px;">Class Advisor Signature</th>
-        <th style="width: 140px;">HOD Signature</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${sortedStudents.map((s, i) => {
-      const isFirstInClass = !renderedClasses.has(s.class);
-      if (isFirstInClass) renderedClasses.add(s.class);
-      const isFirstRow = !hodRendered;
-      if (isFirstRow) hodRendered = true;
-
-      return `
-        <tr>
-          <td>${i + 1}</td>
-          <td style="font-weight: bold; color: #1e293b;">${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId || s.studentId)}</td>
-          <td style="font-family: 'Courier New', monospace; font-weight: 600;">${fallbackValue(s.rollNo, 'general')}</td>
-          <td>${fallbackValue(s.class, 'general')}</td>
-          ${isFirstInClass ? `<td rowspan="${classCounts[s.class]}" class="sig-cell"></td>` : ''}
-          ${isFirstRow ? `<td rowspan="${sortedStudents.length}" class="sig-cell"></td>` : ''}
-        </tr>
-      `;
-    }).join('')}
-    </tbody>
-  </table>
-
-  <div class="sig-space" style="display: flex; justify-content: flex-end; margin-top: 60px;">
-    <!-- Organizer Signature -->
-    <div class="sig-box" style="width: 200px; text-align: center;">
-      <div class="sig-line"></div>
-      <div class="sig-label">
-        <strong>Event Organizer Signature</strong><br/>
-        ${currentUser?.name || ''}<br/>
-        ${currentUser?.rollNo || ''}
+    
+    <div class="meta-info">
+      <div class="meta-info-grid">
+        <div><strong>Event Title:</strong> ${group.eventTitle}</div>
+        <div style="text-align: right;"><strong>Event Date:</strong> ${displayDate}</div>
+        <div><strong>Department:</strong> ${dept}</div>
+        <div style="text-align: right;"><strong>Total Students:</strong> ${students.length}</div>
+        <div><strong>Academic Year:</strong> ${new Date().getFullYear()} - ${new Date().getFullYear() + 1}</div>
       </div>
     </div>
-  </div>
 
-  <div class="footer">
-    This document is digitally verified by the CSE Event Management Portal.<br/>
-    Authorized for On-Duty (OD) attendance purposes.
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 50px;">S.No</th>
+          <th>Student Name</th>
+          <th>Roll Number</th>
+          <th style="width: 100px;">Class / Section</th>
+          <th style="width: 140px;">Class Advisor Signature</th>
+          <th style="width: 140px;">HOD Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sortedStudents.map((s, i) => {
+        const isFirstInClass = !renderedClasses.has(s.class);
+        if (isFirstInClass) renderedClasses.add(s.class);
+        const isFirstRow = !hodRendered;
+        if (isFirstRow) hodRendered = true;
+
+        return `
+          <tr>
+            <td>${i + 1}</td>
+            <td style="font-weight: bold; color: #1e293b;">${formatStudentNameOnly(s.studentName)}</td>
+            <td style="font-family: 'Courier New', monospace; font-weight: 600;">${fallbackValue(s.rollNo, 'general')}</td>
+            <td>${fallbackValue(s.class, 'general')}</td>
+            ${isFirstInClass ? `<td rowspan="${classCounts[s.class]}" class="sig-cell"></td>` : ''}
+            ${isFirstRow ? `<td rowspan="${sortedStudents.length}" class="sig-cell"></td>` : ''}
+          </tr>
+        `;
+      }).join('')}
+      </tbody>
+    </table>
+
+    <div class="sig-space">
+      <div class="sig-box">
+        <div class="sig-line"></div>
+        <div class="sig-label">
+          <strong>Event Organizer Signature</strong><br/>
+          ${currentUser?.name || ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      This document is digitally verified by the CSE Event Management Portal.<br/>
+      Authorized for On-Duty (OD) attendance purposes.
+    </div>
   </div>
 </body>
 </html>`;
@@ -894,7 +936,7 @@ const Dashboard = () => {
                   <Plus size={18} /> Create Event
                 </button>
               )}
-              {isStaff && (
+              {canManageStudents && (
                 <button
                   onClick={() => navigate('/manage-students')}
                   className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
@@ -1427,6 +1469,26 @@ const Dashboard = () => {
                                       <AlertCircle size={12} /> {pendingCount} Pending
                                     </span>
                                   )}
+                                  {sourceEvent?.status === 'COMPLETED' && (() => {
+                                    const attended = group.requests.filter(r => ['ATTENDED', 'FN', 'AN'].includes(r.attendanceStatus) && r.status === 'APPROVED');
+                                    const attendedCount = attended.length;
+                                    if (attendedCount > 0) {
+                                      const submitted = attended.filter(r => !!r.feedback).length;
+                                      const pending = attendedCount - submitted;
+                                      const percent = Math.round((submitted / attendedCount) * 100);
+                                      return (
+                                        <div className="hidden sm:flex items-center gap-2 border-l border-slate-200 pl-2 ml-1">
+                                          <span className="px-2 py-1 rounded border border-purple-200 bg-purple-50 text-purple-700 text-[10px] font-bold">
+                                            Feedback: {percent}%
+                                          </span>
+                                          <span className="text-[10px] font-semibold text-slate-500">
+                                            {submitted} Submitted / {pending} Pending
+                                          </span>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                   <span className={`p-1.5 rounded-lg transition-transform duration-300 ${isExpanded ? 'bg-blue-100 text-blue-700 rotate-180' : 'bg-slate-200 text-slate-600'}`}>
                                     <ChevronDown size={16} />
                                   </span>
@@ -1671,56 +1733,83 @@ const Dashboard = () => {
                   {/* My Registrations Tab — for all students */}
                   {activeTab === 'od' && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
                     <div className="flex-1 p-5 space-y-4 flex flex-col">
-                      {filteredODRequests.map(request => (
-                        <div
-                          key={request.id}
-                          onClick={() => setSelectedODRequest(request)}
-                          className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-purple-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] group cursor-pointer shrink-0"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[90px]">
-                            <div className="flex items-center gap-5 flex-1 w-full min-w-0">
-                              <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-purple-50 group-hover:to-purple-100 group-hover:text-purple-600 group-hover:border-purple-200 transition-all shrink-0 shadow-inner">
-                                <FileText size={24} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-extrabold text-slate-900 text-[16px] truncate">{request.eventName || request.eventTitle || 'Untitled Event'}</h4>
-                                <div className="flex items-center gap-3 mt-2 flex-wrap text-slate-500">
-                                  <span className="text-xs font-semibold text-slate-600">
-                                    {formatStudentNameWithRoll(request.studentName, request.rollNo, request.studentId)}
-                                  </span>
+                      {filteredODRequests.map(request => {
+                        let displayStatus = (request.status || '').replace(/_/g, ' ');
+                        let badgeClass = '';
+                        
+                        if (request.status === ODRequestStatus.APPROVED) {
+                          const sourceEvent = events.find(e => e.id === request.eventId);
+                          if (sourceEvent?.status === 'COMPLETED') {
+                            if (['ATTENDED', 'FN', 'AN'].includes(request.attendanceStatus)) {
+                              if (request.feedback) {
+                                displayStatus = 'Completed';
+                                badgeClass = 'bg-blue-50 text-blue-600';
+                              } else {
+                                displayStatus = 'Feedback Required';
+                                badgeClass = 'bg-purple-50 text-purple-600 animate-pulse border border-purple-200';
+                              }
+                            } else if (request.attendanceStatus === 'NOT_ATTENDED') {
+                              displayStatus = 'Not Attended';
+                              badgeClass = 'bg-slate-100 text-slate-500 line-through';
+                            } else {
+                              displayStatus = 'Completed';
+                              badgeClass = 'bg-slate-50 text-slate-600';
+                            }
+                          } else {
+                            badgeClass = 'bg-emerald-50 text-emerald-600';
+                          }
+                        } else if (request.status === ODRequestStatus.REJECTED) {
+                          badgeClass = 'bg-red-50 text-red-600';
+                        } else if (request.status === ODRequestStatus.WITHDRAWN) {
+                          badgeClass = 'bg-slate-100 text-slate-400 line-through';
+                        } else {
+                          badgeClass = 'bg-amber-50 text-amber-600';
+                        }
+
+                        return (
+                          <div
+                            key={request.id}
+                            onClick={() => setSelectedODRequest(request)}
+                            className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-purple-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] group cursor-pointer shrink-0"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[90px]">
+                              <div className="flex items-center gap-5 flex-1 w-full min-w-0">
+                                <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-purple-50 group-hover:to-purple-100 group-hover:text-purple-600 group-hover:border-purple-200 transition-all shrink-0 shadow-inner">
+                                  <FileText size={24} />
                                 </div>
-                                <p className="text-xs font-semibold text-slate-500 mt-2 flex items-center gap-1.5">
-                                  <Clock size={14} className="text-slate-400" />
-                                  {request.eventDate}
-                                </p>
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-extrabold text-slate-900 text-[16px] truncate">{request.eventName || request.eventTitle || 'Untitled Event'}</h4>
+                                  <div className="flex items-center gap-3 mt-2 flex-wrap text-slate-500">
+                                    <span className="text-xs font-semibold text-slate-600">
+                                      {formatStudentNameWithRoll(request.studentName, request.rollNo, request.studentId)}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-semibold text-slate-500 mt-2 flex items-center gap-1.5">
+                                    <Clock size={14} className="text-slate-400" />
+                                    {request.eventDate}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${request.status === ODRequestStatus.APPROVED
-                                ? 'bg-emerald-50 text-emerald-600'
-                                : request.status === ODRequestStatus.REJECTED
-                                  ? 'bg-red-50 text-red-600'
-                                  : request.status === ODRequestStatus.WITHDRAWN
-                                    ? 'bg-slate-100 text-slate-400 line-through'
-                                    : 'bg-amber-50 text-amber-600'
-                                }`}>
-                                {(request.status || '').replace(/_/g, ' ')}
-                              </span>
-                              {(request.status === ODRequestStatus.APPROVED || (request.status && request.status.startsWith('PENDING'))) && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
-                                  disabled={withdrawingOD[request.id]}
-                                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 disabled:opacity-60"
-                                >
-                                  {withdrawingOD[request.id] ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />}
-                                  Withdraw
-                                </button>
-                              )}
-                              <ChevronRight size={18} className="text-slate-300 group-hover:text-purple-500" />
+                              <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeClass}`}>
+                                  {displayStatus}
+                                </span>
+                                {(request.status === ODRequestStatus.APPROVED || (request.status && request.status.startsWith('PENDING'))) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
+                                    disabled={withdrawingOD[request.id]}
+                                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 disabled:opacity-60"
+                                  >
+                                    {withdrawingOD[request.id] ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />}
+                                    Withdraw
+                                  </button>
+                                )}
+                                <ChevronRight size={18} className="text-slate-300 group-hover:text-purple-500" />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {filteredODRequests.length === 0 && (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
@@ -1821,7 +1910,7 @@ const Dashboard = () => {
                 )}
 
                 {/* 3. Manage Students - For Staff (merged into quick actions) */}
-                {isStaff && (
+                {canManageStudents && (
                   <div
                     onClick={() => navigate('/manage-students')}
                     className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"

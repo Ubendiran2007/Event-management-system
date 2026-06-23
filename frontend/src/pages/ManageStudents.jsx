@@ -32,7 +32,7 @@ const ManageStudents = () => {
         if (!currentUser) {
             navigate('/');
         } else {
-            const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.PRINCIPAL, UserRole.IQAC_TEAM].includes(currentUser.role);
+            const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role);
             if (!isStaff) {
                 navigate('/dashboard');
             }
@@ -44,7 +44,7 @@ const ManageStudents = () => {
     }
 
     // Only allow faculty, hod, principal, iqac
-    const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.PRINCIPAL, UserRole.IQAC_TEAM].includes(currentUser.role);
+    const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role);
     if (!isStaff) {
         return null;
     }
@@ -91,6 +91,13 @@ const ManageStudents = () => {
     const isDeptRestricted = [UserRole.FACULTY, UserRole.HOD].includes(currentUser.role);
     const accessibleStudents = isDeptRestricted 
         ? mergedStudents.filter(s => {
+            if (currentUser.role === UserRole.FACULTY) {
+                if (!currentUser.assignedClasses || currentUser.assignedClasses.length === 0) return false;
+                const sClass = s.class?.replace(/-/g, ' ').toUpperCase() || '';
+                const assigned = currentUser.assignedClasses.map(c => c.replace(/-/g, ' ').toUpperCase());
+                return assigned.includes(sClass);
+            }
+
             if (!currentUser.department) return false;
             const sDept = (s.department || '').toUpperCase();
             const uDept = (currentUser.department || '').toUpperCase();
@@ -421,7 +428,7 @@ const ManageStudents = () => {
                                                         </span>
 
                                                         {/* Toggle Button */}
-                                                        {(currentUser.role === UserRole.HOD || currentUser.role === UserRole.PRINCIPAL || currentUser.role === UserRole.FACULTY) && (
+                                                        {(currentUser.role === UserRole.HOD || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.IQAC_TEAM) && (
                                                             <button
                                                                 onClick={() => handleToggleOrganizer(student)}
                                                                 disabled={isToggling}

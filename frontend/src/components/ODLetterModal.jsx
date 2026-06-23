@@ -4,9 +4,12 @@ import { motion } from 'framer-motion';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
 import { formatRollNo, formatEventRef, fallbackValue } from '../utils/formatters';
+import { generateODLetterBase64 } from '../utils/pdfGenerator';
+import { Loader2 } from 'lucide-react';
 
 const ODLetterModal = ({ odRequest, event, onClose }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const formatClassSection = (value) =>
     String(value || '')
@@ -70,384 +73,23 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
 
   if (!odRequest) return null;
 
-  const letterHTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>OD Letter – ${odRequest.studentName}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { background: #fff; }
-    body {
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 12.5pt;
-      color: #111;
-    }
-    :root {
-      --a4-width: 210mm;
-      --a4-height: 297mm;
-    }
-    .page {
-      width: var(--a4-width);
-      height: var(--a4-height);
-      margin: 6mm auto;
-      padding: 10mm 12mm 8mm;
-      display: flex;
-      flex-direction: column;
-      background: #fff;
-      box-shadow: 0 0 0 1px #e5e7eb;
-      overflow: hidden;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
 
-    /* ── Header ── */
-    .header {
-      border-bottom: 3px double #1a3a6b;
-      padding-bottom: 8px;
-      margin-bottom: 8px;
-    }
-    .header-image-wrap {
-      width: 100%;
-      display: flex;
-      justify-content: center;
-    }
-    .header-image {
-      width: 100%;
-      max-height: 86px;
-      object-fit: contain;
-      display: block;
-    }
-    .college-name {
-      font-size: 16pt;
-      font-weight: bold;
-      color: #1a3a6b;
-      letter-spacing: 0.5px;
-    }
-    .college-sub {
-      font-size: 8.8pt;
-      color: #444;
-      margin-top: 2px;
-      line-height: 1.35;
-    }
-    .dept-name {
-      font-size: 10.5pt;
-      font-weight: bold;
-      color: #2c5282;
-      margin-top: 3px;
-    }
 
-    /* ── Title ── */
-    .letter-title {
-      text-align: center;
-      font-size: 12pt;
-      font-weight: bold;
-      text-decoration: underline;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #1a3a6b;
-      margin: 8px 0;
-    }
-
-    /* ── Ref / Date row ── */
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 9.8pt;
-      margin-bottom: 8px;
-      color: #333;
-    }
-
-    /* ──  Addressee block ── */
-    .addressee {
-      font-size: 10.8pt;
-      line-height: 1.5;
-      margin-bottom: 8px;
-    }
-
-    /* ── Subject line ── */
-    .subject {
-      font-size: 10.8pt;
-      line-height: 1.45;
-      margin-bottom: 8px;
-    }
-
-    /* ── Body paragraphs ── */
-    .body-text {
-      font-size: 10.8pt;
-      line-height: 1.5;
-      text-align: justify;
-      margin-bottom: 8px;
-    }
-
-    /* ── Detail table ── */
-    .detail-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 8px 0;
-      font-size: 9.6pt;
-    }
-    .detail-table tr td {
-      padding: 4px 8px;
-      border: 1px solid #bcd;
-      line-height: 1.25;
-      word-break: break-word;
-    }
-    .detail-table tr td:first-child {
-      width: 35%;
-      font-weight: bold;
-      background: #eef4fb;
-      color: #1a3a6b;
-    }
-
-    /* ── Closing ── */
-    .closing {
-      font-size: 10.8pt;
-      line-height: 1.45;
-      margin-bottom: 2px;
-    }
-
-    /* ── E-Signature section ── */
-    .sig-section {
-      display: flex;
-      justify-content: space-between;
-      gap: 15px;
-      margin-top: 60px;
-    }
-    .sig-box { text-align: center; flex: 1; }
-    .sig-student-box { text-align: center; flex: 1; }
-    .e-stamp {
-      display: inline-block;
-      border: 2px solid #1a6b3a;
-      border-radius: 6px;
-      padding: 4px 7px;
-      background: #f0fff4;
-      margin-bottom: 4px;
-      min-width: 102px;
-    }
-    .e-stamp .check  { font-size: 14pt; color: #1a6b3a; display: block; line-height: 1.1; }
-    .e-stamp .esigned {
-      font-size: 7.5pt; font-weight: bold; color: #1a6b3a;
-      text-transform: uppercase; letter-spacing: 0.5px; display: block;
-    }
-    .e-stamp .ename  { font-size: 9pt; font-weight: bold; color: #1a3a6b; display: block; margin-top: 2px; }
-    .e-stamp .edate  { font-size: 7.5pt; color: #555; display: block; font-family: 'Courier New', monospace; }
-    .sig-label { font-size: 8.8pt; color: #333; margin-top: 2px; line-height: 1.25; }
-
-    /* Student – plain line */
-    .sig-student-box { text-align: center; flex: 1; }
-    .student-line { border-top: 1.5px solid #333; margin-bottom: 5px; margin-top: 32px; }
-
-    /* ── QR + Verification row ── */
-    .bottom-row {
-      display: flex;
-      gap: 12px;
-      margin-top: 8px;
-      align-items: flex-start;
-    }
-    .qr-block { flex-shrink: 0; text-align: center; }
-    .qr-block img { width: 76px; height: 76px; border: 1px solid #aac; border-radius: 4px; display: block; }
-    .qr-caption { font-size: 7.5pt; color: #666; margin-top: 3px; }
-    .verify-block {
-      flex: 1;
-      border: 1px solid #c9dbf3;
-      background: #f5f9ff;
-      border-radius: 6px;
-      padding: 7px 9px;
-      font-size: 8.8pt;
-      color: #234;
-      line-height: 1.35;
-    }
-    .verify-code {
-      font-family: 'Courier New', monospace;
-      font-weight: bold;
-      letter-spacing: 0.5px;
-      color: #1a3a6b;
-      font-size: 9pt;
-      margin-top: 5px;
-    }
-
-    /* ── Footer ── */
-    .footer {
-      margin-top: auto;
-      border-top: 1px solid #ccc;
-      padding-top: 5px;
-      font-size: 7.6pt;
-      color: #999;
-      text-align: center;
-    }
-
-    @media print {
-      html, body { background: #fff; margin: 0; padding: 0; }
-      body {
-        width: var(--a4-width);
-        height: var(--a4-height);
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const base64 = await generateODLetterBase64(odRequest, event);
+      if (base64) {
+        const link = document.createElement('a');
+        link.href = base64;
+        link.download = `OD_Letter_${odRequest.studentName.replace(/\s+/g, '_')}.pdf`;
+        link.click();
       }
-      .page {
-        width: var(--a4-width);
-        height: 296mm; /* Slightly less than 297mm to prevent empty 2nd page */
-        margin: 0;
-        padding: 10mm 12mm 8mm;
-        box-shadow: none;
-        overflow: hidden;
-        page-break-inside: avoid;
-        page-break-after: avoid;
-        break-inside: avoid;
-      }
-      @page { size: A4; margin: 0; }
+    } catch (err) {
+      console.error('Download failed', err);
+    } finally {
+      setIsDownloading(false);
     }
-  </style>
-</head>
-<body>
-<div class="page">
-
-  <!-- College Header -->
-  <div class="header">
-    <div class="header-image-wrap">
-      <img src="${seceHeader}" alt="Sri Eshwar College Header" class="header-image" />
-    </div>
-    <div class="dept-name">Department of Computer Science and Engineering</div>
-  </div>
-
-  <!-- Title -->
-  <div class="letter-title">On Duty (OD) Permission Letter</div>
-
-  <!-- Ref / Date -->
-  <div class="meta-row">
-    <span>Ref No: CSE/OD/${new Date().getFullYear()}/${odRequest.id?.slice(-6).toUpperCase() || 'XXXXX'}</span>
-    <span>Date: ${issuedDate}</span>
-  </div>
-
-  <!-- Addressee -->
-  <div class="addressee">
-    To,<br/>
-    <strong>The Class Advisor,</strong><br/>
-    Department of Computer Science and Engineering,<br/>
-    Sri Eshwar College of Engineering, Coimbatore.
-  </div>
-
-  <!-- Subject -->
-  <div class="subject">
-    <strong>Sub:</strong>&nbsp; Permission for On Duty (OD) – Attendance of Department Event – regarding.
-  </div>
-
-  <!-- Salutation + Body -->
-  <p class="body-text">Dear Sir / Madam,</p>
-
-  <p class="body-text">
-    This is to certify that the student mentioned below has been granted <strong>On Duty (OD)</strong>
-    permission to attend the department event organised by the Department of Computer Science and
-    Engineering, Sri Eshwar College of Engineering. The registration for this event was duly reviewed
-    and <strong>approved by the Event Organizer</strong> on <strong>${approvedAt}</strong> through
-    the CSE Event Management Portal.
-  </p>
-
-  <p class="body-text">
-    Kindly mark the student as <strong>On Duty</strong> in the attendance register for the date(s)
-    of the event mentioned below, and grant the necessary permission accordingly.
-  </p>
-
-  <!-- Details Table -->
-  <table class="detail-table">
-    <tr><td>Student Name</td><td>${odRequest.studentName}</td></tr>
-    <tr><td>Roll Number</td><td>${displayRollNo}</td></tr>
-    <tr><td>Class / Section</td><td>${displayClassSection}</td></tr>
-    <tr><td>Email</td><td>${fallbackValue(odRequest.email, 'email')}</td></tr>
-    <tr><td>Event Name</td><td>${eventTitle}</td></tr>
-    <tr><td>Event Ref ID</td><td style="font-family: monospace;">${eventRef}</td></tr>
-    <tr><td>Event Date</td><td>${eventDate}</td></tr>
-    <tr><td>Venue</td><td>${eventVenue}</td></tr>
-    <tr><td>Approved By</td><td>${approvedBy}</td></tr>
-    <tr><td>OD Status</td><td><strong style="color:#1a6b3a;">&#10004; APPROVED</strong></td></tr>
-  </table>
-
-  <!-- Closing -->
-  <p class="closing">
-    Your kind cooperation in this regard is highly appreciated.
-  </p>
-  <p class="closing" style="margin-top:6px;">
-    Thanking you,<br/>
-    Yours faithfully,
-  </p>
-
-  <!-- E-Signature Section -->
-  <div class="sig-section">
-
-    <!-- Row 1: Left - Student, Right - Class Advisor -->
-    <div class="sig-student-box">
-      <div class="student-line"></div>
-      <div class="sig-label">
-        <strong>Student Signature</strong><br/>
-        ${odRequest.studentName}<br/>
-        ${displayRollNo}
-      </div>
-    </div>
-
-    <div class="sig-student-box">
-      <div class="student-line"></div>
-      <div class="sig-label">
-        <strong>Class Advisor Signature</strong><br/>
-        (To be signed physically)
-      </div>
-    </div>
-
-    <!-- Row 2: Left - Event Organizer, Right - HOD -->
-    <div class="sig-student-box">
-      <div class="student-line"></div>
-      <div class="sig-label">
-        <strong>Event Organizer</strong><br/>
-        ${approvedBy}
-      </div>
-    </div>
-
-    <div class="sig-student-box">
-      <div class="student-line"></div>
-      <div class="sig-label">
-        <strong>Head of Department</strong><br/>
-        ${hodName}
-      </div>
-    </div>
-
-  </div>
-
-  <!-- QR + Verification row -->
-  <div class="bottom-row">
-    <div class="qr-block">
-      ${qrDataUrl
-        ? `<img src="${qrDataUrl}" alt="OD QR Code"/>`
-        : `<div style="width:88px;height:88px;border:1px solid #aac;display:flex;align-items:center;justify-content:center;font-size:8pt;color:#aaa;">QR</div>`}
-      <div class="qr-caption">Scan to verify OD</div>
-    </div>
-    <div class="verify-block">
-      <strong>Verification Details</strong><br/>
-      This letter is generated via the CSE Event Management Portal.
-      Please verify the details below with the physical signatures provided.
-      Scanning the QR code will display student and event details for instant on-site verification.
-      <div class="verify-code">Verification Code: ${verificationCode}</div>
-    </div>
-  </div>
-
-  <!-- Footer -->
-  <div class="footer">
-    This is a system-generated e-letter from the CSE Event Management Portal &middot; Sri Eshwar College of Engineering, Coimbatore
-  </div>
-
-</div>
-</body>
-</html>`;
-
-  const handleDownload = () => {
-    const printWindow = window.open('', '_blank', 'width=900,height=1200');
-    if (!printWindow) {
-      console.warn('Please allow pop-ups to download the OD letter.');
-      return;
-    }
-    printWindow.document.write(letterHTML);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 500);
   };
 
   return (
@@ -536,9 +178,13 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
           </button>
           <button
             onClick={handleDownload}
-            className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+            disabled={isDownloading}
+            className={`flex-1 py-2.5 rounded-xl text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2 ${
+              isDownloading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
-            <Download size={15} /> Download OD Letter
+            {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+            {isDownloading ? 'Generating...' : 'Download OD Letter'}
           </button>
         </div>
       </motion.div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   CalendarDays,
   ClipboardList,
@@ -306,6 +307,7 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
   const [draftMin,  setDraftMin]  = React.useState(minIdx);
   const [draftAmpm, setDraftAmpm] = React.useState(initAmpm);
   const [openUpward, setOpenUpward] = React.useState(false);
+  const [fixedCoords, setFixedCoords] = React.useState({ top: 'auto', left: 0, bottom: 'auto' });
   const triggerRef = React.useRef(null);
   const popupRef   = React.useRef(null);
 
@@ -317,20 +319,34 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
     setDraftAmpm(a);
   }, [value]);
 
-  // Decide open direction before showing
-  const handleOpen = () => {
+  const updateCoords = React.useCallback(() => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      // popup is ~280px tall; flip if less than 290px space below
-      setOpenUpward(spaceBelow < 290);
+      const isUpward = (window.innerHeight - rect.bottom) < 290;
+      setOpenUpward(isUpward);
+      setFixedCoords({
+        left: rect.left,
+        top: isUpward ? 'auto' : rect.bottom + 6,
+        bottom: isUpward ? window.innerHeight - rect.top + 6 : 'auto',
+      });
+    }
+  }, []);
+
+  // Decide open direction before showing
+  const handleOpen = () => {
+    if (!open) {
+      updateCoords();
     }
     setOpen((o) => !o);
   };
 
-  // Close on outside click
+  // Close on outside click & update coords on scroll/resize
   React.useEffect(() => {
     if (!open) return;
+
+    window.addEventListener('scroll', updateCoords, true);
+    window.addEventListener('resize', updateCoords, true);
+
     const handler = (e) => {
       if (
         popupRef.current && !popupRef.current.contains(e.target) &&
@@ -341,8 +357,12 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
       }
     };
     document.addEventListener('mousedown', handler, true);
-    return () => document.removeEventListener('mousedown', handler, true);
-  }, [open, onBlur]);
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords, true);
+      document.removeEventListener('mousedown', handler, true);
+    };
+  }, [open, onBlur, updateCoords]);
 
   const commit = () => {
     let h24 = draftHour + 1;
@@ -385,23 +405,24 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
         </svg>
       </button>
 
-      {/* ── Wheel Popup ── */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={popupRef}
-            initial={{ opacity: 0, y: openUpward ? 6 : -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: openUpward ? 6 : -6, scale: 0.97 }}
-            transition={{ duration: 0.14, ease: 'easeOut' }}
-            className="absolute z-50 left-0 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
-            style={{
-              minWidth: 252,
-              ...(openUpward
-                ? { bottom: 'calc(100% + 6px)' }
-                : { top: 'calc(100% + 6px)' }),
-            }}
-          >
+      {/* ── Wheel Popup via Portal ── */}
+      {createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              ref={popupRef}
+              initial={{ opacity: 0, y: openUpward ? 6 : -6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: openUpward ? 6 : -6, scale: 0.97 }}
+              transition={{ duration: 0.14, ease: 'easeOut' }}
+              className="fixed z-[9999] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
+              style={{
+                minWidth: 252,
+                left: fixedCoords.left,
+                top: fixedCoords.top,
+                bottom: fixedCoords.bottom,
+              }}
+            >
             {/* Header */}
             <div className="bg-gradient-to-br from-blue-400 to-blue-500 px-4 py-3 flex flex-col items-center gap-0.5">
               <span className="text-blue-100 text-[10px] font-bold uppercase tracking-[0.18em]">Selected Time</span>
@@ -462,9 +483,11 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
                 Apply
               </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };
@@ -679,11 +702,21 @@ const CreateEvent = () => {
     },
   });
 
-  const iqacNumber = useMemo(() => {
+  const referenceIdDisplay = useMemo(() => {
     if (editingEvent?.referenceId) return editingEvent.referenceId;
     if (editingEvent?.requisition?.iqacNumber) return editingEvent.requisition.iqacNumber;
-    return "Pending (Generated automatically upon creation)";
+    return null;
   }, [editingEvent]);
+
+  const iqacNumberPreview = useMemo(() => {
+    const dept = form.department || 'GEN';
+    const date = new Date(form.startDate || Date.now());
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const acYearStart = month >= 6 ? year : year - 1;
+    const acYearEnd = String(acYearStart + 1).slice(-2);
+    return `IQAC/${acYearStart}-${acYearEnd}/${dept}/XX`;
+  }, [form.department, form.startDate]);
 
   const numberOfDays = useMemo(() => {
     if (!form.startDate || !form.endDate) return '';
@@ -1242,6 +1275,13 @@ const CreateEvent = () => {
       case 'externalParticipants':
         if (value !== '' && !/^\d*$/.test(String(value))) msg = 'Only whole numbers allowed.';
         break;
+      case 'studentFeedbackLink':
+        if (!String(value || '').trim()) {
+          msg = 'Student Feedback Link is mandatory.';
+        } else if (!/^https:\/\/(docs\.google\.com\/forms\/|forms\.gle\/|forms\.google\.com\/)/i.test(String(value).trim())) {
+          msg = 'Please enter a valid Google Forms URL.';
+        }
+        break;
       // ── Venue ──
       case 'numberOfVenuesRequired':
         if (!String(value || '').trim()) { msg = 'Number of venues is required.'; break; }
@@ -1362,6 +1402,16 @@ const CreateEvent = () => {
 
       if (form.externalParticipants && !/^\d+$/.test(String(form.externalParticipants))) {
         setStepError('External participants must be a number.');
+        return false;
+      }
+
+      if (!form.studentFeedbackLink || !String(form.studentFeedbackLink).trim()) {
+        setStepError('Student Feedback Link is mandatory.');
+        return false;
+      }
+      
+      if (!/^https:\/\/(docs\.google\.com\/forms\/|forms\.gle\/|forms\.google\.com\/)/i.test(String(form.studentFeedbackLink).trim())) {
+        setStepError('Please enter a valid Google Forms URL for Student Feedback.');
         return false;
       }
 
@@ -1593,6 +1643,7 @@ const CreateEvent = () => {
       check('organizerName', form.organizerName);
       check('department', form.department);
       check('mobileNumber', form.mobileNumber);
+      check('studentFeedbackLink', form.studentFeedbackLink);
     } else if (stepKey === STEP_KEYS.VENUE && form.venueRequired) {
       check('numberOfVenuesRequired', form.numberOfVenuesRequired);
     } else if (stepKey === STEP_KEYS.AUDIO && form.audioRequired) {
@@ -1731,7 +1782,6 @@ const CreateEvent = () => {
 
       // Full requisition model
       requisition: {
-        iqacNumber,
         step1: {
           eventName: form.eventName,
           eventType: form.eventType,
@@ -1792,7 +1842,6 @@ const CreateEvent = () => {
               startTime: form.audioStartTime,
               endTime: form.audioEndTime,
               venueName: form.audioVenueName,
-              iqacNumber,
               audioEquipment: form.audioEquipment,
               specialRequest: form.audioSpecialRequest,
             }
@@ -2249,16 +2298,17 @@ const CreateEvent = () => {
             </div>
 
             <div className="space-y-1">
-              <Lbl>Student Feedback Link</Lbl>
+              <Lbl required>Student Feedback Link</Lbl>
               <input
                 id="studentFeedbackLink"
                 type="url"
                 className={fieldCls('studentFeedbackLink')}
                 value={form.studentFeedbackLink}
-                onChange={(e) => setField('studentFeedbackLink', e.target.value)}
+                onChange={(e) => { setField('studentFeedbackLink', e.target.value); setFE('studentFeedbackLink', ''); }}
+                onBlur={(e) => validateField('studentFeedbackLink', e.target.value)}
                 placeholder="https://forms.gle/..."
               />
-              <p className="text-[10px] text-slate-400 mt-0.5 italic">Will be auto-fetched in IQAC submission</p>
+              <FieldMsg errKey="studentFeedbackLink" hint="Will be auto-fetched in IQAC submission" />
             </div>
 
             <div className="space-y-1">
@@ -2392,8 +2442,17 @@ const CreateEvent = () => {
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-semibold text-slate-700">IQAC Number (Auto Generated)</label>
-              <input readOnly className={`${inputClass} bg-slate-100 font-mono text-xs text-slate-500`} value={iqacNumber} />
+              <label className="text-sm font-semibold text-slate-700">Event Reference ID</label>
+              {referenceIdDisplay ? (
+                <input readOnly className={`${inputClass} bg-slate-100 font-mono text-xs text-slate-500 font-bold`} value={referenceIdDisplay} />
+              ) : (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                  <p className="font-semibold text-slate-800 text-sm">
+                    Pending <span className="font-normal text-slate-500 text-xs ml-1">(Generated automatically upon event creation)</span>
+                  </p>
+                  <p className="text-xs text-slate-400 font-mono">Format Preview: {iqacNumberPreview}</p>
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -2597,10 +2656,6 @@ const CreateEvent = () => {
                 onBlur={(e) => validateField('audioEndTime', e.target.value)}
               />
               <FieldMsg errKey="audioEndTime" hint="Must be after start time" />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-sm font-semibold text-slate-700">IQAC Number</label>
-              <input readOnly className={`${inputClass} bg-slate-100 font-mono text-xs text-slate-500`} value={iqacNumber} />
             </div>
 
             <div className="md:col-span-2">
@@ -3516,7 +3571,7 @@ const CreateEvent = () => {
               <p><span className="font-semibold">Time:</span> {formatTime12(form.startTime)} - {formatTime12(form.endTime)}</p>
               <p><span className="font-semibold">Organizer:</span> {form.organizerName || '-'}</p>
               <p><span className="font-semibold">Department:</span> {form.department || '-'}</p>
-              <p><span className="font-semibold">Event Reference ID:</span> <span className="font-mono text-slate-600">{iqacNumber}</span></p>
+              <p><span className="font-semibold">Event Reference ID:</span> <span className="font-mono text-slate-600 font-bold">{referenceIdDisplay || 'Pending'}</span></p>
               <p><span className="font-semibold">Schedule Items:</span> {form.schedule.length}</p>
               <p className="md:col-span-2 truncate"><span className="font-semibold">Student Feedback:</span> {form.studentFeedbackLink || '-'}</p>
               <p className="md:col-span-2 truncate"><span className="font-semibold">Resource Person Feedback:</span> {form.resourcePersonFeedbackLink || '-'}</p>

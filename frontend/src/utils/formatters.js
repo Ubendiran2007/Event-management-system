@@ -13,6 +13,14 @@ export const formatRollNo = (rollNo, fallbackId = '') => {
 };
 
 /**
+ * Standardizes Student Identity: Name Only (for tables with Roll No column)
+ * Returns: "Ubendiran L"
+ */
+export const formatStudentNameOnly = (name) => {
+  return fallbackValue(name, 'name') === 'Not Provided' ? 'Unknown Student' : String(name).trim();
+};
+
+/**
  * Standardizes Student Identity: Name + Roll Number
  * Returns: "Ubendiran L (24CS257)"
  */

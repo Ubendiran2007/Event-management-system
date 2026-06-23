@@ -148,7 +148,10 @@ export const AppProvider = ({ children }) => {
 
       const response = await fetch(`http://localhost:5001/api/events/${eventId}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+        },
         body: JSON.stringify(body),
       });
 
@@ -170,7 +173,10 @@ export const AppProvider = ({ children }) => {
     try {
       const response = await fetch(`http://localhost:5001/api/events/${eventId}/department-approval`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+        },
         body: JSON.stringify({
           department,
           approvedBy: currentUser?.name || 'Unknown Approver',
@@ -226,7 +232,10 @@ export const AppProvider = ({ children }) => {
     try {
       const response = await fetch(`http://localhost:5001/api/od-requests/${requestId}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+        },
         body: JSON.stringify({
           status: newStatus,
           approvedBy: approverInfo.name || currentUser?.name || 'Authorized Personnel',
