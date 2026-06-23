@@ -659,6 +659,18 @@ router.put('/:id/resubmit-edit', async (req, res) => {
 
     // Reset all approvals upon resubmission
     const newDeptApprovals = {};
+    
+    // Poster Revision Rule: Keep Media Approval if poster requirements are unchanged
+    const titleChanged = eventData.title !== newEventData.title;
+    const dateChanged = eventData.date !== newEventData.date || eventData.startDate !== newEventData.startDate;
+    const themeChanged = eventData.theme !== newEventData.theme;
+    const venueChanged = JSON.stringify(eventData.venueSelection || {}) !== JSON.stringify(newEventData.venueSelection || {});
+    const notesChanged = (eventData.media?.preEventPosterNotes || '') !== (newEventData.media?.preEventPosterNotes || '');
+    const posterChanged = titleChanged || dateChanged || themeChanged || venueChanged || notesChanged;
+
+    if (eventData.departmentApprovals?.media && !posterChanged) {
+      newDeptApprovals.media = eventData.departmentApprovals.media;
+    }
 
     const updatePayload = {
       ...req.body,
@@ -875,39 +887,57 @@ router.patch('/:id/poster', async (req, res) => {
     }
 
     const eventData = eventSnap.data();
-    const { posterDataUrl, posterFileName, posterMimeType, updatedBy } = req.body;
-
-    if (!posterDataUrl) {
-      return res.status(400).json({ success: false, message: 'Poster data URL is required' });
-    }
+    const { posterDataUrl, posterFileName, posterMimeType, updatedBy, action } = req.body;
 
     const now = new Date().toISOString();
-    const updatePayload = {
-      posterDataUrl,
-      posterFileName,
-      posterMimeType,
-      updatedAt: now,
-      posterUploadedAt: now,
-      posterStatus: 'UPLOADED'
-    };
-
-    if (updatedBy) {
-      updatePayload.posterUpdatedBy = updatedBy;
-      updatePayload.posterUploadedBy = updatedBy;
-    }
-
-    const currentWorkflow = eventData.posterWorkflow || {};
+    let updatePayload = {};
     let isMediaUpload = false;
-    
-    // If a poster was requested from media team, update the workflow to reflect completion
-    if (currentWorkflow.requested) {
-      isMediaUpload = true;
-      updatePayload.posterWorkflow = {
-        ...currentWorkflow,
-        status: 'UPLOADED',
-        finalUploadedAt: now,
-        finalUploadedBy: updatedBy || 'Media Team'
+    const currentWorkflow = eventData.posterWorkflow || {};
+
+    if (action === 'remove') {
+      updatePayload = {
+        posterDataUrl: null,
+        posterFileName: null,
+        posterMimeType: null,
+        updatedAt: now,
+        posterStatus: 'PENDING'
       };
+      
+      if (currentWorkflow.requested) {
+        updatePayload.posterWorkflow = {
+          ...currentWorkflow,
+          status: 'REQUESTED' // Revert to requested
+        };
+      }
+    } else {
+      if (!posterDataUrl) {
+        return res.status(400).json({ success: false, message: 'Poster data URL is required' });
+      }
+
+      updatePayload = {
+        posterDataUrl,
+        posterFileName,
+        posterMimeType,
+        updatedAt: now,
+        posterUploadedAt: now,
+        posterStatus: 'UPLOADED'
+      };
+
+      if (updatedBy) {
+        updatePayload.posterUpdatedBy = updatedBy;
+        updatePayload.posterUploadedBy = updatedBy;
+      }
+
+      // If a poster was requested from media team, update the workflow to reflect completion
+      if (currentWorkflow.requested) {
+        isMediaUpload = true;
+        updatePayload.posterWorkflow = {
+          ...currentWorkflow,
+          status: 'UPLOADED',
+          finalUploadedAt: now,
+          finalUploadedBy: updatedBy || 'Media Team'
+        };
+      }
     }
 
     await updateDoc(eventRef, updatePayload);

@@ -171,8 +171,35 @@ const EventDetailModal = ({ event, onClose }) => {
   const eventPosterSrc = event?.posterDataUrl || event?.posterUrl || null;
 
   const isMedia = currentUser?.role === UserRole.MEDIA;
-  const isMediaUploadAllowed = isMedia && ['REQUESTED', 'REWORK_REQUESTED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
+  const isMediaUploadAllowed = isMedia && ['REQUESTED', 'REWORK_REQUESTED', 'UPLOADED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
   const canFinalizePoster = isMediaUploadAllowed && (event.posterDataUrl || event.posterUrl || posterUploadSuccess);
+
+  const handleRemovePoster = async () => {
+    setIsUploadingPoster(true);
+    setPosterUploadError('');
+    try {
+      const patchRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove', updatedBy: currentUser.name })
+      });
+      if (!patchRes.ok) throw new Error('Failed to remove poster.');
+      
+      setPosterUploadSuccess('');
+      if (setSelectedEvent) {
+          setSelectedEvent(prev => ({ 
+            ...prev, 
+            posterDataUrl: null, 
+            posterUrl: null,
+            posterWorkflow: { ...(prev.posterWorkflow || {}), status: 'REQUESTED' }
+          }));
+      }
+    } catch (err) {
+      setPosterUploadError(err.message || 'Error removing poster.');
+    } finally {
+      setIsUploadingPoster(false);
+    }
+  };
 
   const handlePosterUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -226,7 +253,11 @@ const EventDetailModal = ({ event, onClose }) => {
 
       // Update local event object if possible to show the new image immediately
       if (setSelectedEvent) {
-          setSelectedEvent(prev => ({ ...prev, posterDataUrl }));
+          setSelectedEvent(prev => ({ 
+            ...prev, 
+            posterDataUrl,
+            posterWorkflow: { ...(prev.posterWorkflow || {}), status: 'UPLOADED' }
+          }));
       }
 
     } catch (err) {
@@ -1700,38 +1731,77 @@ const EventDetailModal = ({ event, onClose }) => {
               {/* ── Media poster upload ── */}
               {isMediaUploadAllowed && (
                 <div className="flex flex-col gap-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-slate-800">Upload Final Poster</p>
+                      <p className="text-sm font-semibold text-slate-800">Media Poster Upload</p>
                       <p className="text-xs text-slate-500">Provide the designed poster for this event.</p>
                     </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      ref={fileInputRef}
-                      onChange={handlePosterUpload}
-                      disabled={isUploadingPoster || isProcessing}
-                    />
+                  </div>
+                  
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handlePosterUpload}
+                    disabled={isUploadingPoster || isProcessing}
+                  />
+
+                  {(event.posterDataUrl || event.posterUrl) ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 relative">
+                        <img
+                          src={event.posterDataUrl || event.posterUrl}
+                          alt="Preview"
+                          className="w-full max-h-[250px] object-contain bg-slate-100"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a
+                          href={event.posterDataUrl || event.posterUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm"
+                        >
+                          <Eye size={14} /> Preview
+                        </a>
+                        <a
+                          href={event.posterDataUrl || event.posterUrl}
+                          download={`Poster_${event.title?.replace(/\s+/g, '_') || 'Event'}.jpg`}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm"
+                        >
+                          <Download size={14} /> Download
+                        </a>
+                        <button
+                          onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }}
+                          disabled={isUploadingPoster || isProcessing}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+                        >
+                          {isUploadingPoster ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} Replace Poster
+                        </button>
+                        <button
+                          onClick={handleRemovePoster}
+                          disabled={isUploadingPoster || isProcessing}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 shadow-sm ml-auto"
+                        >
+                          <XCircle size={14} /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        fileInputRef.current?.click();
-                      }}
+                      onClick={(e) => { e.preventDefault(); fileInputRef.current?.click(); }}
                       disabled={isUploadingPoster || isProcessing}
-                      className="px-6 py-2.5 bg-cse-accent text-white rounded-lg font-semibold hover:bg-cse-accent/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                      className="w-full py-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 transition-colors flex flex-col items-center justify-center gap-2 disabled:opacity-50"
                     >
                       {isUploadingPoster ? (
-                        <><Loader2 size={18} className="animate-spin" /> Uploading...</>
-                      ) : (event.posterDataUrl || event.posterUrl) ? (
-                        <><Camera size={18} /> Change Poster</>
+                        <><Loader2 size={24} className="animate-spin" /> <span className="text-sm font-semibold">Uploading...</span></>
                       ) : (
-                        <><Camera size={18} /> Choose Poster Image</>
+                        <><Camera size={24} /> <span className="text-sm font-semibold">Choose Poster Image</span></>
                       )}
                     </button>
-                  </div>
+                  )}
 
                   {canFinalizePoster && (
                     <div className="mt-2 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between gap-4">
