@@ -24,6 +24,11 @@ const SecurityProfile = () => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  const [showFullHistory, setShowFullHistory] = useState(false);
+  const [timelineFilter, setTimelineFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     let interval;
@@ -38,33 +43,34 @@ const SecurityProfile = () => {
     return () => clearInterval(interval);
   }, [activeTab, step, timer]);
 
-  useEffect(() => {
+  const fetchLogs = async () => {
     if (!currentUser) return;
-    const fetchLogs = async () => {
-      try {
-        const token = localStorage.getItem('sessionToken');
-        const headers = { 'Authorization': `Bearer ${token}` };
-        
-        const [loginRes, timelineRes] = await Promise.all([
-          fetch('http://localhost:5001/api/security/login-history', { headers }),
-          fetch('http://localhost:5001/api/security/activity-timeline', { headers })
-        ]);
-        
-        const loginData = await loginRes.json();
-        const timelineData = await timelineRes.json();
-        
-        if (loginData.success) setLoginHistory(loginData.logs);
-        if (timelineData.success) setSecurityTimeline(timelineData.logs);
+    try {
+      const token = localStorage.getItem('sessionToken');
+      const headers = { 'Authorization': `Bearer ${token}` };
+      
+      const [loginRes, timelineRes] = await Promise.all([
+        fetch('http://localhost:5001/api/security/login-history', { headers }),
+        fetch('http://localhost:5001/api/security/activity-timeline', { headers })
+      ]);
+      
+      const loginData = await loginRes.json();
+      const timelineData = await timelineRes.json();
+      
+      if (loginData.success) setLoginHistory(loginData.logs);
+      if (timelineData.success) setSecurityTimeline(timelineData.logs);
 
-        if (currentUser.role === 'IQAC_TEAM') {
-          const iqacRes = await fetch('http://localhost:5001/api/security/iqac-audit', { headers });
-          const iqacData = await iqacRes.json();
-          if (iqacData.success) setIqacLogs(iqacData.logs);
-        }
-      } catch (err) {
-        console.error('Error fetching security logs:', err);
+      if (currentUser.role === 'IQAC_TEAM') {
+        const iqacRes = await fetch('http://localhost:5001/api/security/iqac-audit', { headers });
+        const iqacData = await iqacRes.json();
+        if (iqacData.success) setIqacLogs(iqacData.logs);
       }
-    };
+    } catch (err) {
+      console.error('Error fetching security logs:', err);
+    }
+  };
+
+  useEffect(() => {
     fetchLogs();
   }, [currentUser]);
 
@@ -90,6 +96,7 @@ const SecurityProfile = () => {
       } else {
         setAlert({ type: 'error', title: 'Authentication Failed', message: data.message || 'Invalid current password' });
       }
+      await fetchLogs();
     } catch (err) {
       setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
@@ -123,6 +130,7 @@ const SecurityProfile = () => {
           setAlert({ type: 'error', title: 'Verification Failed', message: 'The OTP entered is incorrect.\nPlease check the code sent to your registered email and try again.' });
         }
       }
+      await fetchLogs();
     } catch (err) {
       setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
@@ -165,6 +173,7 @@ const SecurityProfile = () => {
       } else {
         setAlert({ type: 'error', title: 'Update Failed', message: data.message });
       }
+      await fetchLogs();
     } catch (err) {
       setAlert({ type: 'error', title: 'Connection Error', message: 'Please try again.' });
     } finally {
@@ -173,6 +182,51 @@ const SecurityProfile = () => {
   };
 
   if (!currentUser) return null;
+
+  const getProcessedTimeline = () => {
+    let filtered = securityTimeline;
+
+    if (timelineFilter !== 'All') {
+      filtered = filtered.filter(log => {
+        const act = log.activity.toLowerCase();
+        if (timelineFilter === 'Login') return act.includes('login');
+        if (timelineFilter === 'Password') return act.includes('password') && !act.includes('otp');
+        if (timelineFilter === 'OTP') return act.includes('otp');
+        if (timelineFilter === 'Security Alerts') return log.status === 'WARNING' || log.status === 'FAILURE';
+        if (timelineFilter === 'Account Lock') return act.includes('lock');
+        return true;
+      });
+    } else if (!showFullHistory) {
+      const highValuePatterns = ['login', 'password changed', 'password reset', 'account locked', 'suspicious'];
+      filtered = filtered.filter(log => {
+        const act = log.activity.toLowerCase();
+        return highValuePatterns.some(p => act.includes(p)) && !act.includes('otp');
+      });
+    }
+
+    let grouped = [];
+    let currentGroup = null;
+    filtered.forEach(log => {
+      const isRepetitive = log.activity.includes('OTP');
+      if (currentGroup && currentGroup.activity === log.activity && currentGroup.status === log.status && isRepetitive) {
+        currentGroup.count = (currentGroup.count || 1) + 1;
+      } else {
+        if (currentGroup) grouped.push(currentGroup);
+        currentGroup = { ...log, count: 1 };
+      }
+    });
+    if (currentGroup) grouped.push(currentGroup);
+
+    if (!showFullHistory) {
+      grouped = grouped.slice(0, 20);
+    }
+
+    return grouped;
+  };
+
+  const processedTimeline = getProcessedTimeline();
+  const totalPages = Math.ceil(processedTimeline.length / ITEMS_PER_PAGE);
+  const currentTimelinePage = processedTimeline.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
@@ -264,11 +318,26 @@ const SecurityProfile = () => {
 
             <div className="lg:col-span-2">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-100">
+                <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
                     <AlertTriangle size={18} className="text-indigo-500" />
                     Security Activity Timeline
                   </h3>
+                  {showFullHistory && (
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+                      {['All', 'Login', 'Password', 'OTP', 'Security Alerts', 'Account Lock'].map(f => (
+                        <button
+                          key={f}
+                          onClick={() => { setTimelineFilter(f); setCurrentPage(1); }}
+                          className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap transition-colors ${
+                            timelineFilter === f ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="p-0">
                   <table className="w-full text-left border-collapse">
@@ -281,13 +350,13 @@ const SecurityProfile = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {securityTimeline.map((log) => (
+                      {currentTimelinePage.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-50/50">
                           <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
                             {new Date(log.timestamp).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 text-sm font-medium text-slate-800">
-                            {log.activity}
+                            {log.activity} {log.count > 1 && <span className="text-xs text-slate-500 ml-1 font-semibold">({log.count} Times)</span>}
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
@@ -303,15 +372,54 @@ const SecurityProfile = () => {
                           </td>
                         </tr>
                       ))}
-                      {securityTimeline.length === 0 && (
+                      {currentTimelinePage.length === 0 && (
                         <tr>
                           <td colSpan="4" className="px-6 py-8 text-center text-slate-500">
-                            No security activities recorded.
+                            No security activities recorded for this filter.
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                </div>
+                
+                <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+                  {!showFullHistory ? (
+                    <button 
+                      onClick={() => setShowFullHistory(true)}
+                      className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors w-full text-center"
+                    >
+                      View Full History
+                    </button>
+                  ) : (
+                    <>
+                      <div className="text-xs text-slate-500 font-medium">
+                        Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, processedTimeline.length)} of {processedTimeline.length}
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          disabled={currentPage === 1}
+                          onClick={() => setCurrentPage(prev => prev - 1)}
+                          className="px-3 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
+                        >
+                          Prev
+                        </button>
+                        <button 
+                          disabled={currentPage === totalPages || totalPages === 0}
+                          onClick={() => setCurrentPage(prev => prev + 1)}
+                          className="px-3 py-1 rounded border border-slate-200 text-xs font-semibold text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
+                        >
+                          Next
+                        </button>
+                        <button 
+                          onClick={() => { setShowFullHistory(false); setTimelineFilter('All'); setCurrentPage(1); }}
+                          className="ml-4 px-3 py-1 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold hover:bg-indigo-100"
+                        >
+                          Close History
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
