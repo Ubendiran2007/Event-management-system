@@ -29,6 +29,8 @@ import {
   ArrowUpRight,
   Clock3,
   LayoutDashboard,
+  LogOut,
+  Shield,
   History,
   Info,
   UserPlus
@@ -54,7 +56,7 @@ import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
-import { formatRollNo } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
 
 
@@ -645,7 +647,7 @@ const Dashboard = () => {
   };
 
   const shareDeptList = async (dept, students, eventTitle, eventDate) => {
-    const listText = students.map((s, i) => `${i + 1}. ${s.studentName} (${s.rollNo}) - ${s.class}`).join('\n');
+    const listText = students.map((s, i) => `${i + 1}. ${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId || s.studentId)} - ${fallbackValue(s.class, 'general')}`).join('\n');
     const shareText = `APPROVED PARTICIPANT OD LIST: ${eventTitle}\nDATE: ${eventDate || '-'}\nDEPARTMENT: ${dept}\n\n${listText}`;
 
     if (navigator.share) {
@@ -670,7 +672,7 @@ const Dashboard = () => {
     const sortedStudents = [...students].sort((a, b) => {
       const classComp = String(a.class || '').localeCompare(String(b.class || ''));
       if (classComp !== 0) return classComp;
-      return String(a.studentName || '').localeCompare(String(b.studentName || ''));
+      return String(a.studentName || a.name || '').localeCompare(String(b.studentName || b.name || ''));
     });
 
     const classCounts = sortedStudents.reduce((acc, s) => {
@@ -792,9 +794,9 @@ const Dashboard = () => {
       return `
         <tr>
           <td>${i + 1}</td>
-          <td style="font-weight: bold; color: #1e293b;">${s.studentName}</td>
-          <td style="font-family: 'Courier New', monospace; font-weight: 600;">${s.rollNo}</td>
-          <td>${s.class}</td>
+          <td style="font-weight: bold; color: #1e293b;">${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId || s.studentId)}</td>
+          <td style="font-family: 'Courier New', monospace; font-weight: 600;">${fallbackValue(s.rollNo, 'general')}</td>
+          <td>${fallbackValue(s.class, 'general')}</td>
           ${isFirstInClass ? `<td rowspan="${classCounts[s.class]}" class="sig-cell"></td>` : ''}
           ${isFirstRow ? `<td rowspan="${sortedStudents.length}" class="sig-cell"></td>` : ''}
         </tr>
@@ -1340,10 +1342,11 @@ const Dashboard = () => {
                                       {initials}
                                     </div>
                                     <div className="flex flex-col justify-center min-h-[48px]">
-                                      <p className="font-bold text-slate-800 leading-tight">{req.studentName}</p>
+                                      <p className="font-bold text-slate-800 leading-tight">
+                                        {formatStudentNameWithRoll(req.studentName, req.rollNo, req.studentId)}
+                                      </p>
                                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{formatRollNo(req.rollNo, req.studentId)}</span>
-                                        <span className="text-xs text-slate-400 font-medium">{req.class}</span>
+                                        <span className="text-xs text-slate-400 font-medium">{fallbackValue(req.class, 'general')}</span>
                                         {req.registrationType && (
                                           <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${req.registrationType === 'VOLUNTEER' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                                             }`}>
@@ -1592,7 +1595,7 @@ const Dashboard = () => {
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                           {Object.entries(byDept).sort().map(([dept, students]) => {
-                                            const listText = students.map((s, i) => `${i + 1}. ${s.studentName} (${s.rollNo}) - ${s.class}`).join('\n');
+                                            const listText = students.map((s, i) => `${i + 1}. ${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId)} - ${fallbackValue(s.class, 'general')}`).join('\n');
                                             const copyKey = `${groupKey}-${dept}`;
                                             const isCopied = copiedStates[copyKey];
 
@@ -1640,8 +1643,10 @@ const Dashboard = () => {
                                                       <li key={s.id} className="text-xs text-slate-600 flex items-start gap-2">
                                                         <span className="text-[10px] font-bold text-slate-400 mt-0.5 w-4 shrink-0">{idx + 1}.</span>
                                                         <div className="min-w-0">
-                                                          <span className="font-semibold text-slate-800">{s.studentName}</span>
-                                                          <span className="text-[10px] text-slate-500 ml-1.5">{formatRollNo(s.rollNo, s.userId)} · {s.class}</span>
+                                                          <span className="font-semibold text-slate-800">
+                                                            {formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId)}
+                                                          </span>
+                                                          <span className="text-[10px] text-slate-500 ml-1.5">{fallbackValue(s.class, 'general')}</span>
                                                         </div>
                                                       </li>
                                                     ))}
@@ -1680,9 +1685,9 @@ const Dashboard = () => {
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-extrabold text-slate-900 text-[16px] truncate">{request.eventName || request.eventTitle || 'Untitled Event'}</h4>
                                 <div className="flex items-center gap-3 mt-2 flex-wrap text-slate-500">
-                                  <span className="text-xs font-semibold text-slate-600">{request.studentName}</span>
-                                  <span className="text-slate-300">•</span>
-                                  <span className="text-xs font-semibold">{formatRollNo(request.rollNo, request.studentId)}</span>
+                                  <span className="text-xs font-semibold text-slate-600">
+                                    {formatStudentNameWithRoll(request.studentName, request.rollNo, request.studentId)}
+                                  </span>
                                 </div>
                                 <p className="text-xs font-semibold text-slate-500 mt-2 flex items-center gap-1.5">
                                   <Clock size={14} className="text-slate-400" />
@@ -1795,6 +1800,23 @@ const Dashboard = () => {
                       <p className="text-xs text-slate-500 font-medium">Submit new proposal</p>
                     </div>
                     <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
+                  </div>
+                )}
+
+                {/* 3. System Audit - For IQAC Team */}
+                {currentUser.role === UserRole.IQAC_TEAM && (
+                  <div
+                    onClick={() => navigate('/security')}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all group"
+                  >
+                    <div className="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                      <Shield size={18} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-800">System Audit</p>
+                      <p className="text-xs text-slate-500 font-medium">Monitor account security</p>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600" />
                   </div>
                 )}
 

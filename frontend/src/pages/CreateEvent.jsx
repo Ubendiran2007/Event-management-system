@@ -20,10 +20,13 @@ import {
   Users,
   Globe,
 } from 'lucide-react';
+import { formatEventRef, fallbackValue } from '../utils/formatters';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
+import { validateUpload } from '../utils/fileValidation';
+
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
@@ -677,11 +680,10 @@ const CreateEvent = () => {
   });
 
   const iqacNumber = useMemo(() => {
+    if (editingEvent?.referenceId) return editingEvent.referenceId;
     if (editingEvent?.requisition?.iqacNumber) return editingEvent.requisition.iqacNumber;
-    const dept = form.department || 'DEPT';
-    const nextNum = (events?.length || 0) + 1;
-    return `IQAC/2025-26/${dept}/${nextNum.toString().padStart(2, '0')}`;
-  }, [form.department, events, editingEvent]);
+    return "Pending (Generated automatically upon creation)";
+  }, [editingEvent]);
 
   const numberOfDays = useMemo(() => {
     if (!form.startDate || !form.endDate) return '';
@@ -956,8 +958,11 @@ const CreateEvent = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      setStepError('Please upload an image file for the event poster.');
+    // Centralized security validation — whitelist MIME, block dangerous extensions, check size
+    const validationError = validateUpload(file, 'poster');
+    if (validationError) {
+      setStepError(validationError);
+      event.target.value = '';
       return;
     }
 
@@ -968,7 +973,7 @@ const CreateEvent = () => {
         : await compressImageToDataUrl(file);
 
       if (posterDataUrl.length > 10 * 1024 * 1024) {
-        setStepError('Poster is too large after processing. Please use a smaller image.');
+        setStepError('Poster is too large after processing. Please use a smaller image (under 5 MB recommended).');
         return;
       }
 
@@ -984,6 +989,7 @@ const CreateEvent = () => {
       event.target.value = '';
     }
   };
+
 
   const toggleRequirement = (name) => {
     setForm((prev) => ({ ...prev, [name]: !prev[name] }));
@@ -2387,7 +2393,7 @@ const CreateEvent = () => {
 
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-semibold text-slate-700">IQAC Number (Auto Generated)</label>
-              <input readOnly className={`${inputClass} bg-slate-100`} value={iqacNumber} />
+              <input readOnly className={`${inputClass} bg-slate-100 font-mono text-xs text-slate-500`} value={iqacNumber} />
             </div>
           </div>
         </Card>
@@ -2594,7 +2600,7 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-semibold text-slate-700">IQAC Number</label>
-              <input readOnly className={`${inputClass} bg-slate-100`} value={iqacNumber} />
+              <input readOnly className={`${inputClass} bg-slate-100 font-mono text-xs text-slate-500`} value={iqacNumber} />
             </div>
 
             <div className="md:col-span-2">
@@ -3510,7 +3516,7 @@ const CreateEvent = () => {
               <p><span className="font-semibold">Time:</span> {formatTime12(form.startTime)} - {formatTime12(form.endTime)}</p>
               <p><span className="font-semibold">Organizer:</span> {form.organizerName || '-'}</p>
               <p><span className="font-semibold">Department:</span> {form.department || '-'}</p>
-              <p><span className="font-semibold">IQAC Number:</span> {iqacNumber}</p>
+              <p><span className="font-semibold">Event Reference ID:</span> <span className="font-mono text-slate-600">{iqacNumber}</span></p>
               <p><span className="font-semibold">Schedule Items:</span> {form.schedule.length}</p>
               <p className="md:col-span-2 truncate"><span className="font-semibold">Student Feedback:</span> {form.studentFeedbackLink || '-'}</p>
               <p className="md:col-span-2 truncate"><span className="font-semibold">Resource Person Feedback:</span> {form.resourcePersonFeedbackLink || '-'}</p>

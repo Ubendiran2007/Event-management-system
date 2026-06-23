@@ -1,4 +1,4 @@
-import { LogOut, LayoutDashboard } from 'lucide-react';
+import { LogOut, LayoutDashboard, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
@@ -59,6 +59,13 @@ const Navbar = () => {
                 </div>
               );
             })()}
+            <button
+              onClick={() => navigate('/security')}
+              className="p-2 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
+              title="Account Security"
+            >
+              <Shield size={20} />
+            </button>
             <button
               onClick={onLogout}
               className="p-2 hover:bg-slate-100 text-slate-500 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"

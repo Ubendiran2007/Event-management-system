@@ -11,6 +11,7 @@ const iqacRoutes = require('./routes/iqac');
 const studentsRoutes = require('./routes/students');
 const odRequestsRoutes = require('./routes/odRequests');
 const correctionRequestsRoutes = require('./routes/correctionRequests');
+const securityRoutes = require('./routes/security');
 const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionService');
 
 const app = express();
@@ -37,6 +38,7 @@ app.use('/api/iqac', iqacRoutes);
 app.use('/api/students', studentsRoutes);
 app.use('/api/od-requests', odRequestsRoutes);
 app.use('/api/correction-requests', correctionRequestsRoutes);
+app.use('/api/security', securityRoutes);
 
 // ── Start server ─────────────────────────────────────────────────────────────
 const server = http.createServer(app);
@@ -53,4 +55,4 @@ server.on('error', (err) => {
 server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   startEventAutoRejectionJob();
-});
+}); // Triggered restart to load .env

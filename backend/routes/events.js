@@ -9,6 +9,7 @@ const {
   deleteDoc,
   query,
   where,
+  runTransaction
 } = require('firebase/firestore');
 const { db } = require('../firebase');
 const {
@@ -23,6 +24,7 @@ const {
   handleIQACExtensionRequest,
   handleIQACExtensionDecision,
 } = require('../services/emailHandler');
+const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -37,6 +39,40 @@ function checkDb(res) {
   }
   return true;
 }
+
+// ── Helper: Generate IQAC Reference ID ─────────────────────────────────────
+async function generateEventReferenceId(department, startDateStr) {
+  try {
+    const date = new Date(startDateStr || Date.now());
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const acYearStart = month >= 6 ? year : year - 1;
+    const acYearEnd = String(acYearStart + 1).slice(-2);
+    const acYear = `${acYearStart}-${acYearEnd}`;
+    const deptCode = String(department || 'GEN').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+
+    const counterDocId = `events_${acYear}_${deptCode}`;
+    const counterRef = doc(db, 'counters', counterDocId);
+
+    const newSeq = await runTransaction(db, async (transaction) => {
+      const counterDoc = await transaction.get(counterRef);
+      let seq = 1;
+      if (counterDoc.exists()) {
+        seq = (counterDoc.data().seq || 0) + 1;
+      }
+      transaction.set(counterRef, { seq }, { merge: true });
+      return seq;
+    });
+
+    const paddedSeq = String(newSeq).padStart(2, '0');
+    return `IQAC/${acYear}/${deptCode}/${paddedSeq}`;
+  } catch (error) {
+    console.error('[events] Failed to generate Reference ID:', error.message);
+    const randomFallback = Math.floor(Math.random() * 900) + 100;
+    return `IQAC/TEMP/${randomFallback}`;
+  }
+}
+
 
 // â”€â”€ Helper: Fetch faculty email by name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Searches "coordinators" collection for matching faculty name
@@ -141,8 +177,13 @@ router.post('/', async (req, res) => {
       }
     }
 
+    const startDateTimeStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
+    const department = eventData.department || eventData.requisition?.step1?.organizerDetails?.department || 'GEN';
+    const referenceId = await generateEventReferenceId(department, startDateTimeStr);
+
     const payload = {
       ...eventData,
+      referenceId,
       status: eventData.status || 'PENDING_FACULTY',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -231,11 +272,17 @@ router.get('/:id', async (req, res) => {
 
 // ── PATCH /api/events/:id/status ───────────────────────────────────────────
 // Advance or reject an event through the approval chain
-// Body: { status: 'PENDING_HOD' | 'PENDING_PRINCIPAL' | 'POSTED' | 'REJECTED' }
-router.patch('/:id/status', async (req, res) => {
+// Auth: requireAuth — role & department come ONLY from the verified token.
+const STATUS_ALLOWED_ROLES = ['FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN'];
+router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), async (req, res) => {
   if (!checkDb(res)) return;
 
-  const { status, approvedBy } = req.body;
+  // ⚠️  Role and department are resolved from the verified session token, NOT req.body
+  const actingRole = req.user.role;
+  const actingDept = req.user.department;
+  const actingName = req.user.name;
+
+  const { status } = req.body; // Only status is read from body
 
   const allowedStatuses = [
     'PENDING_FACULTY',
@@ -302,7 +349,9 @@ router.patch('/:id/status', async (req, res) => {
 
     let finalStatus = status;
     const updatePayload = { status: finalStatus, updatedAt: new Date().toISOString() };
-    if (approvedBy) updatePayload.approvedBy = approvedBy;
+    // approvedBy is set from the verified token identity, not req.body
+    const approvedBy = actingName || actingRole;
+    updatePayload.approvedBy = approvedBy;
 
     if (finalStatus === 'REJECTED') {
       const reason = String(req.body.rejectionReason || '').trim();
@@ -313,16 +362,40 @@ router.patch('/:id/status', async (req, res) => {
         });
       }
 
-      let displayRole = req.body.rejectedByRole || 'Approver';
-      if (displayRole === 'FACULTY') displayRole = 'Faculty';
-      else if (displayRole === 'HOD') displayRole = 'HOD';
-      else if (displayRole === 'IQAC_TEAM') displayRole = 'IQAC';
-
+      // ⚠️ Role comes from token — cannot be spoofed via req.body
+      const displayRole = actingRole;
       updatePayload.rejectionReason = reason;
       updatePayload.rejectedByRole = displayRole;
-      updatePayload.rejectedByName = req.body.rejectedByName || approvedBy || 'Unknown Approver';
-      updatePayload.rejectedByDept = req.body.rejectedByDept || rawEventData.department || 'N/A';
+      updatePayload.rejectedByName = actingName || approvedBy || 'Unknown Approver';
+      updatePayload.rejectedByDept = actingDept || rawEventData.department || 'N/A';
       updatePayload.rejectedAt = new Date().toISOString();
+    }
+
+    // Department isolation: FACULTY and HOD can only act on their own department's events
+    if (['FACULTY', 'HOD'].includes(actingRole)) {
+      if (!assertDeptMatch(req, rawEventData.department)) {
+        return res.status(403).json({
+          success: false,
+          message: `Forbidden: You can only act on events from your department (${actingDept}).`,
+        });
+      }
+    }
+
+    // Workflow guard: enforce correct sequential approval order
+    const VALID_TRANSITIONS = {
+      FACULTY:    { from: 'PENDING_FACULTY',     to: ['PENDING_HOD', 'REJECTED'] },
+      HOD:        { from: 'PENDING_HOD',         to: ['PENDING_DEPARTMENTS', 'REJECTED'] },
+      IQAC_TEAM:  { from: 'PENDING_IQAC',        to: ['POSTED', 'REJECTED'] },
+    };
+    const trans = VALID_TRANSITIONS[actingRole];
+    if (trans && rawEventData.status !== trans.from && !trans.to.includes(status)) {
+      // Allow system admin to override
+      if (actingRole !== 'SYSTEM_ADMIN') {
+        return res.status(403).json({
+          success: false,
+          message: `Forbidden: Event is in status "${rawEventData.status}" — ${actingRole} cannot transition to "${status}" from this state.`,
+        });
+      }
     }
 
     // Record timestamped approval for each stage
@@ -376,14 +449,19 @@ router.patch('/:id/status', async (req, res) => {
 // â”€â”€ PATCH /api/events/:id/department-approval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Approve a specific department requirement
 // Body: { department: 'venue' | 'audio' | 'icts' | 'transport' | 'accommodation' | 'media', approvedBy: string }
-router.patch('/:id/department-approval', async (req, res) => {
+// Auth: role comes from verified token — not req.body
+const DEPT_APPROVAL_ROLES = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA'];
+router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_ROLES), async (req, res) => {
   if (!checkDb(res)) return;
 
-  const { department, approvedBy, status = 'APPROVED', reason } = req.body;
+  const { department, status = 'APPROVED', reason } = req.body;
+  // approvedBy resolved from verified token — cannot be spoofed via req.body
+  const approvedBy = req.user.name || req.user.role;
 
-  if (!department || !approvedBy) {
-    return res.status(400).json({ success: false, message: 'Department and approvedBy are required' });
+  if (!department) {
+    return res.status(400).json({ success: false, message: 'Department is required' });
   }
+
 
   try {
     const eventRef = doc(db, 'events', req.params.id);
@@ -763,6 +841,17 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    // Delete associated OD requests to prevent orphans
+    const odQuery = query(collection(db, 'odRequests'), where('eventId', '==', req.params.id));
+    const odSnap = await getDocs(odQuery);
+    const deleteODPromises = odSnap.docs.map(d => deleteDoc(d.ref));
+
+    // Delete associated Correction requests to prevent orphans
+    const correctionQuery = query(collection(db, 'correctionRequests'), where('eventId', '==', req.params.id));
+    const correctionSnap = await getDocs(correctionQuery);
+    const deleteCorrectionPromises = correctionSnap.docs.map(d => deleteDoc(d.ref));
+
+    await Promise.all([...deleteODPromises, ...deleteCorrectionPromises]);
     await deleteDoc(eventRef);
 
     return res.json({ success: true, message: 'Event deleted successfully' });

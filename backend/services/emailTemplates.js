@@ -62,8 +62,17 @@ function buildBaseTemplate({ title, subtitle, headerBg = '#1e293b', headerTextCo
   `;
 }
 
-// Helper to format event references securely
-const getEventRef = (event) => event.eventReference || event.iqacNumber || event.eventCode || (event.id ? `EVT-${String(event.id).slice(-6).toUpperCase()}` : 'N/A');
+// Helper for empty value fallbacks matching frontend standards
+const safeVal = (val, fallback = 'Not Provided') => {
+  if (val === null || val === undefined || val === '' || String(val).trim() === '' || String(val).trim() === '-' || String(val).trim() === '*') {
+    return fallback;
+  }
+  return val;
+};
+
+// Helper to format event references securely (NO Firebase IDs)
+const getEventRef = (event) => safeVal(event.referenceId, 'Pending Reference');
+
 const formatTime = (timeStr) => {
   if (!timeStr) return '';
   const [h, m] = timeStr.split(':');
@@ -72,22 +81,25 @@ const formatTime = (timeStr) => {
   const h12 = hh % 12 || 12;
   return `${h12.toString().padStart(2, '0')}:${m} ${suffix}`;
 };
+
 const getEventDetailsHtml = (eventData) => `
   <div style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin-top: 16px;">
     <div style="background-color: #f8fafc; padding: 12px 16px; border-bottom: 1px solid #e2e8f0;">
       <h3 style="margin: 0; font-size: 14px; color: #334155; text-transform: uppercase; letter-spacing: 0.5px;">📋 Event Details</h3>
     </div>
     <table class="table-details">
-      <tr><td>Event Reference</td><td style="font-family: monospace;">${getEventRef(eventData)}</td></tr>
-      <tr><td>Event Title</td><td style="font-weight: 700;">${eventData.title || 'Not specified'}</td></tr>
-      <tr><td>Event Type</td><td>${eventData.eventType || 'Not specified'}</td></tr>
-      <tr><td>Date</td><td>${eventData.date || 'Not specified'}</td></tr>
-      <tr><td>Time</td><td>${eventData.startTime ? formatTime(eventData.startTime) + ' - ' + (eventData.endTime ? formatTime(eventData.endTime) : 'TBD') : 'Not specified'}</td></tr>
-      <tr><td>Venue</td><td>${eventData.venue || 'Not specified'}</td></tr>
-      <tr><td>Organizer</td><td>${eventData.organizerName || 'Not specified'} (${eventData.organizingDepartment || 'N/A'})</td></tr>
+      <tr><td>Event Reference ID</td><td style="font-family: monospace; font-weight: 700; color: #0f172a;">${getEventRef(eventData)}</td></tr>
+      <tr><td>Event Title</td><td style="font-weight: 700;">${safeVal(eventData.title, 'Not Provided')}</td></tr>
+      <tr><td>Department</td><td>${safeVal(eventData.department || eventData.organizingDepartment, 'Not Assigned')}</td></tr>
+      <tr><td>Event Type</td><td>${safeVal(eventData.eventType, 'Not Specified')}</td></tr>
+      <tr><td>Date</td><td>${safeVal(eventData.date, 'Not Specified')}</td></tr>
+      <tr><td>Time</td><td>${eventData.startTime ? formatTime(eventData.startTime) + ' - ' + (eventData.endTime ? formatTime(eventData.endTime) : 'TBD') : 'Not Specified'}</td></tr>
+      <tr><td>Venue</td><td>${safeVal(eventData.venue, 'Not Specified')}</td></tr>
+      <tr><td>Organizer</td><td>${safeVal(eventData.organizerName, 'Not Provided')}</td></tr>
     </table>
   </div>
 `;
+
 
 module.exports = {
   facultyNotificationTemplate: (eventData) => {
@@ -236,30 +248,34 @@ module.exports = {
 
   studentRegistrationTemplate: (student, eventData, status, isApproved) => {
     const headerBg = isApproved ? 'linear-gradient(135deg, #10b981 0%, #064e3b 100%)' : 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)';
+    const rollNo = safeVal(student.rollNo, 'Not Provided');
+    const dept = safeVal(student.department, 'Not Assigned');
+    const safeName = safeVal(student.name, 'Unknown Student');
+
     return buildBaseTemplate({
       title: `Registration ${isApproved ? 'Approved' : 'Rejected'}`,
-      subtitle: eventData.title,
+      subtitle: safeVal(eventData.title, 'Not Provided'),
       headerBg,
-      preheader: `Your registration for ${eventData.title} has been ${status.toLowerCase()}`,
+      preheader: `Your registration for ${safeVal(eventData.title, 'Not Provided')} has been ${status.toLowerCase()}`,
       contentHtml: `
-        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${student.name}</strong>,</p>
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${safeName}</strong>,</p>
         
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
           <tr>
             <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 35%; color: #475569;">Student Name</td>
-            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">${student.name}</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">${safeName}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Roll Number</td>
-            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-family: monospace; font-size: 14px;">${student.rollNo || 'N/A'}</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-family: monospace; font-size: 14px;">${rollNo}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Department/Class</td>
-            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a;">${student.department || 'N/A'}</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a;">${dept}</td>
           </tr>
         </table>
         
-        <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Your registration request for the event <strong>"${eventData.title}"</strong> has been <strong style="color: ${isApproved ? '#10b981' : '#ef4444'}">${status.toLowerCase()}</strong>.</p>
+        <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Your registration request for the event <strong>"${safeVal(eventData.title, 'Not Provided')}"</strong> has been <strong style="color: ${isApproved ? '#10b981' : '#ef4444'}">${status.toLowerCase()}</strong>.</p>
         
         ${isApproved ? `
           <div class="alert-box alert-success">
@@ -279,30 +295,34 @@ module.exports = {
   },
 
   feedbackRequestTemplate: (student, eventData, feedbackLink) => {
+    const rollNo = safeVal(student.rollNo, 'Not Provided');
+    const dept = safeVal(student.department, 'Not Assigned');
+    const safeName = safeVal(student.name, 'Unknown Student');
+
     return buildBaseTemplate({
       title: 'Feedback Requested',
       subtitle: 'Help us improve future events',
       headerBg: 'linear-gradient(135deg, #f59e0b 0%, #78350f 100%)',
-      preheader: `Please share your feedback for '${eventData.title}'`,
+      preheader: `Please share your feedback for '${safeVal(eventData.title, 'Not Provided')}'`,
       contentHtml: `
-        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${student.name}</strong>,</p>
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${safeName}</strong>,</p>
         
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
           <tr>
             <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 35%; color: #475569;">Student Name</td>
-            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">${student.name}</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">${safeName}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Roll Number</td>
-            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-family: monospace; font-size: 14px;">${student.rollNo || 'N/A'}</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a; font-family: monospace; font-size: 14px;">${rollNo}</td>
           </tr>
           <tr>
             <td style="padding: 8px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; color: #475569;">Department/Class</td>
-            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a;">${student.department || 'N/A'}</td>
+            <td style="padding: 8px; border: 1px solid #e2e8f0; color: #0f172a;">${dept}</td>
           </tr>
         </table>
         
-        <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Thank you for participating in <strong>"${eventData.title}"</strong>. We hope you had a great experience!</p>
+        <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Thank you for participating in <strong>"${safeVal(eventData.title, 'Not Provided')}"</strong>. We hope you had a great experience!</p>
         <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">To help us improve the quality of future programs, please take a few minutes to share your feedback.</p>
         <div style="text-align: center; margin: 32px 0;">
           <a href="${feedbackLink}" class="btn" style="background-color: #f59e0b; color: #fff;">Submit Your Feedback</a>
@@ -400,6 +420,193 @@ module.exports = {
           <p style="margin: 0; font-size: 13px; line-height: 1.5;">Your proposal is now pending review. You will receive email notifications as it progresses through the designated approvers (Faculty, HOD, Departments, IQAC).</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569;">You can track the live approval status at any time from your Dashboard in the Event Management Portal.</p>
+      `
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // ACCOUNT SECURITY TEMPLATES
+  // ─────────────────────────────────────────────────────────────────
+
+  loginAlertTemplate: (user, reqDetails) => {
+    return buildBaseTemplate({
+      title: 'New Login Detected',
+      subtitle: 'Account Security Alert',
+      headerBg: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+      preheader: 'A successful login to your account was detected.',
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear ${safeVal(user.name, 'User')},</p>
+        <p style="margin: 0 0 16px; font-size: 14px; color: #475569; line-height: 1.6;">
+          A successful login to your Event Management & IQAC Portal account has been detected.
+        </p>
+
+        <h4 style="margin: 24px 0 12px; color: #1e293b; font-size: 14px; text-transform: uppercase;">Account Information</h4>
+        <table class="table-details" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 40%;">Name</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.name)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Role</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.role)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Department</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.department)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Roll Number / ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${safeVal(user.rollNo || user.employeeId || user.id)}</td></tr>
+        </table>
+
+        <h4 style="margin: 24px 0 12px; color: #1e293b; font-size: 14px; text-transform: uppercase;">Login Details</h4>
+        <table class="table-details" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 40%;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.date}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.time}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Browser</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.browser}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Operating System</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.os}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">IP Address</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${reqDetails.ip}</td></tr>
+        </table>
+
+        <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
+          If this login was not performed by you, immediately change your password and contact IQAC.
+        </p>
+      `
+    });
+  },
+
+  passwordChangeOtpTemplate: (user, otp) => {
+    return buildBaseTemplate({
+      title: 'Password Change Verification',
+      subtitle: 'Event Management & IQAC Portal',
+      headerBg: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
+      preheader: 'Your OTP for password change.',
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear ${safeVal(user.name, 'User')},</p>
+        <p style="margin: 0 0 16px; font-size: 14px; color: #475569; line-height: 1.6;">
+          A password change request has been received for your account.
+        </p>
+        <div style="margin: 24px 0; padding: 20px; background-color: #fffbeb; border: 1px dashed #fcd34d; border-radius: 8px; text-align: center;">
+          <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold; color: #b45309; text-transform: uppercase; letter-spacing: 1px;">Your OTP Code</p>
+          <div style="font-size: 32px; font-weight: 800; color: #d97706; letter-spacing: 4px; font-family: monospace;">${otp}</div>
+          <p style="margin: 8px 0 0; font-size: 12px; color: #92400e;">Valid for 10 minutes. Do not share this code.</p>
+        </div>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
+          If this request was not made by you, contact IQAC immediately.
+        </p>
+      `
+    });
+  },
+
+  passwordChangeSuccessTemplate: (user, date, time) => {
+    return buildBaseTemplate({
+      title: 'Password Successfully Changed',
+      subtitle: 'Security Update',
+      headerBg: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+      preheader: 'Your account password has been updated.',
+      contentHtml: `
+        <div class="alert-box alert-success" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Password Updated</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your password has been successfully changed.</p>
+        </div>
+        <table class="table-details" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 40%;">Name</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.name)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Role</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.role)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Department</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.department)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Roll Number / ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${safeVal(user.rollNo || user.employeeId || user.id)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${date}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${time}</td></tr>
+        </table>
+      `
+    });
+  },
+
+  passwordResetOtpTemplate: (user, otp) => {
+    return buildBaseTemplate({
+      title: 'Password Reset Verification',
+      subtitle: 'Account Recovery',
+      headerBg: 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)',
+      preheader: 'Your OTP for password recovery.',
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear ${safeVal(user.name, 'User')},</p>
+        <p style="margin: 0 0 16px; font-size: 14px; color: #475569; line-height: 1.6;">
+          A password reset request has been received for your account.
+        </p>
+        <div style="margin: 24px 0; padding: 20px; background-color: #eef2ff; border: 1px dashed #c7d2fe; border-radius: 8px; text-align: center;">
+          <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold; color: #4338ca; text-transform: uppercase; letter-spacing: 1px;">Your Reset OTP</p>
+          <div style="font-size: 32px; font-weight: 800; color: #4f46e5; letter-spacing: 4px; font-family: monospace;">${otp}</div>
+          <p style="margin: 8px 0 0; font-size: 12px; color: #3730a3;">Valid for 10 minutes. Do not share this code.</p>
+        </div>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
+          If you did not initiate this request, contact IQAC immediately.
+        </p>
+      `
+    });
+  },
+
+  passwordResetSuccessTemplate: (user, date, time) => {
+    return buildBaseTemplate({
+      title: 'Password Successfully Reset',
+      subtitle: 'Account Recovery Success',
+      headerBg: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+      preheader: 'Your account password has been reset.',
+      contentHtml: `
+        <div class="alert-box alert-success" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Password Reset</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your password has been successfully reset.</p>
+        </div>
+        <table class="table-details" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 40%;">Name</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.name)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Role</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.role)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Department</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.department)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Roll Number / ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${safeVal(user.rollNo || user.employeeId || user.id)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${date}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${time}</td></tr>
+        </table>
+      `
+    });
+  },
+
+  suspiciousLoginTemplate: (user, reqDetails) => {
+    return buildBaseTemplate({
+      title: 'Security Alert - New Device Login Detected',
+      subtitle: 'Action Required',
+      headerBg: 'linear-gradient(135deg, #ef4444 0%, #991b1b 100%)',
+      preheader: 'Login detected from an unrecognized device or environment.',
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear ${safeVal(user.name, 'User')},</p>
+        <div class="alert-box alert-error" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Suspicious Login Detected</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">A login has been detected from a device or environment that has not been previously used.</p>
+        </div>
+        <table class="table-details" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 40%;">Name</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.name)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Role</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.role)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Department</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.department)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.date}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.time}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Browser</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.browser}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Operating System</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.os}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">IP Address</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">${reqDetails.ip}</td></tr>
+        </table>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
+          If this was not you, immediately change your password and contact IQAC.
+        </p>
+      `
+    });
+  },
+
+  accountLockedTemplate: (user, reqDetails, lockDuration) => {
+    return buildBaseTemplate({
+      title: 'Account Temporarily Locked',
+      subtitle: 'Security Protection Triggered',
+      headerBg: 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)',
+      preheader: 'Your account has been locked due to multiple failed logins.',
+      contentHtml: `
+        <div class="alert-box alert-error" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Account Locked</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Reason: Multiple unsuccessful login attempts detected.</p>
+        </div>
+        <table class="table-details" style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600; width: 40%;">Name</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.name)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Role</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.role)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Department</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${safeVal(user.department)}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.date}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${reqDetails.time}</td></tr>
+          <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Lock Duration</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: bold; color: #b91c1c;">${lockDuration} Minutes</td></tr>
+        </table>
+        <p style="margin: 20px 0 0; font-size: 14px; color: #475569;">
+          Please wait for the lock duration to expire before attempting to log in again. If you continue to face issues, you may use the "Forgot Password" option or contact the ICTS Team.
+        </p>
       `
     });
   }

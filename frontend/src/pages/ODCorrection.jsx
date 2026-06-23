@@ -21,7 +21,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
 import Navbar from '../components/Navbar';
-import { formatRollNo } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const ODCorrection = () => {
     const { currentUser } = useAppContext();
@@ -359,8 +359,12 @@ const ODCorrection = () => {
                                                     {req.studentName.charAt(0)}
                                                 </div>
                                                 <div>
-                                                    <h4 className="font-bold text-slate-900 text-lg">{req.studentName}</h4>
-                                                    <p className="text-sm text-slate-500 font-bold font-mono tracking-wider">{formatRollNo(req.rollNo, req.studentId)} • {req.department}</p>
+                                                    <h4 className="font-bold text-slate-900 text-lg">
+                                                        {formatStudentNameWithRoll(req.studentName, req.rollNo, req.studentId)}
+                                                    </h4>
+                                                    <p className="text-sm text-slate-500 font-bold tracking-wider">
+                                                        {fallbackValue(req.department, 'department')}
+                                                    </p>
                                                 </div>
                                                 <div className="ml-auto">
                                                     {getStatusBadge(req.status)}

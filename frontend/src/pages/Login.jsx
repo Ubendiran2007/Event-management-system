@@ -5,6 +5,7 @@ import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
 
 import Navbar from '../components/Navbar';
+import ForgotPasswordModal from '../components/ForgotPasswordModal';
 
 
 
@@ -17,6 +18,7 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [unlockInputs, setUnlockInputs] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   const enableInputEditing = () => {
     if (!unlockInputs) setUnlockInputs(true);
@@ -41,6 +43,10 @@ const Login = () => {
       const data = await response.json();
 
       if (data.success) {
+        // Store session token for all subsequent API calls
+        if (data.token) {
+          localStorage.setItem('sessionToken', data.token);
+        }
         localStorage.setItem('user', JSON.stringify(data.user));
         handleLogin({
           ...data.user,
@@ -48,6 +54,7 @@ const Login = () => {
           isApprovedOrganizer: data.user.isApprovedOrganizer || false,
         });
         navigate('/dashboard');
+
       } else {
         setError(data.message || 'Invalid username or password');
       }
@@ -140,6 +147,16 @@ const Login = () => {
               </div>
             )}
 
+            <div className="flex justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => setShowForgot(true)}
+                className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                Forgot Password?
+              </button>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -153,10 +170,9 @@ const Login = () => {
           </form>
         </div>
       </div>
+
+      {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
     </div>
-
-
-
   );
 };
 

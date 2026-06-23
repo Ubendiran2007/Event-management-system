@@ -6,6 +6,8 @@ const {
   getDoc, query, where,
 } = require('firebase/firestore');
 const { sendEmail } = require('../services/emailService');
+const { requireAuth, requireRole } = require('../middleware/auth');
+
 
 const normalizeRollNo = (value) =>
   String(value || '')
@@ -268,17 +270,22 @@ router.post('/', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/correction-requests/:id/status
 // Faculty / HOD / IQAC approves or rejects
-// Body: { action: 'APPROVE'|'REJECT', role, approverName, approverDept, comments, rejectionReason }
+// Auth: role and approverName are resolved from the verified JWT token — NOT req.body
 // ─────────────────────────────────────────────────────────────────────────────
-router.patch('/:id/status', async (req, res) => {
+const CORRECTION_ALLOWED_ROLES = ['FACULTY', 'HOD', 'IQAC_TEAM'];
+router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
-  const { action, role, approverName, approverDept, comments = '', rejectionReason = '' } = req.body;
+  const { action, comments = '', rejectionReason = '' } = req.body;
+
+  // Role and identity come from the verified session token — cannot be spoofed
+  const role = req.user.role;
+  const approverName = req.user.name || req.user.role;
+  const approverDept = req.user.department;
 
   if (!action || !['APPROVE', 'REJECT'].includes(action)) {
     return res.status(400).json({ success: false, message: 'action must be APPROVE or REJECT' });
   }
-  if (!role) return res.status(400).json({ success: false, message: 'role is required' });
   if (action === 'REJECT' && !rejectionReason.trim()) {
     return res.status(400).json({ success: false, message: 'Rejection reason is mandatory.' });
   }

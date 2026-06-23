@@ -4,9 +4,11 @@ import defaultPoster from '../assets/sece.avif';
 import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp, Check, Circle, LayoutGrid, Globe, Eye } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import { useAppContext } from '../context/AppContext';
+import { formatRollNo, formatStudentNameWithRoll, formatEventRef, fallbackValue } from '../utils/formatters';
 import { EventStatus } from '../types';
 import EventReportModal from '../components/EventReportModal';
 import * as XLSX from 'xlsx';
+import { validateUpload } from '../utils/fileValidation';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -61,9 +63,10 @@ const CHECKLIST_ITEMS = [
   { id: 'press-media-materials', label: 'Press / Media Materials (Optional)' },
 ];
 
-const ACCEPTED_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
-const MAX_DOC_SIZE = 250 * 1024; // 250 KB in bytes
-const MAX_DOC_SIZE_LABEL = '250 KB';
+// Safe accepted types: PDF and images only (.doc/.docx not allowed — executable risk)
+const ACCEPTED_TYPES = '.pdf,.jpg,.jpeg,.png';
+const MAX_DOC_SIZE = 10 * 1024 * 1024; // 10 MB — raised from 250KB to accommodate reports
+const MAX_DOC_SIZE_LABEL = '10 MB';
 
 const STATUS_THEME = {
   pending: 'bg-red-50 text-red-700 border border-red-200',
@@ -503,12 +506,10 @@ const IQACSubmission = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // ── Size guard: reject immediately if > 250 KB ──
-    if (file.size > MAX_DOC_SIZE) {
-      setUploadErrors((prev) => ({
-        ...prev,
-        [itemId]: `File too large (${(file.size / 1024).toFixed(0)} KB). Maximum allowed is ${MAX_DOC_SIZE_LABEL}.`,
-      }));
+    // Centralized security validation — whitelist MIME, block dangerous files, check size
+    const validationError = validateUpload(file, 'document');
+    if (validationError) {
+      setUploadErrors((prev) => ({ ...prev, [itemId]: validationError }));
       e.target.value = '';
       return;
     }
@@ -625,6 +626,13 @@ const IQACSubmission = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const validationError = validateUpload(file, 'photo');
+    if (validationError) {
+      setSubmitError(`Gallery Upload Failed: ${validationError}`);
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       setGallery((prev) => [...prev, {
@@ -669,6 +677,14 @@ const IQACSubmission = () => {
   const onResourcePersonPhoto = (id, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const validationError = validateUpload(file, 'photo');
+    if (validationError) {
+      setSubmitError(`Resource Person Photo Failed: ${validationError}`);
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       setResourcePersons(prev => prev.map(p => {
@@ -1313,8 +1329,8 @@ const IQACSubmission = () => {
                     {studentAttendanceRoster.map((row, idx) => (
                       <tr key={row.id || `${row.rollNo}-${idx + 1}`} className="border-t border-slate-100">
                         <td className="px-3 py-2 text-slate-700">{idx + 1}</td>
-                        <td className="px-3 py-2 text-slate-800">{row.student || '-'}</td>
-                        <td className="px-3 py-2 text-slate-600">{row.rollNo || '-'}</td>
+                        <td className="px-3 py-2 text-slate-800">{formatStudentNameWithRoll(row.student, row.rollNo, row.requestId)}</td>
+                        <td className="px-3 py-2 text-slate-600">{fallbackValue(row.rollNo, 'general')}</td>
                         {(() => {
                           const selects = [];
                           for (let d = 1; d <= numberOfDays; d++) {

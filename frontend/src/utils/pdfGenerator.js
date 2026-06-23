@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
-import { formatRollNo } from './formatters';
+import { formatRollNo, formatEventRef, fallbackValue } from './formatters';
 
 /**
  * Generates an OD Letter PDF and returns it as a Base64 string.
@@ -16,8 +16,9 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       String(value || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     const displayClassSection = formatClassSection(odRequest?.class || odRequest?.section) || 'N/A';
 
-    const eventTitle = odRequest?.eventTitle || odRequest?.eventName || event?.title || 'N/A';
-    const eventVenue = odRequest?.eventVenue || odRequest?.venue || event?.venue || 'N/A';
+    const eventTitle = fallbackValue(odRequest?.eventTitle || odRequest?.eventName || event?.title, 'Not Provided');
+    const eventVenue = fallbackValue(odRequest?.eventVenue || odRequest?.venue || event?.venue, 'Not Specified');
+    const eventRef   = formatEventRef(event);
     const s1 = event?.requisition?.step1;
     
     const formatDate = (dateStr) => {
@@ -50,6 +51,7 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       `Roll No : ${displayRollNo}`,
       `Class   : ${displayClassSection}`,
       `Event   : ${eventTitle}`,
+      `Event Ref: ${eventRef}`,
       `Date    : ${eventDate}`,
       `Venue   : ${eventVenue}`,
       `Status  : APPROVED`,
@@ -124,8 +126,9 @@ export const generateODLetterBase64 = async (odRequest, event) => {
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8; width: 35%;">Student Name</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${odRequest.studentName}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Roll Number</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${displayRollNo}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Class / Section</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${displayClassSection}</td></tr>
-          <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Email</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${odRequest.email || 'N/A'}</td></tr>
+          <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Email</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${fallbackValue(odRequest.email, 'email')}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Event Name</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${eventTitle}</td></tr>
+          <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Event Ref ID</td><td style="padding: 6px 10px; border: 1px solid #bcd; font-family: monospace;">${eventRef}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Event Date</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${eventDate}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Venue</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${eventVenue}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Approved By</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${approvedBy}</td></tr>

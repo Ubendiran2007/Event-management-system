@@ -3,6 +3,7 @@ import { X, Printer, FileText, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SECELogo from '../assets/sece.avif';
 import SECEHeader from '../assets/sece header.jpeg';
+import { formatEventRef } from '../utils/formatters';
 
 const SDG_NAMES = {
   1: "No Poverty",
@@ -204,6 +205,10 @@ const EventReportModal = ({
                 <tr>
                   <td className="border border-black p-2 font-bold">Event Title</td>
                   <td className="border border-black p-2" colSpan="6">{event.title || s1.eventName || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="border border-black p-2 font-bold">Event Reference ID</td>
+                  <td className="border border-black p-2" colSpan="6" style={{ fontFamily: 'monospace' }}>{formatEventRef(event)}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">Event Type</td>

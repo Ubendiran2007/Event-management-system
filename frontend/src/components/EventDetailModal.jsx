@@ -26,6 +26,9 @@ import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
 import FeedbackModal from './FeedbackModal';
+import { formatRollNo, formatEventRef, fallbackValue } from '../utils/formatters';
+import { validateUpload } from '../utils/fileValidation';
+
 
 const InfoSection = ({ title, icon: Icon, children }) => (
   <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -175,8 +178,11 @@ const EventDetailModal = ({ event, onClose }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      setPosterUploadError('Please select a valid image file for the poster.');
+    // Centralized security validation — whitelist MIME, block dangerous extensions, enforce size
+    const validationError = validateUpload(file, 'poster');
+    if (validationError) {
+      setPosterUploadError(validationError);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -714,8 +720,7 @@ const EventDetailModal = ({ event, onClose }) => {
             {/* 1. Event Basic Information */}
             <InfoSection title="1. Event Basic Information" icon={FileText}>
               <div className="grid grid-cols-2 gap-4">
-                <InfoRow label="Event Code" value={event?.eventCode || event?.id} fullWidth />
-                <InfoRow label="IQAC Number" value={r?.iqacNumber} fullWidth />
+                <InfoRow label="Event Reference ID" value={<span className="font-mono font-bold text-slate-800 tracking-wider">{formatEventRef(event)}</span>} fullWidth />
                 <InfoRow label="Event Name" value={s1?.eventName} fullWidth />
                 <InfoRow label="Event Type" value={s1?.eventType} />
                 <InfoRow label="IIC Activity" value={s1?.isIIC} />
@@ -1024,7 +1029,7 @@ const EventDetailModal = ({ event, onClose }) => {
                   <InfoRow label="Venue Name" value={audioAnnex.venueName} />
                    <InfoRow label="Start Time" value={formatTime12(audioAnnex.startTime)} />
                    <InfoRow label="End Time" value={formatTime12(audioAnnex.endTime)} />
-                  <InfoRow label="IQAC Number" value={audioAnnex.iqacNumber} fullWidth />
+                  <InfoRow label="Event Reference ID" value={<span className="font-mono font-bold">{formatEventRef(event)}</span>} fullWidth />
                 </div>
                 {Object.entries(audioAnnex.audioEquipment || {}).some(([, v]) => v.selected) && (
                   <div className="mb-4">

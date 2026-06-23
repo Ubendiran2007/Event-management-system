@@ -16,7 +16,7 @@ import { UserRole } from '../types';
 import Navbar from '../components/Navbar';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { STUDENTS } from '../studentData';
-import { formatRollNo } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const ManageStudents = () => {
     const { currentUser, students, loading } = useAppContext();
@@ -355,17 +355,13 @@ const ManageStudents = () => {
                                                     <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0 border border-slate-200">
                                                         {student.name.charAt(0)}
                                                     </div>
-                                                    <div className="min-w-0">
-                                                        <p className="font-bold text-slate-900 text-sm truncate">{student.name}</p>
-                                                        <div className="flex items-center gap-2 mt-0.5">
-                                                            <span className="text-xs text-slate-500 font-mono font-medium">{formatRollNo(student.rollNo, student.id)}</span>
-                                                            {student.email && (
-                                                                <>
-                                                                    <span className="text-slate-300">•</span>
-                                                                    <span className="text-[11px] text-slate-400 truncate">{student.email}</span>
-                                                                </>
-                                                            )}
-                                                        </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-slate-900 text-sm truncate">
+                                                            {formatStudentNameWithRoll(student.name, student.rollNo, student.id)}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                                                            {fallbackValue(student.department, 'department')} · {fallbackValue(student.class, 'general')}
+                                                        </p>
                                                     </div>
                                                 </div>
 

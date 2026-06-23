@@ -1,5 +1,7 @@
 const nodemailer = require('nodemailer');
 const templates = require('./emailTemplates');
+const { db } = require('../firebase');
+const { collection, addDoc } = require('firebase/firestore');
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 
@@ -52,15 +54,59 @@ function isAuthSmtpError(error) {
   return code === 'EAUTH' || responseCode === 535 || responseCode === 530 || responseCode === 534;
 }
 
+async function logEmailAudit(mailOptions, status, errorMessage = '', smtpResponse = '') {
+  try {
+    if (!db) return;
+    await addDoc(collection(db, 'emailLogs'), {
+      recipient: Array.isArray(mailOptions.to) ? mailOptions.to.join(',') : mailOptions.to,
+      // When test mode redirected the email, record who was the intended recipient
+      originalRecipient: mailOptions._originalTo || null,
+      testModeActive: process.env.EMAIL_TEST_MODE === 'true',
+      subject: mailOptions.subject || '',
+      status,
+      timestamp: new Date().toISOString(),
+      smtpResponse,
+      errorMessage,
+      emailType: mailOptions.emailType || 'GENERAL',
+      eventId: mailOptions.eventId || null,
+      eventTitle: mailOptions.eventTitle || null
+    });
+  } catch (err) {
+    console.error('[Email Service] Failed to log email audit:', err.message);
+  }
+}
+
 async function sendMailWithFallback(mailOptions) {
+  // ── Test Mode Email Redirection ──────────────────────────────────────────────
+  // When EMAIL_TEST_MODE=true  → all emails are intercepted and sent to EMAIL_TEST_RECIPIENT
+  // When EMAIL_TEST_MODE=false → emails are delivered to actual recipients (production mode)
+  if (process.env.EMAIL_TEST_MODE === 'true') {
+    const testRecipient = process.env.EMAIL_TEST_RECIPIENT || 'ubendirankumar@gmail.com';
+    console.log(`[Email Service] ⚠️  TEST MODE: Redirecting email for "${mailOptions.to}" → ${testRecipient}`);
+    mailOptions._originalTo = mailOptions.to; // preserve for audit log
+    mailOptions.to = testRecipient;
+  } else {
+    console.log(`[Email Service] 📧 PRODUCTION: Sending email to "${mailOptions.to}"`);
+  }
+
+
   const useResendOnly = String(process.env.EMAIL_PROVIDER || '').toLowerCase() === 'resend';
 
   if (useResendOnly) {
-    return sendMailViaResend(mailOptions);
+    try {
+      const res = await sendMailViaResend(mailOptions);
+      await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API');
+      return res;
+    } catch (err) {
+      await logEmailAudit(mailOptions, 'FAILED', err.message);
+      throw err;
+    }
   }
 
   try {
-    return await transporter.sendMail(mailOptions);
+    const res = await transporter.sendMail(mailOptions);
+    await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
+    return res;
   } catch (primaryError) {
     // Auth failures (bad credentials) should NOT retry SSL — credentials will fail
     // there too. Skip straight to Resend or throw.
@@ -68,8 +114,16 @@ async function sendMailWithFallback(mailOptions) {
       console.error('[Email Service] SMTP authentication failed — credentials may be invalid or revoked. Check GMAIL_APP_PASSWORD in .env');
       if (hasResendConfig()) {
         console.warn('[Email Service] Falling back to Resend API...');
-        return sendMailViaResend(mailOptions);
+        try {
+          const res = await sendMailViaResend(mailOptions);
+          await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API (Fallback)');
+          return res;
+        } catch (err) {
+          await logEmailAudit(mailOptions, 'FAILED', err.message);
+          throw err;
+        }
       }
+      await logEmailAudit(mailOptions, 'FAILED', primaryError.message);
       throw primaryError;
     }
 
@@ -77,8 +131,16 @@ async function sendMailWithFallback(mailOptions) {
     if (!isNetworkSmtpError(primaryError)) {
       if (hasResendConfig()) {
         console.warn('[Email Service] SMTP send failed, trying HTTPS provider fallback:', primaryError.message);
-        return sendMailViaResend(mailOptions);
+        try {
+          const res = await sendMailViaResend(mailOptions);
+          await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API (Fallback)');
+          return res;
+        } catch (err) {
+          await logEmailAudit(mailOptions, 'FAILED', err.message);
+          throw err;
+        }
       }
+      await logEmailAudit(mailOptions, 'FAILED', primaryError.message);
       throw primaryError;
     }
 
@@ -86,13 +148,23 @@ async function sendMailWithFallback(mailOptions) {
     console.warn('[Email Service] Primary SMTP send failed, trying SSL fallback (465):', primaryError.message);
     try {
       const fallbackTransporter = createFallbackTransporter();
-      return await fallbackTransporter.sendMail(mailOptions);
+      const res = await fallbackTransporter.sendMail(mailOptions);
+      await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
+      return res;
     } catch (fallbackError) {
       if (!hasResendConfig()) {
+        await logEmailAudit(mailOptions, 'FAILED', fallbackError.message);
         throw fallbackError;
       }
       console.warn('[Email Service] SMTP SSL fallback failed, trying HTTPS provider fallback:', fallbackError.message);
-      return sendMailViaResend(mailOptions);
+      try {
+        const res = await sendMailViaResend(mailOptions);
+        await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API (Fallback)');
+        return res;
+      } catch (err) {
+        await logEmailAudit(mailOptions, 'FAILED', err.message);
+        throw err;
+      }
     }
   }
 }
@@ -438,15 +510,28 @@ module.exports = {
   sendIQACReminderEmail,
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
-  sendEmail: async ({ to, subject, text, html }) => {
+  sendEmail: async (optionsOrTo, subject, html) => {
     try {
-      const result = await sendMailWithFallback({
-        from: getSenderAddress(),
-        to,
-        subject,
-        text,
-        html: html || text.replace(/\n/g, '<br/>')
-      });
+      let mailOptions;
+      if (typeof optionsOrTo === 'object' && optionsOrTo !== null) {
+        mailOptions = {
+          from: getSenderAddress(),
+          to: optionsOrTo.to,
+          subject: optionsOrTo.subject,
+          text: optionsOrTo.text,
+          html: optionsOrTo.html || (optionsOrTo.text ? optionsOrTo.text.replace(/\n/g, '<br/>') : '')
+        };
+      } else {
+        mailOptions = {
+          from: getSenderAddress(),
+          to: optionsOrTo,
+          subject: subject,
+          text: html ? html.replace(/<[^>]*>?/gm, '') : '',
+          html: html
+        };
+      }
+      
+      const result = await sendMailWithFallback(mailOptions);
       return { success: true, messageId: result.messageId };
     } catch (error) {
       console.error('[Email Service] Generic send failed:', error);

@@ -3,7 +3,7 @@ import { X, Download, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
-import { formatRollNo } from '../utils/formatters';
+import { formatRollNo, formatEventRef, fallbackValue } from '../utils/formatters';
 
 const ODLetterModal = ({ odRequest, event, onClose }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -17,8 +17,9 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
   const displayRollNo = formatRollNo(odRequest?.rollNo, odRequest?.studentId) || 'N/A';
   const displayClassSection = formatClassSection(odRequest?.class || odRequest?.section) || 'N/A';
 
-  const eventTitle  = odRequest?.eventTitle  || odRequest?.eventName  || 'N/A';
-  const eventVenue  = odRequest?.eventVenue  || odRequest?.venue      || 'N/A';
+  const eventTitle  = fallbackValue(odRequest?.eventTitle  || odRequest?.eventName, 'Not Provided');
+  const eventVenue  = fallbackValue(odRequest?.eventVenue  || odRequest?.venue, 'Not Specified');
+  const eventRef    = formatEventRef(event);
   const s1 = event?.requisition?.step1;
   const formatDate = (dateStr) => {
     if (!dateStr || dateStr === 'N/A') return 'N/A';
@@ -49,6 +50,7 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
     `Roll No : ${displayRollNo}`,
     `Class   : ${displayClassSection}`,
     `Event   : ${eventTitle}`,
+    `Event Ref: ${eventRef}`,
     `Date    : ${eventDate}`,
     `Venue   : ${eventVenue}`,
     `Status  : APPROVED`,
@@ -350,8 +352,9 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
     <tr><td>Student Name</td><td>${odRequest.studentName}</td></tr>
     <tr><td>Roll Number</td><td>${displayRollNo}</td></tr>
     <tr><td>Class / Section</td><td>${displayClassSection}</td></tr>
-    <tr><td>Email</td><td>${odRequest.email || 'N/A'}</td></tr>
+    <tr><td>Email</td><td>${fallbackValue(odRequest.email, 'email')}</td></tr>
     <tr><td>Event Name</td><td>${eventTitle}</td></tr>
+    <tr><td>Event Ref ID</td><td style="font-family: monospace;">${eventRef}</td></tr>
     <tr><td>Event Date</td><td>${eventDate}</td></tr>
     <tr><td>Venue</td><td>${eventVenue}</td></tr>
     <tr><td>Approved By</td><td>${approvedBy}</td></tr>
@@ -480,8 +483,9 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
               {[
                 ['Student',    odRequest.studentName],
                 ['Roll No',    displayRollNo],
-                ['Class',      odRequest.class || 'N/A'],
+                ['Class',      fallbackValue(odRequest.class, 'general')],
                 ['Event',      eventTitle],
+                ['Event Ref',  eventRef],
                 ['Date',       eventDate],
                 ['Venue',      eventVenue],
                 ['Approved By',approvedBy],

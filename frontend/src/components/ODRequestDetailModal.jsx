@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { ODRequestStatus, UserRole } from '../types';
-import { formatRollNo } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 import StatusBadge from './StatusBadge';
 import { generateODLetterBase64 } from '../utils/pdfGenerator';
 
@@ -145,19 +145,19 @@ const ODRequestDetailModal = ({ request, onClose }) => {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-slate-500">Name</p>
-                  <p className="font-medium">{request.studentName}</p>
+                  <p className="font-medium">{formatStudentNameWithRoll(request.studentName, request.rollNo, request.studentId)}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Roll Number</p>
                   <p className="font-medium">{formatRollNo(request.rollNo, request.studentId)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-500">Class</p>
-                  <p className="font-medium">{request.class || 'N/A'}</p>
+                  <p className="text-slate-500">Class / Department</p>
+                  <p className="font-medium">{fallbackValue(request.class, 'general')} / {fallbackValue(request.department, 'department')}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Email</p>
-                  <p className="font-medium">{request.email}</p>
+                  <p className="font-medium">{fallbackValue(request.email, 'email')}</p>
                 </div>
               </div>
             </div>
