@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mail, KeyRound, CheckCircle2, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
+import { X, User, KeyRound, CheckCircle2, Lock, Loader2, Eye, EyeOff } from 'lucide-react';
 
 const ForgotPasswordModal = ({ onClose }) => {
   const [step, setStep] = useState(1);
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -30,17 +31,18 @@ const ForgotPasswordModal = ({ onClose }) => {
 
   const handleRequestOtp = async (e) => {
     e.preventDefault();
-    if (!email) return setError('Please enter your email.');
+    if (!identifier) return setError('Please enter your Account Identifier.');
     setLoading(true);
     setError('');
     try {
       const res = await fetch('http://localhost:5001/api/security/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ identifier })
       });
       const data = await res.json();
       if (data.success) {
+        setMaskedEmail(data.maskedEmail);
         setStep(2);
         setTimer(60);
         setIsResendActive(false);
@@ -64,7 +66,7 @@ const ForgotPasswordModal = ({ onClose }) => {
       const res = await fetch('http://localhost:5001/api/security/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp, type: 'RESET' })
+        body: JSON.stringify({ identifier, otp, type: 'RESET' })
       });
       const data = await res.json();
       if (data.success) {
@@ -93,7 +95,7 @@ const ForgotPasswordModal = ({ onClose }) => {
       const res = await fetch('http://localhost:5001/api/security/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp, newPassword })
+        body: JSON.stringify({ identifier, otp, newPassword })
       });
       const data = await res.json();
       if (data.success) {
@@ -144,18 +146,18 @@ const ForgotPasswordModal = ({ onClose }) => {
             {step === 1 && (
               <form onSubmit={handleRequestOtp} className="space-y-4">
                 <p className="text-sm text-slate-600 mb-4">
-                  Enter your registered college email or username to receive a 6-digit OTP.
+                  Enter your registered College Email, Roll Number, or Employee ID to receive a password reset OTP.
                 </p>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-slate-700">Email Address</label>
+                  <label className="text-sm font-medium text-slate-700">Account Identifier</label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                       type="text"
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                      placeholder="e.g. ubendiran@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="e.g. 24CS257 or faculty@sece.ac.in"
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
                       autoFocus
                     />
                   </div>
@@ -173,7 +175,8 @@ const ForgotPasswordModal = ({ onClose }) => {
             {step === 2 && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <p className="text-sm text-slate-600 mb-4">
-                  An OTP has been sent to <strong>{email}</strong>. OTP expires in 1 minute.
+                  OTP has been sent to your registered college email address (<strong>{maskedEmail}</strong>).<br />
+                  OTP expires in 1 minute.
                 </p>
                 
                 <div className="space-y-1.5">

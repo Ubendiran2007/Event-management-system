@@ -47,37 +47,43 @@ function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-async function findUserByEmail(email) {
-  const emailLower = email.toLowerCase();
+async function findUserByIdentifier(identifier) {
+  if (!identifier) return null;
+  const idLower = identifier.trim().toLowerCase();
+  const idUpper = identifier.trim().toUpperCase();
   
   // 1. Check users collection
-  const usersQuery = query(collection(db, 'users'), where('email', '==', emailLower));
-  const usersSnapshot = await getDocs(usersQuery);
-  if (!usersSnapshot.empty) {
-    const userDoc = usersSnapshot.docs[0];
-    const data = userDoc.data();
-    return { 
-      userObj: { id: userDoc.id, ...data, password: undefined },
-      storedPassword: data.password,
-      type: 'user',
-      ref: doc(db, 'users', userDoc.id)
-    };
+  const usersQueryEmail = query(collection(db, 'users'), where('email', '==', idLower));
+  const usersSnapEmail = await getDocs(usersQueryEmail);
+  if (!usersSnapEmail.empty) {
+    const docSnap = usersSnapEmail.docs[0];
+    return { userObj: { id: docSnap.id, ...docSnap.data(), password: undefined }, storedPassword: docSnap.data().password, type: 'user', ref: doc(db, 'users', docSnap.id) };
+  }
+  
+  const usersQueryId = query(collection(db, 'users'), where('employeeId', '==', idUpper));
+  const usersSnapId = await getDocs(usersQueryId);
+  if (!usersSnapId.empty) {
+    const docSnap = usersSnapId.docs[0];
+    return { userObj: { id: docSnap.id, ...docSnap.data(), password: undefined }, storedPassword: docSnap.data().password, type: 'user', ref: doc(db, 'users', docSnap.id) };
   }
   
   // 2. Check students
   const classes = ['CSE-B', 'CSE-D', 'ECE-A', 'ECE-B', 'CCE-A', 'CSBS-A', 'MECH-A', 'CYBER-A', 'EEE-A', 'AIML-A', 'AIDS-A'];
   for (const className of classes) {
-    const memQuery = query(collection(db, 'students', className, 'members'), where('email', '==', emailLower));
-    const memSnap = await getDocs(memQuery);
-    if (!memSnap.empty) {
-      const docSnap = memSnap.docs[0];
+    const memQueryEmail = query(collection(db, 'students', className, 'members'), where('email', '==', idLower));
+    const memSnapEmail = await getDocs(memQueryEmail);
+    if (!memSnapEmail.empty) {
+      const docSnap = memSnapEmail.docs[0];
       const data = docSnap.data();
-      return {
-        userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' },
-        storedPassword: data.password,
-        type: 'student',
-        ref: doc(db, 'students', className, 'members', docSnap.id)
-      };
+      return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
+    }
+    
+    const memQueryRoll = query(collection(db, 'students', className, 'members'), where('rollNo', '==', idUpper));
+    const memSnapRoll = await getDocs(memQueryRoll);
+    if (!memSnapRoll.empty) {
+      const docSnap = memSnapRoll.docs[0];
+      const data = docSnap.data();
+      return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
     }
   }
   return null;
@@ -101,18 +107,19 @@ async function verifyPassword(plain, stored) {
 // ==========================================
 
 router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
+  const { identifier } = req.body;
   const reqDetails = getRequestDetails(req);
   
   try {
-    const found = await findUserByEmail(email);
+    const found = await findUserByIdentifier(identifier);
     if (!found) {
-      // Return success anyway to prevent email enumeration
-      return res.json({ success: true, message: 'If an account exists, an OTP has been sent.' });
+      return res.status(404).json({ success: false, message: 'Account not found. Please enter a valid College Email, Roll Number, or Employee ID.' });
     }
     
+    const actualEmail = found.userObj.email.toLowerCase();
+    
     // Check attempts for OTP generation
-    const otpRef = doc(db, 'otps', email.toLowerCase());
+    const otpRef = doc(db, 'otps', actualEmail);
     const otpDoc = await getDoc(otpRef);
     let attempts = 0;
     if (otpDoc.exists()) {
@@ -139,7 +146,17 @@ router.post('/forgot-password', async (req, res) => {
       emailTemplates.passwordResetOtpTemplate(found.userObj, otp)
     );
     
-    res.json({ success: true, message: 'OTP sent to your email.' });
+    const [namePart, domainPart] = actualEmail.split('@');
+    let maskedEmail = actualEmail;
+    if (namePart && domainPart) {
+      if (namePart.length > 2) {
+        maskedEmail = `${namePart[0]}*******${namePart[namePart.length - 1]}@${domainPart}`;
+      } else {
+        maskedEmail = `*@${domainPart}`;
+      }
+    }
+    
+    res.json({ success: true, message: 'OTP sent.', maskedEmail });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: 'Internal server error' });
@@ -147,11 +164,15 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 router.post('/verify-otp', async (req, res) => {
-  const { email, otp, type } = req.body;
-  if (!email || !otp || !type) return res.status(400).json({ success: false, message: 'Missing parameters' });
+  const { identifier, otp, type } = req.body;
+  if (!identifier || !otp || !type) return res.status(400).json({ success: false, message: 'Missing parameters' });
   
   try {
-    const otpRef = doc(db, 'otps', email.toLowerCase());
+    const found = await findUserByIdentifier(identifier);
+    if (!found) return res.status(400).json({ success: false, message: 'Account not found' });
+    const email = found.userObj.email.toLowerCase();
+
+    const otpRef = doc(db, 'otps', email);
     const otpDoc = await getDoc(otpRef);
     if (!otpDoc.exists()) return res.status(400).json({ success: false, message: 'OTP expired or not found' });
     
@@ -171,11 +192,11 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 router.post('/reset-password', async (req, res) => {
-  const { email, otp, newPassword } = req.body;
+  const { identifier, otp, newPassword } = req.body;
   const reqDetails = getRequestDetails(req);
   
-  if (!email || !otp || !newPassword) {
-    return res.status(400).json({ success: false, message: 'Email, OTP, and new password are required' });
+  if (!identifier || !otp || !newPassword) {
+    return res.status(400).json({ success: false, message: 'Identifier, OTP, and new password are required' });
   }
 
   if (!validateStrongPassword(newPassword)) {
@@ -183,10 +204,11 @@ router.post('/reset-password', async (req, res) => {
   }
   
   try {
-    const found = await findUserByEmail(email);
+    const found = await findUserByIdentifier(identifier);
     if (!found) return res.status(400).json({ success: false, message: 'Invalid request' });
     
-    const otpRef = doc(db, 'otps', email.toLowerCase());
+    const email = found.userObj.email.toLowerCase();
+    const otpRef = doc(db, 'otps', email);
     const otpDoc = await getDoc(otpRef);
     
     if (!otpDoc.exists()) {
@@ -234,7 +256,7 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
   const reqDetails = getRequestDetails(req);
   
   try {
-    const found = await findUserByEmail(email);
+    const found = await findUserByIdentifier(email);
     if (!found) return res.status(404).json({ success: false, message: 'User not found' });
     
     const isMatch = await verifyPassword(currentPassword, found.storedPassword);
@@ -287,7 +309,7 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
   }
   
   try {
-    const found = await findUserByEmail(email);
+    const found = await findUserByIdentifier(email);
     if (!found) return res.status(404).json({ success: false, message: 'User not found' });
     
     const otpRef = doc(db, 'otps', email.toLowerCase());
