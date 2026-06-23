@@ -307,7 +307,7 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'password' && (
-          <div className="max-w-xl mx-auto bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
+          <div className="max-w-xl mx-auto glass-panel p-8 rounded-2xl">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <KeyRound size={32} />
@@ -331,7 +331,7 @@ const SecurityProfile = () => {
                   <div className="relative">
                     <input
                       type={showCurrentPassword ? 'text' : 'password'}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none pr-10"
+                      className="input-field pr-10"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       required
@@ -344,7 +344,7 @@ const SecurityProfile = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  className="w-full btn-primary py-3"
                 >
                   {loading ? 'Verifying...' : 'Continue'}
                 </button>
@@ -363,7 +363,7 @@ const SecurityProfile = () => {
                   <input
                     type="text"
                     maxLength={6}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none tracking-widest font-mono text-center text-xl"
+                    className="input-field tracking-widest font-mono text-center text-xl"
                     placeholder="000000"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
@@ -374,7 +374,7 @@ const SecurityProfile = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  className="w-full btn-primary py-3"
                 >
                   {loading ? 'Verifying...' : 'Verify OTP'}
                 </button>
@@ -384,7 +384,7 @@ const SecurityProfile = () => {
                     type="button"
                     onClick={handleChangePasswordRequest}
                     disabled={loading}
-                    className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 disabled:opacity-50 font-medium transition-colors text-sm"
+                    className="w-full btn-secondary flex items-center justify-center gap-2 mt-3"
                   >
                     Resend OTP
                   </button>
@@ -399,7 +399,7 @@ const SecurityProfile = () => {
                   <div className="relative">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none pr-10"
+                      className="input-field pr-10"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       autoComplete="new-password"
@@ -416,7 +416,7 @@ const SecurityProfile = () => {
                   <div className="relative">
                     <input
                       type={showConfirmPassword ? 'text' : 'password'}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none pr-10"
+                      className="input-field pr-10"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       autoComplete="new-password"
@@ -430,7 +430,7 @@ const SecurityProfile = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  className="w-full btn-primary py-3"
                 >
                   {loading ? 'Updating...' : 'Update Password'}
                 </button>
@@ -439,14 +439,14 @@ const SecurityProfile = () => {
 
             {step === 4 && (
               <div className="text-center py-6">
-                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 mb-2">Success!</h3>
                 <p className="text-slate-600 mb-6">Your password has been changed securely.</p>
                 <button
                   onClick={() => { setStep(1); setActiveTab('overview'); }}
-                  className="w-full py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                  className="w-full btn-secondary py-3"
                 >
                   Back to Security
                 </button>

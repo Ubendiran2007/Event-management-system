@@ -124,7 +124,7 @@ const ForgotPasswordModal = ({ onClose }) => {
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden"
+          className="glass-panel w-full max-w-md rounded-2xl relative overflow-hidden"
         >
           <div className="flex items-center justify-between p-6 border-b border-slate-100">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
@@ -138,7 +138,7 @@ const ForgotPasswordModal = ({ onClose }) => {
 
           <div className="p-6">
             {error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm border border-red-100">
+              <div className="p-3 mb-4 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm text-center">
                 {error}
               </div>
             )}
@@ -154,7 +154,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                       type="text"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+                      className="input-field pl-10"
                       placeholder="e.g. 24CS257 or faculty@sece.ac.in"
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
@@ -165,7 +165,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-6 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors"
+                  className="w-full btn-primary flex items-center justify-center gap-2 mt-6 py-3"
                 >
                   {loading ? <Loader2 size={18} className="animate-spin" /> : 'Send OTP'}
                 </button>
@@ -191,7 +191,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                     <input
                       type="text"
                       maxLength={6}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all tracking-widest font-mono text-lg"
+                      className="input-field pl-10 tracking-widest font-mono text-lg"
                       placeholder="000000"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
@@ -203,7 +203,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-6 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors"
+                  className="w-full btn-primary flex items-center justify-center gap-2 mt-6 py-3"
                 >
                   {loading ? <Loader2 size={18} className="animate-spin" /> : 'Verify OTP'}
                 </button>
@@ -213,7 +213,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                     type="button"
                     onClick={handleRequestOtp}
                     disabled={loading}
-                    className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 disabled:opacity-50 font-medium transition-colors text-sm"
+                    className="w-full btn-secondary flex items-center justify-center gap-2 mt-3"
                   >
                     Resend OTP
                   </button>
@@ -232,7 +232,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+                      className="input-field pr-10"
                       placeholder="Min 7 chars, 1 Upper, 1 Lower, 1 Num, 1 Spec"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
@@ -249,7 +249,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                   <div className="relative">
                     <input
                       type={showConfirmPassword ? 'text' : 'password'}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+                      className="input-field pr-10"
                       placeholder="Repeat new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
@@ -264,7 +264,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-6 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors"
+                  className="w-full btn-primary flex items-center justify-center gap-2 mt-6 py-3"
                 >
                   {loading ? <Loader2 size={18} className="animate-spin" /> : 'Reset Password'}
                 </button>
@@ -273,7 +273,7 @@ const ForgotPasswordModal = ({ onClose }) => {
 
             {step === 4 && (
               <div className="text-center py-6">
-                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <CheckCircle2 size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 mb-2">Password Reset Successful</h3>
@@ -282,7 +282,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                 </p>
                 <button
                   onClick={onClose}
-                  className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors"
+                  className="w-full btn-primary py-3"
                 >
                   Return to Login
                 </button>
