@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import Navbar from '../components/Navbar';
 import AlertCard from '../components/AlertCard';
@@ -7,6 +8,7 @@ import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const SecurityProfile = () => {
   const { currentUser } = useAppContext();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [loginHistory, setLoginHistory] = useState([]);
   const [securityTimeline, setSecurityTimeline] = useState([]);
@@ -127,7 +129,7 @@ const SecurityProfile = () => {
         if (data.message && data.message.toLowerCase().includes('expired')) {
           setAlert({ type: 'error', title: 'OTP Expired', message: 'Your verification code has expired.\nPlease request a new OTP and try again.' });
         } else {
-          setAlert({ type: 'error', title: 'Verification Failed', message: 'The OTP entered is incorrect.\nPlease check the code sent to your registered email and try again.' });
+          setAlert({ type: 'error', title: 'Verification Failed', message: data.message || 'The OTP entered is incorrect.' });
         }
       }
       await fetchLogs();
@@ -197,10 +199,10 @@ const SecurityProfile = () => {
         return true;
       });
     } else if (!isFullHistory) {
-      const highValuePatterns = ['login', 'password changed', 'password reset', 'account locked', 'suspicious'];
+      const highValuePatterns = ['login', 'password changed', 'password reset', 'account locked', 'suspicious', 'otp verified'];
       filtered = filtered.filter(log => {
         const act = log.activity.toLowerCase();
-        return highValuePatterns.some(p => act.includes(p)) && !act.includes('otp');
+        return highValuePatterns.some(p => act.includes(p)) && !act.includes('otp requested');
       });
     }
 
@@ -234,14 +236,23 @@ const SecurityProfile = () => {
       <Navbar />
       
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
-            <Shield size={24} />
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+              <Shield size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 leading-tight">Account Security</h1>
+              <p className="text-slate-500 font-medium">Manage your password, login history, and security alerts</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 leading-tight">Account Security</h1>
-            <p className="text-slate-500 font-medium">Manage your password, login history, and security alerts</p>
-          </div>
+          
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn-secondary whitespace-nowrap"
+          >
+            Back to Dashboard
+          </button>
         </div>
 
         <div className="flex gap-2 border-b border-slate-200 mb-8 overflow-x-auto no-scrollbar">

@@ -81,7 +81,7 @@ const ForgotPasswordModal = ({ onClose }) => {
         if (data.message && data.message.toLowerCase().includes('expired')) {
           setAlert({ type: 'error', title: 'OTP Expired', message: 'Your verification code has expired.\nPlease request a new OTP and try again.' });
         } else {
-          setAlert({ type: 'error', title: 'Verification Failed', message: 'The OTP entered is incorrect.\nPlease check the code sent to your registered email and try again.' });
+          setAlert({ type: 'error', title: 'Verification Failed', message: data.message || 'The OTP entered is incorrect.' });
         }
       }
     } catch (err) {

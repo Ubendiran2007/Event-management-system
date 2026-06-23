@@ -134,9 +134,11 @@ router.post('/forgot-password', async (req, res) => {
     const otp = generateOtp();
     await setDoc(otpRef, {
       otp,
+      createdAt: Date.now(),
       expiresAt: Date.now() + 1 * 60 * 1000,
-      attempts: attempts + 1,
-      verificationAttempts: 0,
+      attempts: 0,
+      maxAttempts: 5,
+      used: false,
       type: 'RESET'
     });
     
@@ -202,15 +204,18 @@ router.post('/verify-otp', async (req, res) => {
     if (!isMatch) {
       console.log('Verification Result: FAIL (Invalid OTP)');
       
-      const newVerificationAttempts = (data.verificationAttempts || 0) + 1;
-      if (newVerificationAttempts >= 5) {
+      const newAttempts = (data.attempts || 0) + 1;
+      const maxAttempts = data.maxAttempts || 5;
+      
+      if (newAttempts >= maxAttempts) {
         await deleteDoc(otpRef);
         await logSecurityEvent(found.userObj, 'Maximum OTP Verification Attempts Reached', 'FAILURE', reqDetails);
         return res.status(400).json({ success: false, message: 'Maximum verification attempts reached. Please request a new OTP.' });
       } else {
-        await setDoc(otpRef, { ...data, verificationAttempts: newVerificationAttempts });
+        await setDoc(otpRef, { ...data, attempts: newAttempts });
         await logSecurityEvent(found.userObj, 'OTP Verification Failed', 'FAILURE', reqDetails);
-        return res.status(400).json({ success: false, message: 'Invalid OTP' });
+        const remaining = maxAttempts - newAttempts;
+        return res.status(400).json({ success: false, message: `The OTP entered is incorrect.\nAttempts Remaining: ${remaining}` });
       }
     }
     
@@ -221,7 +226,7 @@ router.post('/verify-otp', async (req, res) => {
     
     await setDoc(otpRef, {
       ...data,
-      verified: true,
+      used: true,
       verifiedAt: Date.now(),
       expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes to reset password
     });
@@ -263,7 +268,7 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Verified session expired' });
     }
     
-    if (!data.verified) {
+    if (!data.used) {
       return res.status(400).json({ success: false, message: 'Session not verified' });
     }
     
@@ -326,9 +331,11 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
     const otp = generateOtp();
     await setDoc(otpRef, {
       otp,
+      createdAt: Date.now(),
       expiresAt: Date.now() + 1 * 60 * 1000,
-      attempts: attempts + 1,
-      verificationAttempts: 0,
+      attempts: 0,
+      maxAttempts: 5,
+      used: false,
       type: 'CHANGE'
     });
     
@@ -371,7 +378,7 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Verified session expired' });
     }
     
-    if (!data.verified) {
+    if (!data.used) {
       return res.status(400).json({ success: false, message: 'Session not verified' });
     }
     
@@ -420,11 +427,16 @@ router.get('/login-history', requireAuth, async (req, res) => {
 router.get('/activity-timeline', requireAuth, async (req, res) => {
   try {
     const email = req.user.email.toLowerCase();
+    const limitCount = req.query.limit ? parseInt(req.query.limit) : 100;
+    
+    // In order to use orderBy with where, an index is required. 
+    // If not deployed, we keep the previous fetch-all + JS sort logic but increase the slice to support full history.
     const q = query(collection(db, 'securityLogs'), where('email', '==', email));
     const snapshot = await getDocs(q);
     const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    res.json({ success: true, logs: logs.slice(0, 20) });
+    
+    res.json({ success: true, logs: logs.slice(0, limitCount) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });
