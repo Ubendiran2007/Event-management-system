@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
@@ -11,8 +11,15 @@ import AlertCard from '../components/AlertCard';
 
 
 const Login = () => {
-  const { handleLogin } = useAppContext();
+  const { currentUser, handleLogin } = useAppContext();
   const navigate = useNavigate();
+  
+  useEffect(() => {
+    if (currentUser) {
+      navigate('/dashboard');
+    }
+  }, [currentUser, navigate]);
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
