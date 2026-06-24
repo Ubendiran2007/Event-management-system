@@ -32,6 +32,35 @@ const SecurityProfile = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
+  const [iqacRoleFilter, setIqacRoleFilter] = useState('All');
+  const [iqacStatusFilter, setIqacStatusFilter] = useState('All');
+  const [iqacTimeFilter, setIqacTimeFilter] = useState('All Time');
+  const [iqacPage, setIqacPage] = useState(1);
+  const IQAC_ITEMS_PER_PAGE = 10;
+
+  const filteredIqacLogs = React.useMemo(() => {
+    return iqacLogs.filter(log => {
+      if (iqacRoleFilter !== 'All' && log.role !== iqacRoleFilter) return false;
+      if (iqacStatusFilter !== 'All' && log.status !== iqacStatusFilter) return false;
+      if (iqacTimeFilter !== 'All Time') {
+        const logDate = new Date(log.timestamp);
+        const now = new Date();
+        const diffDays = (now - logDate) / (1000 * 60 * 60 * 24);
+        if (iqacTimeFilter === 'Last 24 Hours' && diffDays > 1) return false;
+        if (iqacTimeFilter === 'Last 7 Days' && diffDays > 7) return false;
+        if (iqacTimeFilter === 'Last 30 Days' && diffDays > 30) return false;
+      }
+      return true;
+    });
+  }, [iqacLogs, iqacRoleFilter, iqacStatusFilter, iqacTimeFilter]);
+
+  const iqacTotalPages = Math.max(1, Math.ceil(filteredIqacLogs.length / IQAC_ITEMS_PER_PAGE));
+  const currentIqacPageLogs = filteredIqacLogs.slice((iqacPage - 1) * IQAC_ITEMS_PER_PAGE, iqacPage * IQAC_ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    setIqacPage(1);
+  }, [iqacRoleFilter, iqacStatusFilter, iqacTimeFilter]);
+
   useEffect(() => {
     let interval;
     if (activeTab === 'password' && step === 2 && timer > 0) {
@@ -539,27 +568,64 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'iqac' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[600px] max-h-[600px]">
+            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <Globe size={18} className="text-indigo-500" />
                 System Login Audit Monitor
               </h3>
+              
+              <div className="flex flex-wrap items-center gap-3">
+                <select 
+                  value={iqacRoleFilter}
+                  onChange={(e) => setIqacRoleFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-300"
+                >
+                  <option value="All">All Roles</option>
+                  <option value="STUDENT_GENERAL">Student</option>
+                  <option value="STUDENT_ORGANIZER">Organizer</option>
+                  <option value="FACULTY">Faculty</option>
+                  <option value="HOD">HOD</option>
+                  <option value="IQAC_TEAM">IQAC</option>
+                </select>
+
+                <select 
+                  value={iqacStatusFilter}
+                  onChange={(e) => setIqacStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-300"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="SUCCESS">Success</option>
+                  <option value="FAILURE">Failure</option>
+                </select>
+
+                <select 
+                  value={iqacTimeFilter}
+                  onChange={(e) => setIqacTimeFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-300"
+                >
+                  <option value="All Time">All Time</option>
+                  <option value="Last 24 Hours">Last 24 Hours</option>
+                  <option value="Last 7 Days">Last 7 Days</option>
+                  <option value="Last 30 Days">Last 30 Days</option>
+                </select>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-slate-50 border-b border-slate-100">
+
+            <div className="flex-1 overflow-y-auto no-scrollbar relative">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">User</th>
-                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Role / Dept</th>
-                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Login Time</th>
-                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Environment</th>
-                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Status</th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Role / Dept</th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Login Time</th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Environment</th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {iqacLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50/50">
+                  {currentIqacPageLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <p className="text-sm font-semibold text-slate-800">{formatStudentNameWithRoll(log.name, log.rollNo, log.userId)}</p>
                         <p className="text-xs text-slate-500">{log.email}</p>
@@ -584,15 +650,48 @@ const SecurityProfile = () => {
                       </td>
                     </tr>
                   ))}
-                  {iqacLogs.length === 0 && (
+                  {currentIqacPageLogs.length === 0 && (
                     <tr>
-                      <td colSpan="5" className="px-6 py-8 text-center text-slate-500">
-                        No login activity recorded.
+                      <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <AlertTriangle size={32} className="text-slate-300" />
+                          <p>No login activity recorded for the current filters.</p>
+                        </div>
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Pagination Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4 mt-auto shrink-0 rounded-b-2xl">
+              <div className="text-sm text-slate-500 font-medium">
+                {filteredIqacLogs.length > 0 ? (
+                  <>Showing <span className="text-slate-800 font-semibold">{(iqacPage - 1) * IQAC_ITEMS_PER_PAGE + 1}–{Math.min(iqacPage * IQAC_ITEMS_PER_PAGE, filteredIqacLogs.length)}</span> of <span className="text-slate-800 font-semibold">{filteredIqacLogs.length}</span> records</>
+                ) : (
+                  'No records'
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  disabled={iqacPage === 1}
+                  onClick={() => setIqacPage(prev => prev - 1)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors shadow-sm"
+                >
+                  Previous
+                </button>
+                <span className="px-2 text-sm font-medium text-slate-500">
+                  Page {iqacPage} of {iqacTotalPages}
+                </span>
+                <button 
+                  disabled={iqacPage === iqacTotalPages || iqacTotalPages === 0}
+                  onClick={() => setIqacPage(prev => prev + 1)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors shadow-sm"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         )}
