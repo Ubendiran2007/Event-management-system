@@ -86,6 +86,8 @@ export const AppProvider = ({ children }) => {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
+    localStorage.removeItem('sessionToken');
+    sessionStorage.clear();
   };
 
   const createEvent = async (newEvent) => {

@@ -1,11 +1,15 @@
 import { LogOut, LayoutDashboard, Shield } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
 
 const Navbar = () => {
   const { currentUser, handleLogout, students } = useAppContext();
   const navigate = useNavigate();
+
+  const location = useLocation();
+  const isLoginPage = location.pathname === '/' || location.pathname === '/login';
+  const isAuthenticated = Boolean(currentUser) && !isLoginPage;
 
   const onLogout = () => {
     handleLogout();
@@ -14,7 +18,7 @@ const Navbar = () => {
 
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-3 flex justify-between items-center">
-      <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(currentUser ? '/dashboard' : '/')}>
+      <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(isAuthenticated ? '/dashboard' : '/')}>
         <img
           src={seceLogo}
           alt="SECE Logo"
@@ -25,7 +29,7 @@ const Navbar = () => {
         </div>
       </div>
       <div className="flex items-center gap-3 sm:gap-4">
-        {currentUser && (
+        {isAuthenticated && (
           <>
             {(() => {
               const liveStudent = (students || []).find(s => s.id === currentUser.id);
