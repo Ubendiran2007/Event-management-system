@@ -1730,7 +1730,7 @@ const EventCard = ({
             </button>
           )}
           {/* Withdraw — only upcoming (once event starts, no withdrawal) */}
-          {isStudent && registered && isUpcoming && (
+          {isStudent && registered && isUpcoming && (!requestStatus || requestStatus.startsWith('PENDING')) && (
             <button onClick={(e) => { e.stopPropagation(); onWithdraw(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Withdraw

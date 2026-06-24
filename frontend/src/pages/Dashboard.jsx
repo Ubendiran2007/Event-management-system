@@ -33,7 +33,8 @@ import {
   Shield,
   History,
   Info,
-  UserPlus
+  UserPlus,
+  Lock
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -1794,7 +1795,7 @@ const Dashboard = () => {
                                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeClass}`}>
                                   {displayStatus}
                                 </span>
-                                {(request.status === ODRequestStatus.APPROVED || (request.status && request.status.startsWith('PENDING'))) && (
+                                {(request.status && request.status.startsWith('PENDING')) && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
                                     disabled={withdrawingOD[request.id]}
@@ -1804,6 +1805,17 @@ const Dashboard = () => {
                                     Withdraw
                                   </button>
                                 )}
+                                {request.status === ODRequestStatus.APPROVED && (() => {
+                                  const sourceEvent = events.find(e => e.id === request.eventId);
+                                  if (sourceEvent?.status !== 'COMPLETED') {
+                                    return (
+                                      <span className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                        <Lock size={11} /> Registration Locked
+                                      </span>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                                 <ChevronRight size={18} className="text-slate-300 group-hover:text-purple-500" />
                               </div>
                             </div>
