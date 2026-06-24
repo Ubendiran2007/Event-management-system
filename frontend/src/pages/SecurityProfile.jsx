@@ -13,12 +13,6 @@ const SecurityProfile = () => {
   const [loginHistory, setLoginHistory] = useState([]);
   const [securityTimeline, setSecurityTimeline] = useState([]);
   const [iqacLogs, setIqacLogs] = useState([]);
-  const [iqacCurrentPage, setIqacCurrentPage] = useState(1);
-  const [iqacTotalPages, setIqacTotalPages] = useState(1);
-  const [iqacTotalRecords, setIqacTotalRecords] = useState(0);
-  const [iqacRoleFilter, setIqacRoleFilter] = useState('all');
-  const [iqacStatusFilter, setIqacStatusFilter] = useState('all');
-  const [iqacDateFilter, setIqacDateFilter] = useState('all');
   
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -67,44 +61,20 @@ const SecurityProfile = () => {
       
       if (loginData.success) setLoginHistory(loginData.logs);
       if (timelineData.success) setSecurityTimeline(timelineData.logs);
-    } catch (err) {
-      console.error('Error fetching security logs:', err);
-    }
-  };
 
-  const fetchIqacLogs = async () => {
-    if (!currentUser || currentUser.role !== 'IQAC_TEAM') return;
-    try {
-      const token = localStorage.getItem('sessionToken');
-      const headers = { 'Authorization': `Bearer ${token}` };
-      
-      const queryParams = new URLSearchParams({
-        page: iqacCurrentPage,
-        limit: 10,
-        role: iqacRoleFilter,
-        status: iqacStatusFilter,
-        date: iqacDateFilter
-      });
-      
-      const iqacRes = await fetch(`http://localhost:5001/api/security/iqac-audit?${queryParams}`, { headers });
-      const iqacData = await iqacRes.json();
-      if (iqacData.success) {
-        setIqacLogs(iqacData.logs);
-        setIqacTotalPages(iqacData.totalPages);
-        setIqacTotalRecords(iqacData.totalRecords);
+      if (currentUser.role === 'IQAC_TEAM') {
+        const iqacRes = await fetch('http://localhost:5001/api/security/iqac-audit', { headers });
+        const iqacData = await iqacRes.json();
+        if (iqacData.success) setIqacLogs(iqacData.logs);
       }
     } catch (err) {
-      console.error('Error fetching IQAC logs:', err);
+      console.error('Error fetching security logs:', err);
     }
   };
 
   useEffect(() => {
     fetchLogs();
   }, [currentUser]);
-
-  useEffect(() => {
-    fetchIqacLogs();
-  }, [currentUser, iqacCurrentPage, iqacRoleFilter, iqacStatusFilter, iqacDateFilter]);
 
   const handleChangePasswordRequest = async (e) => {
     e.preventDefault();
@@ -569,47 +539,14 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'iqac' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[700px]">
-            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <Globe size={18} className="text-indigo-500" />
                 System Login Audit Monitor
               </h3>
-              <div className="flex flex-wrap gap-2">
-                <select 
-                  value={iqacRoleFilter} 
-                  onChange={(e) => { setIqacRoleFilter(e.target.value); setIqacCurrentPage(1); }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700"
-                >
-                  <option value="all">All Roles</option>
-                  <option value="student">Student</option>
-                  <option value="organizer">Organizer</option>
-                  <option value="faculty">Faculty</option>
-                  <option value="hod">HOD</option>
-                  <option value="iqac">IQAC</option>
-                </select>
-                <select 
-                  value={iqacStatusFilter} 
-                  onChange={(e) => { setIqacStatusFilter(e.target.value); setIqacCurrentPage(1); }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700"
-                >
-                  <option value="all">All Status</option>
-                  <option value="SUCCESS">Success</option>
-                  <option value="FAILURE">Failure</option>
-                </select>
-                <select 
-                  value={iqacDateFilter} 
-                  onChange={(e) => { setIqacDateFilter(e.target.value); setIqacCurrentPage(1); }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700"
-                >
-                  <option value="all">All Time</option>
-                  <option value="today">Today</option>
-                  <option value="7days">Last 7 Days</option>
-                  <option value="30days">Last 30 Days</option>
-                </select>
-              </div>
             </div>
-            <div className="overflow-auto flex-1">
+            <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-slate-50 border-b border-slate-100">
                   <tr>
@@ -656,34 +593,6 @@ const SecurityProfile = () => {
                   )}
                 </tbody>
               </table>
-            </div>
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between shrink-0">
-              <div className="text-sm text-slate-500 font-medium">
-                {iqacTotalRecords > 0 ? (
-                  <>Showing <span className="text-slate-800 font-semibold">{(iqacCurrentPage - 1) * 10 + 1}–{Math.min(iqacCurrentPage * 10, iqacTotalRecords)}</span> of <span className="text-slate-800 font-semibold">{iqacTotalRecords}</span> records</>
-                ) : (
-                  'No records found'
-                )}
-              </div>
-              <div className="flex gap-2 items-center">
-                <button 
-                  disabled={iqacCurrentPage === 1}
-                  onClick={() => setIqacCurrentPage(prev => prev - 1)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors bg-white shadow-sm"
-                >
-                  Previous
-                </button>
-                <span className="px-3 text-sm font-medium text-slate-600">
-                  Page {iqacCurrentPage} of {Math.max(1, iqacTotalPages)}
-                </span>
-                <button 
-                  disabled={iqacCurrentPage === iqacTotalPages || iqacTotalPages === 0}
-                  onClick={() => setIqacCurrentPage(prev => prev + 1)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors bg-white shadow-sm"
-                >
-                  Next
-                </button>
-              </div>
             </div>
           </div>
         )}

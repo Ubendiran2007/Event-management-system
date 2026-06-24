@@ -27,12 +27,6 @@ export const useAppContext = () => {
 
 export const AppProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(() => {
-    const sessionToken = localStorage.getItem('sessionToken') || localStorage.getItem('token');
-    if (!sessionToken) {
-      localStorage.removeItem('currentUser');
-      localStorage.removeItem('user');
-      return null;
-    }
     const saved = localStorage.getItem('currentUser');
     return saved ? JSON.parse(saved) : null;
   });
@@ -92,10 +86,6 @@ export const AppProvider = ({ children }) => {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('currentUser');
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
-    localStorage.removeItem('sessionToken');
-    sessionStorage.clear();
   };
 
   const createEvent = async (newEvent) => {
