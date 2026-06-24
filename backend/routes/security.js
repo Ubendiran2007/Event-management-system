@@ -453,10 +453,53 @@ router.get('/iqac-audit', requireAuth, async (req, res) => {
   }
   
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limitCount = parseInt(req.query.limit) || 10;
+    const { role, status, date } = req.query;
+
     const snapshot = await getDocs(collection(db, 'loginLogs'));
-    const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Fallback to securityLogs if loginLogs isn't the only source
+    let logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // Role filter
+    if (role && role !== 'all') {
+      logs = logs.filter(l => l.role && l.role.toUpperCase().includes(role.toUpperCase()));
+    }
+
+    // Status filter
+    if (status && status !== 'all') {
+      logs = logs.filter(l => l.status && l.status.toUpperCase() === status.toUpperCase());
+    }
+
+    // Date filter
+    if (date && date !== 'all') {
+      const now = new Date();
+      if (date === 'today') {
+        const todayStart = new Date(now.setHours(0,0,0,0));
+        logs = logs.filter(l => new Date(l.timestamp) >= todayStart);
+      } else if (date === '7days') {
+        const sevenDaysAgo = new Date(now.setDate(now.getDate() - 7));
+        logs = logs.filter(l => new Date(l.timestamp) >= sevenDaysAgo);
+      } else if (date === '30days') {
+        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+        logs = logs.filter(l => new Date(l.timestamp) >= thirtyDaysAgo);
+      }
+    }
+
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    res.json({ success: true, logs });
+
+    const totalRecords = logs.length;
+    const totalPages = Math.ceil(totalRecords / limitCount) || 1;
+    const startIndex = (page - 1) * limitCount;
+    const paginatedLogs = logs.slice(startIndex, startIndex + limitCount);
+
+    res.json({ 
+      success: true, 
+      logs: paginatedLogs,
+      totalRecords,
+      currentPage: page,
+      totalPages
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });
