@@ -20,11 +20,12 @@ const formatTime12 = (t24) => {
   }
 };
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
+import TimePicker from './TimePicker';
 import FeedbackModal from './FeedbackModal';
 import { formatRollNo, formatEventRef, fallbackValue } from '../utils/formatters';
 import { validateUpload } from '../utils/fileValidation';
@@ -91,10 +92,12 @@ const EventDetailModal = ({ event, onClose }) => {
   const [showPostponeModal, setShowPostponeModal] = useState(false);
   const [cancellationReason, setCancellationReason] = useState('');
   const [cancelConfirmation, setCancelConfirmation] = useState('');
+  const [cancelError, setCancelError] = useState(null);
   const [postponeReason, setPostponeReason] = useState('');
   const [postponeDate, setPostponeDate] = useState('');
   const [postponeStartTime, setPostponeStartTime] = useState('');
   const [postponeEndTime, setPostponeEndTime] = useState('');
+  const [postponeError, setPostponeError] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -109,6 +112,14 @@ const EventDetailModal = ({ event, onClose }) => {
     setPostponeStartTime(s1?.eventStartTime || event?.startTime || '00:00');
     setPostponeEndTime(s1?.eventEndTime || event?.endTime || '00:00');
   }
+
+  useEffect(() => {
+    if (showPostponeModal) setPostponeError(null);
+  }, [showPostponeModal]);
+
+  useEffect(() => {
+    if (showCancelModal) setCancelError(null);
+  }, [showCancelModal]);
 
   // ── IQAC Submission Eligibility ────────────────────────────────────────────
   // Organizer can submit IQAC report if:
@@ -221,21 +232,21 @@ const EventDetailModal = ({ event, onClose }) => {
 
   const handleCancelEvent = async () => {
     if (cancelConfirmation !== 'CANCEL EVENT') {
-      setApprovalError('Please type CANCEL EVENT exactly to confirm.');
+      setCancelError('Please type CANCEL EVENT exactly to confirm.');
       return;
     }
     if (!cancellationReason.trim()) {
-      setApprovalError('Cancellation reason is required.');
+      setCancelError('Cancellation reason is required.');
       return;
     }
     setIsProcessing(true);
-    setApprovalError('');
+    setCancelError(null);
     try {
       const res = await fetch(`http://localhost:5001/api/events/${event.id}/cancel`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
         },
         body: JSON.stringify({ cancellationReason, confirmationText: cancelConfirmation })
       });
@@ -245,28 +256,28 @@ const EventDetailModal = ({ event, onClose }) => {
       }
       setTimeout(() => { onClose(); }, 300);
     } catch (err) {
-      setApprovalError(err.message);
+      setCancelError(err.message);
       setIsProcessing(false);
     }
   };
 
   const handlePostponeEvent = async () => {
     if (!postponeReason.trim() || !postponeDate || !postponeStartTime || !postponeEndTime) {
-      setApprovalError('All fields are required.');
+      setPostponeError('All fields are required.');
       return;
     }
     if (postponeStartTime >= postponeEndTime) {
-      setApprovalError('End time must be after start time.');
+      setPostponeError('End time must be after start time.');
       return;
     }
     setIsProcessing(true);
-    setApprovalError('');
+    setPostponeError(null);
     try {
       const res = await fetch(`http://localhost:5001/api/events/${event.id}/postpone`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
         },
         body: JSON.stringify({ reason: postponeReason, newDate: postponeDate, newStartTime: postponeStartTime, newEndTime: postponeEndTime })
       });
@@ -276,7 +287,7 @@ const EventDetailModal = ({ event, onClose }) => {
       }
       setTimeout(() => { onClose(); }, 300);
     } catch (err) {
-      setApprovalError(err.message);
+      setPostponeError(err.message);
       setIsProcessing(false);
     }
   };
@@ -2210,7 +2221,7 @@ const EventDetailModal = ({ event, onClose }) => {
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
           <h3 className="text-xl font-bold text-red-600 mb-2 flex items-center gap-2"><AlertTriangle size={24}/> Cancel Event</h3>
           <p className="text-sm text-slate-600 mb-4">This action is irreversible. All registrations and ODs will be marked as cancelled.</p>
-          {approvalError && <div className="mb-4 text-xs font-bold text-red-600 bg-red-50 p-2 rounded-lg">{approvalError}</div>}
+          {cancelError && <div className="mb-4 text-xs font-bold text-red-600 bg-red-50 p-2 rounded-lg">{cancelError}</div>}
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Cancellation</label>
@@ -2233,7 +2244,7 @@ const EventDetailModal = ({ event, onClose }) => {
               />
             </div>
             <div className="flex items-center gap-2 justify-end mt-6">
-              <button disabled={isProcessing} onClick={() => { setShowCancelModal(false); setApprovalError(''); }} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Keep Event</button>
+              <button disabled={isProcessing} onClick={() => { setShowCancelModal(false); setCancelError(null); }} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Keep Event</button>
               <button disabled={isProcessing} onClick={handleCancelEvent} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg flex items-center gap-2">
                 {isProcessing ? <Loader2 size={16} className="animate-spin" /> : null} Confirm Cancellation
               </button>
@@ -2249,7 +2260,7 @@ const EventDetailModal = ({ event, onClose }) => {
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
           <h3 className="text-xl font-bold text-amber-600 mb-2 flex items-center gap-2"><Clock3 size={24}/> Postpone Event</h3>
           <p className="text-sm text-slate-600 mb-4">Move the event to a new date and time. Registrations and ODs remain valid.</p>
-          {approvalError && <div className="mb-4 text-xs font-bold text-red-600 bg-red-50 p-2 rounded-lg">{approvalError}</div>}
+          {postponeError && <div className="mb-4 text-xs font-bold text-red-600 bg-red-50 p-2 rounded-lg">{postponeError}</div>}
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Postponement</label>
@@ -2273,25 +2284,29 @@ const EventDetailModal = ({ event, onClose }) => {
             <div className="flex gap-4">
               <div className="flex-1">
                 <label className="block text-xs font-bold text-slate-700 mb-1">New Start Time</label>
-                <input 
-                  type="time"
-                  value={postponeStartTime}
-                  onChange={(e) => setPostponeStartTime(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" 
-                />
+                <div className="w-full border border-slate-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 bg-white">
+                  <TimePicker 
+                    id="postponeStartTime"
+                    value={postponeStartTime}
+                    onChange={(e) => setPostponeStartTime(e.target.value)}
+                    className="w-full px-2 py-1" 
+                  />
+                </div>
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-bold text-slate-700 mb-1">New End Time</label>
-                <input 
-                  type="time"
-                  value={postponeEndTime}
-                  onChange={(e) => setPostponeEndTime(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" 
-                />
+                <div className="w-full border border-slate-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 bg-white">
+                  <TimePicker 
+                    id="postponeEndTime"
+                    value={postponeEndTime}
+                    onChange={(e) => setPostponeEndTime(e.target.value)}
+                    className="w-full px-2 py-1" 
+                  />
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2 justify-end mt-6">
-              <button disabled={isProcessing} onClick={() => { setShowPostponeModal(false); setApprovalError(''); }} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button disabled={isProcessing} onClick={() => { setShowPostponeModal(false); setPostponeError(null); }} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button disabled={isProcessing} onClick={handlePostponeEvent} className="px-4 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg flex items-center gap-2">
                 {isProcessing ? <Loader2 size={16} className="animate-spin" /> : null} Confirm Postponement
               </button>
