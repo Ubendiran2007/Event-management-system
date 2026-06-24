@@ -12,6 +12,7 @@ import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
 import EventDetailModal from '../components/EventDetailModal';
 import EventReportModal from '../components/EventReportModal';
+import { sortEventsByEventDateDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 import defaultPoster from '../assets/sece.avif';
 
 const formatTime12 = (t24) => {
@@ -1652,7 +1653,17 @@ const EventCard = ({
         (isCompleted && event.iqacSubmittedAt) ? 'hover:shadow-xl cursor-pointer' : 'cursor-default'
       }`}
     >
-      <div className="h-48 overflow-hidden">
+      <div className="h-48 overflow-hidden relative">
+        {event.status === 'CANCELLED' && (
+          <div className="absolute top-0 left-0 w-full bg-red-600/90 text-white text-[10px] py-1.5 text-center z-10 backdrop-blur-sm shadow-sm flex items-center justify-center gap-1.5 uppercase font-extrabold tracking-wider border-b border-red-700">
+            <XCircle size={14} /> Event Cancelled
+          </div>
+        )}
+        {event.status === 'POSTPONED' && (
+          <div className="absolute top-0 left-0 w-full bg-amber-500/95 text-amber-950 text-[10px] py-1.5 text-center z-10 backdrop-blur-sm shadow-sm flex items-center justify-center gap-1.5 uppercase font-extrabold tracking-wider border-b border-amber-600">
+            <Clock size={14} /> Event Postponed
+          </div>
+        )}
         <img
           src={event.posterDataUrl || event.posterUrl || defaultPoster}
           alt={event.title || event.requisition?.step1?.eventName || 'Event'}
@@ -1834,10 +1845,16 @@ const ExploreEvents = () => {
     try {
       if (!silent) setLoading(true);
       const allEvents = await fetchEvents();
-      // Show both POSTED and COMPLETED events in the explore page
+      // Show POSTED, COMPLETED, CANCELLED, POSTPONED events in the explore page
       const visibleEvents = allEvents
-        .filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.COMPLETED)
-        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        .filter(e => {
+          if (e.status === EventStatus.POSTED || e.status === EventStatus.COMPLETED) return true;
+          if (e.status === 'CANCELLED' || e.status === 'POSTPONED') {
+            return !!e.iqacApprovedAt; // Only show if they were previously posted
+          }
+          return false;
+        })
+        .sort(sortEventsByEventDateDesc);
       setEvents(visibleEvents);
     } catch (error) {
       console.error('Error loading events:', error);
@@ -1870,8 +1887,14 @@ const ExploreEvents = () => {
   };
 
   const filteredEvents = useMemo(() => {
-    if (filter === 'all') return events;
-    return events.filter(e => getEventStatus(e) === filter);
+    let result = events;
+    if (filter !== 'all') {
+      result = events.filter(e => getEventStatus(e) === filter);
+    }
+    if (filter === 'completed') {
+      return [...result].sort(sortEventsByEndDateDesc);
+    }
+    return result;
   }, [events, filter]);
 
   const isRegistered = (event) => {

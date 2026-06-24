@@ -57,6 +57,7 @@ import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
+import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, fallbackValue } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
 
@@ -282,7 +283,13 @@ const Dashboard = () => {
       }
 
       return false;
-    }).sort((a, b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')));
+    });
+
+    if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
+      return result.sort(sortEventsByEventDateDesc);
+    } else {
+      return result.sort(sortEventsBySubmissionDesc);
+    }
   }, [currentUser, events]);
 
   const approvedEvents = useMemo(() => {
@@ -302,7 +309,7 @@ const Dashboard = () => {
       if (currentUser.role === UserRole.IQAC_TEAM) return ev.status === EventStatus.POSTED || ev.status === EventStatus.COMPLETED || ev.iqacApprovedAt;
       if (currentUser.role === UserRole.MEDIA) return depts.media?.status === 'APPROVED' || ['APPROVED', 'COMPLETED'].includes(String(ev.posterWorkflow?.status || '').toUpperCase());
       return false;
-    }).sort((a, b) => String(b.date || b.createdAt || '').localeCompare(String(a.date || a.createdAt || '')));
+    }).sort(sortEventsByEventDateDesc);
   }, [currentUser, events]);
 
   // For organizer: incoming registrations from students for their events
@@ -330,7 +337,11 @@ const Dashboard = () => {
     }, {});
 
     return Object.values(organizerIncomingGroupedByEvent)
-      .sort((a, b) => String(b.eventDate || '').localeCompare(String(a.eventDate || '')))
+      .sort((a, b) => {
+        const evA = events.find(e => e.id === a.eventId);
+        const evB = events.find(e => e.id === b.eventId);
+        return sortEventsByEventDateDesc(evA || { date: a.eventDate }, evB || { date: b.eventDate });
+      })
       .map(group => ({
         ...group,
         requests: [...group.requests].sort((a, b) => {
@@ -438,8 +449,8 @@ const Dashboard = () => {
     const now = new Date();
 
     return events.filter(ev => {
-      // 1. Must be POSTED status
-      if (ev.status !== EventStatus.POSTED) return false;
+      // 1. Must be POSTED or POSTPONED status
+      if (ev.status !== EventStatus.POSTED && ev.status !== 'POSTPONED') return false;
 
       // 2. Must NOT be the organizer of this event (string comparison for robustness)
       if (String(ev.organizerId) === String(currentUser.id)) return false;
@@ -478,7 +489,7 @@ const Dashboard = () => {
       }
 
       return true;
-    }).sort((a, b) => (new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0));
+    }).sort(sortEventsByEventDateDesc);
   }, [events, currentUser]);
 
   if (!currentUser) {
@@ -508,10 +519,9 @@ const Dashboard = () => {
           const isBInactive = b.status === 'WITHDRAWN' || b.status === 'REJECTED';
           if (isAInactive !== isBInactive) return isAInactive ? 1 : -1;
           
-          // Then sort by most recently created
-          const dateA = new Date(a.createdAt || 0).getTime();
-          const dateB = new Date(b.createdAt || 0).getTime();
-          return dateB - dateA;
+          const evA = events.find(e => e.id === a.eventId);
+          const evB = events.find(e => e.id === b.eventId);
+          return sortEventsByEventDateDesc(evA || { date: a.eventDate }, evB || { date: b.eventDate });
         });
     }
     return [];
@@ -1125,7 +1135,13 @@ const Dashboard = () => {
                       const rawBaseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) :
                         isDeptOfficer ? [...filteredEvents, ...approvedEvents] :
                           filteredEvents;
-                      const baseEvents = Array.from(new Map(rawBaseEvents.map(e => [e.id, e])).values());
+                      let baseEvents = Array.from(new Map(rawBaseEvents.map(e => [e.id, e])).values());
+                      
+                      if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
+                        baseEvents.sort(sortEventsByEventDateDesc);
+                      } else {
+                        baseEvents.sort(sortEventsBySubmissionDesc);
+                      }
 
                       if (isDeptOfficer) {
                         if (eventFilter === 'all') displayEvents = baseEvents;
@@ -1138,6 +1154,11 @@ const Dashboard = () => {
                         else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
                         else if (eventFilter === 'completed') displayEvents = baseEvents.filter(e => e.status === EventStatus.COMPLETED);
                         else if (eventFilter === 'rejected') displayEvents = baseEvents.filter(e => e.status === EventStatus.REJECTED);
+                      }
+
+                      // Apply Rule 3: Completed events sort by End Date Descending
+                      if (eventFilter === 'completed') {
+                        displayEvents = [...displayEvents].sort(sortEventsByEndDateDesc);
                       }
                     } else if (activeTab === 'approvals') {
                       displayEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
@@ -1194,6 +1215,16 @@ const Dashboard = () => {
                                         <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
                                           {event.title}
                                         </h4>
+                                        {event.status === 'CANCELLED' && (
+                                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-md text-[10px] font-bold border border-red-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                            <XCircle size={10} /> Cancelled
+                                          </span>
+                                        )}
+                                        {event.status === 'POSTPONED' && (
+                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold border border-amber-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                            <Clock size={10} /> Postponed
+                                          </span>
+                                        )}
                                         {event.isResubmitted && (
                                           <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold border border-slate-200 uppercase tracking-wider shrink-0">
                                             Resubmitted
@@ -1297,6 +1328,16 @@ const Dashboard = () => {
                                         <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
                                           {event.title}
                                         </h4>
+                                        {event.status === 'CANCELLED' && (
+                                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-md text-[10px] font-bold border border-red-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                            <XCircle size={10} /> Cancelled
+                                          </span>
+                                        )}
+                                        {event.status === 'POSTPONED' && (
+                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold border border-amber-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                                            <Clock size={10} /> Postponed
+                                          </span>
+                                        )}
                                         <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
                                           {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
                                         </span>
@@ -1763,6 +1804,9 @@ const Dashboard = () => {
                           badgeClass = 'bg-red-50 text-red-600';
                         } else if (request.status === ODRequestStatus.WITHDRAWN) {
                           badgeClass = 'bg-slate-100 text-slate-400 line-through';
+                        } else if (request.status === 'OD_CANCELLED' || request.status === 'CANCELLED') {
+                          displayStatus = 'Cancelled';
+                          badgeClass = 'bg-red-50 text-red-600 border border-red-200';
                         } else {
                           badgeClass = 'bg-amber-50 text-amber-600';
                         }

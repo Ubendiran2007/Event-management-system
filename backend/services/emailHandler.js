@@ -403,6 +403,129 @@ async function handleIQACExtensionDecision(eventData, isApproved) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Emergency Handlers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleEventCancelled(eventData) {
+  const eventId = eventData.id || '(unknown)';
+  console.log('[EMAIL_TRIGGER] Event CANCELLED: ' + eventId);
+
+  const emails = new Set();
+  if (isValidEmail(eventData.organizerEmail)) emails.add(eventData.organizerEmail);
+  
+  if (eventData.registeredStudents && Array.isArray(eventData.registeredStudents)) {
+    eventData.registeredStudents.forEach(s => {
+      if (isValidEmail(s.userEmail)) emails.add(s.userEmail);
+      if (isValidEmail(s.email)) emails.add(s.email);
+    });
+  }
+
+  // Find OD students (since registration array might not contain all emails sometimes)
+  try {
+    const snap = await getDocs(query(collection(db, 'odRequests'), where('eventId', '==', eventId)));
+    snap.docs.forEach(d => {
+      const email = d.data().email;
+      if (isValidEmail(email)) emails.add(email);
+    });
+  } catch (err) {
+    console.warn('[EMAIL_HANDLER] Could not fetch OD requests for cancellation emails', err.message);
+  }
+
+  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM', 'MEDIA', 'TRANSPORT_TEAM', 'SYSTEM_ADMIN'];
+  for (const role of rolesToNotify) {
+    const roleEmails = await getEmailsByRole(role);
+    roleEmails.forEach(e => emails.add(e));
+  }
+
+  const facultyEmail = eventData.coordinator?.facultyEmail || eventData.facultyEmail;
+  if (isValidEmail(facultyEmail)) emails.add(facultyEmail);
+
+  const emailList = Array.from(emails);
+  const { sendEmail } = require('./emailService');
+  
+  const subject = `Event Cancelled – ${eventData.title}`;
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+      <h2 style="color: #dc2626;">Event Cancelled</h2>
+      <p>The following event has been permanently cancelled.</p>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Name</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.title}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Reference ID</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.referenceId || 'N/A'}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Cancelled By</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.cancelledBy || 'Organizer'}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Cancelled On</td><td style="padding: 8px; border: 1px solid #ddd;">${new Date(eventData.cancelledAt || Date.now()).toLocaleString()}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.cancellationReason || 'No reason provided'}</td></tr>
+      </table>
+      <p style="margin-top: 20px; font-size: 0.9em; color: #666;">This is an automated email from the Event Management System.</p>
+    </div>
+  `;
+
+  await Promise.allSettled(
+    emailList.map(email =>
+      safeSend('Cancellation Notice to ' + email, email, () => sendEmail(email, subject, html))
+    )
+  );
+}
+
+async function handleEventPostponed(eventData) {
+  const eventId = eventData.id || '(unknown)';
+  console.log('[EMAIL_TRIGGER] Event POSTPONED: ' + eventId);
+
+  const emails = new Set();
+  if (isValidEmail(eventData.organizerEmail)) emails.add(eventData.organizerEmail);
+
+  if (eventData.registeredStudents && Array.isArray(eventData.registeredStudents)) {
+    eventData.registeredStudents.forEach(s => {
+      if (isValidEmail(s.userEmail)) emails.add(s.userEmail);
+      if (isValidEmail(s.email)) emails.add(s.email);
+    });
+  }
+
+  try {
+    const snap = await getDocs(query(collection(db, 'odRequests'), where('eventId', '==', eventId)));
+    snap.docs.forEach(d => {
+      const email = d.data().email;
+      if (isValidEmail(email)) emails.add(email);
+    });
+  } catch (err) {}
+
+  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM', 'MEDIA', 'TRANSPORT_TEAM', 'SYSTEM_ADMIN'];
+  for (const role of rolesToNotify) {
+    const roleEmails = await getEmailsByRole(role);
+    roleEmails.forEach(e => emails.add(e));
+  }
+  
+  const facultyEmail = eventData.coordinator?.facultyEmail || eventData.facultyEmail;
+  if (isValidEmail(facultyEmail)) emails.add(facultyEmail);
+
+  const emailList = Array.from(emails);
+  const { sendEmail } = require('./emailService');
+
+  const subject = `Event Postponed – ${eventData.title}`;
+  const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+      <h2 style="color: #d97706;">Event Postponed</h2>
+      <p>The following event has been postponed to a new date and time.</p>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Name</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.title}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Old Date</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.oldDate}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">New Date</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.newDate}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Old Time</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.oldStartTime} to ${eventData.oldEndTime}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">New Time</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.newStartTime} to ${eventData.newEndTime}</td></tr>
+        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.postponementReason || 'No reason provided'}</td></tr>
+      </table>
+      <p style="margin-top: 20px; font-weight: bold;">Note for Students: Your registration and OD permission (if applicable) remain valid for the new date. No further action is required.</p>
+      <p style="margin-top: 20px; font-size: 0.9em; color: #666;">This is an automated email from the Event Management System.</p>
+    </div>
+  `;
+
+  await Promise.allSettled(
+    emailList.map(email =>
+      safeSend('Postponement Notice to ' + email, email, () => sendEmail(email, subject, html))
+    )
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Exports
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -411,6 +534,8 @@ module.exports = {
   handleODStatusChange,
   handleIQACExtensionRequest,
   handleIQACExtensionDecision,
+  handleEventCancelled,
+  handleEventPostponed,
   isValidEmail,
   getEmailsByRole,
 };

@@ -44,6 +44,8 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       ? `ODV-${(odRequest.id || 'NA').slice(-6).toUpperCase()}-${new Date(odRequest.approvedAt || Date.now()).getTime().toString().slice(-6)}`
       : '';
 
+    const isCancelled = odRequest?.status === 'OD_CANCELLED' || odRequest?.status === 'CANCELLED';
+
     // Build QR payload
     const qrPayload = [
       `OD VERIFICATION`,
@@ -54,10 +56,11 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       `Event Ref: ${eventRef}`,
       `Date    : ${eventDate}`,
       `Venue   : ${eventVenue}`,
-      `Status  : APPROVED`,
+      `Status  : ${isCancelled ? 'CANCELLED' : 'APPROVED'}`,
       `Code    : ${verificationCode}`,
       `Issued  : ${issuedDate}`,
-    ].join('\n');
+      isCancelled ? `\nThis OD Letter is no longer valid.` : ''
+    ].filter(Boolean).join('\n');
 
     // Generate QR Data URL
     const qrDataUrl = await QRCode.toDataURL(qrPayload, {
@@ -132,7 +135,7 @@ export const generateODLetterBase64 = async (odRequest, event) => {
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Event Date</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${eventDate}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Venue</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${eventVenue}</td></tr>
           <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">Approved By</td><td style="padding: 6px 10px; border: 1px solid #bcd;">${approvedBy}</td></tr>
-          <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">OD Status</td><td style="padding: 6px 10px; border: 1px solid #bcd; color: #1a6b3a; font-weight: bold;">&#10004; APPROVED</td></tr>
+          <tr><td style="padding: 6px 10px; border: 1px solid #bcd; font-weight: bold; background: #f0f4f8;">OD Status</td><td style="padding: 6px 10px; border: 1px solid #bcd; color: ${isCancelled ? '#d9534f' : '#1a6b3a'}; font-weight: bold;">${isCancelled ? '&#10008; CANCELLED' : '&#10004; APPROVED'}</td></tr>
         </table>
 
         <p style="font-size: 11pt;">Your kind cooperation in this regard is highly appreciated.</p>

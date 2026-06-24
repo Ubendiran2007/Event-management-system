@@ -1315,5 +1315,218 @@ router.patch('/:id/extend-iqac-window', async (req, res) => {
   }
 });
 
-module.exports = router;
+// ── PATCH /api/events/:id/cancel ───────────────────────────────────────────
+// Cancel an event (STUDENT_ORGANIZER or FACULTY)
+router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { cancellationReason, confirmationText } = req.body;
+  
+  if (!cancellationReason || typeof cancellationReason !== 'string' || cancellationReason.trim() === '') {
+    return res.status(400).json({ success: false, message: 'Cancellation reason is mandatory' });
+  }
+  
+  if (confirmationText !== 'CANCEL EVENT') {
+    return res.status(400).json({ success: false, message: 'Invalid confirmation text' });
+  }
 
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    
+    const eventData = eventSnap.data();
+    if (eventData.organizerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You can only cancel your own events' });
+    }
+    
+    if (eventData.status === 'COMPLETED' || eventData.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Cannot cancel an event that is already completed or cancelled' });
+    }
+
+    const now = new Date().toISOString();
+    
+    const updatePayload = {
+      status: 'CANCELLED',
+      cancelledBy: req.user.name || req.user.email,
+      cancelledAt: now,
+      cancellationReason: cancellationReason.trim(),
+      updatedAt: now
+    };
+
+    // Audit Trail
+    const eventActions = eventData.eventActions || [];
+    eventActions.push({
+      action: 'CANCELLED',
+      by: req.user.name || req.user.email,
+      role: req.user.role,
+      timestamp: now,
+      reason: cancellationReason.trim()
+    });
+    updatePayload.eventActions = eventActions;
+
+    // Registrations
+    const registeredStudents = eventData.registeredStudents || [];
+    const updatedRegistrations = registeredStudents.map(student => ({
+      ...student,
+      status: 'REGISTRATION_CANCELLED',
+      cancelledReason: 'Event Cancelled'
+    }));
+    updatePayload.registeredStudents = updatedRegistrations;
+
+    await updateDoc(eventRef, updatePayload);
+
+    // Cancel OD Requests
+    const odQuery = query(collection(db, 'odRequests'), where('eventId', '==', req.params.id));
+    const odSnap = await getDocs(odQuery);
+    const updateODPromises = odSnap.docs.map(d => {
+      let docData = d.data();
+      let newOdStatus = 'OD_CANCELLED';
+      let payload = {
+        odStatus: 'CANCELLED',
+        status: newOdStatus,
+        updatedAt: now,
+        reason: 'Event Cancelled'
+      };
+      return updateDoc(d.ref, payload);
+    });
+    await Promise.all(updateODPromises);
+
+    // Notifications
+    const { handleEventCancelled } = require('../services/emailHandler');
+    setImmediate(async () => {
+      try {
+        await handleEventCancelled({ id: req.params.id, ...eventData, ...updatePayload });
+      } catch (err) {
+        console.error('[events/cancel/bg] Email handler error:', err.message);
+      }
+    });
+
+    return res.json({ success: true, message: 'Event cancelled successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
+  } catch (error) {
+    console.error('[events/cancel] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to cancel event', error: error.message });
+  }
+});
+
+// ── PATCH /api/events/:id/postpone ─────────────────────────────────────────
+// Postpone an event (STUDENT_ORGANIZER or FACULTY)
+router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { reason, newDate, newStartTime, newEndTime } = req.body;
+  
+  if (!reason || !newDate || !newStartTime || !newEndTime) {
+    return res.status(400).json({ success: false, message: 'Reason, newDate, newStartTime, and newEndTime are mandatory' });
+  }
+
+  // Basic time validation
+  if (newStartTime >= newEndTime) {
+    return res.status(400).json({ success: false, message: 'End time must be after start time' });
+  }
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    
+    const eventData = eventSnap.data();
+    if (eventData.organizerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You can only postpone your own events' });
+    }
+    
+    if (eventData.status === 'COMPLETED' || eventData.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Cannot postpone an event that is completed or cancelled' });
+    }
+
+    const now = new Date().toISOString();
+    
+    const oldDate = eventData.requisition?.step1?.eventStartDate || eventData.date;
+    const oldStartTime = eventData.requisition?.step1?.eventStartTime || eventData.startTime;
+    const oldEndTime = eventData.requisition?.step1?.eventEndTime || eventData.endTime;
+
+    const updatePayload = {
+      status: 'POSTPONED',
+      oldDate,
+      newDate,
+      oldStartTime,
+      newStartTime,
+      oldEndTime,
+      newEndTime,
+      postponedBy: req.user.name || req.user.email,
+      postponedAt: now,
+      postponementReason: reason.trim(),
+      updatedAt: now
+    };
+
+    // Update actual date and time fields to new values to reflect correctly in UI
+    updatePayload.date = newDate;
+    updatePayload.startDate = newDate;
+    updatePayload.endDate = newDate; // assuming single day for now
+    updatePayload.startTime = newStartTime;
+    updatePayload.endTime = newEndTime;
+    
+    if (eventData.requisition && eventData.requisition.step1) {
+      updatePayload['requisition.step1.eventStartDate'] = newDate;
+      updatePayload['requisition.step1.eventEndDate'] = newDate;
+      updatePayload['requisition.step1.eventStartTime'] = newStartTime;
+      updatePayload['requisition.step1.eventEndTime'] = newEndTime;
+    }
+
+    // Audit Trail
+    const eventActions = eventData.eventActions || [];
+    eventActions.push({
+      action: 'POSTPONED',
+      by: req.user.name || req.user.email,
+      role: req.user.role,
+      timestamp: now,
+      oldDate,
+      newDate,
+      reason: reason.trim()
+    });
+    // We can't use push and dotted notation at the same time simply, so we have to update the whole array
+    // Wait, updateDoc can handle top level fields with dot notation.
+    // Actually we don't mix them. Let's build a flattened update for Firestore
+    const firestoreUpdate = {
+      status: 'POSTPONED',
+      oldDate,
+      newDate,
+      oldStartTime,
+      newStartTime,
+      oldEndTime,
+      newEndTime,
+      postponedBy: req.user.name || req.user.email,
+      postponedAt: now,
+      postponementReason: reason.trim(),
+      updatedAt: now,
+      eventActions,
+      date: newDate,
+      startDate: newDate,
+      endDate: newDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+    };
+
+    if (eventData.requisition && eventData.requisition.step1) {
+      const step1 = { ...eventData.requisition.step1, eventStartDate: newDate, eventEndDate: newDate, eventStartTime: newStartTime, eventEndTime: newEndTime };
+      firestoreUpdate.requisition = { ...eventData.requisition, step1 };
+    }
+
+    await updateDoc(eventRef, firestoreUpdate);
+
+    // Notifications
+    const { handleEventPostponed } = require('../services/emailHandler');
+    setImmediate(async () => {
+      try {
+        await handleEventPostponed({ id: req.params.id, ...eventData, ...firestoreUpdate });
+      } catch (err) {
+        console.error('[events/postpone/bg] Email handler error:', err.message);
+      }
+    });
+
+    return res.json({ success: true, message: 'Event postponed successfully', event: { id: req.params.id, ...eventData, ...firestoreUpdate } });
+  } catch (error) {
+    console.error('[events/postpone] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to postpone event', error: error.message });
+  }
+});
+
+module.exports = router;

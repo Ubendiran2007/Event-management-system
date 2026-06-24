@@ -56,10 +56,11 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
     `Event Ref: ${eventRef}`,
     `Date    : ${eventDate}`,
     `Venue   : ${eventVenue}`,
-    `Status  : APPROVED`,
+    `Status  : ${odRequest.status === 'OD_CANCELLED' || odRequest.status === 'CANCELLED' ? 'CANCELLED' : 'APPROVED'}`,
     `Code    : ${verificationCode}`,
     `Issued  : ${issuedDate}`,
-  ].join('\n') : '';
+    (odRequest.status === 'OD_CANCELLED' || odRequest.status === 'CANCELLED') ? `\nThis OD Letter is no longer valid.` : ''
+  ].filter(Boolean).join('\n') : '';
 
   useEffect(() => {
     if (!qrPayload) return;
