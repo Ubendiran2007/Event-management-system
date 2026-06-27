@@ -19,6 +19,7 @@ import {
     X
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { useNotification } from '../context/NotificationContext';
 import { UserRole } from '../types';
 import Navbar from '../components/Navbar';
 import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
@@ -26,6 +27,7 @@ import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils
 const ODCorrection = () => {
     const { currentUser } = useAppContext();
     const navigate = useNavigate();
+    const { showDialog, showToast } = useNotification();
     
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -68,7 +70,11 @@ const ODCorrection = () => {
         try {
             setLoading(true);
             const viewParam = activeTab === 'pending' ? 'pending' : 'history';
-            const res = await fetch(`http://localhost:5001/api/correction-requests?role=${currentUser.role}&department=${currentUser.department}&userId=${currentUser.id}&view=${viewParam}`);
+            const res = await fetch(`http://localhost:5001/api/correction-requests?role=${currentUser.role}&department=${currentUser.department}&userId=${currentUser.id}&view=${viewParam}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                }
+            });
             const data = await res.json();
             if (data.success) {
                 let filtered = data.requests;
@@ -112,7 +118,10 @@ const ODCorrection = () => {
         try {
             const res = await fetch('http://localhost:5001/api/correction-requests', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                },
                 body: JSON.stringify({
                     studentId: currentUser.id,
                     studentName: currentUser.name,
@@ -140,7 +149,12 @@ const ODCorrection = () => {
 
     const submitAction = async () => {
         if (actionModal.action === 'REJECT' && !actionData.rejectionReason.trim()) {
-            alert("Rejection reason is mandatory.");
+            await showDialog({
+                title: 'Validation Error',
+                message: 'Rejection reason is mandatory.',
+                type: 'danger',
+                hideCancel: true
+            });
             return;
         }
 
@@ -148,7 +162,10 @@ const ODCorrection = () => {
         try {
             const res = await fetch(`http://localhost:5001/api/correction-requests/${actionModal.requestId}/status`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                },
                 body: JSON.stringify({
                     action: actionModal.action,
                     role: currentUser.role,
@@ -162,9 +179,15 @@ const ODCorrection = () => {
             if (data.success) {
                 setActionModal({ isOpen: false, requestId: null, action: null });
                 setActionData({ comments: '', rejectionReason: '' });
+                showToast(`Request ${actionModal.action.toLowerCase()}ed successfully.`, 'success');
                 fetchRequests();
             } else {
-                alert(data.message || "Failed to process request");
+                await showDialog({
+                    title: 'Operation Failed',
+                    message: data.message || "Failed to process request",
+                    type: 'danger',
+                    hideCancel: true
+                });
             }
         } catch (err) {
             console.error('Failed to update request:', err.message);
@@ -198,7 +221,7 @@ const ODCorrection = () => {
             <div className="relative pl-8 pb-4 border-l-2 border-slate-100 last:border-0 last:pb-0">
                 <div className="absolute -left-[13px] top-0">{icon}</div>
                 <div className="flex flex-col">
-                    <span className={`text-sm font-bold \${isApproved ? 'text-emerald-700' : isSelfRejected ? 'text-red-700' : isPending ? 'text-amber-600' : 'text-slate-500'}`}>
+                    <span className={`text-sm font-bold ${isApproved ? 'text-emerald-700' : isSelfRejected ? 'text-red-700' : isPending ? 'text-amber-600' : 'text-slate-500'}`}>
                         {title}
                     </span>
                     {decisionData && (
@@ -249,19 +272,19 @@ const ODCorrection = () => {
                     <div className="flex gap-4 mb-6 border-b border-slate-200 pb-2">
                         <button 
                             onClick={() => setActiveTab('pending')}
-                            className={`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'pending' ? 'text-cse-accent border-cse-accent' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+                            className={`font-bold pb-2 border-b-2 transition-colors ${activeTab === 'pending' ? 'text-cse-accent border-cse-accent' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
                         >
                             Pending Requests
                         </button>
                         <button 
                             onClick={() => setActiveTab('approved')}
-                            className={`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'approved' ? 'text-emerald-600 border-emerald-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+                            className={`font-bold pb-2 border-b-2 transition-colors ${activeTab === 'approved' ? 'text-emerald-600 border-emerald-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
                         >
                             Approved History
                         </button>
                         <button 
                             onClick={() => setActiveTab('rejected')}
-                            className={`font-bold pb-2 border-b-2 transition-colors \${activeTab === 'rejected' ? 'text-red-600 border-red-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
+                            className={`font-bold pb-2 border-b-2 transition-colors ${activeTab === 'rejected' ? 'text-red-600 border-red-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
                         >
                             Rejected History
                         </button>
@@ -456,8 +479,8 @@ const ODCorrection = () => {
             {actionModal.isOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl border border-slate-100">
-                        <div className={`px-6 py-4 border-b \${actionModal.action === 'APPROVE' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
-                            <h3 className={`font-bold text-lg flex items-center gap-2 \${actionModal.action === 'APPROVE' ? 'text-emerald-800' : 'text-red-800'}`}>
+                        <div className={`px-6 py-4 border-b ${actionModal.action === 'APPROVE' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`}>
+                            <h3 className={`font-bold text-lg flex items-center gap-2 ${actionModal.action === 'APPROVE' ? 'text-emerald-800' : 'text-red-800'}`}>
                                 {actionModal.action === 'APPROVE' ? <ShieldCheck /> : <XCircle />}
                                 Confirm {actionModal.action === 'APPROVE' ? 'Approval' : 'Rejection'}
                             </h3>
@@ -497,10 +520,10 @@ const ODCorrection = () => {
                             <button 
                                 onClick={submitAction}
                                 disabled={processingId !== null}
-                                className={`px-6 py-2.5 rounded-xl font-bold text-white flex items-center gap-2 transition-all \${
+                                className={`px-6 py-2.5 rounded-xl font-bold text-white flex items-center gap-2 transition-all disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed disabled:shadow-none ${
                                     actionModal.action === 'APPROVE' 
-                                        ? 'bg-emerald-500 hover:bg-emerald-600 shadow-md shadow-emerald-500/20' 
-                                        : 'bg-red-500 hover:bg-red-600 shadow-md shadow-red-500/20'
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-500/20' 
+                                        : 'bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/20'
                                 }`}
                             >
                                 {processingId !== null ? <Loader2 size={18} className="animate-spin" /> : actionModal.action === 'APPROVE' ? <Check size={18} /> : <X size={18} />}

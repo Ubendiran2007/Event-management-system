@@ -165,19 +165,24 @@ router.post('/', async (req, res) => {
     let dbRollNo = rollNo || '';
     let dbOdUsed = Number(currentOdUsed) || 0;
     let dbOdLimit = Number(currentOdLimit) || 0;
+    let dbEmail = '';
     
-    const userQuery = query(collection(db, 'users'), where('id', '==', studentId));
-    const userSnap = await getDocs(userQuery);
-    if (!userSnap.empty) {
-      const userData = userSnap.docs[0].data();
-      dbRollNo = userData.rollNo || dbRollNo;
-      dbOdUsed = userData.odUsed !== undefined ? Number(userData.odUsed) : dbOdUsed;
-      dbOdLimit = userData.odLimit !== undefined ? Number(userData.odLimit) : dbOdLimit;
+    if (className) {
+      const studentQuery = query(collection(db, 'students', className, 'members'), where('rollNo', '==', dbRollNo));
+      const studentSnap = await getDocs(studentQuery);
+      if (!studentSnap.empty) {
+        const studentData = studentSnap.docs[0].data();
+        dbRollNo = studentData.rollNo || dbRollNo;
+        dbOdUsed = studentData.odUsed !== undefined ? Number(studentData.odUsed) : dbOdUsed;
+        dbOdLimit = studentData.odLimit !== undefined ? Number(studentData.odLimit) : dbOdLimit;
+        dbEmail = studentData.email || '';
+      }
     }
 
     const newRequest = {
       studentId,
       studentName,
+      email: dbEmail,
       rollNo: dbRollNo,
       className: className || '',
       department: department || '',
@@ -202,9 +207,9 @@ router.post('/', async (req, res) => {
     const facultyUsers = await getUsersByRole('FACULTY', department);
     const facultyNameStr = facultyUsers.map(f => f.name || f.email).join(', ') || 'Your Faculty Advisor';
 
-    if (dbRollNo) {
+    if (dbEmail) {
       await safeMail({
-        to: `${String(dbRollNo).toLowerCase()}@sece.ac.in`,
+        to: dbEmail,
         subject: `OD Correction Request Submitted — Pending Faculty Verification`,
         html: buildEmailHtml({
           heading: 'OD Correction Request Submitted',
@@ -347,17 +352,33 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
       updates.finalOdUsed  = data.requestedCount;
       updates.finalOdLimit = data.requestedLimit;
 
-      // Update the student's user document
+      // Update the student document in the structured members collection
       try {
-        const usersSnap = await getDocs(query(collection(db, 'users'), where('id', '==', data.studentId)));
-        if (!usersSnap.empty) {
-          await updateDoc(usersSnap.docs[0].ref, {
-            odUsed:  data.requestedCount,
-            odLimit: data.requestedLimit,
-          });
-          console.log('[correctionRequests] OD counts updated for student:', data.studentId);
-        } else {
-          console.warn('[correctionRequests] Student user doc not found:', data.studentId);
+        let updatedUsers = false;
+        if (data.className && data.rollNo) {
+          const studentQuery = query(collection(db, 'students', data.className, 'members'), where('rollNo', '==', data.rollNo));
+          const studentSnap = await getDocs(studentQuery);
+          
+          if (!studentSnap.empty) {
+            // Calculate exact offset based on current approved registrations
+            const odQuery = query(collection(db, 'odRequests'), where('rollNo', '==', data.rollNo), where('status', '==', 'APPROVED'));
+            const odSnap = await getDocs(odQuery);
+            const actualApproved = odSnap.size;
+            const newOffset = data.requestedCount - actualApproved;
+
+            await updateDoc(studentSnap.docs[0].ref, {
+              odUsed:  data.requestedCount,
+              odLimit: data.requestedLimit,
+              odCorrectionOffset: newOffset
+            });
+            
+            console.log('[correctionRequests] OD counts updated for student:', data.rollNo);
+            updatedUsers = true;
+          }
+        }
+        
+        if (!updatedUsers) {
+          console.warn('[correctionRequests] Student user doc not found for rollNo:', data.rollNo);
         }
       } catch (odErr) {
         console.error('[correctionRequests] OD update error:', odErr.message);
@@ -367,7 +388,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
     await updateDoc(reqRef, updates);
 
     // ── Send Emails ───────────────────────────────────────────────────────────
-    const studentEmail = data.rollNo ? `${String(data.rollNo).toLowerCase()}@sece.ac.in` : null;
+    const studentEmail = data.email || null;
 
     if (action === 'APPROVE') {
       // — Notify Student of this stage's approval ——————————————————————————
@@ -376,6 +397,22 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
 
       if (studentEmail) {
         const isCompleted = nextStatus === 'COMPLETED';
+        let fetchedUpdatedOdUsed = data.requestedCount;
+        let fetchedUpdatedOdLimit = data.requestedLimit;
+        
+        if (isCompleted && data.rollNo) {
+          try {
+            const usersSnap = await getDocs(query(collection(db, 'users'), where('rollNo', '==', data.rollNo)));
+            if (!usersSnap.empty) {
+              const userData = usersSnap.docs[0].data();
+              fetchedUpdatedOdUsed = userData.odUsed !== undefined ? userData.odUsed : data.requestedCount;
+              fetchedUpdatedOdLimit = userData.odLimit !== undefined ? userData.odLimit : data.requestedLimit;
+            }
+          } catch (e) {
+            console.error('[correctionRequests] Failed to fetch latest OD count for email:', e.message);
+          }
+        }
+
         await safeMail({
           to: studentEmail,
           subject: isCompleted
@@ -391,14 +428,13 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
               ['Approved By',   approverName || stageLabel],
               ['Role',          stageLabel],
               ['Department',    approverDept || data.department],
-              ['Comments',      comments || '—'],
+              ['Comments',      comments ? comments : 'No additional comments.'],
               ['Approved On',   fmtDate(now)],
               ...(isCompleted ? [
                 ['Previous OD Used',  data.currentOdUsed],
-                ['Previous OD Limit', data.currentOdLimit],
-                ['New OD Used',       data.requestedCount],
-                ['New OD Limit',      data.requestedLimit],
-                ['Effective Date',    fmtDate(now)],
+                ['OD Limit',          data.currentOdLimit],
+                ['Updated OD Used',   fetchedUpdatedOdUsed],
+                ['Current OD Limit',  fetchedUpdatedOdLimit]
               ] : [
                 ['Next Stage', nextLabel],
               ]),
@@ -436,7 +472,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
                 ['Requested Limit',    data.requestedLimit],
                 ['Reason',             data.description],
                 ['Faculty Approved By',approverName],
-                ['Faculty Comments',   comments || '—'],
+                ['Faculty Comments',   comments ? comments : 'No additional comments.'],
                 ['Faculty Approved On',fmtDate(now)],
               ],
               alertHtml: `<div class="alert" style="background:#fffbeb;border-left:4px solid #f59e0b;color:#92400e;">
@@ -468,9 +504,9 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
                 ['Requested Limit',    data.requestedLimit],
                 ['Reason',             data.description],
                 ['Faculty Approved By',facultyDec.approverName || '—'],
-                ['Faculty Comments',   facultyDec.comments || '—'],
+                ['Faculty Comments',   facultyDec.comments ? facultyDec.comments : 'No additional comments.'],
                 ['HOD Approved By',    approverName],
-                ['HOD Comments',       comments || '—'],
+                ['HOD Comments',       comments ? comments : 'No additional comments.'],
                 ['HOD Approved On',    fmtDate(now)],
               ],
               alertHtml: `<div class="alert" style="background:#fffbeb;border-left:4px solid #f59e0b;color:#92400e;">
@@ -497,7 +533,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
               ['Role / Designation',stageLabel],
               ['Department',        approverDept || data.department],
               ['Rejection Reason',  rejectionReason],
-              ['Comments',          comments || '—'],
+              ['Comments',          comments ? comments : 'No additional comments.'],
               ['Rejected On',       fmtDate(now)],
               ['Your Request',      data.description],
               ['Requested OD Used', data.requestedCount],

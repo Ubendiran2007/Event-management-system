@@ -83,14 +83,23 @@ function parseTimeParts(timeValue) {
 }
 
 function parseEventStartDateTime(eventData = {}) {
-  const dateValue =
-    eventData.date ||
+  let dateValue =
     eventData?.requisition?.step1?.eventStartDate ||
+    eventData.startDate ||
+    eventData.date ||
     null;
 
+  if (dateValue && typeof dateValue === 'string') {
+    if (dateValue.includes(' - ')) {
+      dateValue = dateValue.split(' - ')[0].trim();
+    } else if (dateValue.includes(' to ')) {
+      dateValue = dateValue.split(' to ')[0].trim();
+    }
+  }
+
   const timeValue =
-    eventData.startTime ||
     eventData?.requisition?.step1?.eventStartTime ||
+    eventData.startTime ||
     null;
 
   if (!dateValue || !timeValue) return null;

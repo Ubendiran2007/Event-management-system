@@ -3,7 +3,7 @@ import { X, Printer, FileText, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SECELogo from '../assets/sece.avif';
 import SECEHeader from '../assets/sece header.jpeg';
-import { formatEventRef } from '../utils/formatters';
+import { formatEventRef, formatVenue } from '../utils/formatters';
 
 const SDG_NAMES = {
   1: "No Poverty",
@@ -50,7 +50,7 @@ const EventReportModal = ({
     return selected.length > 0 ? selected.join(', ') : '';
   })();
 
-  const resolvedVenue = registrationDetails.venue || venueFromAnnexure || event.venue || '';
+  const resolvedVenue = formatVenue(registrationDetails.venue, venueFromAnnexure, event.venue);
 
   // Resource persons: use IQAC-submitted ones, fallback to event guests from step1
   const resolvedResourcePersons = resourcePersons.length > 0
@@ -266,7 +266,7 @@ const EventReportModal = ({
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">Venue</td>
-                  <td className="border border-black p-2" colSpan="6">{resolvedVenue || 'NIL'}</td>
+                  <td className="border border-black p-2" colSpan="6">{resolvedVenue}</td>
                 </tr>
                 <tr>
                   <td className="border border-black p-2 font-bold">Online Resource (Online / Hybrid)</td>

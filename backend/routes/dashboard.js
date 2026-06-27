@@ -1,5 +1,5 @@
 const express = require('express');
-const { collection, getDocs, query, where } = require('firebase/firestore');
+const { collection, getDocs, query, where, doc, updateDoc } = require('firebase/firestore');
 const { db } = require('../firebase');
 
 const router = express.Router();
@@ -47,6 +47,53 @@ router.get('/events', async (req, res) => {
         : await getDocs(q);
 
     const events = snapshotToArray(snapshot);
+    
+    // Evaluate Postponement Expirations Dynamically
+    const nowTime = new Date();
+    
+    for (let ev of events) {
+      if (ev.postponementRequest && (ev.postponementRequest.status === 'PENDING_FACULTY' || ev.postponementRequest.status === 'PENDING_HOD' || ev.postponementRequest.status === 'PENDING_IQAC')) {
+        const eventDateStr = ev.requisition?.step1?.eventStartDate || ev.date;
+        const eventStartTimeStr = ev.requisition?.step1?.eventStartTime || ev.startTime || '00:00';
+        
+        if (eventDateStr) {
+          const createDate = (dateStr, timeStr) => {
+            const [h, m] = String(timeStr).split(':').map(Number);
+            const d = new Date(dateStr);
+            d.setHours(h, m, 0, 0);
+            return d;
+          };
+          
+          const eventStart = createDate(eventDateStr, eventStartTimeStr);
+          
+          if (nowTime.getTime() > eventStart.getTime()) {
+             // EXPIRED!
+             ev.postponementRequest.status = 'EXPIRED';
+             ev.postponementRequest.expiredAt = nowTime.toISOString();
+             ev.postponementRequest.expiryReason = 'Original event start time has already been reached.';
+             
+             const updatePayload = {
+               'postponementRequest.status': 'EXPIRED',
+               'postponementRequest.expiredAt': ev.postponementRequest.expiredAt,
+               'postponementRequest.expiryReason': ev.postponementRequest.expiryReason,
+               'eventActions': [...(ev.eventActions || []), {
+                  action: 'POSTPONEMENT_EXPIRED',
+                  timestamp: nowTime.toISOString(),
+                  reason: 'Original event start time reached before approval.'
+               }]
+             };
+             
+             // Update Firestore asynchronously
+             updateDoc(doc(db, 'events', ev.id), updatePayload).catch(err => {
+                console.error('[dashboard/events] Failed to expire postponement for event', ev.id, err);
+             });
+             
+             // Note: Email notifications for expiry would go here (Rule 4 & 5).
+             console.log(`[dashboard/events] Event ${ev.id} postponement request automatically expired.`);
+          }
+        }
+      }
+    }
 
     return res.json({ success: true, count: events.length, events });
   } catch (error) {
@@ -144,7 +191,7 @@ router.get('/summary', async (req, res) => {
         // Breakdown by approval stage
         pendingFaculty: events.filter((e) => e.status === 'PENDING_FACULTY').length,
         pendingHod: events.filter((e) => e.status === 'PENDING_HOD').length,
-        pendingPrincipal: events.filter((e) => e.status === 'PENDING_PRINCIPAL').length,
+        pendingIqac: events.filter((e) => e.status === 'PENDING_IQAC').length,
       },
       odRequests: {
         total: odRequests.length,

@@ -73,6 +73,16 @@ export const AppProvider = ({ children }) => {
     };
   }, []);
 
+  // Real-time sync for currentUser if they are a student
+  useEffect(() => {
+    if (currentUser && students.length > 0) {
+      const updatedStudent = students.find(s => s.id === currentUser.id);
+      if (updatedStudent && (updatedStudent.odUsed !== currentUser.odUsed || updatedStudent.odLimit !== currentUser.odLimit)) {
+        handleLogin({ ...currentUser, ...updatedStudent });
+      }
+    }
+  }, [students]);
+
   const handleLogin = (user) => {
     const formattedUser = user ? { ...user, role: user.role?.toUpperCase() } : user;
     setCurrentUser(formattedUser);
@@ -208,7 +218,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const handleODApproval = async (requestId, approve, approverInfo = {}, odLetterBase64 = null) => {
+  const handleODApproval = async (requestId, approve, approverInfo = {}, odLetterBase64 = null, remarks = '') => {
     const request = odRequests.find(r => r.id === requestId);
     if (!request) return;
 
@@ -221,9 +231,9 @@ export const AppProvider = ({ children }) => {
           newStatus = ODRequestStatus.PENDING_HOD;
           break;
         case ODRequestStatus.PENDING_HOD:
-          newStatus = ODRequestStatus.PENDING_PRINCIPAL;
+          newStatus = ODRequestStatus.PENDING_IQAC;
           break;
-        case ODRequestStatus.PENDING_PRINCIPAL:
+        case ODRequestStatus.PENDING_IQAC:
           newStatus = ODRequestStatus.APPROVED;
           break;
         default:
@@ -241,7 +251,8 @@ export const AppProvider = ({ children }) => {
         body: JSON.stringify({
           status: newStatus,
           approvedBy: approverInfo.name || currentUser?.name || 'Authorized Personnel',
-          odLetterBase64: odLetterBase64
+          odLetterBase64: odLetterBase64,
+          remarks: remarks
         }),
       });
 

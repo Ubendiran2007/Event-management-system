@@ -1,11 +1,14 @@
-import { LogOut, LayoutDashboard, Shield } from 'lucide-react';
+import { LogOut, LayoutDashboard, Shield, Bell } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
+import NotificationCenter from './NotificationCenter';
 
 const Navbar = () => {
-  const { currentUser, handleLogout, students } = useAppContext();
+  const { currentUser, handleLogout, students, odRequests } = useAppContext();
   const navigate = useNavigate();
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const location = useLocation();
   const isLoginPage = location.pathname === '/' || location.pathname === '/login';
@@ -34,7 +37,12 @@ const Navbar = () => {
             {(() => {
               const liveStudent = (students || []).find(s => s.id === currentUser.id);
               const displayData = liveStudent || currentUser;
-              const odUsed = displayData.odUsed || 0;
+              
+              // Dynamically calculate OD count from approved registrations in real time, factoring in any approved manual OD Corrections
+              const myApprovedOds = (odRequests || []).filter(r => r.studentId === currentUser.id && r.status === 'APPROVED');
+              const computedOdUsed = myApprovedOds.length + (displayData.odCorrectionOffset || 0);
+              
+              const odUsed = displayData.role === 'STUDENT_GENERAL' || displayData.role === 'STUDENT_ORGANIZER' ? computedOdUsed : (displayData.odUsed || 0);
               const odLimit = displayData.odLimit || 7;
               const isOverLimit = odUsed >= odLimit;
               const isWarning = odUsed >= 5;
@@ -63,6 +71,16 @@ const Navbar = () => {
                 </div>
               );
             })()}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(true)}
+                className="p-2 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100 relative"
+                title="Notifications"
+              >
+                <Bell size={20} />
+              </button>
+              <NotificationCenter isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
+            </div>
             <button
               onClick={() => navigate('/security')}
               className="p-2 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors border border-transparent hover:border-indigo-100"

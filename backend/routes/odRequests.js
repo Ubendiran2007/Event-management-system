@@ -3,6 +3,7 @@ const router = express.Router();
 const { db } = require('../firebase');
 const { collection, getDocs, doc, getDoc, addDoc, updateDoc } = require('firebase/firestore');
 const { handleODStatusChange } = require('../services/emailHandler');
+const { syncStudentODCount } = require('../utils/odSync');
 
 const STUDENT_CLASS_DOCS = ['CSE-B', 'CSE-D'];
 
@@ -54,7 +55,7 @@ const checkDb = (res) => {
   return false;
 };
 
-const VALID_STATUSES = ['PENDING_ORGANIZER', 'APPROVED', 'REJECTED', 'WITHDRAWN'];
+const VALID_STATUSES = ['PENDING_ORGANIZER', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'APPROVED', 'REJECTED', 'WITHDRAWN'];
 
 // POST /api/od-requests — student registers for an event
 router.post('/', async (req, res) => {
@@ -86,6 +87,20 @@ router.post('/', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
     const event = eventSnap.data();
+
+    // Dynamic Registration Lock Check
+    const sDate = event.requisition?.step1?.eventStartDate || event.date;
+    const sTime = event.requisition?.step1?.eventStartTime || event.startTime || '00:00';
+    let isLocked = event.registrationLocked;
+    if (sDate && !isLocked) {
+      const [y, mo, d] = String(sDate).split('-').map(Number);
+      const [h, m] = String(sTime).split(':').map(Number);
+      const eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
+      if (new Date().getTime() >= eventStart) isLocked = true;
+    }
+    if (isLocked) {
+      return res.status(403).json({ success: false, message: 'Event has started. Registrations are now locked.' });
+    }
 
     const studentRecord = await findStudentInFirestore(studentId);
     
@@ -251,47 +266,64 @@ router.patch('/:id/status', async (req, res) => {
     if (!odSnap.exists()) {
       return res.status(404).json({ success: false, message: 'OD request not found' });
     }
+    
+    const current = odSnap.data();
+
+    const eventSnap = await getDoc(doc(db, 'events', current.eventId));
+    if (eventSnap.exists()) {
+      const event = eventSnap.data();
+      const sDate = event.requisition?.step1?.eventStartDate || event.date;
+      const sTime = event.requisition?.step1?.eventStartTime || event.startTime || '00:00';
+      let isLocked = event.registrationLocked;
+      if (sDate && !isLocked) {
+        const [y, mo, d] = String(sDate).split('-').map(Number);
+        const [h, m] = String(sTime).split(':').map(Number);
+        const eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
+        if (new Date().getTime() >= eventStart) isLocked = true;
+      }
+      if (isLocked) {
+        return res.status(403).json({ success: false, message: 'Event has started. Registration status cannot be modified.' });
+      }
+    }
 
     const update = { status, updatedAt: new Date().toISOString() };
+    
+    // Store remarks if provided
+    if (req.body.remarks) {
+      update.remarks = req.body.remarks;
+    }
+
+    if (status === 'PENDING_HOD') {
+      update.facultyApprovedBy = approvedBy || 'Faculty';
+      update.facultyApprovedAt = new Date().toISOString();
+    }
+    if (status === 'PENDING_IQAC' || status === 'PENDING_PRINCIPAL') {
+      update.hodApprovedBy = approvedBy || 'HOD';
+      update.hodApprovedAt = new Date().toISOString();
+    }
     if (status === 'APPROVED') {
+      update.iqacApprovedBy = approvedBy || 'IQAC';
+      update.iqacApprovedAt = new Date().toISOString();
       update.approvedAt = new Date().toISOString();
       update.approvedBy = approvedBy || 'Organizer';
     }
     if (status === 'REJECTED') {
       update.rejectedAt = new Date().toISOString();
       update.rejectedBy = approvedBy || 'Organizer';
+      // Record which stage rejected it
+      if (!current.facultyApprovedBy) update.facultyRejectedAt = new Date().toISOString();
+      else if (!current.hodApprovedBy) update.hodRejectedAt = new Date().toISOString();
+      else update.iqacRejectedAt = new Date().toISOString();
     }
 
-    const current = odSnap.data();
     await updateDoc(odRef, update);
 
-    // Handle OD Usage Count adjustments
-    if (current.studentId) {
+    // Handle OD Usage Count synchronization dynamically
+    if (current.studentId && (status === 'APPROVED' || current.status === 'APPROVED')) {
       try {
-        const student = await findStudentInFirestore(current.studentId);
-        if (student) {
-          const studentRef = doc(db, 'students', student.className, 'members', current.studentId);
-          
-          // Increment if becoming APPROVED (and wasn't already)
-          if (status === 'APPROVED' && current.status !== 'APPROVED') {
-            await updateDoc(studentRef, { 
-              odUsed: (student.odUsed || 0) + 1,
-              updatedAt: new Date().toISOString()
-            });
-            console.log(`[OD Usage] Incremented for ${current.studentName}: ${(student.odUsed || 0) + 1}`);
-          }
-          
-          // Decrement if was APPROVED and is now something else (REJECTED/WITHDRAWN)
-          else if (current.status === 'APPROVED' && status !== 'APPROVED') {
-            await updateDoc(studentRef, { 
-              odUsed: Math.max(0, (student.odUsed || 0) - 1),
-              updatedAt: new Date().toISOString()
-            });
-            console.log(`[OD Usage] Decremented for ${current.studentName}: ${Math.max(0, (student.odUsed || 0) - 1)}`);
-          }
-        }
+        await syncStudentODCount(current.studentId);
       } catch (err) {
-        console.error('[odRequests/status] Failed to adjust OD usage:', err.message);
+        console.error('[odRequests/status] Failed to sync OD usage:', err.message);
       }
     }
 
@@ -328,26 +360,38 @@ router.patch('/:id/withdraw', async (req, res) => {
       return res.status(400).json({ success: false, message: `Cannot withdraw a request that is already ${current.status.toLowerCase()}` });
     }
 
+    const eventSnap = await getDoc(doc(db, 'events', current.eventId));
+    if (eventSnap.exists()) {
+      const event = eventSnap.data();
+      const sDate = event.requisition?.step1?.eventStartDate || event.date;
+      const sTime = event.requisition?.step1?.eventStartTime || event.startTime || '00:00';
+      let isLocked = event.registrationLocked;
+      if (sDate && !isLocked) {
+        const [y, mo, d] = String(sDate).split('-').map(Number);
+        const [h, m] = String(sTime).split(':').map(Number);
+        const eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
+        if (new Date().getTime() >= eventStart) isLocked = true;
+      }
+      if (event.status === 'CANCELLED') {
+        return res.status(403).json({ success: false, message: 'Event has been cancelled. Registrations cannot be withdrawn.' });
+      }
+      if (isLocked) {
+        return res.status(403).json({ success: false, message: 'Event has started or registration is locked. Registrations cannot be withdrawn.' });
+      }
+    }
+
     await updateDoc(odRef, {
       status: 'WITHDRAWN',
       withdrawnAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
 
-    // If it was already approved, decrement the student's OD usage
+    // If it was already approved, sync the student's OD usage to accurately reflect the withdrawal
     if (current.status === 'APPROVED' && current.studentId) {
       try {
-        const student = await findStudentInFirestore(current.studentId);
-        if (student) {
-          const studentRef = doc(db, 'students', student.className, 'members', current.studentId);
-          await updateDoc(studentRef, { 
-            odUsed: Math.max(0, (student.odUsed || 0) - 1),
-            updatedAt: new Date().toISOString()
-          });
-          console.log(`[OD Usage] Decremented (Withdrawal) for ${current.studentName}: ${Math.max(0, (student.odUsed || 0) - 1)}`);
-        }
+        await syncStudentODCount(current.studentId);
       } catch (err) {
-        console.error('[odRequests/withdraw] Failed to decrement OD usage:', err.message);
+        console.error('[odRequests/withdraw] Failed to sync OD usage:', err.message);
       }
     }
     res.json({ success: true, message: 'OD request withdrawn successfully', id });

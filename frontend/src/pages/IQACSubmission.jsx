@@ -92,7 +92,7 @@ const yesNo = (value) => (String(value || '').toLowerCase() === 'yes' ? 'Yes' : 
 
 const isEventEndTimePassed = (event) => {
   if (!event) return false;
-  const eventDate = event.date || event.requisition?.step1?.eventStartDate;
+  const eventDate = event.requisition?.step1?.eventEndDate || event.requisition?.step1?.eventStartDate || event.date;
   const endTime = event.endTime || event.requisition?.step1?.eventEndTime;
   if (!eventDate || !endTime) return false;
 
@@ -961,8 +961,8 @@ const IQACSubmission = () => {
           </div>
         </header>
 
-        {!eligibleForIQAC && (() => {
-          const eventDate = selectedEvent?.date || selectedEvent?.requisition?.step1?.eventStartDate;
+        {!eligibleForIQAC && !selectedEvent?.iqacSubmittedAt && (() => {
+          const eventDate = selectedEvent?.requisition?.step1?.eventEndDate || selectedEvent?.requisition?.step1?.eventStartDate || selectedEvent?.date;
           const endTime = selectedEvent?.endTime || selectedEvent?.requisition?.step1?.eventEndTime;
           let windowExpired = false;
           if (eventDate && endTime) {
@@ -1332,25 +1332,25 @@ const IQACSubmission = () => {
                         <td className="px-3 py-2 text-slate-800">{formatStudentNameOnly(row.student)}</td>
                         <td className="px-3 py-2 text-slate-600">{fallbackValue(row.rollNo, 'general')}</td>
                         {(() => {
-                          const selects = [];
+                          const statusDisplays = [];
                           for (let d = 1; d <= numberOfDays; d++) {
-                            selects.push(
+                            const val = row[`day${d}`] || row.attendanceStatus;
+                            let display = 'P';
+                            if (val === 'NOT_ATTENDED') display = 'A';
+                            else if (val === 'FN') display = 'FN';
+                            else if (val === 'AN') display = 'AN';
+                            else if (val === 'ATTENDED') display = 'P';
+                            else display = val;
+                            
+                            statusDisplays.push(
                               <td key={d} className="px-3 py-2">
-                                <select
-                                  value={row[`day${d}`]}
-                                  onChange={(e) => updateStudentAttendanceStatus(row.id, `day${d}`, e.target.value)}
-                                  disabled={isSubmitting}
-                                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[10px] font-bold text-slate-700"
-                                >
-                                  <option value="ATTENDED">P</option>
-                                  <option value="FN">FN</option>
-                                  <option value="AN">AN</option>
-                                  <option value="NOT_ATTENDED">A</option>
-                                </select>
+                                <span className="inline-block px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] font-bold text-slate-700">
+                                  {display}
+                                </span>
                               </td>
                             );
                           }
-                          return selects;
+                          return statusDisplays;
                         })()}
                       </tr>
                     ))}
@@ -1391,17 +1391,17 @@ const IQACSubmission = () => {
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Attendees</p>
                   <p className="mt-1 text-sm font-bold text-slate-900">{fbAttended}</p>
                 </div>
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Feedback Submitted</p>
-                  <p className="mt-1 text-sm font-bold text-emerald-900">{fbSubmitted}</p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Feedback Submitted</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{fbSubmitted}</p>
                 </div>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Feedback Pending</p>
-                  <p className="mt-1 text-sm font-bold text-amber-900">{fbPending}</p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Feedback Pending</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{fbPending}</p>
                 </div>
-                <div className="rounded-xl border border-purple-200 bg-purple-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Completion %</p>
-                  <p className="mt-1 text-sm font-bold text-purple-900">{fbPercent}%</p>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completion %</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">{fbPercent}%</p>
                 </div>
               </div>
             );

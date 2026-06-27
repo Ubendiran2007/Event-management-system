@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { NotificationProvider } from './context/NotificationContext';
 import './App.css';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -16,19 +17,21 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppProvider>
-        <Suspense fallback={null}>
-          <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/create-event" element={<CreateEvent />} />
-            <Route path="/explore" element={<ExploreEvents />} />
-            <Route path="/iqac" element={<IQACSubmission />} />
-            <Route path="/manage-students" element={<ManageStudents />} />
-            <Route path="/od-correction" element={<ODCorrection />} />
-            <Route path="/security" element={<SecurityProfile />} />
-          </Routes>
-        </Suspense>
+        <NotificationProvider>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/" element={<Login />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/create-event" element={<CreateEvent />} />
+              <Route path="/explore" element={<ExploreEvents />} />
+              <Route path="/iqac" element={<IQACSubmission />} />
+              <Route path="/manage-students" element={<ManageStudents />} />
+              <Route path="/od-correction" element={<ODCorrection />} />
+              <Route path="/security" element={<SecurityProfile />} />
+            </Routes>
+          </Suspense>
+        </NotificationProvider>
       </AppProvider>
     </BrowserRouter>
   );

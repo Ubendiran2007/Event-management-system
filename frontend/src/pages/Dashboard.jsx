@@ -58,7 +58,8 @@ import EventDetailModal from '../components/EventDetailModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
-import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, fallbackValue } from '../utils/formatters';
+
+import { formatRollNo, formatStudentNameOnly, formatStudentNameWithRoll, formatEventRef, fallbackValue, getEventStatus, isRegistrationLocked } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
 
 
@@ -248,7 +249,7 @@ const Dashboard = () => {
       if (currentUser.role === UserRole.HOD) return ev.status === EventStatus.PENDING_HOD;
       if (currentUser.role === UserRole.MEDIA) {
         const posterWorkflowStatus = String(ev.posterWorkflow?.status || '').toUpperCase();
-        return ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus);
+        return ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus) || ev.status === 'REJECTED';
       }
 
       // ── Department Approvals (Status must be PENDING_DEPARTMENTS) ──
@@ -468,6 +469,9 @@ const Dashboard = () => {
         return false;
       }
 
+      // 5. Registration must be open (not locked)
+      if (isRegistrationLocked(ev)) return false;
+
       // 4. Avoid ongoing and completed events (check date)
       const startDateStr = ev.requisition?.step1?.eventStartDate || ev.date;
       const startTimeStr = ev.requisition?.step1?.eventStartTime || ev.startTime || '00:00';
@@ -679,20 +683,13 @@ const Dashboard = () => {
     }
   };
 
-  const downloadDeptListAsPDF = (dept, students, group) => {
+    const downloadDeptListAsPDF = (dept, students, group) => {
     // 1. Sort students by class and then name
     const sortedStudents = [...students].sort((a, b) => {
       const classComp = String(a.class || '').localeCompare(String(b.class || ''));
       if (classComp !== 0) return classComp;
       return String(a.studentName || a.name || '').localeCompare(String(b.studentName || b.name || ''));
     });
-
-    const classCounts = sortedStudents.reduce((acc, s) => {
-      acc[s.class] = (acc[s.class] || 0) + 1;
-      return acc;
-    }, {});
-    const renderedClasses = new Set();
-    let hodRendered = false;
 
     const event = organizerEventsById[group.eventId];
     const s1 = event?.requisition?.step1;
@@ -709,6 +706,130 @@ const Dashboard = () => {
       displayDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
     }
 
+    // --- Pagination Logic ---
+    const PAGE_1_ROWS = 20;
+    const PAGE_N_ROWS = 28;
+    
+    const chunks = [];
+    let currentChunk = [];
+    
+    sortedStudents.forEach((student, index) => {
+       const isPage1 = chunks.length === 0;
+       const maxRows = isPage1 ? PAGE_1_ROWS : PAGE_N_ROWS;
+       
+       currentChunk.push({ ...student, globalIndex: index + 1 });
+       
+       if (currentChunk.length === maxRows || index === sortedStudents.length - 1) {
+          chunks.push(currentChunk);
+          currentChunk = [];
+       }
+    });
+
+    const lastChunk = chunks[chunks.length - 1] || [];
+    const isLastPage1 = chunks.length === 1;
+    const maxRowsLast = isLastPage1 ? PAGE_1_ROWS : PAGE_N_ROWS;
+    
+    // If the last chunk is almost full, the signature section won't fit on the same page.
+    // Signature needs about 4 rows of space.
+    if (lastChunk.length > maxRowsLast - 5) {
+        chunks.push([]); // Empty chunk to force signature onto a new page
+    }
+    
+    const totalPages = chunks.length;
+    
+    const pagesHtml = chunks.map((chunk, pageIndex) => {
+        const isFirstPage = pageIndex === 0;
+        const isLastPage = pageIndex === totalPages - 1;
+        
+        // Calculate class counts only for this chunk to handle rowspans properly per page
+        const classCountsInChunk = chunk.reduce((acc, s) => {
+           acc[s.class] = (acc[s.class] || 0) + 1;
+           return acc;
+        }, {});
+        
+        const renderedClassesInChunk = new Set();
+        let hodRenderedInChunk = false;
+
+        const tableRows = chunk.map(s => {
+           const isFirstInClass = !renderedClassesInChunk.has(s.class);
+           if (isFirstInClass) renderedClassesInChunk.add(s.class);
+           const isFirstRow = !hodRenderedInChunk;
+           if (isFirstRow) hodRenderedInChunk = true;
+           
+           return `
+             <tr>
+               <td style="text-align: center;">${s.globalIndex}</td>
+               <td style="font-weight: bold; color: #1e293b;">${formatStudentNameOnly(s.studentName || s.name)}</td>
+               <td style="font-family: 'Courier New', monospace; font-weight: 600;">${fallbackValue(s.rollNo, 'general')}</td>
+               <td style="text-align: center;">${fallbackValue(s.class, 'general')}</td>
+               ${isFirstInClass ? `<td rowspan="${classCountsInChunk[s.class]}" class="sig-cell"></td>` : ''}
+               ${isFirstRow ? `<td rowspan="${chunk.length}" class="sig-cell"></td>` : ''}
+             </tr>
+           `;
+        }).join('');
+
+        const tableHtml = chunk.length > 0 ? `
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 50px;">S.No</th>
+                <th>Student Name</th>
+                <th>Roll Number</th>
+                <th style="width: 100px;">Class / Section</th>
+                <th style="width: 140px;">Class Advisor Signature</th>
+                <th style="width: 140px;">HOD Signature</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        ` : '';
+
+        const signatureHtml = isLastPage ? `
+          <div class="sig-space">
+            <div class="sig-box">
+              <div class="sig-line"></div>
+              <div class="sig-label">
+                <strong>Event Organizer Signature</strong><br/>
+                ${currentUser?.name || ''}
+              </div>
+            </div>
+          </div>
+        ` : '';
+
+        const headerHtml = isFirstPage ? `
+          <div class="header">
+            <img src="${seceHeader}" alt="Sri Eshwar College header" class="header-image" />
+            <div class="doc-title">Approved On-Duty (OD) Participant List</div>
+          </div>
+          
+          <div class="meta-info">
+            <div class="meta-info-grid">
+              <div><strong>Event Title:</strong> ${group.eventTitle}</div>
+              <div style="text-align: right;"><strong>Event Date:</strong> ${displayDate}</div>
+              <div><strong>Department:</strong> ${dept}</div>
+              <div style="text-align: right;"><strong>Total Students:</strong> ${students.length}</div>
+              <div><strong>Academic Year:</strong> ${new Date().getFullYear()} - ${new Date().getFullYear() + 1}</div>
+            </div>
+          </div>
+        ` : '';
+
+        return `
+          <div class="page-container">
+            <div class="page-border">
+              ${headerHtml}
+              ${tableHtml}
+              ${signatureHtml}
+              
+              <div class="footer">
+                Page ${pageIndex + 1} of ${totalPages}
+              </div>
+            </div>
+          </div>
+        `;
+    }).join('');
+
     const listHTML = `
 <!DOCTYPE html>
 <html>
@@ -718,23 +839,39 @@ const Dashboard = () => {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { 
-      size: A4; 
-      margin: 10mm; 
+      size: A4 portrait; 
+      margin: 0; 
     }
     body { 
       font-family: 'Times New Roman', Times, serif; 
       color: #1a202c; 
-      background: #fff; 
+      background: #eee; 
       padding: 0;
+      -webkit-print-color-adjust: exact;
+    }
+    .page-container {
+      width: 210mm;
+      height: 297mm;
+      background: white;
+      margin: 0 auto;
+      padding: 10mm 15mm 15mm 15mm;
+      page-break-after: always;
+      position: relative;
+    }
+    @media print {
+      body { background: white !important; }
+      .page-container { margin: 0 !important; padding: 10mm 15mm 15mm 15mm !important; box-shadow: none !important; page-break-after: always !important; }
     }
     .page-border {
       border: 1.5px solid #1a3a6b;
-      padding: 25px; /* Inner Padding */
-      min-height: 270mm; /* roughly A4 height minus margin */
+      height: 100%;
+      padding: 25px;
       position: relative;
+      display: flex;
+      flex-direction: column;
     }
     .header { 
-      border-bottom: 2px solid #1a3a6b; /* 2px blue divider line */
+      border-bottom: 2px solid #1a3a6b; 
       margin-bottom: 25px; 
       padding-bottom: 15px; 
       text-align: center; 
@@ -774,9 +911,10 @@ const Dashboard = () => {
     tr:nth-child(even) { background-color: #f8fafc; }
     
     .sig-space { 
-      margin-top: 60px; 
+      margin-top: auto; 
       display: flex; 
       justify-content: flex-end; 
+      padding-bottom: 25px;
     }
     .sig-box { 
       text-align: center; 
@@ -794,86 +932,19 @@ const Dashboard = () => {
     }
     
     .footer { 
-      margin-top: 40px; 
-      font-size: 9.5pt; 
-      color: #64748b; 
-      text-align: center; 
-      border-top: 1.5px solid #cbd5e0; 
-      padding-top: 15px; 
-    }
-
-    @media print {
-      th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
-      tr:nth-child(even) { background-color: #f8fafc !important; -webkit-print-color-adjust: exact; }
-      .page-border { border: 1.5px solid #1a3a6b !important; -webkit-print-color-adjust: exact; }
-      .header { border-bottom: 2px solid #1a3a6b !important; -webkit-print-color-adjust: exact; }
+      position: absolute;
+      bottom: 10px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      font-size: 10pt;
+      color: #64748b;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <div class="page-border">
-    <div class="header">
-      <img src="${seceHeader}" alt="Sri Eshwar College header" class="header-image" />
-      <div class="doc-title">Approved On-Duty (OD) Participant List</div>
-    </div>
-    
-    <div class="meta-info">
-      <div class="meta-info-grid">
-        <div><strong>Event Title:</strong> ${group.eventTitle}</div>
-        <div style="text-align: right;"><strong>Event Date:</strong> ${displayDate}</div>
-        <div><strong>Department:</strong> ${dept}</div>
-        <div style="text-align: right;"><strong>Total Students:</strong> ${students.length}</div>
-        <div><strong>Academic Year:</strong> ${new Date().getFullYear()} - ${new Date().getFullYear() + 1}</div>
-      </div>
-    </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 50px;">S.No</th>
-          <th>Student Name</th>
-          <th>Roll Number</th>
-          <th style="width: 100px;">Class / Section</th>
-          <th style="width: 140px;">Class Advisor Signature</th>
-          <th style="width: 140px;">HOD Signature</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${sortedStudents.map((s, i) => {
-        const isFirstInClass = !renderedClasses.has(s.class);
-        if (isFirstInClass) renderedClasses.add(s.class);
-        const isFirstRow = !hodRendered;
-        if (isFirstRow) hodRendered = true;
-
-        return `
-          <tr>
-            <td>${i + 1}</td>
-            <td style="font-weight: bold; color: #1e293b;">${formatStudentNameOnly(s.studentName)}</td>
-            <td style="font-family: 'Courier New', monospace; font-weight: 600;">${fallbackValue(s.rollNo, 'general')}</td>
-            <td>${fallbackValue(s.class, 'general')}</td>
-            ${isFirstInClass ? `<td rowspan="${classCounts[s.class]}" class="sig-cell"></td>` : ''}
-            ${isFirstRow ? `<td rowspan="${sortedStudents.length}" class="sig-cell"></td>` : ''}
-          </tr>
-        `;
-      }).join('')}
-      </tbody>
-    </table>
-
-    <div class="sig-space">
-      <div class="sig-box">
-        <div class="sig-line"></div>
-        <div class="sig-label">
-          <strong>Event Organizer Signature</strong><br/>
-          ${currentUser?.name || ''}
-        </div>
-      </div>
-    </div>
-
-    <div class="footer">
-      This document is digitally verified by the CSE Event Management Portal.<br/>
-      Authorized for On-Duty (OD) attendance purposes.
-    </div>
-  </div>
+  ${pagesHtml}
 </body>
 </html>`;
 
@@ -1056,7 +1127,24 @@ const Dashboard = () => {
                       </button>
                     )}
 
-                    {/* Available Events Tab — for all students (general and organizer) */}
+                    
+                    {/* Modification Requests Tab — for HOD and IQAC */}
+                    {(currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM) && (
+                      <button
+                        onClick={() => setActiveTab('modifications')}
+                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'modifications'
+                          ? 'text-blue-600 bg-white'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                          }`}
+                      >
+                        Pending Event Modification Requests
+                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL'))).length > 0 ? 'opacity-100 bg-amber-100 text-amber-700' : 'opacity-0'}`}>
+                          {events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL'))).length}
+                        </span>
+                        {activeTab === 'modifications' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
+                      </button>
+                    )}
+{/* Available Events Tab — for all students (general and organizer) */}
                     {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
                       <button
                         onClick={() => setActiveTab('available')}
@@ -1123,8 +1211,10 @@ const Dashboard = () => {
                         {activeTab === 'registrations' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
                       </button>
                     )}
+
                   </div>
                 )}
+
 
                 {/* Fixed-height scrollable container for tab content */}
                 <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent flex flex-col bg-[#f5f7fa]">
@@ -1202,8 +1292,7 @@ const Dashboard = () => {
                             {displayEvents.map(event => (
                               <div
                                 key={event.id}
-                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-blue-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group cursor-pointer"
-                                onClick={() => setSelectedEventDetail(event)}
+                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group"
                               >
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[110px]">
                                   <div className="flex items-center gap-5 flex-1 w-full min-w-0">
@@ -1220,7 +1309,7 @@ const Dashboard = () => {
                                             <XCircle size={10} /> Cancelled
                                           </span>
                                         )}
-                                        {event.status === 'POSTPONED' && (
+                                        {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
                                           <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold border border-amber-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
                                             <Clock size={10} /> Postponed
                                           </span>
@@ -1241,7 +1330,7 @@ const Dashboard = () => {
                                       </div>
                                       <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
                                         <span className="flex items-center gap-1.5 min-w-0">
-                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue || 'TBD'}</span>
+                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</span>
                                         </span>
                                         <span className="flex items-center gap-1.5 shrink-0">
                                           <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
@@ -1295,7 +1384,69 @@ const Dashboard = () => {
                     );
                   })()}
 
-                  {/* Available Events Tab Content */}
+                  
+                  {/* Modification Requests Tab Content */}
+                  {activeTab === 'modifications' && (currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM) && (() => {
+                    const modEvents = events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL')));
+                    
+                    return (
+                      <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
+                        {modEvents.length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                            <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
+                              <ClipboardList size={36} />
+                            </div>
+                            <h3 className="text-slate-800 font-bold text-lg mb-1">No modification requests</h3>
+                            <p className="text-slate-500 font-medium text-sm">There are no pending postponement or cancellation requests.</p>
+                          </div>
+                        ) : (
+                          <div className="flex-1 p-5 space-y-4 flex flex-col">
+                            {modEvents.map(event => (
+                              <div key={event.id} className="bg-white rounded-2xl border border-slate-200 px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[90px]">
+                                  <div className="flex items-center gap-5 flex-1 w-full min-w-0">
+                                    <div className={`w-14 h-14 bg-gradient-to-br ${event.modificationRequest.type === 'CANCEL' ? 'from-red-50 to-red-100 text-red-500 border-red-200 group-hover:text-red-600 group-hover:border-red-300' : 'from-amber-50 to-amber-100 text-amber-500 border-amber-200 group-hover:text-amber-600 group-hover:border-amber-300'} border rounded-xl flex items-center justify-center transition-all shrink-0 shadow-inner`}>
+                                      {event.modificationRequest.type === 'CANCEL' ? <XCircle size={24} /> : <Clock size={24} />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                                        <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
+                                          {event.title}
+                                        </h4>
+                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 uppercase tracking-wider ${event.modificationRequest.type === 'CANCEL' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                          {event.modificationRequest.type === 'CANCEL' ? 'Cancellation' : 'Postponement'}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
+                                        <span className="flex items-center gap-1.5 shrink-0 text-slate-600 font-semibold text-xs border border-slate-200 bg-slate-50 px-2 py-1 rounded-md">
+                                          Ref: {formatEventRef(event)}
+                                        </span>
+                                        <span className="flex items-center gap-1.5 shrink-0">
+                                          <User size={14} className="text-slate-400" /> By {event.modificationRequest.requestedBy}
+                                        </span>
+                                        <span className="flex items-center gap-1.5 shrink-0">
+                                          <Calendar size={14} className="text-slate-400" /> Submitted: {new Date(event.modificationRequest.requestedAt).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-3 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setSelectedEventDetail(event); }}
+                                      className="px-6 py-2.5 rounded-lg text-[13px] font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm active:scale-95 whitespace-nowrap"
+                                    >
+                                      Review Request
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+{/* Available Events Tab Content */}
                   {activeTab === 'available' && (
                     <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
                       {availableEvents.length === 0 ? (
@@ -1315,8 +1466,7 @@ const Dashboard = () => {
                             return (
                               <div
                                 key={event.id}
-                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-blue-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group cursor-pointer"
-                                onClick={() => setSelectedEventDetail(event)}
+                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0"
                               >
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[110px]">
                                   <div className="flex items-center gap-5 flex-1 w-full min-w-0">
@@ -1333,7 +1483,7 @@ const Dashboard = () => {
                                             <XCircle size={10} /> Cancelled
                                           </span>
                                         )}
-                                        {event.status === 'POSTPONED' && (
+                                        {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
                                           <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold border border-amber-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
                                             <Clock size={10} /> Postponed
                                           </span>
@@ -1349,7 +1499,7 @@ const Dashboard = () => {
                                       </div>
                                       <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
                                         <span className="flex items-center gap-1.5 min-w-0">
-                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue || 'TBD'}</span>
+                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</span>
                                         </span>
                                         <span className="flex items-center gap-1.5 shrink-0">
                                           <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
@@ -1375,15 +1525,7 @@ const Dashboard = () => {
                                         Register Now
                                       </button>
                                     )}
-                                    {currentUser.role !== UserRole.STUDENT_GENERAL &&
-                                      currentUser.role !== UserRole.STUDENT_ORGANIZER && (
-                                        <button
-                                          onClick={() => setSelectedEventDetail(event)}
-                                          className="px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-blue-600 hover:border-blue-200 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-                                        >
-                                          View Details <ChevronRight size={14} className="text-slate-400" />
-                                        </button>
-                                      )}
+                                    
                                   </div>
                                 </div>
                               </div>
@@ -1776,39 +1918,55 @@ const Dashboard = () => {
                   {activeTab === 'od' && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
                     <div className="flex-1 p-5 space-y-4 flex flex-col">
                       {filteredODRequests.map(request => {
-                        let displayStatus = (request.status || '').replace(/_/g, ' ');
-                        let badgeClass = '';
+                        let regStatus = 'Pending';
+                        if (request.status === ODRequestStatus.APPROVED) regStatus = 'Approved';
+                        else if (request.status === ODRequestStatus.REJECTED) regStatus = 'Rejected';
+                        else if (request.status === ODRequestStatus.WITHDRAWN) regStatus = 'Withdrawn';
+                        else if (request.status === 'OD_CANCELLED' || request.status === 'CANCELLED') regStatus = 'Cancelled';
+                        else regStatus = 'Pending';
+
+                        let regBadgeClass = '';
+                        if (regStatus === 'Approved') regBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        else if (regStatus === 'Rejected') regBadgeClass = 'bg-red-50 text-red-700 border-red-200';
+                        else if (regStatus === 'Withdrawn') regBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
+                        else if (regStatus === 'Cancelled') regBadgeClass = 'bg-red-50 text-red-700 border-red-200';
+                        else regBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
                         
-                        if (request.status === ODRequestStatus.APPROVED) {
-                          const sourceEvent = events.find(e => e.id === request.eventId);
-                          if (sourceEvent?.status === 'COMPLETED') {
-                            if (['ATTENDED', 'FN', 'AN'].includes(request.attendanceStatus)) {
-                              if (request.feedback) {
-                                displayStatus = 'Completed';
-                                badgeClass = 'bg-blue-50 text-blue-600';
-                              } else {
-                                displayStatus = 'Feedback Required';
-                                badgeClass = 'bg-purple-50 text-purple-600 animate-pulse border border-purple-200';
-                              }
-                            } else if (request.attendanceStatus === 'NOT_ATTENDED') {
-                              displayStatus = 'Not Attended';
-                              badgeClass = 'bg-slate-100 text-slate-500 line-through';
-                            } else {
-                              displayStatus = 'Completed';
-                              badgeClass = 'bg-slate-50 text-slate-600';
+                        const sourceEvent = events.find(e => e.id === request.eventId);
+                        let eventBadge = null;
+                        if (sourceEvent) {
+                            const now = new Date().getTime();
+                            
+                            const sDateStr = sourceEvent.requisition?.step1?.eventStartDate || sourceEvent.date;
+                            const sTimeStr = sourceEvent.requisition?.step1?.eventStartTime || sourceEvent.startTime || '00:00';
+                            let eventStart = 0;
+                            if (sDateStr) {
+                                const [y, mo, d] = String(sDateStr).split('-').map(Number);
+                                const [h, m] = String(sTimeStr).split(':').map(Number);
+                                eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
                             }
-                          } else {
-                            badgeClass = 'bg-emerald-50 text-emerald-600';
-                          }
-                        } else if (request.status === ODRequestStatus.REJECTED) {
-                          badgeClass = 'bg-red-50 text-red-600';
-                        } else if (request.status === ODRequestStatus.WITHDRAWN) {
-                          badgeClass = 'bg-slate-100 text-slate-400 line-through';
-                        } else if (request.status === 'OD_CANCELLED' || request.status === 'CANCELLED') {
-                          displayStatus = 'Cancelled';
-                          badgeClass = 'bg-red-50 text-red-600 border border-red-200';
-                        } else {
-                          badgeClass = 'bg-amber-50 text-amber-600';
+
+                            const eDateStr = sourceEvent.requisition?.step1?.eventEndDate || sourceEvent.endDate || sDateStr;
+                            const eTimeStr = sourceEvent.requisition?.step1?.eventEndTime || sourceEvent.endTime || '23:59';
+                            let eventEnd = 0;
+                            if (eDateStr) {
+                                const [y, mo, d] = String(eDateStr).split('-').map(Number);
+                                const [h, m] = String(eTimeStr).split(':').map(Number);
+                                eventEnd = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
+                            }
+
+                            const computedStatus = getEventStatus(sourceEvent);
+                            const isPostponed = sourceEvent.status === 'POSTPONED' || sourceEvent.isPostponed;
+
+                            if (sourceEvent.status === 'CANCELLED') {
+                                eventBadge = { text: '🔴 CANCELLED', class: 'bg-red-50 text-red-700 border-red-200' };
+                            } else if (computedStatus === 'ongoing') {
+                                eventBadge = { text: '🟢 ONGOING', class: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                            } else if (isPostponed && computedStatus === 'upcoming') {
+                                eventBadge = { text: '🟡 POSTPONED', class: 'bg-amber-50 text-amber-700 border-amber-200' };
+                            } else if (computedStatus === 'completed' || sourceEvent.status === 'COMPLETED') {
+                                eventBadge = { text: '✅ COMPLETED', class: 'bg-blue-50 text-blue-700 border-blue-200' };
+                            }
                         }
 
                         return (
@@ -1836,22 +1994,47 @@ const Dashboard = () => {
                                 </div>
                               </div>
                               <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
-                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${badgeClass}`}>
-                                  {displayStatus}
-                                </span>
-                                {(request.status && request.status.startsWith('PENDING')) && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
-                                    disabled={withdrawingOD[request.id]}
-                                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 disabled:opacity-60"
-                                  >
-                                    {withdrawingOD[request.id] ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />}
-                                    Withdraw
-                                  </button>
-                                )}
-                                {request.status === ODRequestStatus.APPROVED && (() => {
+                                <div className="flex items-center gap-2">
+                                  {eventBadge && (
+                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${eventBadge.class}`}>
+                                      {eventBadge.text}
+                                    </span>
+                                  )}
+                                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${regBadgeClass}`}>
+                                    {regStatus}
+                                  </span>
+                                </div>
+                                {(() => {
                                   const sourceEvent = events.find(e => e.id === request.eventId);
-                                  if (sourceEvent?.status !== 'COMPLETED') {
+                                  
+                                  const isEventStartedLocal = () => {
+                                      if (!sourceEvent) return false;
+                                      const sDate = sourceEvent.requisition?.step1?.eventStartDate || sourceEvent.date;
+                                      const sTime = sourceEvent.requisition?.step1?.eventStartTime || sourceEvent.startTime || '00:00';
+                                      if (!sDate) return false;
+                                      const [y, mo, d] = String(sDate).split('-').map(Number);
+                                      const [h, m] = String(sTime).split(':').map(Number);
+                                      const eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
+                                      return new Date().getTime() >= eventStart;
+                                  };
+
+                                  const isLocked = isRegistrationLocked(sourceEvent) || isEventStartedLocal();
+                                  const isCancelled = sourceEvent?.status === 'CANCELLED';
+                                  const isValidStatus = request.status && (request.status.startsWith('PENDING') || request.status === ODRequestStatus.APPROVED);
+                                  const canWithdraw = isValidStatus && !isLocked && !isCancelled;
+
+                                  if (canWithdraw) {
+                                    return (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
+                                        disabled={withdrawingOD[request.id]}
+                                        className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 disabled:opacity-60 transition-colors"
+                                      >
+                                        {withdrawingOD[request.id] ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />}
+                                        Withdraw
+                                      </button>
+                                    );
+                                  } else if (request.status === ODRequestStatus.APPROVED && isLocked) {
                                     return (
                                       <span className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
                                         <Lock size={11} /> Registration Locked

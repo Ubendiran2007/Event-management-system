@@ -29,6 +29,7 @@ async function buildAutoStats(eventId) {
     status: r.status || 'PENDING_ORGANIZER',
     requestedAt: r.createdAt || r.requestedAt || '',
     feedbackSubmittedAt: r.feedback?.submittedAt || '',
+    attendance: r.attendance || null,
   }));
 
   const feedbackCount = withFeedback.length;
@@ -160,9 +161,9 @@ router.post('/:eventId', async (req, res) => {
       else if (rawStatus === 'FN') attendanceStatus = 'FN';
       else if (rawStatus === 'AN') attendanceStatus = 'AN';
       else attendanceStatus = 'ATTENDED';
-      const dayFields = Object.fromEntries(
+      const dateFields = Object.fromEntries(
         Object.keys(item || {})
-          .filter((k) => /^day\d+$/i.test(k))
+          .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
           .map((k) => [k, item[k]])
       );
       return {
@@ -171,7 +172,7 @@ router.post('/:eventId', async (req, res) => {
         student: item?.student || item?.studentName || '',
         rollNo: item?.rollNo || '',
         attendanceStatus,
-        ...dayFields,
+        ...dateFields,
       };
     });
     const studentsRegistered = studentAttendanceList.length > 0 ? studentAttendanceList.length : studentsCount;
@@ -329,6 +330,7 @@ router.post('/:eventId', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // GET /api/iqac/:eventId — fetch IQAC data + live auto-stats for an event
 router.get('/:eventId', async (req, res) => {

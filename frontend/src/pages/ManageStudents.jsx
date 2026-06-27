@@ -141,7 +141,10 @@ const ManageStudents = () => {
         try {
             const res = await fetch(`http://localhost:5001/api/students/${student.id}/role`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                },
                 body: JSON.stringify({ role: newRole, className, isApprovedOrganizer }),
             });
             const data = await res.json();
@@ -163,7 +166,10 @@ const ManageStudents = () => {
         try {
             const res = await fetch(`http://localhost:5001/api/students/${student.id}/od-stats`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                },
                 body: JSON.stringify({ className, [field]: value }),
             });
             const data = await res.json();
@@ -184,7 +190,10 @@ const ManageStudents = () => {
         try {
             const res = await fetch('http://localhost:5001/api/students/reset-od-usage', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                }
             });
             const data = await res.json();
             if (data.success) {

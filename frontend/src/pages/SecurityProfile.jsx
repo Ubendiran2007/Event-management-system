@@ -7,7 +7,7 @@ import AlertCard from '../components/AlertCard';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const SecurityProfile = () => {
-  const { currentUser } = useAppContext();
+  const { currentUser, events } = useAppContext();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [loginHistory, setLoginHistory] = useState([]);
@@ -37,6 +37,54 @@ const SecurityProfile = () => {
   const [iqacTimeFilter, setIqacTimeFilter] = useState('All Time');
   const [iqacPage, setIqacPage] = useState(1);
   const IQAC_ITEMS_PER_PAGE = 10;
+
+  const [attendanceAuditEventId, setAttendanceAuditEventId] = useState('');
+  const [attendanceAuditLogs, setAttendanceAuditLogs] = useState([]);
+  const [fetchingAuditLogs, setFetchingAuditLogs] = useState(false);
+  const [auditSearchQuery, setAuditSearchQuery] = useState('');
+  const [auditActionFilter, setAuditActionFilter] = useState('All');
+  const [auditSessionFilter, setAuditSessionFilter] = useState('All');
+  const [auditDateFilter, setAuditDateFilter] = useState('All');
+
+  useEffect(() => {
+    if (activeTab === 'attendanceAudit' && attendanceAuditEventId) {
+      setFetchingAuditLogs(true);
+      fetch(`http://localhost:5001/api/events/${attendanceAuditEventId}/attendance-audit`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setAttendanceAuditLogs(data.logs);
+        } else {
+          setAttendanceAuditLogs([]);
+        }
+      })
+      .catch(() => setAttendanceAuditLogs([]))
+      .finally(() => setFetchingAuditLogs(false));
+    } else {
+       setAttendanceAuditLogs([]);
+    }
+  }, [activeTab, attendanceAuditEventId]);
+
+  const filteredAttendanceAuditLogs = React.useMemo(() => {
+    return attendanceAuditLogs.filter(log => {
+      if (auditActionFilter !== 'All' && !(log.action || '').includes(auditActionFilter)) return false;
+      if (auditSessionFilter !== 'All' && log.session !== auditSessionFilter) return false;
+      if (auditDateFilter !== 'All' && log.date !== auditDateFilter) return false;
+      
+      if (auditSearchQuery) {
+        const q = auditSearchQuery.toLowerCase();
+        const matchesStudent = ((log.studentName || '').toLowerCase().includes(q)) || 
+                               ((log.rollNo || '').toLowerCase().includes(q));
+        if (!matchesStudent) return false;
+      }
+      return true;
+    });
+  }, [attendanceAuditLogs, auditActionFilter, auditSessionFilter, auditDateFilter, auditSearchQuery]);
+
+  const uniqueAuditDates = [...new Set(attendanceAuditLogs.map(l => l.date).filter(Boolean))];
+
 
   const filteredIqacLogs = React.useMemo(() => {
     return iqacLogs.filter(log => {
@@ -309,6 +357,16 @@ const SecurityProfile = () => {
               }`}
             >
               System Audit Monitor
+            </button>
+          )}
+          {currentUser.role === 'IQAC_TEAM' && (
+            <button
+              onClick={() => setActiveTab('attendanceAudit')}
+              className={`px-4 py-2.5 font-semibold text-sm whitespace-nowrap transition-colors border-b-2 ${
+                activeTab === 'attendanceAudit' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              Attendance Audit Logs
             </button>
           )}
         </div>
@@ -819,7 +877,145 @@ const SecurityProfile = () => {
           </div>
         )}
 
+
+        {activeTab === 'attendanceAudit' && currentUser.role === 'IQAC_TEAM' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[600px] max-h-[700px]">
+            <div className="p-6 border-b border-slate-100 flex flex-col gap-4 shrink-0">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <Clock size={18} className="text-indigo-500" />
+                  Attendance Modification Audit Log
+                </h3>
+                
+                <select 
+                  value={attendanceAuditEventId}
+                  onChange={(e) => setAttendanceAuditEventId(e.target.value)}
+                  className="px-4 py-2 font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 w-full sm:w-80 shadow-sm"
+                >
+                  <option value="">Select Event...</option>
+                  {events?.map(ev => (
+                    <option key={ev.id} value={ev.id}>{ev.title || ev.requisition?.step1?.eventName} ({ev.date})</option>
+                  ))}
+                </select>
+              </div>
+
+              {attendanceAuditEventId && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="text"
+                    placeholder="Search by Student or Roll No..."
+                    value={auditSearchQuery}
+                    onChange={(e) => setAuditSearchQuery(e.target.value)}
+                    className="px-4 py-2 text-sm bg-white border border-slate-200 rounded-lg flex-1 min-w-[200px] outline-none focus:border-indigo-400 shadow-sm"
+                  />
+                  <select 
+                    value={auditActionFilter}
+                    onChange={(e) => setAuditActionFilter(e.target.value)}
+                    className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
+                  >
+                    <option value="All">All Actions</option>
+                    <option value="Correction">Manual Corrections</option>
+                    <option value="Finalized">Finalizations</option>
+                    <option value="Configuration Saved">Config Changes</option>
+                    <option value="Session">Session Toggles</option>
+                    <option value="Reset">Resets</option>
+                  </select>
+                  <select 
+                    value={auditSessionFilter}
+                    onChange={(e) => setAuditSessionFilter(e.target.value)}
+                    className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
+                  >
+                    <option value="All">All Sessions</option>
+                    <option value="S1">Session 1</option>
+                    <option value="S2">Session 2</option>
+                  </select>
+                  <select 
+                    value={auditDateFilter}
+                    onChange={(e) => setAuditDateFilter(e.target.value)}
+                    className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
+                  >
+                    <option value="All">All Dates</option>
+                    {uniqueAuditDates.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {attendanceAuditEventId ? (
+              <div className="flex-1 overflow-y-auto no-scrollbar relative">
+                <table className="w-full text-left border-collapse min-w-[1000px]">
+                  <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Action</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Target</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Previous</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Updated</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Reason</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Modified By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {fetchingAuditLogs ? (
+                      <tr><td colSpan="7" className="p-8 text-center text-slate-500">Loading audit logs...</td></tr>
+                    ) : filteredAttendanceAuditLogs.length === 0 ? (
+                      <tr><td colSpan="7" className="p-8 text-center text-slate-500">No attendance audit logs found for the selected filters.</td></tr>
+                    ) : (
+                      filteredAttendanceAuditLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-semibold text-slate-800 whitespace-nowrap">{log.dateStamp}</p>
+                            <p className="text-xs text-slate-500 whitespace-nowrap">{log.time}</p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs font-bold tracking-wider">
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {log.rollNo && log.rollNo !== 'N/A' ? (
+                               <>
+                                 <p className="text-sm font-semibold text-slate-800">{log.studentName}</p>
+                                 <p className="text-xs text-slate-500">{log.rollNo}</p>
+                               </>
+                            ) : (
+                               <p className="text-sm font-medium text-slate-700">{log.date} {log.session !== 'N/A' ? `(${log.session})` : ''}</p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${log.previousStatus === 'N/A' ? 'text-slate-400' : 'bg-slate-100 text-slate-600'}`}>
+                              {log.previousStatus}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${log.updatedStatus === 'N/A' ? 'text-slate-400' : 'bg-emerald-50 text-emerald-700'}`}>
+                              {log.updatedStatus}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-600 max-w-[200px] truncate" title={log.reason}>
+                            {log.reason}
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-xs font-semibold text-slate-800">{log.modifiedBy}</p>
+                            <p className="text-[10px] uppercase text-slate-500 tracking-wider">{log.userRole}</p>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+               <div className="flex-1 flex flex-col items-center justify-center text-slate-500 gap-3 p-12">
+                 <Shield size={48} className="text-slate-200" />
+                 <p className="font-semibold text-lg">Select an Event</p>
+                 <p className="text-sm">Choose an event from the dropdown to view its attendance audit trail.</p>
+               </div>
+            )}
+          </div>
+        )}
       </main>
+
     </div>
   );
 };

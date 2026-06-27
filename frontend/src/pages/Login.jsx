@@ -67,7 +67,7 @@ const Login = () => {
           setAlert({
             type: 'error',
             title: 'Authentication Failed',
-            message: 'The username/email or password entered is incorrect.\nPlease verify your credentials and try again.'
+            message: 'The email or password entered is incorrect.\nPlease verify your credentials and try again.'
           });
         }
       }
@@ -113,7 +113,7 @@ const Login = () => {
             />
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Username / Email</label>
+              <label className="text-sm font-semibold text-slate-700">Email Address</label>
               <input
                 type="text"
                 name="login-username"
@@ -122,7 +122,7 @@ const Login = () => {
                 onFocus={enableInputEditing}
                 onClick={enableInputEditing}
                 className="input-field"
-                placeholder="Username or Email"
+                placeholder="Enter your institutional email"
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -143,7 +143,7 @@ const Login = () => {
                   onFocus={enableInputEditing}
                   onClick={enableInputEditing}
                   className="input-field pr-10"
-                  placeholder="Password or Roll No"
+                  placeholder="Enter your password"
                   autoComplete="new-password"
                   readOnly={!unlockInputs}
                   required

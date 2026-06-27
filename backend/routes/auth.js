@@ -15,6 +15,7 @@ const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');
 const { sendEmail } = require('../services/emailService');
 const emailTemplates = require('../services/emailTemplates');
+const { syncStudentODCount } = require('../utils/odSync');
 
 const router = express.Router();
 
@@ -427,6 +428,14 @@ router.post('/login', async (req, res) => {
         await setDoc(doc(db, studentRefPath.col1, studentRefPath.doc1, studentRefPath.col2, studentRefPath.doc2), { password: hashed }, { merge: true });
       } else {
         await setDoc(doc(db, 'users', foundUserObj.id), { password: hashed }, { merge: true });
+      }
+    }
+
+    if (isStudent) {
+      // DATA CONSISTENCY CHECK: automatically calculate/correct odUsed from actual APPROVED registrations on login
+      const actualODCount = await syncStudentODCount(foundUserObj.id);
+      if (actualODCount !== null && actualODCount !== undefined) {
+        foundUserObj.odUsed = actualODCount;
       }
     }
 

@@ -11,7 +11,8 @@ const ConfirmationModal = ({
   confirmText = 'Confirm', 
   cancelText = 'Cancel',
   type = 'warning', // 'warning', 'danger', 'info'
-  isProcessing = false
+  isProcessing = false,
+  hideCancel = false
 }) => {
   if (!isOpen) return null;
 
@@ -79,17 +80,19 @@ const ConfirmationModal = ({
               </p>
               
               <div className="flex w-full flex-col gap-3 sm:flex-row">
-                <button
-                  disabled={isProcessing}
-                  onClick={onClose}
-                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-6 py-3.5 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-50"
-                >
-                  {cancelText}
-                </button>
+                {!hideCancel && (
+                  <button
+                    disabled={isProcessing}
+                    onClick={onClose}
+                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-6 py-3.5 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50 active:scale-95 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  >
+                    {cancelText}
+                  </button>
+                )}
                 <button
                   disabled={isProcessing}
                   onClick={onConfirm}
-                  className={`flex-1 rounded-2xl ${theme.btnBg} px-6 py-3.5 text-sm font-bold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2`}
+                  className={`flex-1 rounded-2xl ${theme.btnBg} px-6 py-3.5 text-sm font-bold text-white shadow-lg transition-all active:scale-95 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed disabled:shadow-none flex items-center justify-center gap-2`}
                 >
                   {isProcessing ? (
                     <Loader2 size={18} className="animate-spin" />

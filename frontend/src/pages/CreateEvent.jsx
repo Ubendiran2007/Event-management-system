@@ -1049,7 +1049,11 @@ const CreateEvent = () => {
         break;
       case 'audioEndTime':
         if (!value) { msg = 'Audio End Time is required.'; break; }
-        if (form.audioStartTime && value <= form.audioStartTime) msg = 'End Time must be after Start Time.';
+        if (form.startDate && form.endDate && form.startDate !== form.endDate) {
+          // Allow multi-day events to have an end time earlier than start time
+        } else if (form.audioStartTime && value <= form.audioStartTime) {
+          msg = 'End Time must be after Start Time.';
+        }
         break;
       case 'audioVenueName':
         if (!String(value || '').trim()) msg = 'Venue Name is required for Audio.';
@@ -1158,7 +1162,10 @@ const CreateEvent = () => {
         setStepError('Please complete Audio date, time, and venue fields.');
         return false;
       }
-      if (form.audioEndTime <= form.audioStartTime) {
+      if (form.startDate === form.endDate && form.audioEndTime <= form.audioStartTime) {
+        setStepError('Audio End Time must be after Audio Start Time for same-day events.');
+        return false;
+      } else if (!form.startDate && form.audioEndTime <= form.audioStartTime) {
         setStepError('Audio End Time must be after Audio Start Time.');
         return false;
       }
@@ -1460,7 +1467,7 @@ const CreateEvent = () => {
       date: form.startDate === form.endDate ? form.startDate : `${form.startDate} - ${form.endDate}`,
       startTime: form.startTime,
       endTime: form.endTime,
-      venue: form.audioVenueName || Object.entries(form.venueSelection).find(([, v]) => v.selected)?.[0] || 'To be allocated',
+      venue: form.audioVenueName || Object.entries(form.venueSelection).find(([, v]) => v.selected)?.[0] || '',
       organizerId: currentUser?.id || '',
       organizerName: form.organizerName,
       organizerEmail: currentUser?.email || '',

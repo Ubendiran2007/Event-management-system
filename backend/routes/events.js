@@ -1412,15 +1412,19 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
 // Postpone an event (STUDENT_ORGANIZER or FACULTY)
 router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
-  const { reason, newDate, newStartTime, newEndTime } = req.body;
+  const { reason, newDate, newEndDate: providedEndDate, newStartTime, newEndTime } = req.body;
+  const newEndDate = providedEndDate || newDate;
   
   if (!reason || !newDate || !newStartTime || !newEndTime) {
     return res.status(400).json({ success: false, message: 'Reason, newDate, newStartTime, and newEndTime are mandatory' });
   }
 
   // Basic time validation
-  if (newStartTime >= newEndTime) {
-    return res.status(400).json({ success: false, message: 'End time must be after start time' });
+  if (newDate > newEndDate) {
+    return res.status(400).json({ success: false, message: 'End date must be after or equal to start date' });
+  }
+  if (newDate === newEndDate && newStartTime >= newEndTime) {
+    return res.status(400).json({ success: false, message: 'End time must be after start time on the same day' });
   }
 
   try {
@@ -1460,13 +1464,13 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
     // Update actual date and time fields to new values to reflect correctly in UI
     updatePayload.date = newDate;
     updatePayload.startDate = newDate;
-    updatePayload.endDate = newDate; // assuming single day for now
+    updatePayload.endDate = newEndDate; // Use provided newEndDate
     updatePayload.startTime = newStartTime;
     updatePayload.endTime = newEndTime;
     
     if (eventData.requisition && eventData.requisition.step1) {
       updatePayload['requisition.step1.eventStartDate'] = newDate;
-      updatePayload['requisition.step1.eventEndDate'] = newDate;
+      updatePayload['requisition.step1.eventEndDate'] = newEndDate;
       updatePayload['requisition.step1.eventStartTime'] = newStartTime;
       updatePayload['requisition.step1.eventEndTime'] = newEndTime;
     }
@@ -1500,13 +1504,13 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
       eventActions,
       date: newDate,
       startDate: newDate,
-      endDate: newDate,
+      endDate: newEndDate,
       startTime: newStartTime,
       endTime: newEndTime,
     };
 
     if (eventData.requisition && eventData.requisition.step1) {
-      const step1 = { ...eventData.requisition.step1, eventStartDate: newDate, eventEndDate: newDate, eventStartTime: newStartTime, eventEndTime: newEndTime };
+      const step1 = { ...eventData.requisition.step1, eventStartDate: newDate, eventEndDate: newEndDate, eventStartTime: newStartTime, eventEndTime: newEndTime };
       firestoreUpdate.requisition = { ...eventData.requisition, step1 };
     }
 
@@ -1526,6 +1530,242 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
   } catch (error) {
     console.error('[events/postpone] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to postpone event', error: error.message });
+  }
+});
+
+// ── ATTENDANCE ROUTES ────────────────────────────────────────────────────────
+// ── PATCH /api/events/:id/attendance-config ────────────────────────────────
+router.patch('/:id/attendance-config', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { date, attendanceType } = req.body;
+  if (!date || !attendanceType) return res.status(400).json({ success: false, message: 'Date and attendanceType required' });
+
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    
+    const eventData = eventSnap.data();
+    if (eventData.organizerId !== req.user.id) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const attendanceConfigs = eventData.attendanceConfigs || {};
+    
+    attendanceConfigs[date] = {
+      ...attendanceConfigs[date],
+      attendanceType,
+      session1Status: attendanceConfigs[date]?.session1Status || 'NotStarted',
+      session2Status: attendanceType === 'Both Sessions' ? (attendanceConfigs[date]?.session2Status || 'NotStarted') : 'Disabled',
+      attendanceFinalized: attendanceConfigs[date]?.attendanceFinalized || false
+    };
+
+    await updateDoc(eventRef, { attendanceConfigs });
+    return res.json({ success: true, attendanceConfigs, attendanceStats: eventData.attendanceStats });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── PATCH /api/events/:id/attendance-session ───────────────────────────────
+router.patch('/:id/attendance-session', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { date, sessionKey, action } = req.body;
+  
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false });
+    
+    const eventData = eventSnap.data();
+    if (eventData.organizerId !== req.user.id) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const attendanceConfigs = eventData.attendanceConfigs || {};
+    const config = attendanceConfigs[date];
+    if (!config) return res.status(400).json({ success: false, message: 'Config not found' });
+
+    if (sessionKey === 'S1') {
+      config.session1Status = action === 'START' ? 'Running' : 'Closed';
+      if (action === 'START') config.session1StartTime = new Date().toISOString();
+      if (action === 'END') config.session1EndTime = new Date().toISOString();
+    } else if (sessionKey === 'S2') {
+      config.session2Status = action === 'START' ? 'Running' : 'Closed';
+      if (action === 'START') config.session2StartTime = new Date().toISOString();
+      if (action === 'END') config.session2EndTime = new Date().toISOString();
+    }
+
+    attendanceConfigs[date] = config;
+    await updateDoc(eventRef, { attendanceConfigs });
+    
+    return res.json({ success: true, attendanceConfigs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── PATCH /api/events/:id/finalize-attendance ──────────────────────────────
+router.patch('/:id/finalize-attendance', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { date } = req.body;
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    const eventData = eventSnap.data();
+    if (eventData.organizerId !== req.user.id) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const attendanceConfigs = eventData.attendanceConfigs || {};
+    if (attendanceConfigs[date]) {
+      attendanceConfigs[date].attendanceFinalized = true;
+      attendanceConfigs[date].session1Status = attendanceConfigs[date].session1Status === 'Running' ? 'Closed' : attendanceConfigs[date].session1Status;
+      if (attendanceConfigs[date].attendanceType === 'Both Sessions') {
+         attendanceConfigs[date].session2Status = attendanceConfigs[date].session2Status === 'Running' ? 'Closed' : attendanceConfigs[date].session2Status;
+      }
+    }
+    await updateDoc(eventRef, { attendanceConfigs });
+    return res.json({ success: true, attendanceConfigs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── POST /api/events/:id/attendance ────────────────────────────────────────
+router.post('/:id/attendance', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { rollNo, studentName, eventId, registrationId, date } = req.body;
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    const eventData = eventSnap.data();
+    
+    if (eventData.organizerId !== req.user.id) return res.status(403).json({ success: false, silentMessage: 'Forbidden' });
+
+    const config = (eventData.attendanceConfigs || {})[date];
+    if (!config) return res.status(400).json({ success: false, silentMessage: 'Attendance not configured for this date' });
+    
+    const activeSession = config.session1Status === 'Running' ? 'S1' : config.session2Status === 'Running' ? 'S2' : null;
+    if (!activeSession) return res.status(400).json({ success: false, silentMessage: 'No active session' });
+
+    // Validate registration
+    const reqRef = doc(db, 'odRequests', registrationId);
+    const reqSnap = await getDoc(reqRef);
+    if (!reqSnap.exists()) return res.status(400).json({ success: false, silentMessage: 'Registration not found' });
+    
+    const reqData = reqSnap.data();
+    if (reqData.eventId !== eventId || reqData.status !== 'APPROVED') {
+      return res.status(400).json({ success: false, silentMessage: 'Student is not an approved participant' });
+    }
+
+    const attendance = reqData.attendance || {};
+    const dateAttendance = attendance[date] || {};
+    
+    if (dateAttendance[activeSession]) {
+      return res.json({ 
+        success: false, 
+        duplicate: true, 
+        studentName: reqData.studentName, 
+        rollNo: reqData.rollNo, 
+        sessionLabel: activeSession === 'S1' ? 'Session 1' : 'Session 2'
+      });
+    }
+
+    let wasAlreadyPresentAtAll = false;
+    Object.values(attendance).forEach(dateAtt => {
+       if (dateAtt.S1 || dateAtt.S2) wasAlreadyPresentAtAll = true;
+    });
+
+    dateAttendance[activeSession] = true;
+    attendance[date] = dateAttendance;
+    
+    await updateDoc(reqRef, { attendance });
+
+    // Update stats
+    const stats = eventData.attendanceStats || { totalApproved: 0, totalPresent: 0, s1Present: 0, s2Present: 0 };
+    if (activeSession === 'S1') stats.s1Present = (stats.s1Present || 0) + 1;
+    if (activeSession === 'S2') stats.s2Present = (stats.s2Present || 0) + 1;
+    if (!wasAlreadyPresentAtAll) {
+       stats.totalPresent = (stats.totalPresent || 0) + 1;
+    }
+    
+    await updateDoc(eventRef, { attendanceStats: stats });
+
+    return res.json({ 
+      success: true, 
+      studentName: reqData.studentName, 
+      rollNo: reqData.rollNo, 
+      sessionLabel: activeSession === 'S1' ? 'Session 1' : 'Session 2',
+      sessionKey: activeSession,
+      isFirstScan: !wasAlreadyPresentAtAll
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── PATCH /api/events/:id/attendance/correct ──────────────────────────────
+router.patch('/:id/attendance/correct', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+  if (!checkDb(res)) return;
+  const { registrationId, date, session, s1Present, s2Present, reason } = req.body;
+  try {
+    const eventRef = doc(db, 'events', req.params.id);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    
+    if (eventSnap.data().organizerId !== req.user.id) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const reqRef = doc(db, 'odRequests', registrationId);
+    const reqSnap = await getDoc(reqRef);
+    if (!reqSnap.exists()) return res.status(404).json({ success: false, message: 'Registration not found' });
+    
+    const reqData = reqSnap.data();
+    if (reqData.eventId !== req.params.id || reqData.status !== 'APPROVED') {
+      return res.status(400).json({ success: false, message: 'Invalid registration state' });
+    }
+
+    const attendance = reqData.attendance || {};
+    const dateAttendance = attendance[date] || {};
+    
+    if (session === 'S1') {
+       dateAttendance.S1 = s1Present;
+    } else {
+       dateAttendance.S1 = s1Present;
+       dateAttendance.S2 = s2Present;
+    }
+    attendance[date] = dateAttendance;
+
+    const correctionLogs = reqData.correctionLogs || [];
+    correctionLogs.push({
+      timestamp: new Date().toISOString(),
+      correctedBy: req.user.id,
+      reason,
+      changes: `Date: ${date} | S1: ${s1Present} | S2: ${s2Present}`
+    });
+    
+    await updateDoc(reqRef, { attendance, correctionLogs });
+
+    // Recalculate global stats for bulletproof accuracy
+    const qSnapshot = await getDocs(query(collection(db, 'odRequests'), where('eventId', '==', req.params.id), where('status', '==', 'APPROVED')));
+    let newS1 = 0; let newS2 = 0; let newTotal = 0;
+    qSnapshot.forEach(docSnap => {
+       const d = docSnap.data();
+       const att = d.attendance || {};
+       let studentPresentAtAll = false;
+       Object.values(att).forEach(dateAtt => {
+          if (dateAtt.S1) newS1++;
+          if (dateAtt.S2) newS2++;
+          if (dateAtt.S1 || dateAtt.S2) studentPresentAtAll = true;
+       });
+       if (studentPresentAtAll) newTotal++;
+    });
+
+    const stats = eventSnap.data().attendanceStats || {};
+    stats.s1Present = newS1;
+    stats.s2Present = newS2;
+    stats.totalPresent = newTotal;
+    
+    await updateDoc(eventRef, { attendanceStats: stats });
+
+    return res.json({ success: true, message: 'Attendance corrected successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

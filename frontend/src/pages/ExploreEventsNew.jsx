@@ -1,10 +1,10 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
-import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue } from '../utils/formatters';
+import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, isRegistrationLocked } from '../utils/formatters';
 import { EventStatus, UserRole } from '../types';
 import Navbar from '../components/Navbar';
 import StatusBadge from '../components/StatusBadge';
@@ -183,7 +183,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     <style>body{font-family:Arial,sans-serif;padding:20px;}h2{margin-bottom:4px;}p{margin:2px 0;color:#555;}</style>
   </head><body>
     <h2>${title}</h2>
-    <p>Event: ${event.title || s1?.eventName || '-'} &nbsp;|&nbsp; Date: ${s1?.eventStartDate || '-'} – ${s1?.eventEndDate || '-'} &nbsp;|&nbsp; Venue: ${event.venue || '-'}</p>
+    <p>Event: ${event.title || s1?.eventName || '-'} &nbsp;|&nbsp; Date: ${s1?.eventStartDate || '-'} – ${s1?.eventEndDate || '-'} &nbsp;|&nbsp; Venue: ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</p>
     <p>Generated on: ${new Date().toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' })}</p>
     ${tableHtml}
   </body></html>`;
@@ -337,7 +337,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
             <p style="margin-top:30px;">To,<br/>The Head of Department,<br/>${event.department || 'CSE'}</p>
             <p class="subject">Sub: Request for permission to conduct ${s1?.eventType || 'event'} – Reg.</p>
             <p>Respected Sir/Madam,</p>
-            <p>We are writing to request your kind permission to organize a ${s1?.eventType || 'program'} titled "<strong>${event.title || s1?.eventName}</strong>". The event is scheduled to be held from ${formatDate(s1?.eventStartDate)} to ${formatDate(s1?.eventEndDate)} at ${event.venue || 'college premises'}.</p>
+            <p>We are writing to request your kind permission to organize a ${s1?.eventType || 'program'} titled "<strong>${event.title || s1?.eventName}</strong>". The event is scheduled to be held from ${formatDate(s1?.eventStartDate)} to ${formatDate(s1?.eventEndDate)} at ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'college premises'}.</p>
             <p>This event aims to provide our students with practical exposure to ${event.description || 'relevant domain technologies'}. We have already identified the resource persons and finalized the event schedule.</p>
             <p>We request you to kindly grant us permission to proceed with the event arrangements and provide the necessary institutional support.</p>
           </div>
@@ -641,7 +641,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     </div>
     <div class="header-content">
       <h1>${event.title || s1?.eventName || 'Event Report'}</h1>
-      <p>📅 ${s1?.eventStartDate||'-'} – ${s1?.eventEndDate||'-'} &nbsp;|&nbsp; 🕐 ${s1?.eventStartTime||'-'} – ${s1?.eventEndTime||'-'} &nbsp;|&nbsp; 📍 ${event.venue||'—'}</p>
+      <p>📅 ${s1?.eventStartDate||'-'} – ${s1?.eventEndDate||'-'} &nbsp;|&nbsp; 🕐 ${s1?.eventStartTime||'-'} – ${s1?.eventEndTime||'-'} &nbsp;|&nbsp; 📍 ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</p>
       <span class="badge">✓ IQAC Submitted ${submittedOn ? `on ${submittedOn}` : ''}</span>
     </div>
   </div>
@@ -964,7 +964,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 ['Department',   s1?.organizerDetails?.department || 'CSE'],
                 ['Date',         `${s1?.eventStartDate || '-'} to ${s1?.eventEndDate || '-'}`],
                 ['Time',         `${formatTime12(s1?.eventStartTime)} – ${formatTime12(s1?.eventEndTime)}`],
-                ['Venue',        event.venue || s1?.venueDetails || '—'],
+                ['Venue',        event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'],
                 ['IIC Activity', s1?.isIIC || 'No'],
                 ['Mode',         reg.mode || '—'],
                 ['Prof. Societies', Array.isArray(s1?.professionalSocieties) && s1.professionalSocieties.length ? s1.professionalSocieties.join(', ') : '—'],
@@ -1659,7 +1659,7 @@ const EventCard = ({
             <XCircle size={14} /> Event Cancelled
           </div>
         )}
-        {event.status === 'POSTPONED' && (
+        {(event.status === 'POSTPONED' || event.isPostponed) && isUpcoming && (
           <div className="absolute top-0 left-0 w-full bg-amber-500/95 text-amber-950 text-[10px] py-1.5 text-center z-10 backdrop-blur-sm shadow-sm flex items-center justify-center gap-1.5 uppercase font-extrabold tracking-wider border-b border-amber-600">
             <Clock size={14} /> Event Postponed
           </div>
@@ -1716,7 +1716,7 @@ const EventCard = ({
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <MapPin size={14} />
-            <span className="text-xs">{event.venue || 'Venue TBA'}</span>
+            <span className="text-xs">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</span>
           </div>
         </div>
 
@@ -1740,19 +1740,34 @@ const EventCard = ({
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Register
             </button>
           )}
-          {/* Withdraw — only upcoming (once event starts, no withdrawal) */}
-          {isStudent && registered && isUpcoming && (!requestStatus || requestStatus.startsWith('PENDING')) && (
-            <button onClick={(e) => { e.stopPropagation(); onWithdraw(event.id); }} disabled={processing}
-              className="flex items-center gap-1.5 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-xs font-medium">
-              {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Withdraw
-            </button>
-          )}
-          {/* Registration status badges — only on upcoming events */}
-          {isStudent && registered && isUpcoming && requestStatus === 'APPROVED' && (
-            <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium">
-              <CheckCircle2 size={14} /> Registered (Approved)
-            </span>
-          )}
+          {/* Withdraw & Registration Status */}
+          {(() => {
+             const isLocked = isRegistrationLocked(event);
+             const canWithdraw = isStudent && registered && isUpcoming && 
+                                 (!requestStatus || requestStatus.startsWith('PENDING') || requestStatus === 'APPROVED') && 
+                                 !isLocked;
+             
+             return (
+               <>
+                 {canWithdraw && (
+                   <button onClick={(e) => { e.stopPropagation(); onWithdraw(event.id); }} disabled={processing}
+                     className="flex items-center gap-1.5 px-3 py-2 bg-red-50 text-red-500 border border-red-100 hover:bg-red-100 rounded-lg disabled:opacity-50 text-xs font-medium transition-colors">
+                     {processing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Withdraw
+                   </button>
+                 )}
+                 {isStudent && registered && isUpcoming && requestStatus === 'APPROVED' && isLocked && (
+                   <span className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 border border-slate-200 rounded-lg text-xs font-medium">
+                     <Lock size={14} /> Registration Locked
+                   </span>
+                 )}
+                 {isStudent && registered && isUpcoming && requestStatus === 'APPROVED' && !isLocked && (
+                   <span className="flex items-center gap-1.5 px-3 py-2 bg-green-100 text-green-700 border border-green-200 rounded-lg text-xs font-medium">
+                     <CheckCircle2 size={14} /> Registered (Approved)
+                   </span>
+                 )}
+               </>
+             );
+          })()}
           {isStudent && registered && isUpcoming && requestStatus === 'PENDING_ORGANIZER' && (
             <span className="flex items-center gap-1.5 px-3 py-2 bg-yellow-100 text-yellow-700 rounded-lg text-xs font-medium">
               <Clock size={14} /> Pending Approval

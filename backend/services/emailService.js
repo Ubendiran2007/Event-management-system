@@ -77,6 +77,13 @@ async function logEmailAudit(mailOptions, status, errorMessage = '', smtpRespons
 }
 
 async function sendMailWithFallback(mailOptions) {
+  // Deduplicate recipients
+  if (Array.isArray(mailOptions.to)) {
+    mailOptions.to = [...new Set(mailOptions.to)];
+  } else if (typeof mailOptions.to === 'string') {
+    mailOptions.to = [...new Set(mailOptions.to.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
+  }
+
   // ── Test Mode Email Redirection ──────────────────────────────────────────────
   // When EMAIL_TEST_MODE=true  → all emails are intercepted and sent to EMAIL_TEST_RECIPIENT
   // When EMAIL_TEST_MODE=false → emails are delivered to actual recipients (production mode)

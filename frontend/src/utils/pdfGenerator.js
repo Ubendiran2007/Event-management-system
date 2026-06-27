@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
-import { formatRollNo, formatEventRef, fallbackValue } from './formatters';
+import { formatRollNo, formatEventRef, fallbackValue, formatVenue, getAttendanceMode } from './formatters';
 
 /**
  * Generates an OD Letter PDF and returns it as a Base64 string.
@@ -16,10 +16,9 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       String(value || '').trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     const displayClassSection = formatClassSection(odRequest?.class || odRequest?.section) || 'N/A';
 
-    const eventTitle = fallbackValue(odRequest?.eventTitle || odRequest?.eventName || event?.title, 'Not Provided');
-    const eventVenue = fallbackValue(odRequest?.eventVenue || odRequest?.venue || event?.venue, 'Not Specified');
-    const eventRef   = formatEventRef(event);
     const s1 = event?.requisition?.step1;
+    const isHistorical = event?.status === 'COMPLETED' || event?.status === 'CANCELLED';
+    const eventRef = formatEventRef(event);
     
     const formatDate = (dateStr) => {
       if (!dateStr || dateStr === 'N/A') return 'N/A';
@@ -28,9 +27,26 @@ export const generateODLetterBase64 = async (odRequest, event) => {
       return dateStr;
     };
 
-    let eventDate = formatDate(odRequest?.eventDate || 'N/A');
-    if (s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate) {
-      eventDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
+    let eventTitle = 'N/A';
+    let eventVenue = 'N/A';
+    let eventDate = 'N/A';
+
+    if (isHistorical) {
+      eventTitle = fallbackValue(odRequest?.eventTitle || odRequest?.eventName || event?.title, 'Not Provided');
+      eventVenue = formatVenue(odRequest?.eventVenue, odRequest?.venue, event?.venue);
+      eventDate = formatDate(odRequest?.eventDate || event?.date || s1?.eventStartDate || 'N/A');
+      if (odRequest?.eventDate && odRequest.eventDate.includes('-') && odRequest.eventDate.length > 10) {
+         eventDate = odRequest.eventDate;
+      } else if (!odRequest?.eventDate && s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate) {
+         eventDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
+      }
+    } else {
+      eventTitle = fallbackValue(event?.title || s1?.eventName || odRequest?.eventTitle || odRequest?.eventName, 'Not Provided');
+      eventVenue = formatVenue(event?.venue, odRequest?.eventVenue, odRequest?.venue);
+      eventDate = formatDate(event?.date || s1?.eventStartDate || odRequest?.eventDate || 'N/A');
+      if (s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate) {
+        eventDate = `${formatDate(s1.eventStartDate)} - ${formatDate(s1.eventEndDate)}`;
+      }
     }
 
     const approvedBy = odRequest?.approvedBy || odRequest?.organizerName || 'Event Organizer';
@@ -46,21 +62,12 @@ export const generateODLetterBase64 = async (odRequest, event) => {
 
     const isCancelled = odRequest?.status === 'OD_CANCELLED' || odRequest?.status === 'CANCELLED';
 
-    // Build QR payload
-    const qrPayload = [
-      `OD VERIFICATION`,
-      `Student : ${odRequest.studentName}`,
-      `Roll No : ${displayRollNo}`,
-      `Class   : ${displayClassSection}`,
-      `Event   : ${eventTitle}`,
-      `Event Ref: ${eventRef}`,
-      `Date    : ${eventDate}`,
-      `Venue   : ${eventVenue}`,
-      `Status  : ${isCancelled ? 'CANCELLED' : 'APPROVED'}`,
-      `Code    : ${verificationCode}`,
-      `Issued  : ${issuedDate}`,
-      isCancelled ? `\nThis OD Letter is no longer valid.` : ''
-    ].filter(Boolean).join('\n');
+    const qrPayload = JSON.stringify({
+      eventId: event?.id || 'N/A',
+      registrationId: odRequest?.id || 'N/A',
+      studentName: odRequest?.studentName || 'N/A',
+      rollNo: displayRollNo
+    });
 
     // Generate QR Data URL
     const qrDataUrl = await QRCode.toDataURL(qrPayload, {
@@ -141,19 +148,36 @@ export const generateODLetterBase64 = async (odRequest, event) => {
         <p style="font-size: 11pt;">Your kind cooperation in this regard is highly appreciated.</p>
         <p style="font-size: 11pt; margin-top: 5px;">Thanking you,<br/>Yours faithfully,</p>
 
-        <!-- Signatures -->
-        <div style="margin-top: 50px; display: flex; justify-content: space-between; gap: 10px;">
-          <div style="text-align: center; flex: 1;">
-            <div style="border-top: 1.5px solid #333; margin-top: 30px; padding-top: 5px; font-size: 9pt;"><strong>Student Signature</strong><br/>${odRequest.studentName}<br/>${displayRollNo}</div>
+        <!-- Approvals -->
+        <div style="margin-top: 70px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+          <div style="text-align: center; flex: 1 1 20%; min-width: 140px;">
+            <div style="font-size: 9.5pt; font-weight: bold; margin-bottom: 40px; color: #2c5282;">Participant</div>
+            <div style="border-top: 1.5px solid #444; padding-top: 5px; font-size: 9pt; line-height: 1.3;">
+              <div style="color: #555;">(Student Signature)</div>
+            </div>
           </div>
-          <div style="text-align: center; flex: 1;">
-            <div style="border-top: 1.5px solid #333; margin-top: 30px; padding-top: 5px; font-size: 9pt;"><strong>Class Advisor</strong><br/>(Physical Signature)</div>
+          
+          <div style="text-align: center; flex: 1 1 20%; min-width: 140px;">
+            <div style="font-size: 9.5pt; font-weight: bold; margin-bottom: 40px; color: #2c5282;">Class Advisor</div>
+            <div style="border-top: 1.5px solid #444; padding-top: 5px; font-size: 9pt; line-height: 1.3;">
+              <div style="color: #555;">(Class Advisor Signature)</div>
+            </div>
           </div>
-          <div style="text-align: center; flex: 1;">
-            <div style="border-top: 1.5px solid #333; margin-top: 30px; padding-top: 5px; font-size: 9pt;"><strong>Event Organizer</strong><br/>${approvedBy}</div>
+
+          <div style="text-align: center; flex: 1 1 20%; min-width: 140px;">
+            <div style="font-size: 9.5pt; font-weight: bold; margin-bottom: 40px; color: #2c5282;">Event Organizer</div>
+            <div style="border-top: 1.5px solid #444; padding-top: 5px; font-size: 9pt; line-height: 1.3;">
+              <div style="font-weight: bold; color: #333;">${approvedBy}</div>
+              <div style="color: #555; font-size: 8.5pt;">(Event Organizer)</div>
+            </div>
           </div>
-          <div style="text-align: center; flex: 1;">
-            <div style="border-top: 1.5px solid #333; margin-top: 30px; padding-top: 5px; font-size: 9pt;"><strong>HOD / Principal</strong><br/>${hodName}</div>
+
+          <div style="text-align: center; flex: 1 1 20%; min-width: 140px;">
+            <div style="font-size: 9.5pt; font-weight: bold; margin-bottom: 40px; color: #2c5282;">Head of Department</div>
+            <div style="border-top: 1.5px solid #444; padding-top: 5px; font-size: 9pt; line-height: 1.3;">
+              <div style="font-weight: bold; color: #333;">${hodName}</div>
+              <div style="color: #555; font-size: 8.5pt;">(HOD Signature)</div>
+            </div>
           </div>
         </div>
 
@@ -163,8 +187,8 @@ export const generateODLetterBase64 = async (odRequest, event) => {
             <img src="${qrDataUrl}" style="width: 80px; height: 80px; border: 1px solid #aac; border-radius: 4px;" />
           </div>
           <div style="flex: 1; font-size: 8.5pt; color: #234; line-height: 1.4;">
-            <strong>Verification Details</strong><br/>
-            This letter is generated via the CSE Event Management Portal. Scanning the QR code will display student and event details for instant on-site verification.
+            <strong>Official OD Authorization</strong><br/>
+            This OD request has been approved through the SECE Event Hub workflow. Use the QR code to verify your registration and retrieve the latest event information. Any updates to the event schedule, venue, or attendance status will automatically be reflected here.
             <div style="margin-top: 5px; font-family: monospace; font-weight: bold; color: #1a3a6b;">Verification Code: ${verificationCode}</div>
           </div>
         </div>

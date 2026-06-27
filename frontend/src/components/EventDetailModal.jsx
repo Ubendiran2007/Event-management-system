@@ -4,7 +4,7 @@ import {
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
   Star, AlertTriangle, Clock3,
-  XCircle, Loader2, ClipboardList, Eye
+  XCircle, Loader2, ClipboardList, Eye, Download
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -27,7 +27,9 @@ import { EventStatus, UserRole } from '../types';
 import StatusBadge from './StatusBadge';
 import TimePicker from './TimePicker';
 import FeedbackModal from './FeedbackModal';
-import { formatRollNo, formatEventRef, fallbackValue } from '../utils/formatters';
+import AttendanceTab from './AttendanceTab';
+import RegistrationsTab from './RegistrationsTab';
+import { formatRollNo, formatStudentNameWithRoll, formatEventRef, fallbackValue, getEventStatus } from '../utils/formatters';
 import { validateUpload } from '../utils/fileValidation';
 
 
@@ -95,9 +97,12 @@ const EventDetailModal = ({ event, onClose }) => {
   const [cancelError, setCancelError] = useState(null);
   const [postponeReason, setPostponeReason] = useState('');
   const [postponeDate, setPostponeDate] = useState('');
+  const [postponeEndDate, setPostponeEndDate] = useState('');
   const [postponeStartTime, setPostponeStartTime] = useState('');
   const [postponeEndTime, setPostponeEndTime] = useState('');
   const [postponeError, setPostponeError] = useState(null);
+  
+  const [activeTab, setActiveTab] = useState('Overview');
 
   const fileInputRef = useRef(null);
 
@@ -109,6 +114,7 @@ const EventDetailModal = ({ event, onClose }) => {
   // Initialize postpone state when modal opens
   if (!postponeDate && (s1?.eventStartDate || event?.date)) {
     setPostponeDate(s1?.eventStartDate || event?.date);
+    setPostponeEndDate(s1?.eventEndDate || s1?.eventStartDate || event?.date);
     setPostponeStartTime(s1?.eventStartTime || event?.startTime || '00:00');
     setPostponeEndTime(s1?.eventEndTime || event?.endTime || '00:00');
   }
@@ -193,6 +199,7 @@ const EventDetailModal = ({ event, onClose }) => {
   const accomAnnex = r?.annexureV_accommodation;
   const mediaAnnex = r?.annexureVI_media;
   const createdOn = event?.createdAt ? new Date(event.createdAt).toLocaleDateString() : 'Not available';
+  const isMultiDay = s1?.eventStartDate && s1?.eventEndDate && s1.eventStartDate !== s1.eventEndDate;
   const eventDateRange = s1?.eventStartDate && s1?.eventEndDate
     ? (s1.eventStartDate === s1.eventEndDate ? s1.eventStartDate : `${s1.eventStartDate} to ${s1.eventEndDate}`)
     : (event?.date || 'Not specified');
@@ -200,8 +207,11 @@ const EventDetailModal = ({ event, onClose }) => {
   const eventPosterSrc = event?.posterDataUrl || event?.posterUrl || null;
 
   const isMedia = currentUser?.role === UserRole.MEDIA;
-  const isMediaUploadAllowed = isMedia && ['REQUESTED', 'REWORK_REQUESTED', 'UPLOADED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
-  const canFinalizePoster = isMediaUploadAllowed && (event.posterDataUrl || event.posterUrl || posterUploadSuccess);
+  const isMediaUploadAllowed = isMedia && (
+    ['REQUESTED', 'REWORK_REQUESTED', 'UPLOADED', 'COMPLETED'].includes(String(event.posterWorkflow?.status || '').toUpperCase()) ||
+    event.status === 'REJECTED'
+  );
+  const canFinalizePoster = isMediaUploadAllowed && (event.posterDataUrl || event.posterUrl || posterUploadSuccess) && String(event.posterWorkflow?.status || '').toUpperCase() !== 'COMPLETED';
 
   const handleRemovePoster = async () => {
     setIsUploadingPoster(true);
@@ -216,12 +226,12 @@ const EventDetailModal = ({ event, onClose }) => {
       
       setPosterUploadSuccess('');
       if (setSelectedEvent) {
-          setSelectedEvent(prev => ({ 
+          setSelectedEvent(prev => prev ? ({ 
             ...prev, 
             posterDataUrl: null, 
             posterUrl: null,
             posterWorkflow: { ...(prev.posterWorkflow || {}), status: 'REQUESTED' }
-          }));
+          }) : null);
       }
     } catch (err) {
       setPosterUploadError(err.message || 'Error removing poster.');
@@ -262,12 +272,16 @@ const EventDetailModal = ({ event, onClose }) => {
   };
 
   const handlePostponeEvent = async () => {
-    if (!postponeReason.trim() || !postponeDate || !postponeStartTime || !postponeEndTime) {
+    if (!postponeReason.trim() || !postponeDate || !postponeEndDate || !postponeStartTime || !postponeEndTime) {
       setPostponeError('All fields are required.');
       return;
     }
-    if (postponeStartTime >= postponeEndTime) {
-      setPostponeError('End time must be after start time.');
+    if (postponeDate > postponeEndDate) {
+      setPostponeError('End date must be after or equal to start date.');
+      return;
+    }
+    if (postponeDate === postponeEndDate && postponeStartTime >= postponeEndTime) {
+      setPostponeError('End time must be after start time on the same day.');
       return;
     }
     setIsProcessing(true);
@@ -279,13 +293,15 @@ const EventDetailModal = ({ event, onClose }) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
         },
-        body: JSON.stringify({ reason: postponeReason, newDate: postponeDate, newStartTime: postponeStartTime, newEndTime: postponeEndTime })
+        body: JSON.stringify({ reason: postponeReason, newDate: postponeDate, newEndDate: postponeEndDate, newStartTime: postponeStartTime, newEndTime: postponeEndTime })
       });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.message || 'Failed to postpone event');
       }
-      setTimeout(() => { onClose(); }, 300);
+      setTimeout(() => { 
+        onClose(); 
+      }, 300);
     } catch (err) {
       setPostponeError(err.message);
       setIsProcessing(false);
@@ -344,11 +360,11 @@ const EventDetailModal = ({ event, onClose }) => {
 
       // Update local event object if possible to show the new image immediately
       if (setSelectedEvent) {
-          setSelectedEvent(prev => ({ 
+          setSelectedEvent(prev => prev ? ({ 
             ...prev, 
             posterDataUrl,
             posterWorkflow: { ...(prev.posterWorkflow || {}), status: 'UPLOADED' }
-          }));
+          }) : null);
       }
 
     } catch (err) {
@@ -627,13 +643,37 @@ const EventDetailModal = ({ event, onClose }) => {
               </button>
             </div>
           </div>
+          
+          {/* Tab Navigation for Organizers */}
+          {isDashboard && isOrganizer && (event.status === 'POSTED' || event.status === 'COMPLETED' || event.status === 'POSTPONED') && (
+            <div className="px-6 border-b border-slate-200 bg-white sticky top-[88px] z-10 flex gap-6 overflow-x-auto">
+              {['Overview', 'Registration', 'Attendance'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`py-3 px-2 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === tab
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Content */}
           <div className="p-6 space-y-6">
+            
+            {activeTab === 'Registration' && <RegistrationsTab event={event} odRequests={odRequests} />}
+            {activeTab === 'Attendance' && <AttendanceTab event={event} />}
 
-            {/* Emergency Status Banners */}
-            {event.status === 'CANCELLED' && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2">
+            {activeTab === 'Overview' && (
+              <>
+                {/* Emergency Status Banners */}
+                {event.status === 'CANCELLED' && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2">
                 <div className="flex items-center gap-2 text-red-800">
                   <AlertTriangle size={20} className="shrink-0" />
                   <span className="font-extrabold text-sm uppercase tracking-wider">⚠ EVENT CANCELLED</span>
@@ -646,7 +686,7 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
             )}
 
-            {event.status === 'POSTPONED' && (
+            {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                 <div className="flex items-center gap-2 text-amber-800">
                   <Clock3 size={20} className="shrink-0" />
@@ -758,8 +798,8 @@ const EventDetailModal = ({ event, onClose }) => {
                           </div>
                         </div>
 
-                        {/* Detailed Timeline — visible to organizers, staff, or everyone once posted */}
-                        {(event.organizerId === currentUser.id || currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.HOD || [EventStatus.POSTED, EventStatus.COMPLETED].includes(event.status)) && (
+                        {/* Detailed Timeline — globally visible to all roles */}
+                        {true && (
                           <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline Details</p>
                             
@@ -767,23 +807,23 @@ const EventDetailModal = ({ event, onClose }) => {
                               { label: 'Faculty', done: isFacultyApproved, rejected: isFacultyRejected, approvedAt: event.facultyApprovedAt, approvedBy: event.facultyApprovedBy },
                               { label: 'HOD', done: isHodApproved, rejected: isHodRejected, approvedAt: event.hodApprovedAt, approvedBy: event.hodApprovedBy },
                             ].map(step => (
-                              <div key={step.label} className={`flex items-center gap-3 text-xs ${step.done ? 'text-emerald-700' : step.rejected ? 'text-red-700' : 'text-slate-400'}`}>
-                                <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : step.rejected ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : 'bg-slate-200'}`} />
-                                <span className="font-bold min-w-[60px]">{step.label}</span>
+                              <div key={step.label} className={`flex items-center gap-3 text-xs ${step.done ? 'text-emerald-700' : step.rejected ? (step.customRejectText ? 'text-amber-700' : 'text-red-700') : 'text-slate-400'}`}>
+                                <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${step.done ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : step.rejected ? (step.customRejectText ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]') : 'bg-slate-200'}`} />
+                                <span className="font-bold min-w-[70px]">{step.label}</span>
                                 {step.done
                                   ? <span className="text-[10px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                                      {step.approvedAt ? new Date(step.approvedAt).toLocaleString() : 'Approved'}
+                                      {step.approvedAt ? new Date(step.approvedAt).toLocaleString() : (step.customDoneText || 'Approved')}
                                       {step.approvedBy ? ` · ${step.approvedBy}` : ''}
                                     </span>
                                   : step.rejected
-                                  ? <span className="text-[10px] bg-red-50 px-2 py-0.5 rounded-md border border-red-100">
-                                      Rejected by {event.rejectedByName || 'Approver'} {event.rejectedAt ? ` · ${new Date(event.rejectedAt).toLocaleString()}` : ''}
+                                  ? <span className={`text-[10px] px-2 py-0.5 rounded-md border ${step.customRejectText ? 'bg-amber-50 border-amber-100' : 'bg-red-50 border-red-100'}`}>
+                                      {step.customRejectText || `Rejected by ${event.rejectedByName || 'Approver'} ${event.rejectedAt ? ` · ${new Date(event.rejectedAt).toLocaleString()}` : ''}`}
                                     </span>
                                   : <span className="italic text-slate-300">Pending</span>}
                               </div>
                             ))}
 
-                            {isHodApproved && (() => {
+                            {(isHodApproved || event.posterRequired || event.posterDataUrl || event.posterUrl) && (() => {
                               const dApprovals = event.departmentApprovals || {};
                               const reqList = event.requisition?.step1?.requirements || {};
                               const isR = k => reqList[k] ?? event[k] ?? false;
@@ -792,34 +832,55 @@ const EventDetailModal = ({ event, onClose }) => {
                               const hasFemales = Number(accom.femaleGuests || 0) > 0;
                               const isAcc = isR('accommodationDiningRequired') || isR('accommodationRequired');
 
-                              const deptsToShow = [
-                                isR('venueRequired') && { key: 'venue', label: 'Venue (HR)' },
-                                isR('audioRequired') && { key: 'audio', label: 'Audio' },
-                                isR('ictsRequired') && { key: 'icts', label: 'ICTS' },
-                                isR('transportRequired') && { key: 'transport', label: 'Transport' },
-                                isAcc && (hasMales || (!hasMales && !hasFemales)) && { key: 'boysAccommodation', label: 'Boys Accom.' },
-                                isAcc && hasFemales && { key: 'girlsAccommodation', label: 'Girls Accom.' },
-                                isR('mediaRequired') && { key: 'media', label: 'Media (HR)' },
-                              ].filter(Boolean);
+                              const itemsToShow = [];
+                              
+                              if (event.posterRequired || event.posterDataUrl || event.posterUrl) {
+                                const pDone = ['UPLOADED', 'COMPLETED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
+                                const pRej = String(event.posterWorkflow?.status || '').toUpperCase() === 'REWORK_REQUESTED';
+                                itemsToShow.push({
+                                  key: 'poster',
+                                  label: 'Media Poster',
+                                  isApp: pDone,
+                                  isRej: pRej,
+                                  isCustomRej: pRej,
+                                  customDoneText: 'Uploaded',
+                                  customRejText: 'Rework Requested',
+                                  approvedAt: event.posterWorkflow?.finalUploadedAt,
+                                  approvedBy: event.posterWorkflow?.finalUploadedBy || 'Media Team',
+                                });
+                              }
 
-                              if (!deptsToShow.length) return null;
+                              if (isHodApproved) {
+                                if (isR('venueRequired')) itemsToShow.push({ key: 'venue', label: 'Venue (HR)' });
+                                if (isR('audioRequired')) itemsToShow.push({ key: 'audio', label: 'Audio' });
+                                if (isR('ictsRequired')) itemsToShow.push({ key: 'icts', label: 'ICTS' });
+                                if (isR('transportRequired')) itemsToShow.push({ key: 'transport', label: 'Transport' });
+                                if (isAcc && (hasMales || (!hasMales && !hasFemales))) itemsToShow.push({ key: 'boysAccommodation', label: 'Boys Accom.' });
+                                if (isAcc && hasFemales) itemsToShow.push({ key: 'girlsAccommodation', label: 'Girls Accom.' });
+                                if (isR('mediaRequired')) itemsToShow.push({ key: 'media', label: 'Media (HR)' });
+                              }
+
+                              if (!itemsToShow.length) return null;
                               return (
                                 <div className="ml-1.5 pl-3 border-l-2 border-slate-100 mt-2 space-y-2">
-                                  {deptsToShow.map(d => {
-                                    const info = dApprovals[d.key];
-                                    const isApp = info?.status === 'APPROVED';
-                                    const isRej = info?.status === 'REJECTED';
+                                  {itemsToShow.map(d => {
+                                    const info = d.key === 'poster' ? d : (dApprovals[d.key] || {});
+                                    const isApp = d.key === 'poster' ? d.isApp : info?.status === 'APPROVED';
+                                    const isRej = d.key === 'poster' ? d.isRej : info?.status === 'REJECTED';
+                                    const isCustomRej = d.isCustomRej;
                                     return (
-                                      <div key={d.key} className={`flex items-center gap-3 text-xs ${isApp ? 'text-emerald-700' : isRej ? 'text-red-700' : 'text-slate-400'}`}>
-                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isApp ? 'bg-emerald-400' : isRej ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]' : 'bg-slate-200'}`} />
+                                      <div key={d.key} className={`flex items-center gap-3 text-xs ${isApp ? 'text-emerald-700' : isRej ? (isCustomRej ? 'text-amber-700' : 'text-red-700') : 'text-slate-400'}`}>
+                                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isApp ? 'bg-emerald-400' : isRej ? (isCustomRej ? 'bg-amber-400' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]') : 'bg-slate-200'}`} />
                                         <span className="font-medium min-w-[100px]">{d.label}</span>
                                         {isApp
                                           ? <span className="text-[10px] bg-emerald-50/50 px-1.5 py-0.5 rounded border border-emerald-100/50 italic">
-                                              {info.approvedAt ? new Date(info.approvedAt).toLocaleString() : 'Approved'}
+                                              {d.customDoneText ? `${d.customDoneText} ` : 'Approved '}
+                                              {info.approvedAt ? new Date(info.approvedAt).toLocaleString() : ''}
+                                              {info.approvedBy && d.key === 'poster' ? ` · ${info.approvedBy}` : ''}
                                             </span>
                                           : isRej 
-                                          ? <span className="text-[10px] bg-red-50/80 px-1.5 py-0.5 rounded border border-red-100 italic">
-                                              Rejected by {info.rejectedBy || 'Approver'} {info.rejectedAt ? ` · ${new Date(info.rejectedAt).toLocaleString()}` : ''}
+                                          ? <span className={`text-[10px] px-1.5 py-0.5 rounded border italic ${isCustomRej ? 'bg-amber-50/80 border-amber-100' : 'bg-red-50/80 border-red-100'}`}>
+                                              {d.customRejText || `Rejected by ${info.rejectedBy || 'Approver'} ${info.rejectedAt ? ` · ${new Date(info.rejectedAt).toLocaleString()}` : ''}`}
                                             </span>
                                           : <span className="text-[10px] text-slate-300">Pending</span>}
                                       </div>
@@ -1865,12 +1926,10 @@ const EventDetailModal = ({ event, onClose }) => {
             </div>
           )}
 
-          {(canApprove() || isMediaUploadAllowed || hasAnyDeptApproval) && (
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-20">
-
-              {/* ── Media poster upload ── */}
-              {isMediaUploadAllowed && (
-                <div className="flex flex-col gap-3">
+          {/* ── Media poster upload (Non-sticky) ── */}
+          {isMediaUploadAllowed && (
+            <div className="px-6 py-6 border-t border-slate-200 bg-white relative z-10">
+              <div className="flex flex-col gap-3">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm font-semibold text-slate-800">Media Poster Upload</p>
@@ -1975,10 +2034,14 @@ const EventDetailModal = ({ event, onClose }) => {
                     </div>
                   )}
                 </div>
-              )}
+            </div>
+          )}
+
+          {(canApprove() || hasAnyDeptApproval) && (
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)] z-20">
 
               {/* ── Department approvals (HR / Audio / ICTS / Transport / Accommodation) ── */}
-              {!isMediaUploadAllowed && hasAnyDeptApproval && (
+              {hasAnyDeptApproval && (
                 <div className="flex flex-col gap-3">
                   {approvalError && (
                     <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
@@ -2151,7 +2214,7 @@ const EventDetailModal = ({ event, onClose }) => {
               )}
 
               {/* ── Faculty / HOD approve + reject ── */}
-              {!isMediaUploadAllowed && !hasAnyDeptApproval && canApprove() && (
+              {!hasAnyDeptApproval && canApprove() && (
                 <>
                   {approvalError && (
                     <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
@@ -2212,6 +2275,8 @@ const EventDetailModal = ({ event, onClose }) => {
             )}
           </>
         )}
+              </>
+            )}
       </div>
     </motion.div>
 
@@ -2272,14 +2337,30 @@ const EventDetailModal = ({ event, onClose }) => {
                 placeholder="e.g. Chief guest unavailable"
               />
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">New Date</label>
-              <input 
-                type="date"
-                value={postponeDate}
-                onChange={(e) => setPostponeDate(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" 
-              />
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1">{isMultiDay ? 'New Start Date' : 'New Date'}</label>
+                <input 
+                  type="date"
+                  value={postponeDate}
+                  onChange={(e) => {
+                    setPostponeDate(e.target.value);
+                    if (!isMultiDay) setPostponeEndDate(e.target.value);
+                  }}
+                  className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" 
+                />
+              </div>
+              {isMultiDay && (
+                <div className="flex-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">New End Date</label>
+                  <input 
+                    type="date"
+                    value={postponeEndDate}
+                    onChange={(e) => setPostponeEndDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" 
+                  />
+                </div>
+              )}
             </div>
             <div className="flex gap-4">
               <div className="flex-1">
@@ -2315,9 +2396,8 @@ const EventDetailModal = ({ event, onClose }) => {
         </div>
       </div>
     )}
-
-  </motion.div>
-</AnimatePresence>
+      </motion.div>
+    </AnimatePresence>
   );
 };
 
