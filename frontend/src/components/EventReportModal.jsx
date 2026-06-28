@@ -295,23 +295,23 @@ const EventReportModal = ({
                 <tbody>
                   <tr>
                     <td className="border border-black p-2 w-1/2">Thrust area</td>
-                    <td className="border border-black p-2 w-1/2">{s1?.isIIC === 'Yes' ? (iic?.thrustArea || '') : ''}</td>
+                    <td className="border border-black p-2 w-1/2">{s1?.isIIC === 'Yes' ? (iic?.thrustArea || 'Nil') : 'Nil'}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Activity / Event driven by</td>
-                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.drivenBy || '') : ''}</td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.drivenBy || 'Nil') : 'Nil'}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Quarter</td>
-                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.quarter || '') : ''}</td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.quarter || 'Nil') : 'Nil'}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Event Level</td>
-                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.eventLevel || '') : ''}</td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.eventLevel || 'Nil') : 'Nil'}</td>
                   </tr>
                   <tr>
                     <td className="border border-black p-2">Event Theme</td>
-                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.eventTheme || '') : ''}</td>
+                    <td className="border border-black p-2">{s1?.isIIC === 'Yes' ? (iic?.eventTheme || 'Nil') : 'Nil'}</td>
                   </tr>
                 </tbody>
               </table>

@@ -134,7 +134,7 @@ const EventDetailModal = ({ event, onClose }) => {
   //   3. Either within 7 days of event end OR faculty has granted an extension
   const isOrganizer = (currentUser?.id && event.organizerId === currentUser.id) || currentUser?.role === UserRole.FACULTY;
   const iqacAlreadySubmitted = Boolean(event.iqacSubmittedAt);
-  const isPostedForIqac = event.status === EventStatus.POSTED || event.status === EventStatus.COMPLETED || event.status === 'POSTPONED';
+  const isPostedForIqac = event.status === EventStatus.POSTED || event.status === EventStatus.COMPLETED || event.status === 'POSTPONED' || event.status === EventStatus.APPROVED;
 
   const getIqacSubmissionStatus = () => {
     if (!isOrganizer || !isPostedForIqac || iqacAlreadySubmitted) return null;
@@ -144,9 +144,23 @@ const EventDetailModal = ({ event, onClose }) => {
     const endTimeStr = s1?.eventEndTime || event.endTime || '23:59';
     if (!endDateStr) return { eligible: false, reason: 'no-date' };
 
-    const [ey, em, ed] = endDateStr.split('-').map(Number);
     const [eh, emm] = String(endTimeStr).split(':').map(Number);
-    const eventEnd = new Date(ey, em - 1, ed, eh, emm, 0);
+    let eventEnd;
+    const dateParts = String(endDateStr).split('-');
+    if (dateParts.length === 3) {
+      if (dateParts[0].length === 4) {
+        eventEnd = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), eh, emm, 0);
+      } else {
+        eventEnd = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]), eh, emm, 0);
+      }
+    } else {
+      eventEnd = new Date(endDateStr);
+      if (!isNaN(eventEnd.getTime())) {
+        eventEnd.setHours(eh, emm, 0, 0);
+      }
+    }
+    if (!eventEnd || isNaN(eventEnd.getTime())) return { eligible: false, reason: 'no-date' };
+
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const windowEnd = new Date(eventEnd.getTime() + sevenDaysMs);
     const now = new Date();

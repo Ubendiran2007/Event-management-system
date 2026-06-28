@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
-const { collection, getDocs, doc, getDoc, updateDoc, query, where } = require('firebase/firestore');
+const { collection, getDocs, doc, getDoc, updateDoc, setDoc, deleteDoc, query, where } = require('firebase/firestore');
 
 const checkDb = (res) => {
   if (!db) {
@@ -203,17 +203,44 @@ router.post('/:eventId', async (req, res) => {
       mode:       registrationDetails?.mode || '',
     };
 
-    // Process gallery — give each image a stable id and timestamp
+    // Process gallery — save images to a subcollection (events/{id}/gallery)
+    // This bypasses the 1 MB Firestore per-document limit.
     const processedGallery = (gallery || []).map((item, idx) => ({
-      id:          `gallery_${idx + 1}`,
-      url:         item.dataUrl   || '',
+      id:          item.id || `gallery_${idx + 1}`,
       fileName:    item.fileName  || '',
       title:       item.title     || '',
       caption:     item.caption   || '',
       location:    item.location  || '',
       coordinates: item.coordinates || '',
       timestamp:   new Date().toISOString(),
+      // dataUrl stored in subcollection, not here
     }));
+
+    // Save each gallery photo (with dataUrl) to subcollection events/{eventId}/gallery/{photoId}
+    try {
+      // First clear existing gallery subcollection
+      const existingGallery = await getDocs(collection(db, 'events', eventId, 'gallery'));
+      for (const d of existingGallery.docs) {
+        await deleteDoc(d.ref);
+      }
+      // Write new items
+      for (const item of (gallery || [])) {
+        const photoId = item.id || `gallery_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        await setDoc(doc(db, 'events', eventId, 'gallery', photoId), {
+          id:          photoId,
+          url:         item.dataUrl || '',
+          fileName:    item.fileName  || '',
+          title:       item.title     || '',
+          caption:     item.caption   || '',
+          location:    item.location  || '',
+          coordinates: item.coordinates || '',
+          timestamp:   new Date().toISOString(),
+        });
+      }
+    } catch (galleryErr) {
+      console.warn('[iqac] Failed to save gallery subcollection:', galleryErr.message);
+      // Non-fatal — main submission continues
+    }
 
     // Process guest feedback — preserve ALL dynamic CSV columns
     const processedGuestFeedback = (guestFeedbackList || []).map((gf, idx) => {
@@ -279,25 +306,47 @@ router.post('/:eventId', async (req, res) => {
       }
     }
 
+    // Strip dataUrl from documents to avoid Firestore 1 MB limit
+    // We only persist metadata (fileName, fileType, fileSize, status, etc.), not the raw file bytes.
+    const sanitizedDocuments = Object.fromEntries(
+      Object.entries(documents || {}).map(([key, val]) => {
+        if (!val || typeof val !== 'object') return [key, val];
+        const { dataUrl, ...rest } = val;
+        return [key, rest];
+      })
+    );
+
+    // Strip photo dataUrl from resource persons too
+    const sanitizedResourcePersons = processedResourcePersons.map((rp) => {
+      if (!rp.photo) return rp;
+      const { dataUrl, ...photoRest } = rp.photo;
+      return { ...rp, photo: Object.keys(photoRest).length ? photoRest : null };
+    });
+
+    const rawIqacData = {
+      eventSummary,
+      attendanceStats,
+      feedbackSummary: resolvedFeedbackSummary,
+      registration,
+      resourcePersons:  sanitizedResourcePersons,
+      gallery:          processedGallery,
+      guestFeedback:    processedGuestFeedback,
+      eventOutcome:     eventOutcome  || '',
+      reportDetails:    reportDetails || {},
+      documents:        sanitizedDocuments,
+      checklist:        Array.isArray(checklist) ? checklist : [],
+      finalReport:      finalReport ? (() => { const { dataUrl, ...r } = finalReport; return r; })() : null,
+      manualFeedbackSummary: manualFeedbackSummary || null,
+    };
+
+    // Deep sanitize to strip any `undefined` values which cause "invalid nested entity" in Firestore
+    const sanitizedIqacData = JSON.parse(JSON.stringify(rawIqacData));
+
     await updateDoc(eventRef, {
       status: 'COMPLETED',
       iqacSubmittedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      iqacData: {
-        eventSummary,
-        attendanceStats,
-        feedbackSummary: resolvedFeedbackSummary,
-        registration,
-        resourcePersons:  processedResourcePersons,
-        gallery:          processedGallery,
-        guestFeedback:    processedGuestFeedback,
-        eventOutcome:     eventOutcome  || '',
-        reportDetails:    reportDetails || {},
-        documents:        documents     || {},
-        checklist:        Array.isArray(checklist) ? checklist : [],
-        finalReport:      finalReport   || null,
-        manualFeedbackSummary: manualFeedbackSummary || null,
-      },
+      iqacData: sanitizedIqacData,
     });
 
     setImmediate(async () => {
@@ -319,6 +368,10 @@ router.post('/:eventId', async (req, res) => {
     });
   } catch (err) {
     console.error('Error saving IQAC submission:', err);
+    try {
+      require('fs').writeFileSync('failed_iqac_payload.json', JSON.stringify(req.body, null, 2));
+      require('fs').writeFileSync('failed_iqac_sanitized.json', JSON.stringify(sanitizedIqacData || {}, null, 2));
+    } catch(e) {}
     const msg = String(err?.message || '');
     if (msg.includes('exceeds the maximum allowed size')) {
       return res.status(413).json({
@@ -348,11 +401,26 @@ router.get('/:eventId', async (req, res) => {
     }
     const data = eventSnap.data();
 
+    // Fetch gallery photos from subcollection (stored separately to avoid 1MB limit)
+    let galleryFromSubcollection = [];
+    try {
+      const gallerySnap = await getDocs(collection(db, 'events', eventId, 'gallery'));
+      galleryFromSubcollection = gallerySnap.docs.map(d => d.data());
+      galleryFromSubcollection.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+    } catch (e) {
+      console.warn('[iqac/get] Could not fetch gallery subcollection:', e.message);
+    }
+
     // Prefer manually uploaded CSV feedback over auto-generated odRequest feedback
     const storedFeedback  = data.iqacData?.manualFeedbackSummary || data.iqacData?.feedbackSummary || null;
     const resolvedFeedback = (storedFeedback?.isManualUpload && storedFeedback.totalResponses > 0)
       ? storedFeedback
       : feedbackSummary;
+
+    // Merge gallery into iqacData so the frontend gets photos with dataUrl
+    const iqacDataWithGallery = data.iqacData
+      ? { ...data.iqacData, gallery: galleryFromSubcollection.length > 0 ? galleryFromSubcollection : (data.iqacData.gallery || []) }
+      : null;
 
     res.json({
       success: true,
@@ -365,7 +433,7 @@ router.get('/:eventId', async (req, res) => {
       description:   data.description,
       attendanceStats,
       feedbackSummary: resolvedFeedback,
-      iqacData:       data.iqacData        || null,
+      iqacData:       iqacDataWithGallery || null,
       iqacSubmittedAt: data.iqacSubmittedAt || null,
     });
   } catch (err) {

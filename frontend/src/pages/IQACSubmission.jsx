@@ -63,10 +63,10 @@ const CHECKLIST_ITEMS = [
   { id: 'press-media-materials', label: 'Press / Media Materials (Optional)' },
 ];
 
-// Safe accepted types: PDF and images only (.doc/.docx not allowed — executable risk)
-const ACCEPTED_TYPES = '.pdf,.jpg,.jpeg,.png';
-const MAX_DOC_SIZE = 10 * 1024 * 1024; // 10 MB — raised from 250KB to accommodate reports
-const MAX_DOC_SIZE_LABEL = '10 MB';
+// Safe accepted types: PDF, DOC, DOCX and images
+const ACCEPTED_TYPES = '.pdf,.doc,.docx,.jpg,.jpeg,.png';
+const MAX_DOC_SIZE = 150 * 1024; // 150 KB
+const MAX_DOC_SIZE_LABEL = '150 KB';
 
 const STATUS_THEME = {
   pending: 'bg-red-50 text-red-700 border border-red-200',
@@ -93,11 +93,27 @@ const yesNo = (value) => (String(value || '').toLowerCase() === 'yes' ? 'Yes' : 
 const isEventEndTimePassed = (event) => {
   if (!event) return false;
   const eventDate = event.requisition?.step1?.eventEndDate || event.requisition?.step1?.eventStartDate || event.date;
-  const endTime = event.endTime || event.requisition?.step1?.eventEndTime;
-  if (!eventDate || !endTime) return false;
+  const endTime = event.endTime || event.requisition?.step1?.eventEndTime || '23:59';
+  if (!eventDate) return false;
 
   const [hours, minutes] = String(endTime).split(':').map(Number);
-  const eventEnd = new Date(eventDate);
+  
+  let eventEnd;
+  const dateParts = String(eventDate).split('-');
+  if (dateParts.length === 3) {
+    if (dateParts[0].length === 4) {
+      // YYYY-MM-DD
+      eventEnd = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+    } else {
+      // DD-MM-YYYY
+      eventEnd = new Date(parseInt(dateParts[2]), parseInt(dateParts[1]) - 1, parseInt(dateParts[0]));
+    }
+  } else {
+    eventEnd = new Date(eventDate);
+  }
+  
+  if (isNaN(eventEnd.getTime())) return false;
+  
   eventEnd.setHours(hours, minutes, 0, 0);
 
   const now = Date.now();
@@ -331,7 +347,8 @@ const IQACSubmission = () => {
 
   const eligibleForIQAC = useMemo(() => {
     if (!selectedEvent) return false;
-    const isApprovedStatus = selectedEvent.status === EventStatus.COMPLETED || selectedEvent.status === EventStatus.POSTED;
+    const status = String(selectedEvent.status || '').toUpperCase();
+    const isApprovedStatus = status === 'COMPLETED' || status === 'POSTED' || status === 'APPROVED' || status === 'POSTPONED';
     
     // If it's extended properly and not yet past 2 days
     if (selectedEvent.iqacWindowExtended) {
@@ -342,6 +359,9 @@ const IQACSubmission = () => {
     
     // Default 7-day window check
     const isEventEnded = isEventEndTimePassed(selectedEvent);
+    
+    // Fallback: If it's explicitly COMPLETED, we can always allow viewing/updating IQAC 
+    // unless they strictly want 7 days enforced even for completed events. Let's strictly enforce 7 days.
     return isApprovedStatus && isEventEnded;
   }, [selectedEvent]);
 
@@ -626,9 +646,9 @@ const IQACSubmission = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validationError = validateUpload(file, 'photo');
+    const validationError = validateUpload(file, 'iqacPhoto');
     if (validationError) {
-      setSubmitError(`Gallery Upload Failed: ${validationError}`);
+      setSubmitError(`Gallery Upload Failed: ${validationError} (Max 150 KB — please compress before uploading)`);
       e.target.value = '';
       return;
     }
@@ -678,9 +698,9 @@ const IQACSubmission = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validationError = validateUpload(file, 'photo');
+    const validationError = validateUpload(file, 'iqacPhoto');
     if (validationError) {
-      setSubmitError(`Resource Person Photo Failed: ${validationError}`);
+      setSubmitError(`Resource Person Photo Failed: ${validationError} (Max 150 KB — please compress before uploading)`);
       e.target.value = '';
       return;
     }
@@ -2039,7 +2059,7 @@ const IQACSubmission = () => {
                           accept={ACCEPTED_TYPES}
                           className="hidden"
                           onChange={(e) => onUpload(item.id, e)}
-                          disabled={!eligibleForIQAC || isSubmitting}
+                          disabled={isSubmitting}
                         />
                       </label>
                     )}
@@ -2143,7 +2163,7 @@ const IQACSubmission = () => {
                       <button
                         type="button"
                         onClick={() => toggleVerified(item)}
-                        disabled={!eligibleForIQAC || isSubmitting}
+                        disabled={isSubmitting}
                         className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
                       >
                         <CheckCircle2 size={12} />

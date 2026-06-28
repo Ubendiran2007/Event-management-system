@@ -1330,7 +1330,7 @@ const Dashboard = () => {
                                       </div>
                                       <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
                                         <span className="flex items-center gap-1.5 min-w-0">
-                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</span>
+                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</span>
                                         </span>
                                         <span className="flex items-center gap-1.5 shrink-0">
                                           <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
@@ -1499,7 +1499,7 @@ const Dashboard = () => {
                                       </div>
                                       <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
                                         <span className="flex items-center gap-1.5 min-w-0">
-                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</span>
+                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</span>
                                         </span>
                                         <span className="flex items-center gap-1.5 shrink-0">
                                           <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}

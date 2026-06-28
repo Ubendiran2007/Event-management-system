@@ -43,7 +43,7 @@ const ODRequestDetailModal = ({ request, onClose }) => {
     }
     eventTime = request.eventTime || event?.time || s1?.eventStartTime || 'N/A';
     eventVenue = request.venue || request.eventVenue || event?.venue;
-    eventVenue = (!eventVenue || eventVenue === 'N/A' || eventVenue === 'null' || eventVenue === 'undefined') ? 'No Venue Assigned' : eventVenue;
+    eventVenue = (!eventVenue || eventVenue === 'N/A' || eventVenue === 'null' || eventVenue === 'undefined') ? 'Venue not alloted' : eventVenue;
   } else {
     eventName = event?.title || s1?.eventName || request.eventName || request.eventTitle || 'N/A';
     eventDate = formatDate(event?.date || s1?.eventStartDate || request.eventDate || 'N/A');
@@ -55,7 +55,7 @@ const ODRequestDetailModal = ({ request, onClose }) => {
       eventTime = `${s1.eventStartTime} - ${s1.eventEndTime}`;
     }
     eventVenue = event?.venue || request.venue || request.eventVenue;
-    eventVenue = (!eventVenue || eventVenue === 'N/A' || eventVenue === 'null' || eventVenue === 'undefined') ? 'No Venue Assigned' : eventVenue;
+    eventVenue = (!eventVenue || eventVenue === 'N/A' || eventVenue === 'null' || eventVenue === 'undefined') ? 'Venue not alloted' : eventVenue;
   }
 
   const isStudentView = String(currentUser?.id) === String(request.userId || request.studentId);

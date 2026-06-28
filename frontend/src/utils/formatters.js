@@ -61,7 +61,7 @@ export const fallbackValue = (value, type = 'general') => {
       case 'email': return 'Not Provided';
       case 'phone': return 'Not Available';
       case 'department': return 'Not Assigned';
-      case 'venue': return 'No Venue Assigned';
+      case 'venue': return 'Venue not alloted';
       case 'poster': return 'Not Uploaded Yet';
       case 'feedback': return 'Not Submitted Yet';
       case 'approver': return 'Pending Assignment';
@@ -87,7 +87,7 @@ export const formatVenue = (...venueArgs) => {
     if (trimmed === '' || INVALID_VENUES.has(trimmed.toLowerCase())) continue;
     return trimmed;
   }
-  return 'No Venue Assigned';
+  return 'Venue not alloted';
 };
 
 /**

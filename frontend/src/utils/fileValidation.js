@@ -23,9 +23,9 @@ export const UPLOAD_RULES = {
   },
   document: {
     label: 'Document',
-    maxBytes: 10 * 1024 * 1024,      // 10 MB
-    allowedMime: ['application/pdf', 'image/jpeg', 'image/png'],
-    allowedExt: ['.pdf', '.jpg', '.jpeg', '.png'],
+    maxBytes: 150 * 1024,      // 150 KB
+    allowedMime: ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    allowedExt: ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'],
   },
   report: {
     label: 'Event Report',
@@ -51,6 +51,12 @@ export const UPLOAD_RULES = {
   photo: {
     label: 'Photo',
     maxBytes: 15 * 1024 * 1024,
+    allowedMime: ['image/jpeg', 'image/png', 'image/webp'],
+    allowedExt: ['.jpg', '.jpeg', '.png', '.webp'],
+  },
+  iqacPhoto: {
+    label: 'IQAC Photo',
+    maxBytes: 150 * 1024,   // 150 KB — strict limit to keep subcollection docs small
     allowedMime: ['image/jpeg', 'image/png', 'image/webp'],
     allowedExt: ['.jpg', '.jpeg', '.png', '.webp'],
   },

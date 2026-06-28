@@ -183,7 +183,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     <style>body{font-family:Arial,sans-serif;padding:20px;}h2{margin-bottom:4px;}p{margin:2px 0;color:#555;}</style>
   </head><body>
     <h2>${title}</h2>
-    <p>Event: ${event.title || s1?.eventName || '-'} &nbsp;|&nbsp; Date: ${s1?.eventStartDate || '-'} – ${s1?.eventEndDate || '-'} &nbsp;|&nbsp; Venue: ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</p>
+    <p>Event: ${event.title || s1?.eventName || '-'} &nbsp;|&nbsp; Date: ${s1?.eventStartDate || '-'} – ${s1?.eventEndDate || '-'} &nbsp;|&nbsp; Venue: ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</p>
     <p>Generated on: ${new Date().toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' })}</p>
     ${tableHtml}
   </body></html>`;
@@ -641,7 +641,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
     </div>
     <div class="header-content">
       <h1>${event.title || s1?.eventName || 'Event Report'}</h1>
-      <p>📅 ${s1?.eventStartDate||'-'} – ${s1?.eventEndDate||'-'} &nbsp;|&nbsp; 🕐 ${s1?.eventStartTime||'-'} – ${s1?.eventEndTime||'-'} &nbsp;|&nbsp; 📍 ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</p>
+      <p>📅 ${s1?.eventStartDate||'-'} – ${s1?.eventEndDate||'-'} &nbsp;|&nbsp; 🕐 ${s1?.eventStartTime||'-'} – ${s1?.eventEndTime||'-'} &nbsp;|&nbsp; 📍 ${event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</p>
       <span class="badge">✓ IQAC Submitted ${submittedOn ? `on ${submittedOn}` : ''}</span>
     </div>
   </div>
@@ -964,7 +964,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 ['Department',   s1?.organizerDetails?.department || 'CSE'],
                 ['Date',         `${s1?.eventStartDate || '-'} to ${s1?.eventEndDate || '-'}`],
                 ['Time',         `${formatTime12(s1?.eventStartTime)} – ${formatTime12(s1?.eventEndTime)}`],
-                ['Venue',        event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'],
+                ['Venue',        event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'],
                 ['IIC Activity', s1?.isIIC || 'No'],
                 ['Mode',         reg.mode || '—'],
                 ['Prof. Societies', Array.isArray(s1?.professionalSocieties) && s1.professionalSocieties.length ? s1.professionalSocieties.join(', ') : '—'],
@@ -1716,7 +1716,7 @@ const EventCard = ({
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <MapPin size={14} />
-            <span className="text-xs">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'No Venue Assigned'}</span>
+            <span className="text-xs">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</span>
           </div>
         </div>
 
