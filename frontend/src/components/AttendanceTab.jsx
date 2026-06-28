@@ -113,10 +113,16 @@ const AttendanceTab = ({ event }) => {
   ) : 'Not Configured';
 
   const startTimeStr = event?.time || event?.requisition?.step1?.eventStartTime || '09:00';
+  const isFirstDay = selectedDate === eventDates[0];
   const startDateTime = new Date(selectedDate);
-  if (startTimeStr) {
+  if (isFirstDay && startTimeStr) {
+    // Only the first day of the event is gated by the actual start time
     const [hours, minutes] = startTimeStr.split(':').map(Number);
     startDateTime.setHours(hours, minutes, 0, 0);
+  } else {
+    // For Day 2, Day 3 etc. — scanning opens from the start of the day (midnight)
+    // because participants arrive for a new session, not at the original event start time
+    startDateTime.setHours(0, 0, 0, 0);
   }
   // Derived from live `now` state — re-evaluates every second automatically
   const isEventDateStarted = now.getTime() >= startDateTime.getTime();
