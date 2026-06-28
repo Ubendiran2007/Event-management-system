@@ -42,7 +42,6 @@ const SecurityProfile = () => {
   const [attendanceAuditLogs, setAttendanceAuditLogs] = useState([]);
   const [fetchingAuditLogs, setFetchingAuditLogs] = useState(false);
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
-  const [auditActionFilter, setAuditActionFilter] = useState('All');
   const [auditSessionFilter, setAuditSessionFilter] = useState('All');
   const [auditDateFilter, setAuditDateFilter] = useState('All');
 
@@ -69,7 +68,7 @@ const SecurityProfile = () => {
 
   const filteredAttendanceAuditLogs = React.useMemo(() => {
     return attendanceAuditLogs.filter(log => {
-      if (auditActionFilter !== 'All' && !(log.action || '').includes(auditActionFilter)) return false;
+      if (log.action !== 'Correction') return false;
       if (auditSessionFilter !== 'All' && log.session !== auditSessionFilter) return false;
       if (auditDateFilter !== 'All' && log.date !== auditDateFilter) return false;
       
@@ -81,9 +80,9 @@ const SecurityProfile = () => {
       }
       return true;
     });
-  }, [attendanceAuditLogs, auditActionFilter, auditSessionFilter, auditDateFilter, auditSearchQuery]);
+  }, [attendanceAuditLogs, auditSessionFilter, auditDateFilter, auditSearchQuery]);
 
-  const uniqueAuditDates = [...new Set(attendanceAuditLogs.map(l => l.date).filter(Boolean))];
+  const uniqueAuditDates = [...new Set(attendanceAuditLogs.filter(l => l.action === 'Correction').map(l => l.date).filter(Boolean))];
 
 
   const filteredIqacLogs = React.useMemo(() => {
@@ -909,18 +908,6 @@ const SecurityProfile = () => {
                     className="px-4 py-2 text-sm bg-white border border-slate-200 rounded-lg flex-1 min-w-[200px] outline-none focus:border-indigo-400 shadow-sm"
                   />
                   <select 
-                    value={auditActionFilter}
-                    onChange={(e) => setAuditActionFilter(e.target.value)}
-                    className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
-                  >
-                    <option value="All">All Actions</option>
-                    <option value="Correction">Manual Corrections</option>
-                    <option value="Finalized">Finalizations</option>
-                    <option value="Configuration Saved">Config Changes</option>
-                    <option value="Session">Session Toggles</option>
-                    <option value="Reset">Resets</option>
-                  </select>
-                  <select 
                     value={auditSessionFilter}
                     onChange={(e) => setAuditSessionFilter(e.target.value)}
                     className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
@@ -928,6 +915,7 @@ const SecurityProfile = () => {
                     <option value="All">All Sessions</option>
                     <option value="S1">Session 1</option>
                     <option value="S2">Session 2</option>
+                    <option value="BOTH">Both Sessions</option>
                   </select>
                   <select 
                     value={auditDateFilter}
@@ -976,7 +964,10 @@ const SecurityProfile = () => {
                             {log.rollNo && log.rollNo !== 'N/A' ? (
                                <>
                                  <p className="text-sm font-semibold text-slate-800">{log.studentName}</p>
-                                 <p className="text-xs text-slate-500">{log.rollNo}</p>
+                                 <p className="text-xs text-slate-500 mb-1">{log.rollNo}</p>
+                                 <p className="text-[11px] font-bold text-indigo-600 bg-indigo-50 inline-flex px-1.5 py-0.5 rounded">
+                                   Target: {log.date}
+                                 </p>
                                </>
                             ) : (
                                <p className="text-sm font-medium text-slate-700">{log.date} {log.session !== 'N/A' ? `(${log.session})` : ''}</p>

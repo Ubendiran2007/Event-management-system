@@ -1534,6 +1534,56 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
 });
 
 // ── ATTENDANCE ROUTES ────────────────────────────────────────────────────────
+
+// Helper to log attendance modifications
+async function logAttendanceAudit(eventId, logData) {
+  try {
+    const auditRef = collection(db, 'events', eventId, 'attendanceAuditLogs');
+    await addDoc(auditRef, {
+      ...logData,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Failed to log attendance audit:', err.message);
+  }
+}
+
+// ── GET /api/events/:id/attendance-audit ──────────────────────────────────
+router.get('/:id/attendance-audit', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const auditRef = collection(db, 'events', req.params.id, 'attendanceAuditLogs');
+    const snapshot = await getDocs(auditRef);
+    const logs = snapshot.docs.map(d => {
+      const data = d.data();
+      const dateObj = new Date(data.timestamp);
+      const dateStamp = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+      const time = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      return {
+        id: d.id,
+        dateStamp,
+        time,
+        action: data.action || 'N/A',
+        studentName: data.studentName || 'N/A',
+        rollNo: data.rollNo || 'N/A',
+        date: data.date || 'N/A',
+        session: data.session || 'N/A',
+        previousStatus: data.previousStatus || 'N/A',
+        updatedStatus: data.updatedStatus || 'N/A',
+        reason: data.reason || 'N/A',
+        modifiedBy: data.modifiedBy || 'Unknown',
+        userRole: data.userRole || 'N/A',
+        timestamp: data.timestamp
+      };
+    });
+    logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    return res.json({ success: true, logs });
+  } catch (error) {
+    console.error('[events/attendance-audit] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch audit logs' });
+  }
+});
+
 // ── PATCH /api/events/:id/attendance-config ────────────────────────────────
 router.patch('/:id/attendance-config', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
@@ -1559,6 +1609,18 @@ router.patch('/:id/attendance-config', requireAuth, requireRole(['STUDENT_ORGANI
     };
 
     await updateDoc(eventRef, { attendanceConfigs });
+
+    await logAttendanceAudit(req.params.id, {
+      action: 'Configuration Saved',
+      date,
+      session: 'N/A',
+      previousStatus: eventData.attendanceConfigs?.[date]?.attendanceType || 'N/A',
+      updatedStatus: attendanceType,
+      reason: 'Configuration updated',
+      modifiedBy: req.user.name || req.user.email,
+      userRole: req.user.role
+    });
+
     return res.json({ success: true, attendanceConfigs, attendanceStats: eventData.attendanceStats });
   } catch (err) {
     console.error(err);
@@ -1596,6 +1658,17 @@ router.patch('/:id/attendance-session', requireAuth, requireRole(['STUDENT_ORGAN
     attendanceConfigs[date] = config;
     await updateDoc(eventRef, { attendanceConfigs });
     
+    await logAttendanceAudit(req.params.id, {
+      action: 'Session Toggle',
+      date,
+      session: sessionKey,
+      previousStatus: 'N/A',
+      updatedStatus: action,
+      reason: `Session ${sessionKey} ${action}`,
+      modifiedBy: req.user.name || req.user.email,
+      userRole: req.user.role
+    });
+
     return res.json({ success: true, attendanceConfigs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -1621,6 +1694,18 @@ router.patch('/:id/finalize-attendance', requireAuth, requireRole(['STUDENT_ORGA
       }
     }
     await updateDoc(eventRef, { attendanceConfigs });
+
+    await logAttendanceAudit(req.params.id, {
+      action: 'Finalized',
+      date,
+      session: 'N/A',
+      previousStatus: 'Open',
+      updatedStatus: 'Finalized',
+      reason: 'Attendance finalized for date',
+      modifiedBy: req.user.name || req.user.email,
+      userRole: req.user.role
+    });
+
     return res.json({ success: true, attendanceConfigs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -1723,6 +1808,10 @@ router.patch('/:id/attendance/correct', requireAuth, requireRole(['STUDENT_ORGAN
     const attendance = reqData.attendance || {};
     const dateAttendance = attendance[date] || {};
     
+    const correctionLogs = reqData.correctionLogs || [];
+    const oldStatus = `S1: ${dateAttendance.S1 ? 'true' : 'false'}${session === 'BOTH' ? `, S2: ${dateAttendance.S2 ? 'true' : 'false'}` : ''}`;
+    const newStatus = `S1: ${s1Present}${session === 'BOTH' ? `, S2: ${s2Present}` : ''}`;
+
     if (session === 'S1') {
        dateAttendance.S1 = s1Present;
     } else {
@@ -1731,15 +1820,27 @@ router.patch('/:id/attendance/correct', requireAuth, requireRole(['STUDENT_ORGAN
     }
     attendance[date] = dateAttendance;
 
-    const correctionLogs = reqData.correctionLogs || [];
     correctionLogs.push({
       timestamp: new Date().toISOString(),
       correctedBy: req.user.id,
       reason,
-      changes: `Date: ${date} | S1: ${s1Present} | S2: ${s2Present}`
+      changes: `Date: ${date} | ${newStatus}`
     });
     
     await updateDoc(reqRef, { attendance, correctionLogs });
+
+    await logAttendanceAudit(req.params.id, {
+      action: 'Correction',
+      date,
+      session,
+      studentName: reqData.studentName,
+      rollNo: reqData.rollNo,
+      previousStatus: oldStatus,
+      updatedStatus: newStatus,
+      reason: reason || 'Manual correction',
+      modifiedBy: req.user.name || req.user.email,
+      userRole: req.user.role
+    });
 
     // Recalculate global stats for bulletproof accuracy
     const qSnapshot = await getDocs(query(collection(db, 'odRequests'), where('eventId', '==', req.params.id), where('status', '==', 'APPROVED')));
