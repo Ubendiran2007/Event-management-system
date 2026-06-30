@@ -648,7 +648,7 @@ const IQACSubmission = () => {
 
     const validationError = validateUpload(file, 'iqacPhoto');
     if (validationError) {
-      setSubmitError(`Gallery Upload Failed: ${validationError} (Max 150 KB — please compress before uploading)`);
+      setSubmitError(`Gallery Upload Failed: ${validationError}`);
       e.target.value = '';
       return;
     }
@@ -700,7 +700,7 @@ const IQACSubmission = () => {
 
     const validationError = validateUpload(file, 'iqacPhoto');
     if (validationError) {
-      setSubmitError(`Resource Person Photo Failed: ${validationError} (Max 150 KB — please compress before uploading)`);
+      setSubmitError(`Resource Person Photo Failed: ${validationError}`);
       e.target.value = '';
       return;
     }
@@ -1492,7 +1492,7 @@ const IQACSubmission = () => {
                     <img
                       src={item.dataUrl}
                       alt="gallery"
-                      className="w-full h-32 object-cover rounded-lg mb-2"
+                      className="w-full h-32 object-contain object-center bg-slate-100 rounded-lg mb-2 border border-slate-100"
                     />
                     <div className="space-y-2">
                       <input
@@ -1926,7 +1926,7 @@ const IQACSubmission = () => {
                     <div className="relative group">
                       <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
                         {person.photo ? (
-                          <img src={person.photo.dataUrl || person.photo.url || person.photo} className="w-full h-full object-cover" alt="speaker" />
+                          <img src={person.photo.dataUrl || person.photo.url || person.photo} className="w-full h-full object-contain object-center bg-slate-50" alt="speaker" />
                         ) : (
                           <div className="text-slate-300 flex flex-col items-center gap-1">
                             <Camera size={24} />

@@ -127,9 +127,11 @@ export function validateUpload(file, category = 'document') {
   // 5. Check file size
   const maxBytes = rules.maxBytesRaw || rules.maxBytes;
   if (file.size > maxBytes) {
-    const maxMB = (maxBytes / 1024 / 1024).toFixed(0);
-    const fileMB = (file.size / 1024 / 1024).toFixed(1);
-    return `❌ File too large (${fileMB} MB). Maximum allowed size is ${maxMB} MB.`;
+    const formatSize = (bytes) => bytes < 1024 * 1024 
+      ? `${(bytes / 1024).toFixed(0)} KB` 
+      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+    return `❌ File too large (${formatSize(file.size)}). Maximum allowed size is ${formatSize(maxBytes)}.`;
   }
 
   // 6. Block empty files
