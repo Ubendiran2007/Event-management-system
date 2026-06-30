@@ -459,7 +459,12 @@ const EventReportModal = ({
                     <div className="w-full max-w-[600px] border border-black p-2 mx-auto">
                       <img src={img.url || img.dataUrl} alt={`Photograph ${idx + 1}`} className="w-full h-auto object-contain" />
                     </div>
-                    {img.title && <p className="text-center mt-2 italic">{img.title}</p>}
+                    {(img.dayTag || img.title || img.caption) && (
+                      <p className="text-center mt-2 italic">
+                        <span className="font-bold">{img.dayTag || img.title || `Photograph ${idx + 1}`}</span>
+                        {((img.dayTag && img.title) ? img.title : img.caption) ? ` - ${((img.dayTag && img.title) ? img.title : img.caption)}` : ''}
+                      </p>
+                    )}
                   </div>
                 ))
               ) : (

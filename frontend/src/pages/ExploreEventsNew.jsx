@@ -382,7 +382,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       <h3 style="margin-bottom:15px;color:#1a3a5c;">Photograph ${i+1}: ${img.dayTag || img.title || 'Event Highlight'}</h3>
       <img src="${img.url || img.dataUrl}" style="max-width:100%;max-height:450px;object-fit:contain;border:3px solid #1a3a5c;border-radius:8px;padding:4px;box-shadow:0 10px 25px rgba(0,0,0,0.1);" />
       <div style="margin-top:15px;color:#444;font-size:14px;background:#f8fafc;padding:10px;border-radius:10px;">
-        ${img.caption ? `<p><strong>Caption:</strong> ${img.caption}</p>` : ''}
+        ${(img.dayTag && img.title) || img.caption ? `<p><strong>Caption:</strong> ${(img.dayTag && img.title) ? img.title : img.caption}</p>` : ''}
         ${img.location ? `<p style="margin-top:5px;font-style:italic;color:#64748b;">📍 Location: ${img.location}</p>` : ''}
       </div>
     </div>`).join('');
@@ -1376,17 +1376,21 @@ const IQACSummaryModal = ({ event, onClose }) => {
                     </div>
                   ))}
                 </div>
-                {gallery.some(img => img.title || img.caption) && (
+                {gallery.some(img => img.dayTag || img.title || img.caption) && (
                   <div className="mt-4 space-y-1.5 pt-4 border-t border-slate-100 max-h-[120px] overflow-y-auto custom-scrollbar">
-                    {gallery.filter(img => img.title || img.caption).map((img, i) => (
-                      <div key={i} className="text-[10px] text-slate-500 flex items-start gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1"/> 
-                        <div>
-                          <span className="font-bold text-slate-700">{img.title}</span>
-                          {img.caption && <span className="opacity-70 ml-1.5 line-clamp-1">{img.caption}</span>}
+                    {gallery.filter(img => img.dayTag || img.title || img.caption).map((img, i) => {
+                      const mainText = img.dayTag || img.title || `Photograph ${i + 1}`;
+                      const subText = (img.dayTag && img.title) ? img.title : img.caption;
+                      return (
+                        <div key={i} className="text-[10px] text-slate-500 flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 mt-1"/> 
+                          <div>
+                            <span className="font-bold text-slate-700">{mainText}</span>
+                            {subText && <span className="opacity-70 ml-1.5 line-clamp-1">{subText}</span>}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
