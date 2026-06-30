@@ -9,6 +9,7 @@ import { EventStatus } from '../types';
 import EventReportModal from '../components/EventReportModal';
 import * as XLSX from 'xlsx';
 import { validateUpload } from '../utils/fileValidation';
+import AlertCard from '../components/AlertCard';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -88,6 +89,19 @@ const toDateRange = (event) => {
   return range;
 };
 
+const getDayDate = (event, dayIndex) => {
+  const startDateStr = event?.requisition?.step1?.eventStartDate || event?.date;
+  if (!startDateStr) return `Day ${dayIndex}`;
+  try {
+    const d = new Date(startDateStr);
+    if (isNaN(d.getTime())) return `Day ${dayIndex}`;
+    d.setDate(d.getDate() + dayIndex - 1);
+    return `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+  } catch (e) {
+    return `Day ${dayIndex}`;
+  }
+};
+
 const yesNo = (value) => (String(value || '').toLowerCase() === 'yes' ? 'Yes' : 'No');
 
 const isEventEndTimePassed = (event) => {
@@ -149,6 +163,7 @@ const IQACSubmission = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [fileAlert, setFileAlert] = useState(null);
 
   // New state for gallery, guest feedback, and registration details
   const [gallery, setGallery] = useState([]);
@@ -648,7 +663,9 @@ const IQACSubmission = () => {
 
     const validationError = validateUpload(file, 'iqacPhoto');
     if (validationError) {
-      setSubmitError(`Gallery Upload Failed: ${validationError}`);
+      const errorMsg = `Gallery Upload Failed: ${validationError}`;
+      setSubmitError(errorMsg);
+      setFileAlert({ type: 'error', title: 'File Size Limit', message: errorMsg });
       e.target.value = '';
       return;
     }
@@ -700,7 +717,9 @@ const IQACSubmission = () => {
 
     const validationError = validateUpload(file, 'iqacPhoto');
     if (validationError) {
-      setSubmitError(`Resource Person Photo Failed: ${validationError}`);
+      const errorMsg = `Resource Person Photo Failed: ${validationError}`;
+      setSubmitError(errorMsg);
+      setFileAlert({ type: 'error', title: 'File Size Limit', message: errorMsg });
       e.target.value = '';
       return;
     }
@@ -933,8 +952,23 @@ const IQACSubmission = () => {
   if (!currentUser || !selectedEvent || !eventInfo) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-14">
+    <div className="min-h-screen bg-slate-50 pb-14 relative">
       <Navbar />
+
+      {/* Fixed Toast Notification for File Upload Errors */}
+      {fileAlert && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setFileAlert(null)}></div>
+          <div className="fixed top-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] shadow-xl rounded-xl">
+            <AlertCard 
+              type={fileAlert.type} 
+              title={fileAlert.title} 
+              message={fileAlert.message} 
+              onClose={() => setFileAlert(null)} 
+            />
+          </div>
+        </>
+      )}
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         <div className="flex justify-end mb-6">
@@ -1969,11 +2003,12 @@ const IQACSubmission = () => {
                     {(() => {
                       const topics = [];
                       for (let i = 1; i <= numberOfDays; i++) {
+                        const dateLabel = getDayDate(selectedEvent, i);
                         topics.push(
                           <input
                             key={i}
                             type="text"
-                            placeholder={`Day ${i} topic covered`}
+                            placeholder={`${dateLabel} topic covered`}
                             value={person.topicsByDay?.[i - 1] || ''}
                             onChange={(e) => updateResourcePersonTopic(person.id, i - 1, e.target.value)}
                             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs mb-1"
