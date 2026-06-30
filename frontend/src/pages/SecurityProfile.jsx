@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X } from 'lucide-react';
+import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import Navbar from '../components/Navbar';
@@ -39,6 +39,7 @@ const SecurityProfile = () => {
   const IQAC_ITEMS_PER_PAGE = 10;
 
   const [attendanceAuditEventId, setAttendanceAuditEventId] = useState('');
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
   const [attendanceAuditLogs, setAttendanceAuditLogs] = useState([]);
   const [fetchingAuditLogs, setFetchingAuditLogs] = useState(false);
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
@@ -73,7 +74,7 @@ const SecurityProfile = () => {
       if (auditDateFilter !== 'All' && log.date !== auditDateFilter) return false;
       
       if (auditSearchQuery) {
-        const q = auditSearchQuery.toLowerCase();
+        const q = auditSearchQuery.trim().toLowerCase();
         const matchesStudent = ((log.studentName || '').toLowerCase().includes(q)) || 
                                ((log.rollNo || '').toLowerCase().includes(q));
         if (!matchesStudent) return false;
@@ -82,7 +83,46 @@ const SecurityProfile = () => {
     });
   }, [attendanceAuditLogs, auditSessionFilter, auditDateFilter, auditSearchQuery]);
 
-  const uniqueAuditDates = [...new Set(attendanceAuditLogs.filter(l => l.action === 'Correction').map(l => l.date).filter(Boolean))];
+  const selectedAuditEvent = React.useMemo(() => {
+    return events?.find(e => e.id === attendanceAuditEventId);
+  }, [events, attendanceAuditEventId]);
+
+  const eventDates = React.useMemo(() => {
+    if (!selectedAuditEvent) return [];
+    const dates = [];
+    const start = selectedAuditEvent.requisition?.step1?.eventStartDate || selectedAuditEvent.date;
+    const end = selectedAuditEvent.requisition?.step1?.eventEndDate || selectedAuditEvent.endDate || start;
+    if (start && end) {
+      let current = new Date(start);
+      const last = new Date(end);
+      if (!isNaN(current.getTime()) && !isNaN(last.getTime())) {
+        while (current <= last) {
+          dates.push(current.toISOString().split('T')[0]);
+          current.setDate(current.getDate() + 1);
+        }
+      }
+    }
+    return dates;
+  }, [selectedAuditEvent]);
+
+  const filteredEventsForAudit = React.useMemo(() => {
+    if (!events) return [];
+    
+    let filtered = events;
+    if (eventSearchQuery.trim()) {
+      filtered = events.filter(ev => {
+        if (ev.id === attendanceAuditEventId) return true; // Keep selected event in list so dropdown doesn't break
+        const title = (ev.title || ev.requisition?.step1?.eventName || '').toLowerCase();
+        return title.includes(eventSearchQuery.trim().toLowerCase());
+      });
+    }
+    
+    return [...filtered].sort((a, b) => {
+      const dateA = new Date(a.requisition?.step1?.eventStartDate || a.date || 0);
+      const dateB = new Date(b.requisition?.step1?.eventStartDate || b.date || 0);
+      return dateB - dateA;
+    });
+  }, [events, eventSearchQuery, attendanceAuditEventId]);
 
 
   const filteredIqacLogs = React.useMemo(() => {
@@ -886,16 +926,28 @@ const SecurityProfile = () => {
                   Attendance Modification Audit Log
                 </h3>
                 
-                <select 
-                  value={attendanceAuditEventId}
-                  onChange={(e) => setAttendanceAuditEventId(e.target.value)}
-                  className="px-4 py-2 font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 w-full sm:w-80 shadow-sm"
-                >
-                  <option value="">Select Event...</option>
-                  {events?.map(ev => (
-                    <option key={ev.id} value={ev.id}>{ev.title || ev.requisition?.step1?.eventName} ({ev.date})</option>
-                  ))}
-                </select>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search events..."
+                      value={eventSearchQuery}
+                      onChange={(e) => setEventSearchQuery(e.target.value)}
+                      className="pl-8 pr-4 py-2 font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 w-full shadow-sm text-sm"
+                    />
+                  </div>
+                  <select 
+                    value={attendanceAuditEventId}
+                    onChange={(e) => setAttendanceAuditEventId(e.target.value)}
+                    className="px-4 py-2 font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 w-full sm:w-80 shadow-sm text-sm"
+                  >
+                    <option value="">Select Event...</option>
+                    {filteredEventsForAudit?.map(ev => (
+                      <option key={ev.id} value={ev.id}>{ev.title || ev.requisition?.step1?.eventName} ({ev.date})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {attendanceAuditEventId && (
@@ -923,7 +975,7 @@ const SecurityProfile = () => {
                     className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
                   >
                     <option value="All">All Dates</option>
-                    {uniqueAuditDates.map(d => <option key={d} value={d}>{d}</option>)}
+                    {eventDates.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               )}

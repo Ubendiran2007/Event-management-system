@@ -642,35 +642,20 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     let posterWorkflow = newEventData.posterWorkflow || eventData.posterWorkflow || {};
     let posterStatus = newEventData.posterStatus || eventData.posterStatus || 'PENDING';
 
-    if (posterWorkflow.requested) {
-      if (posterStatus === 'UPLOADED') {
-        const titleChanged = eventData.title !== newEventData.title;
-        const dateChanged = eventData.date !== newEventData.date || eventData.startDate !== newEventData.startDate;
-        const themeChanged = eventData.theme !== newEventData.theme;
-        const venueChanged = JSON.stringify(eventData.venueSelection || {}) !== JSON.stringify(newEventData.venueSelection || {});
-        const notesChanged = (eventData.media?.preEventPosterNotes || '') !== (newEventData.media?.preEventPosterNotes || '');
-
-        if (titleChanged || dateChanged || themeChanged || venueChanged || notesChanged) {
+    if (posterWorkflow.requested || hasMediaPoster || eventData.departmentApprovals?.media) {
+      if (posterWorkflow.requested) {
+        if (posterStatus === 'UPLOADED' || posterStatus === 'COMPLETED' || posterWorkflow.status === 'UPLOADED' || posterWorkflow.status === 'COMPLETED') {
           posterStatus = 'REVISION_REQUIRED';
           posterWorkflow.status = 'REVISION_REQUIRED';
+        } else {
+          posterStatus = 'REQUESTED';
+          posterWorkflow.status = 'REQUESTED';
         }
       }
     }
 
     // Reset all approvals upon resubmission
     const newDeptApprovals = {};
-    
-    // Poster Revision Rule: Keep Media Approval if poster requirements are unchanged
-    const titleChanged = eventData.title !== newEventData.title;
-    const dateChanged = eventData.date !== newEventData.date || eventData.startDate !== newEventData.startDate;
-    const themeChanged = eventData.theme !== newEventData.theme;
-    const venueChanged = JSON.stringify(eventData.venueSelection || {}) !== JSON.stringify(newEventData.venueSelection || {});
-    const notesChanged = (eventData.media?.preEventPosterNotes || '') !== (newEventData.media?.preEventPosterNotes || '');
-    const posterChanged = titleChanged || dateChanged || themeChanged || venueChanged || notesChanged;
-
-    if (eventData.departmentApprovals?.media && !posterChanged) {
-      newDeptApprovals.media = eventData.departmentApprovals.media;
-    }
 
     const updatePayload = {
       ...req.body,
