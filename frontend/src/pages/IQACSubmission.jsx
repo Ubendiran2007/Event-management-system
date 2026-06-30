@@ -425,7 +425,7 @@ const IQACSubmission = () => {
       {
         id: 'resource-persons',
         label: 'Resource Persons',
-        isComplete: resourcePersons.length > 0
+        isComplete: resourcePersons.length > 0 && resourcePersons.every(rp => rp.name && rp.name.trim() !== '')
       },
       {
         id: 'guest-feedback',
