@@ -1432,7 +1432,6 @@ const IQACSubmission = () => {
               <table className="min-w-full text-sm divide-y divide-slate-200">
                 <thead className="bg-[#f8fafc] sticky top-0 z-10">
                   <tr>
-                    <th className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider w-16 bg-slate-100/50">S.No</th>
                     {(autoFeedbackSummary.csvHeaders || ['student', 'rollNo', 'class', 'comment']).map((header, idx) => (
                       <th key={idx} className="px-5 py-4 text-left font-bold text-slate-800 uppercase tracking-wider">{header}</th>
                     ))}
@@ -1441,7 +1440,6 @@ const IQACSubmission = () => {
                 <tbody className="divide-y divide-slate-100 bg-white">
                   {autoFeedbackSummary.comments.map((item, idx) => (
                     <tr key={idx} className="hover:bg-blue-50/30 transition-all group border-b border-transparent last:border-0">
-                      <td className="px-5 py-4 text-slate-400 font-bold tabular-nums group-hover:text-blue-500">{idx + 1}</td>
                       {(autoFeedbackSummary.csvHeaders || ['student', 'rollNo', 'class', 'comment']).map((header, colIdx) => (
                         <td key={colIdx} className="px-5 py-4 text-slate-700 leading-relaxed font-outfit">
                           {item[header] !== undefined && item[header] !== null ? item[header].toString() : '-'}
@@ -1718,7 +1716,6 @@ const IQACSubmission = () => {
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="w-12 px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">S.No</th>
                       {Object.keys(guestFeedback[0] || {}).filter(k => k !== 'id').map((header, idx) => (
                         <th key={idx} className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">{header}</th>
                       ))}
@@ -1727,7 +1724,6 @@ const IQACSubmission = () => {
                   <tbody className="divide-y divide-slate-200 bg-white">
                     {guestFeedback.map((feedback, index) => (
                       <tr key={feedback.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-4 py-4 text-center text-xs font-bold text-slate-400">{index + 1}</td>
                         {Object.keys(feedback).filter(k => k !== 'id').map((key, colIdx) => (
                           <td key={colIdx} className="px-4 py-4 whitespace-nowrap">
                             <span className="text-sm font-medium text-slate-800">
