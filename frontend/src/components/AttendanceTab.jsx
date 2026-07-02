@@ -581,20 +581,25 @@ const AttendanceTab = ({ event }) => {
                 </div>
 
                 {/* Session 2 */}
-                {currentConfig.attendanceType === 'Both Sessions' && (
-                  <div className={`flex items-center justify-between p-4 border border-slate-200 rounded-xl ${currentConfig.session2Status === 'Disabled' ? 'bg-slate-100 opacity-60' : 'bg-slate-50'}`}>
-                    <div>
-                      <h4 className="font-bold text-slate-800">Session 2</h4>
-                      <p className="text-xs font-semibold mt-1">Status: <span className={currentConfig.session2Status === 'Running' ? 'text-emerald-600' : 'text-slate-500'}>{currentConfig.session2Status}</span></p>
+                {currentConfig.attendanceType === 'Both Sessions' && (() => {
+                  const resolvedS2Status = (currentConfig.session1Status === 'Closed' && currentConfig.session2Status === 'Disabled')
+                    ? 'NotStarted'
+                    : currentConfig.session2Status;
+                  return (
+                    <div className={`flex items-center justify-between p-4 border border-slate-200 rounded-xl ${resolvedS2Status === 'Disabled' ? 'bg-slate-100 opacity-60' : 'bg-slate-50'}`}>
+                      <div>
+                        <h4 className="font-bold text-slate-800">Session 2</h4>
+                        <p className="text-xs font-semibold mt-1">Status: <span className={resolvedS2Status === 'Running' ? 'text-emerald-600' : 'text-slate-500'}>{resolvedS2Status}</span></p>
+                      </div>
+                      {isOrganizer && resolvedS2Status === 'NotStarted' && !currentConfig.attendanceFinalized && (
+                         <button onClick={() => setSessionStartDialog({ sessionKey: 'S2' })} disabled={isProcessing} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">Start Session 2</button>
+                      )}
+                      {isOrganizer && resolvedS2Status === 'Running' && (
+                         <button onClick={() => handleSessionAction('S2', 'END')} disabled={isProcessing} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">End Session 2</button>
+                      )}
                     </div>
-                    {isOrganizer && currentConfig.session2Status === 'NotStarted' && !currentConfig.attendanceFinalized && (
-                       <button onClick={() => setSessionStartDialog({ sessionKey: 'S2' })} disabled={isProcessing} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">Start Session 2</button>
-                    )}
-                    {isOrganizer && currentConfig.session2Status === 'Running' && (
-                       <button onClick={() => handleSessionAction('S2', 'END')} disabled={isProcessing} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700">End Session 2</button>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
             

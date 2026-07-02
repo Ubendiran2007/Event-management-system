@@ -1589,7 +1589,7 @@ router.patch('/:id/attendance-config', requireAuth, requireRole(['STUDENT_ORGANI
       ...attendanceConfigs[date],
       attendanceType,
       session1Status: attendanceConfigs[date]?.session1Status || 'NotStarted',
-      session2Status: attendanceType === 'Both Sessions' ? (attendanceConfigs[date]?.session2Status || 'NotStarted') : 'Disabled',
+      session2Status: attendanceType === 'Both Sessions' ? (attendanceConfigs[date]?.session2Status || 'Disabled') : 'Disabled',
       attendanceFinalized: attendanceConfigs[date]?.attendanceFinalized || false
     };
 
@@ -1632,8 +1632,18 @@ router.patch('/:id/attendance-session', requireAuth, requireRole(['STUDENT_ORGAN
 
     if (sessionKey === 'S1') {
       config.session1Status = action === 'START' ? 'Running' : 'Closed';
-      if (action === 'START') config.session1StartTime = new Date().toISOString();
-      if (action === 'END') config.session1EndTime = new Date().toISOString();
+      if (action === 'START') {
+        config.session1StartTime = new Date().toISOString();
+        if (config.attendanceType === 'Both Sessions') {
+          config.session2Status = 'Disabled';
+        }
+      }
+      if (action === 'END') {
+        config.session1EndTime = new Date().toISOString();
+        if (config.attendanceType === 'Both Sessions') {
+          config.session2Status = 'NotStarted';
+        }
+      }
     } else if (sessionKey === 'S2') {
       config.session2Status = action === 'START' ? 'Running' : 'Closed';
       if (action === 'START') config.session2StartTime = new Date().toISOString();
