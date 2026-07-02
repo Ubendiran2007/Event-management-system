@@ -104,8 +104,12 @@ router.patch('/:id/role', async (req, res) => {
 // POST /api/students/reset-od-usage — IQAC resets OD count for all students at start of semester
 router.post('/reset-od-usage', async (req, res) => {
   if (checkDb(res)) return;
-  
+
   try {
+    // Record the exact moment of reset. odSync will only count OD requests
+    // created AFTER this timestamp, so historical approvals are excluded.
+    const resetTimestamp = new Date().toISOString();
+
     let totalReset = 0;
     let batch = writeBatch(db);
     let batchCount = 0;
@@ -114,14 +118,17 @@ router.post('/reset-od-usage', async (req, res) => {
       const snapshot = await getDocs(collection(db, 'students', className, 'members'));
       for (const studentDoc of snapshot.docs) {
         const studentRef = doc(db, 'students', className, 'members', studentDoc.id);
+
         batch.update(studentRef, {
-          odUsed: 0,
-          updatedAt: new Date().toISOString()
+          odUsed: 0,                         // Reset stored count to zero
+          odLimit: 7,                        // Restore annual maximum limit
+          odResetTimestamp: resetTimestamp,  // Mark the reset moment
+          updatedAt: resetTimestamp
         });
         totalReset++;
         batchCount++;
 
-        // Firestore batches support up to 500 operations. We commit at 490 to be safe.
+        // Firestore batches support up to 500 operations — commit at 490 to be safe
         if (batchCount >= 490) {
           await batch.commit();
           batch = writeBatch(db);
@@ -130,16 +137,16 @@ router.post('/reset-od-usage', async (req, res) => {
       }
     }
 
-    // Commit any remaining operations in the last batch
     if (batchCount > 0) {
       await batch.commit();
     }
-    
-    console.log(`[IQAC] OD usage reset for ${totalReset} students.`);
-    res.json({ 
-      success: true, 
+
+    console.log(`[IQAC] OD usage reset for ${totalReset} students at ${resetTimestamp}.`);
+    res.json({
+      success: true,
       message: `Successfully reset OD usage for ${totalReset} students.`,
-      count: totalReset 
+      count: totalReset,
+      resetTimestamp
     });
   } catch (err) {
     console.error('Error resetting OD usage:', err);

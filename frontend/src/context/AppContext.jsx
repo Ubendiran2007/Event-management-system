@@ -73,13 +73,29 @@ export const AppProvider = ({ children }) => {
     };
   }, []);
 
-  // Real-time sync for currentUser if they are a student
+  // Real-time sync for currentUser if they are a student — patch ONLY OD fields from the live DB snapshot
   useEffect(() => {
-    if (currentUser && students.length > 0) {
-      const updatedStudent = students.find(s => s.id === currentUser.id);
-      if (updatedStudent && (updatedStudent.odUsed !== currentUser.odUsed || updatedStudent.odLimit !== currentUser.odLimit)) {
-        handleLogin({ ...currentUser, ...updatedStudent });
-      }
+    if (!currentUser) return;
+    const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
+    if (!isStudent || students.length === 0) return;
+
+    const updatedStudent = students.find(s => s.id === currentUser.id);
+    if (!updatedStudent) return;
+
+    const odChanged =
+      updatedStudent.odUsed !== currentUser.odUsed ||
+      updatedStudent.odLimit !== currentUser.odLimit ||
+      updatedStudent.odResetTimestamp !== currentUser.odResetTimestamp;
+
+    if (odChanged) {
+      const patched = {
+        ...currentUser,
+        odUsed: updatedStudent.odUsed ?? currentUser.odUsed,
+        odLimit: updatedStudent.odLimit ?? currentUser.odLimit,
+        odResetTimestamp: updatedStudent.odResetTimestamp ?? currentUser.odResetTimestamp,
+      };
+      setCurrentUser(patched);
+      localStorage.setItem('currentUser', JSON.stringify(patched));
     }
   }, [students]);
 

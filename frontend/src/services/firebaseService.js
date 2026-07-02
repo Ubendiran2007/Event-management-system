@@ -15,20 +15,28 @@ import {
 import { db } from '../firebase';
 
 // ==================== STUDENTS ====================
+const ALL_CLASSES = [
+  'CSE-B', 'CSE-D',
+  'ECE-A', 'ECE-B',
+  'CCE-A',
+  'CSBS-A',
+  'MECH-A',
+  'CYBER-A',
+  'EEE-A',
+  'AIML-A',
+  'AIDS-A'
+];
+
 // Fetch all students from all classes: students/{className}/members/{studentId}
 export const fetchStudents = async () => {
   try {
     const allStudents = [];
-    const classes = ['CSE-B', 'CSE-D'];
-    
-    for (const className of classes) {
+    for (const className of ALL_CLASSES) {
       const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
-      
       membersSnapshot.docs.forEach(doc => {
         allStudents.push({ id: doc.id, ...doc.data(), class: className });
       });
     }
-    
     return allStudents;
   } catch (error) {
     console.error('Error fetching students:', error);
@@ -102,33 +110,20 @@ export const updateStudentRole = async (studentId, role, className, isApprovedOr
 export const authenticateStudent = async (username, password) => {
   try {
     console.log('Authenticating student:', username);
-    
-    // List of classes to check (Firestore doesn't return collection-only paths)
-    const classes = ['CSE-B', 'CSE-D'];
-    
-    for (const className of classes) {
+    for (const className of ALL_CLASSES) {
       const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
       console.log(`Checking ${membersSnapshot.docs.length} students in class ${className}`);
-      
       for (const memberDoc of membersSnapshot.docs) {
         const student = memberDoc.data();
-        
-        // Check if email (username) and roll number (password) match
-        // Make password comparison case-insensitive
         if (
           student.username?.toLowerCase() === username.toLowerCase() &&
           student.password?.toUpperCase() === password.toUpperCase()
         ) {
           console.log('Student authenticated successfully:', student.name);
-          return {
-            id: memberDoc.id,
-            ...student,
-            className: className
-          };
+          return { id: memberDoc.id, ...student, className };
         }
       }
     }
-    
     console.log('No matching student found');
     return null;
   } catch (error) {
@@ -285,22 +280,26 @@ export const subscribeToEvents = (callback) => {
 };
 
 export const subscribeToStudents = (callback) => {
-  const classes = ['CSE-B', 'CSE-D'];
   const unsubscribers = [];
-  
-  // Subscribe to each class's members subcollection
-  classes.forEach(className => {
+  let pendingFetch = false;
+
+  // Subscribe to all class member subcollections so any change triggers a refresh
+  ALL_CLASSES.forEach(className => {
     const membersCollection = collection(db, 'students', className, 'members');
     const unsubscribe = onSnapshot(membersCollection, () => {
-      // Fetch all students whenever any class changes
-      fetchStudents().then(allStudents => {
-        callback(allStudents);
-      });
+      // Debounce: if multiple classes fire at once, only run one fetch
+      if (pendingFetch) return;
+      pendingFetch = true;
+      setTimeout(() => {
+        fetchStudents().then(allStudents => {
+          callback(allStudents);
+          pendingFetch = false;
+        });
+      }, 100);
     });
     unsubscribers.push(unsubscribe);
   });
-  
-  // Return a function that unsubscribes from all listeners
+
   return () => {
     unsubscribers.forEach(unsub => unsub());
   };

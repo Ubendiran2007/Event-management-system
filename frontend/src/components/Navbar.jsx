@@ -1,14 +1,12 @@
-import { LogOut, LayoutDashboard, Shield, Bell } from 'lucide-react';
+import { LogOut, LayoutDashboard, Shield } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
-import NotificationCenter from './NotificationCenter';
 
 const Navbar = () => {
   const { currentUser, handleLogout, students, odRequests } = useAppContext();
   const navigate = useNavigate();
-  const [showNotifications, setShowNotifications] = useState(false);
 
   const location = useLocation();
   const isLoginPage = location.pathname === '/' || location.pathname === '/login';
@@ -35,14 +33,18 @@ const Navbar = () => {
         {isAuthenticated && (
           <>
             {(() => {
+              // Always prefer the live Firestore snapshot for the current student.
+              // AppContext keeps `students` in sync via a real-time Firebase listener
+              // that now covers all 11 class subcollections. When IQAC resets OD counts,
+              // the listener fires and patches currentUser.odUsed to 0 automatically.
               const liveStudent = (students || []).find(s => s.id === currentUser.id);
               const displayData = liveStudent || currentUser;
-              
-              // Dynamically calculate OD count from approved registrations in real time, factoring in any approved manual OD Corrections
-              const myApprovedOds = (odRequests || []).filter(r => r.studentId === currentUser.id && r.status === 'APPROVED');
-              const computedOdUsed = myApprovedOds.length + (displayData.odCorrectionOffset || 0);
-              
-              const odUsed = displayData.role === 'STUDENT_GENERAL' || displayData.role === 'STUDENT_ORGANIZER' ? computedOdUsed : (displayData.odUsed || 0);
+
+              // Use odUsed directly from the database — this is updated by:
+              //   1. syncStudentODCount (called on OD approval/rejection only, not on login)
+              //   2. IQAC annual reset (sets odUsed = 0)
+              //   3. Real-time Firestore listener patching currentUser in AppContext
+              const odUsed = displayData.odUsed ?? 0;
               const odLimit = displayData.odLimit || 7;
               const isOverLimit = odUsed >= odLimit;
               const isWarning = odUsed >= 5;
@@ -71,16 +73,6 @@ const Navbar = () => {
                 </div>
               );
             })()}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(true)}
-                className="p-2 hover:bg-slate-100 text-slate-500 hover:text-blue-600 rounded-lg transition-colors border border-transparent hover:border-blue-100 relative"
-                title="Notifications"
-              >
-                <Bell size={20} />
-              </button>
-              <NotificationCenter isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
-            </div>
             <button
               onClick={() => navigate('/security')}
               className="p-2 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors border border-transparent hover:border-indigo-100"

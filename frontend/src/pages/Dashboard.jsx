@@ -2186,12 +2186,17 @@ const Dashboard = () => {
                   onConfirm={async () => {
                     setIsResetting(true);
                     try {
-                      const res = await fetch('http://localhost:5001/api/students/reset-od-usage', { method: 'POST' });
+                      const res = await fetch('http://localhost:5001/api/students/reset-od-usage', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                        }
+                      });
                       const data = await res.json();
                       if (!data.success) throw new Error(data.message);
                       setShowResetConfirm(false);
-                      // Maybe show a success state or reload
-                      window.location.reload();
+                      // UI updates automatically via Firestore listeners
                     } catch (err) {
                       console.error("Failed to reset OD usage:", err.message);
                     } finally {

@@ -837,7 +837,7 @@ const EventDetailModal = ({ event, onClose }) => {
                               </div>
                             ))}
 
-                            {(isHodApproved || event.posterRequired || event.posterDataUrl || event.posterUrl) && (() => {
+                            {(isHodApproved || event.posterRequired || event.posterWorkflow?.requested) && (() => {
                               const dApprovals = event.departmentApprovals || {};
                               const reqList = event.requisition?.step1?.requirements || {};
                               const isR = k => reqList[k] ?? event[k] ?? false;
@@ -848,7 +848,7 @@ const EventDetailModal = ({ event, onClose }) => {
 
                               const itemsToShow = [];
                               
-                              if (event.posterRequired || event.posterDataUrl || event.posterUrl) {
+                              if (event.posterRequired || event.posterWorkflow?.requested) {
                                 const pDone = ['UPLOADED', 'COMPLETED'].includes(String(event.posterWorkflow?.status || '').toUpperCase());
                                 const pRej = String(event.posterWorkflow?.status || '').toUpperCase() === 'REWORK_REQUESTED';
                                 itemsToShow.push({
