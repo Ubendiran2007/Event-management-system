@@ -9,7 +9,8 @@ const {
   deleteDoc,
   query,
   where,
-  runTransaction
+  runTransaction,
+  deleteField
 } = require('firebase/firestore');
 const { db } = require('../firebase');
 const {
@@ -23,6 +24,8 @@ const {
   handleEventStatusChange,
   handleIQACExtensionRequest,
   handleIQACExtensionDecision,
+  handleEventCancelled,
+  handleEventPostponed
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
 
@@ -419,16 +422,88 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
     if (finalStatus === 'POSTED' && prevStatus === 'PENDING_IQAC') {
       updatePayload.iqacApprovedAt = new Date().toISOString();
       updatePayload.iqacApprovedBy = approvedBy || 'IQAC';
+
+      if (rawEventData.modificationRequest) {
+        if (rawEventData.modificationRequest.type === 'CANCEL') {
+          finalStatus = 'CANCELLED';
+          updatePayload.status = finalStatus;
+          updatePayload.cancelledBy = rawEventData.modificationRequest.requestedBy;
+          updatePayload.cancelledAt = updatePayload.iqacApprovedAt;
+          updatePayload.cancellationReason = rawEventData.modificationRequest.reason;
+
+          const registeredStudents = rawEventData.registeredStudents || [];
+          updatePayload.registeredStudents = registeredStudents.map(student => ({
+            ...student,
+            status: 'REGISTRATION_CANCELLED',
+            cancelledReason: 'Event Cancelled'
+          }));
+
+          updatePayload.modificationRequest = deleteField();
+        } else if (rawEventData.modificationRequest.type === 'POSTPONE') {
+          finalStatus = 'POSTPONED';
+          updatePayload.status = finalStatus;
+          updatePayload.postponedBy = rawEventData.modificationRequest.requestedBy;
+          updatePayload.postponedAt = updatePayload.iqacApprovedAt;
+          updatePayload.postponementReason = rawEventData.modificationRequest.reason;
+
+          const modReq = rawEventData.modificationRequest;
+          updatePayload.oldDate = modReq.oldDate;
+          updatePayload.newDate = modReq.newDate;
+          updatePayload.oldStartTime = modReq.oldStartTime;
+          updatePayload.newStartTime = modReq.newStartTime;
+          updatePayload.oldEndTime = modReq.oldEndTime;
+          updatePayload.newEndTime = modReq.newEndTime;
+          updatePayload.date = modReq.newDate;
+          updatePayload.startDate = modReq.newDate;
+          updatePayload.endDate = modReq.newEndDate;
+          updatePayload.startTime = modReq.newStartTime;
+          updatePayload.endTime = modReq.newEndTime;
+
+          if (rawEventData.requisition && rawEventData.requisition.step1) {
+            const step1 = { 
+              ...rawEventData.requisition.step1, 
+              eventStartDate: modReq.newDate, 
+              eventEndDate: modReq.newEndDate, 
+              eventStartTime: modReq.newStartTime, 
+              eventEndTime: modReq.newEndTime 
+            };
+            updatePayload.requisition = { ...rawEventData.requisition, step1 };
+          }
+
+          updatePayload.modificationRequest = deleteField();
+        }
+      }
     }
 
     await updateDoc(eventRef, updatePayload);
     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
     const notificationStatus = finalStatus; // Use the potentially advanced status for notifications
 
+    // Cancel OD Requests if CANCELLED
+    if (finalStatus === 'CANCELLED') {
+      const odQuery = query(collection(db, 'odRequests'), where('eventId', '==', req.params.id));
+      const odSnap = await getDocs(odQuery);
+      const updateODPromises = odSnap.docs.map(d => {
+        return updateDoc(d.ref, {
+          odStatus: 'CANCELLED',
+          status: 'OD_CANCELLED',
+          updatedAt: new Date().toISOString(),
+          reason: 'Event Cancelled'
+        });
+      });
+      await Promise.all(updateODPromises);
+    }
+
     // ── Background Notifications (centralized handler) ──────────────────────
     setImmediate(async () => {
       try {
-        await handleEventStatusChange(eventData, prevStatus, notificationStatus);
+        if (finalStatus === 'CANCELLED') {
+          await handleEventCancelled(eventData);
+        } else if (finalStatus === 'POSTPONED') {
+          await handleEventPostponed(eventData);
+        } else {
+          await handleEventStatusChange(eventData, prevStatus, notificationStatus);
+        }
       } catch (err) {
         console.error('[events/status/bg] Email handler error:', err.message);
       }
@@ -1330,18 +1405,28 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
 
     const now = new Date().toISOString();
     
+    const newStatus = req.user.role === 'STUDENT_ORGANIZER' ? 'PENDING_FACULTY' : 'PENDING_HOD';
     const updatePayload = {
-      status: 'CANCELLED',
-      cancelledBy: req.user.name || req.user.email,
-      cancelledAt: now,
-      cancellationReason: cancellationReason.trim(),
-      updatedAt: now
+      status: newStatus,
+      modificationRequest: {
+        type: 'CANCEL',
+        reason: cancellationReason.trim(),
+        requestedBy: req.user.name || req.user.email,
+        requestedAt: now
+      },
+      updatedAt: now,
+      facultyApprovedAt: null,
+      facultyApprovedBy: null,
+      hodApprovedAt: null,
+      hodApprovedBy: null,
+      iqacApprovedAt: null,
+      iqacApprovedBy: null
     };
 
     // Audit Trail
     const eventActions = eventData.eventActions || [];
     eventActions.push({
-      action: 'CANCELLED',
+      action: 'CANCEL_REQUESTED',
       by: req.user.name || req.user.email,
       role: req.user.role,
       timestamp: now,
@@ -1349,38 +1434,13 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
     });
     updatePayload.eventActions = eventActions;
 
-    // Registrations
-    const registeredStudents = eventData.registeredStudents || [];
-    const updatedRegistrations = registeredStudents.map(student => ({
-      ...student,
-      status: 'REGISTRATION_CANCELLED',
-      cancelledReason: 'Event Cancelled'
-    }));
-    updatePayload.registeredStudents = updatedRegistrations;
-
     await updateDoc(eventRef, updatePayload);
 
-    // Cancel OD Requests
-    const odQuery = query(collection(db, 'odRequests'), where('eventId', '==', req.params.id));
-    const odSnap = await getDocs(odQuery);
-    const updateODPromises = odSnap.docs.map(d => {
-      let docData = d.data();
-      let newOdStatus = 'OD_CANCELLED';
-      let payload = {
-        odStatus: 'CANCELLED',
-        status: newOdStatus,
-        updatedAt: now,
-        reason: 'Event Cancelled'
-      };
-      return updateDoc(d.ref, payload);
-    });
-    await Promise.all(updateODPromises);
-
     // Notifications
-    const { handleEventCancelled } = require('../services/emailHandler');
+    const { handleEventStatusChange } = require('../services/emailHandler');
     setImmediate(async () => {
       try {
-        await handleEventCancelled({ id: req.params.id, ...eventData, ...updatePayload });
+        await handleEventStatusChange({ id: req.params.id, ...eventData, ...updatePayload }, eventData.status, newStatus);
       } catch (err) {
         console.error('[events/cancel/bg] Email handler error:', err.message);
       }
@@ -1432,80 +1492,40 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
     const oldStartTime = eventData.requisition?.step1?.eventStartTime || eventData.startTime;
     const oldEndTime = eventData.requisition?.step1?.eventEndTime || eventData.endTime;
 
-    const updatePayload = {
-      status: 'POSTPONED',
-      oldDate,
-      newDate,
-      oldStartTime,
-      newStartTime,
-      oldEndTime,
-      newEndTime,
-      postponedBy: req.user.name || req.user.email,
-      postponedAt: now,
-      postponementReason: reason.trim(),
-      updatedAt: now
-    };
-
-    // Update actual date and time fields to new values to reflect correctly in UI
-    updatePayload.date = newDate;
-    updatePayload.startDate = newDate;
-    updatePayload.endDate = newEndDate; // Use provided newEndDate
-    updatePayload.startTime = newStartTime;
-    updatePayload.endTime = newEndTime;
-    
-    if (eventData.requisition && eventData.requisition.step1) {
-      updatePayload['requisition.step1.eventStartDate'] = newDate;
-      updatePayload['requisition.step1.eventEndDate'] = newEndDate;
-      updatePayload['requisition.step1.eventStartTime'] = newStartTime;
-      updatePayload['requisition.step1.eventEndTime'] = newEndTime;
-    }
-
-    // Audit Trail
-    const eventActions = eventData.eventActions || [];
-    eventActions.push({
-      action: 'POSTPONED',
-      by: req.user.name || req.user.email,
-      role: req.user.role,
-      timestamp: now,
-      oldDate,
-      newDate,
-      reason: reason.trim()
-    });
-    // We can't use push and dotted notation at the same time simply, so we have to update the whole array
-    // Wait, updateDoc can handle top level fields with dot notation.
-    // Actually we don't mix them. Let's build a flattened update for Firestore
+    const newStatus = req.user.role === 'STUDENT_ORGANIZER' ? 'PENDING_FACULTY' : 'PENDING_HOD';
     const firestoreUpdate = {
-      status: 'POSTPONED',
-      oldDate,
-      newDate,
-      oldStartTime,
-      newStartTime,
-      oldEndTime,
-      newEndTime,
-      postponedBy: req.user.name || req.user.email,
-      postponedAt: now,
-      postponementReason: reason.trim(),
+      status: newStatus,
+      modificationRequest: {
+        type: 'POSTPONE',
+        reason: reason.trim(),
+        newDate,
+        newEndDate,
+        newStartTime,
+        newEndTime,
+        oldDate,
+        oldStartTime,
+        oldEndTime,
+        requestedBy: req.user.name || req.user.email,
+        requestedAt: now
+      },
       updatedAt: now,
-      eventActions,
-      date: newDate,
-      startDate: newDate,
-      endDate: newEndDate,
-      startTime: newStartTime,
-      endTime: newEndTime,
+      facultyApprovedAt: null,
+      facultyApprovedBy: null,
+      hodApprovedAt: null,
+      hodApprovedBy: null,
+      iqacApprovedAt: null,
+      iqacApprovedBy: null,
+      departmentApprovals: {}, // Reset department approvals as dates have changed
+      eventActions
     };
-
-    if (eventData.requisition && eventData.requisition.step1) {
-      const step1 = { ...eventData.requisition.step1, eventStartDate: newDate, eventEndDate: newEndDate, eventStartTime: newStartTime, eventEndTime: newEndTime };
-      firestoreUpdate.requisition = { ...eventData.requisition, step1 };
-    }
 
     await updateDoc(eventRef, firestoreUpdate);
 
     // Notifications
-    const { handleEventPostponed } = require('../services/emailHandler');
+    const { handleEventStatusChange } = require('../services/emailHandler');
     setImmediate(async () => {
       try {
-        await handleEventPostponed({ id: req.params.id, ...eventData, ...firestoreUpdate });
+        await handleEventStatusChange({ id: req.params.id, ...eventData, ...firestoreUpdate }, eventData.status, newStatus);
       } catch (err) {
         console.error('[events/postpone/bg] Email handler error:', err.message);
       }

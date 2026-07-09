@@ -952,9 +952,10 @@ const IQACSubmission = () => {
   if (!currentUser || !selectedEvent || !eventInfo) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-14 relative">
+    <div className="h-screen flex flex-row overflow-hidden bg-slate-50 relative">
       <Navbar />
-
+      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative pb-14">
+        <div className="max-w-6xl mx-auto w-full">
       {/* Fixed Toast Notification for File Upload Errors */}
       {fileAlert && (
         <>
@@ -970,7 +971,7 @@ const IQACSubmission = () => {
         </>
       )}
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         <div className="flex justify-end mb-6">
           <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
             Back to Dashboard
@@ -2241,6 +2242,8 @@ const IQACSubmission = () => {
             onClose={() => setShowReportModal(false)}
           />
         )}
+        </div>
+        </div>
       </main>
     </div>
   );

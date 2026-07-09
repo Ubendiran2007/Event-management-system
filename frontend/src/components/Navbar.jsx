@@ -1,96 +1,184 @@
-import { LogOut, LayoutDashboard, Shield } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
+import { UserRole } from '../types';
+import { getRolePath } from '../utils/routeUtils';
 
 const Navbar = () => {
-  const { currentUser, handleLogout, students, odRequests } = useAppContext();
+  const { currentUser, handleLogout, students, events } = useAppContext();
   const navigate = useNavigate();
-
   const location = useLocation();
+
   const isLoginPage = location.pathname === '/' || location.pathname === '/login';
-  const isAuthenticated = Boolean(currentUser) && !isLoginPage;
+  if (isLoginPage || !currentUser) return null;
 
   const onLogout = () => {
     handleLogout();
     navigate('/');
   };
 
+  const rolePrefix = getRolePath(currentUser.role);
+
+  // Derive active tab logic from URL
+  let currentActive = 'dashboard';
+  const feature = location.pathname.split('/').filter(Boolean).pop();
+  if (['events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations'].includes(feature)) {
+    currentActive = feature;
+  } else if (location.pathname.includes('/security')) {
+    currentActive = 'security';
+  } else if (location.pathname.includes('/manage-students')) {
+    currentActive = 'registrations';
+  } else if (location.pathname.includes('/iqac')) {
+    currentActive = 'approvals';
+  }
+  else if (location.pathname === '/dashboard') currentActive = 'dashboard';
+
+  const handleNavClick = (view, path) => {
+    if (path) {
+      const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+      navigate(`/${rolePrefix}/${cleanPath}`);
+    } else {
+      navigate(`/${rolePrefix}/${view}`);
+    }
+  };
+
+  // Helper for badges
+  const getBadgeCount = (view) => {
+    if (view === 'events') {
+      const hasOrgEvents = (events || []).some(e => String(e.organizerId) === String(currentUser.id));
+      if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrgEvents) {
+         return (events || []).filter(e => String(e.organizerId) === String(currentUser.id)).length;
+      }
+      return 0;
+    }
+    if (view === 'approvals') {
+       if (currentUser.role === UserRole.FACULTY) {
+          return (events || []).filter(e => e.status === 'PENDING_FACULTY').length;
+       }
+       if (currentUser.role === UserRole.HOD) {
+          return (events || []).filter(e => e.status === 'PENDING_HOD').length;
+       }
+       if (currentUser.role === UserRole.IQAC_TEAM) {
+          return (events || []).filter(e => e.status === 'PENDING_IQAC').length;
+       }
+       // For department roles, calculating the exact badge count requires looking inside departmentApprovals.
+       // We'll return 0 for now to avoid the placeholder 21.
+       return 0;
+    }
+    if (view === 'registrations') {
+       return 400; // Placeholder from screenshot
+    }
+    return 0;
+  };
+
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' }
+  ];
+
+  const hasOrganizedEvents = (events || []).some(e => String(e.organizerId) === String(currentUser.id));
+  if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents) {
+    navItems.push({ id: 'events', label: 'My Events', icon: CalendarDays, path: '/events' });
+  }
+  
+  if (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) {
+    navItems.push({ id: 'available', label: 'Available Events', icon: Compass, path: '/available' });
+    navItems.push({ id: 'my-registrations', label: 'My Registrations', icon: Ticket, path: '/my-registrations' });
+  }
+
+  const approvalRoles = [
+    UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM,
+    UserRole.HR_TEAM, UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN,
+    UserRole.TRANSPORT_TEAM, UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN,
+    UserRole.MEDIA
+  ];
+  if (approvalRoles.includes(currentUser.role)) {
+    navItems.push({ id: 'approvals', label: 'Approvals', icon: CheckCircle2, badge: getBadgeCount('approvals'), path: '/approvals' });
+  }
+
+  if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents) {
+    navItems.push({ id: 'registrations', label: 'Manage Registrations', icon: ClipboardList, path: '/registrations' });
+  }
+
+  if ([UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role)) {
+    navItems.push({ id: 'manage-students', label: 'Manage Students', icon: UserCog, path: '/manage-students' });
+  }
+
+  navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });
+
+  const liveStudent = (students || []).find(s => s.id === currentUser.id);
+  const displayData = liveStudent || currentUser;
+
   return (
-    <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-3 flex justify-between items-center">
-      <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(isAuthenticated ? '/dashboard' : '/')}>
-        <img
-          src={seceLogo}
-          alt="SECE Logo"
-          className="w-10 h-10 rounded-lg object-contain border border-slate-200 bg-white"
-        />
-        <div>
-          <h1 className="font-extrabold text-lg sm:text-xl leading-tight text-slate-800 tracking-tight">SECE Event Hub</h1>
+    <aside className="w-72 h-full bg-white border-r border-slate-100 flex flex-col shrink-0">
+      {/* Header */}
+      <div className="p-6 pb-8 border-b border-slate-50/50">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/${rolePrefix}/dashboard`)}>
+          <img
+            src={seceLogo}
+            alt="SECE Logo"
+            className="w-10 h-10 rounded-lg object-contain border border-slate-100 p-0.5 shadow-sm"
+          />
+          <div>
+            <h1 className="font-extrabold text-[15px] leading-tight text-slate-900 tracking-tight">SECE EVENT HUB</h1>
+            <p className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">Institution Portal</p>
+          </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 sm:gap-4">
-        {isAuthenticated && (
-          <>
-            {(() => {
-              // Always prefer the live Firestore snapshot for the current student.
-              // AppContext keeps `students` in sync via a real-time Firebase listener
-              // that now covers all 11 class subcollections. When IQAC resets OD counts,
-              // the listener fires and patches currentUser.odUsed to 0 automatically.
-              const liveStudent = (students || []).find(s => s.id === currentUser.id);
-              const displayData = liveStudent || currentUser;
 
-              // Use odUsed directly from the database — this is updated by:
-              //   1. syncStudentODCount (called on OD approval/rejection only, not on login)
-              //   2. IQAC annual reset (sets odUsed = 0)
-              //   3. Real-time Firestore listener patching currentUser in AppContext
-              const odUsed = displayData.odUsed ?? 0;
-              const odLimit = displayData.odLimit || 7;
-              const isOverLimit = odUsed >= odLimit;
-              const isWarning = odUsed >= 5;
-
-              return (
-                <div className="text-right hidden sm:block border-l border-slate-200 pl-4 ml-1">
-                  <div className="flex flex-col items-end">
-                    <p className="text-sm font-semibold">{displayData.name}</p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-[10px] text-slate-500 uppercase tracking-tight">
-                        {(displayData.role || 'GUEST').replace('_', ' ')}
-                      </p>
-                      {(displayData.role === 'STUDENT_GENERAL' || displayData.role === 'STUDENT_ORGANIZER') && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                          isOverLimit 
-                            ? 'bg-red-50 text-red-600 border-red-100' 
-                            : isWarning 
-                              ? 'bg-amber-50 text-amber-600 border-amber-100'
-                              : 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                        }`}>
-                          {odUsed} / {odLimit} ODs Used
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+        {navItems.map((item) => {
+          const isActive = currentActive === item.id;
+          return (
             <button
-              onClick={() => navigate('/security')}
-              className="p-2 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors border border-transparent hover:border-indigo-100"
-              title="Account Security"
+              key={item.id}
+              onClick={() => handleNavClick(item.id, item.path)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-semibold text-[15px] ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
             >
-              <Shield size={20} />
+              <div className="flex items-center gap-3 min-w-0">
+                <item.icon size={20} className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} strokeWidth={isActive ? 2.5 : 2} />
+                <span className="whitespace-nowrap truncate">{item.label}</span>
+              </div>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  isActive ? 'bg-blue-500/30 text-white' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {item.badge}
+                </span>
+              )}
             </button>
-            <button
-              onClick={onLogout}
-              className="p-2 hover:bg-slate-100 text-slate-500 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
-              title="Logout"
-            >
-              <LogOut size={20} />
-            </button>
-          </>
-        )}
+          );
+        })}
       </div>
-    </nav>
+
+      {/* User Profile Footer */}
+      <div className="p-4 border-t border-slate-100">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 mb-3 border border-slate-100">
+          <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+            {displayData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-extrabold text-slate-900 truncate">{displayData.name}</p>
+            <p className="text-[11px] text-slate-500 font-medium truncate capitalize">
+              {(displayData.role || 'GUEST').replace('_', ' ').toLowerCase()}
+            </p>
+          </div>
+        </div>
+        
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors text-[14px]"
+        >
+          <LogOut size={18} className="text-slate-500" />
+          Log Out
+        </button>
+      </div>
+    </aside>
   );
 };
 

@@ -352,58 +352,52 @@ router.post('/login', async (req, res) => {
         'AIDS-A'
       ];
 
-      for (const className of classes) {
-        const membersQuery = query(collection(db, 'students', className, 'members'), where('username', '==', email.toLowerCase()));
-        const membersSnapshot = await getDocs(membersQuery);
+      const searchPromises = classes.map(async (className) => {
+        const lowerEmail = email.toLowerCase();
+        const membersQuery = query(collection(db, 'students', className, 'members'), where('username', '==', lowerEmail));
+        const emailQuery = query(collection(db, 'students', className, 'members'), where('email', '==', lowerEmail));
+        
+        const [membersSnapshot, emailSnapshot] = await Promise.all([
+          getDocs(membersQuery),
+          getDocs(emailQuery)
+        ]);
+
         if (!membersSnapshot.empty) {
-          const memberDoc = membersSnapshot.docs[0];
-          const student = memberDoc.data();
-          foundStoredPassword = student.password;
-          foundUserObj = {
-            id: memberDoc.id,
-            email: student.email || student.username,
-            name: student.name || null,
-            role: (student.role || 'STUDENT_GENERAL').toUpperCase(),
-            department: student.department || 'CSE',
-            rollNo: student.rollNo || student.password,
-            isApprovedOrganizer: student.isApprovedOrganizer || false,
-            odUsed: student.odUsed || 0,
-            odLimit: student.odLimit || 7,
-            className,
-          };
-          isStudent = true;
-          studentRefPath = { col1: 'students', doc1: className, col2: 'members', doc2: memberDoc.id };
-          break;
-        } else {
-          // Check by email field
-          const emailQuery = query(collection(db, 'students', className, 'members'), where('email', '==', email.toLowerCase()));
-          const emailSnapshot = await getDocs(emailQuery);
-          if (!emailSnapshot.empty) {
-            const memberDoc = emailSnapshot.docs[0];
-            const student = memberDoc.data();
-            foundStoredPassword = student.password;
-            foundUserObj = {
-              id: memberDoc.id,
-              email: student.email || student.username,
-              name: student.name || null,
-              role: (student.role || 'STUDENT_GENERAL').toUpperCase(),
-              department: student.department || 'CSE',
-              rollNo: student.rollNo || student.password,
-              isApprovedOrganizer: student.isApprovedOrganizer || false,
-              odUsed: student.odUsed || 0,
-              odLimit: student.odLimit || 7,
-              className,
-            };
-            isStudent = true;
-            studentRefPath = { col1: 'students', doc1: className, col2: 'members', doc2: memberDoc.id };
-            break;
-          }
+          return { memberDoc: membersSnapshot.docs[0], className };
         }
+        if (!emailSnapshot.empty) {
+          return { memberDoc: emailSnapshot.docs[0], className };
+        }
+        
+        return null;
+      });
+
+      const results = await Promise.all(searchPromises);
+      const foundResult = results.find(res => res !== null);
+
+      if (foundResult) {
+        const { memberDoc, className } = foundResult;
+        const student = memberDoc.data();
+        foundStoredPassword = student.password;
+        foundUserObj = {
+          id: memberDoc.id,
+          email: student.email || student.username,
+          name: student.name || null,
+          role: (student.role || 'STUDENT_GENERAL').toUpperCase(),
+          department: student.department || 'CSE',
+          rollNo: student.rollNo || student.password,
+          isApprovedOrganizer: student.isApprovedOrganizer || false,
+          odUsed: student.odUsed || 0,
+          odLimit: student.odLimit || 7,
+          className,
+        };
+        isStudent = true;
+        studentRefPath = { col1: 'students', doc1: className, col2: 'members', doc2: memberDoc.id };
       }
     }
 
     if (!foundUserObj) {
-      await recordFailedLogin(email, null, reqDetails);
+      recordFailedLogin(email, null, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
@@ -411,24 +405,26 @@ router.post('/login', async (req, res) => {
     const isMatch = await verifyPassword(password, foundStoredPassword);
 
     if (!isMatch) {
-      const lockStatus = await recordFailedLogin(email, foundUserObj, reqDetails);
-      if (lockStatus.locked) {
-        return res.status(403).json({ success: false, message: 'Account locked due to too many failed attempts.' });
-      }
+      recordFailedLogin(email, foundUserObj, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));
+      // We return generic 401 immediately for speed. If they are locked out, 
+      // the rate limit check at the top will block their next attempt.
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    // Login Success
-    await handleLoginSuccess(foundUserObj, reqDetails);
+    // Login Success - run heavy tasks in the background to speed up response
+    handleLoginSuccess(foundUserObj, reqDetails).catch(err => console.error('[auth] Login success handler error:', err));
 
-    // Optional: Upgrade password to hash if it's currently plain text
+    // Optional: Upgrade password to hash if it's currently plain text (in background)
     if (foundStoredPassword && !foundStoredPassword.startsWith('$2')) {
-      const hashed = await hashPassword(password);
-      if (isStudent && studentRefPath) {
-        await setDoc(doc(db, studentRefPath.col1, studentRefPath.doc1, studentRefPath.col2, studentRefPath.doc2), { password: hashed }, { merge: true });
-      } else {
-        await setDoc(doc(db, 'users', foundUserObj.id), { password: hashed }, { merge: true });
-      }
+      hashPassword(password)
+        .then(async (hashed) => {
+          if (isStudent && studentRefPath) {
+            await setDoc(doc(db, studentRefPath.col1, studentRefPath.doc1, studentRefPath.col2, studentRefPath.doc2), { password: hashed }, { merge: true });
+          } else {
+            await setDoc(doc(db, 'users', foundUserObj.id), { password: hashed }, { merge: true });
+          }
+        })
+        .catch(err => console.error('[auth] Password upgrade error:', err));
     }
 
     // Removed DATA CONSISTENCY CHECK to ensure login remains read-only for admin fields

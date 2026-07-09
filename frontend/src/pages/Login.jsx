@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
+import { getRolePath } from '../utils/routeUtils';
 
 import Navbar from '../components/Navbar';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
@@ -20,6 +21,22 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [unlockInputs, setUnlockInputs] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const alertRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (alertRef.current && !alertRef.current.contains(event.target)) {
+        setAlert(null);
+      }
+    };
+
+    if (alert) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [alert]);
 
   const enableInputEditing = () => {
     if (!unlockInputs) setUnlockInputs(true);
@@ -49,12 +66,14 @@ const Login = () => {
           localStorage.setItem('sessionToken', data.token);
         }
         localStorage.setItem('user', JSON.stringify(data.user));
+        const userRole = data.user.role || UserRole.STUDENT_GENERAL;
         handleLogin({
           ...data.user,
-          role: data.user.role || UserRole.STUDENT_GENERAL,
+          role: userRole,
           isApprovedOrganizer: data.user.isApprovedOrganizer || false,
         });
-        navigate('/dashboard');
+        const rolePrefix = getRolePath(userRole);
+        navigate(`/${rolePrefix}/dashboard`);
 
       } else {
         if (data.message && (data.message.toLowerCase().includes('lock') || data.message.toLowerCase().includes('too many'))) {
@@ -159,12 +178,14 @@ const Login = () => {
             </div>
 
             {alert && (
-              <AlertCard 
-                type={alert.type} 
-                title={alert.title} 
-                message={alert.message} 
-                onClose={() => setAlert(null)} 
-              />
+              <div ref={alertRef}>
+                <AlertCard 
+                  type={alert.type} 
+                  title={alert.title} 
+                  message={alert.message} 
+                  onClose={() => setAlert(null)} 
+                />
+              </div>
             )}
 
             <div className="flex justify-end mt-2">

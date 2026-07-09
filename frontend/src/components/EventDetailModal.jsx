@@ -79,7 +79,7 @@ const EventDetailModal = ({ event, onClose }) => {
   const { currentUser, odRequests = [], handleApproval, handleDepartmentApproval, setSelectedEvent } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
-  const isDashboard = location.pathname.includes('/dashboard') || location.pathname.includes('/faculty') || location.pathname.includes('/hod');
+
   const [isUploadingPoster, setIsUploadingPoster] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
@@ -629,11 +629,11 @@ const EventDetailModal = ({ event, onClose }) => {
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="bg-slate-50 rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto"
+          className="bg-slate-50 rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="sticky top-0 bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-center justify-between z-10">
+          <div className="bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 z-10">
             <div>
               <h2 className="text-2xl font-bold text-slate-900">{event.title}</h2>
               <p className="text-sm text-slate-500 mt-1">Approval review workspace</p>
@@ -643,7 +643,7 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {isDashboard && (currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && event.organizerId === currentUser.id && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && (
+              {(currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && event.organizerId === currentUser.id && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && (
                 <>
                   <button onClick={() => { setShowPostponeModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg">Postpone Event</button>
                   <button onClick={() => { setShowCancelModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg">Cancel Event</button>
@@ -659,8 +659,8 @@ const EventDetailModal = ({ event, onClose }) => {
           </div>
           
           {/* Tab Navigation for Organizers */}
-          {isDashboard && isOrganizer && (event.status === 'POSTED' || event.status === 'COMPLETED' || event.status === 'POSTPONED') && (
-            <div className="px-6 border-b border-slate-200 bg-white sticky top-[88px] z-10 flex gap-6 overflow-x-auto">
+          {isOrganizer && (event.status === 'POSTED' || event.status === 'COMPLETED' || event.status === 'POSTPONED') && (
+            <div className="px-6 border-b border-slate-200 bg-white flex gap-6 overflow-x-auto shrink-0 z-10">
               {['Overview', 'Registration', 'Attendance'].map(tab => (
                 <button
                   key={tab}
@@ -678,7 +678,7 @@ const EventDetailModal = ({ event, onClose }) => {
           )}
 
           {/* Content */}
-          <div className="p-6 space-y-6">
+          <div className="p-6 space-y-6 overflow-y-auto">
             
             {activeTab === 'Registration' && <RegistrationsTab event={event} odRequests={odRequests} />}
             {activeTab === 'Attendance' && <AttendanceTab event={event} />}
@@ -763,18 +763,22 @@ const EventDetailModal = ({ event, onClose }) => {
                     return (
                       <>
                         <div className="flex items-center gap-2 flex-wrap mb-4">
-                          <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
-                            isFacultyActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
-                            isFacultyRejected ? 'bg-red-100 text-red-700 border border-red-200' :
-                            isFacultyApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
-                            'bg-slate-100 text-slate-400 border border-slate-200'
-                          }`}>
-                            {isFacultyActive ? '⏳ Faculty Review' :
-                             isFacultyRejected ? '✗ Faculty Rejected' :
-                             isFacultyApproved ? '✓ Faculty Approved' :
-                             'Faculty Review'}
-                          </div>
-                          <ArrowRight size={14} className="text-slate-300" />
+                          {event.creatorType !== 'FACULTY' && (
+                            <>
+                              <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                                isFacultyActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                                isFacultyRejected ? 'bg-red-100 text-red-700 border border-red-200' :
+                                isFacultyApproved ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                                'bg-slate-100 text-slate-400 border border-slate-200'
+                              }`}>
+                                {isFacultyActive ? '⏳ Faculty Review' :
+                                 isFacultyRejected ? '✗ Faculty Rejected' :
+                                 isFacultyApproved ? '✓ Faculty Approved' :
+                                 'Faculty Review'}
+                              </div>
+                              <ArrowRight size={14} className="text-slate-300" />
+                            </>
+                          )}
                           <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 ${
                             isHodActive ? 'bg-amber-100 text-amber-700 border border-amber-200' :
                             isHodRejected ? 'bg-red-100 text-red-700 border border-red-200' :
@@ -1719,139 +1723,7 @@ const EventDetailModal = ({ event, onClose }) => {
               </InfoSection>
             )}
             
-            {/* ── 8. IQAC Documentation Checklist ── */}
-            {event.iqacData ? (
-              <InfoSection title="8. IQAC Documentation" icon={FileCheck}>
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-slate-900 uppercase">Submission Summary</p>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full uppercase">
-                        Submitted {event.iqacSubmittedAt ? new Date(event.iqacSubmittedAt).toLocaleDateString() : '—'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase">Documents</p>
-                        <p className="mt-0.5 text-sm font-bold text-slate-900">
-                          {(event.iqacData?.checklist || []).filter(i => i.status !== 'pending').length} / {(event.iqacData?.checklist || []).length}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase">Attendees</p>
-                        <p className="mt-0.5 text-sm font-bold text-cse-accent">
-                          {event.iqacData?.registration?.attendance?.total || 0}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
-                      <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1">Outcome</p>
-                      <p className="text-xs text-emerald-800 leading-relaxed italic">"{event.iqacData?.eventOutcome || 'No specific outcome described.'}"</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <p className="text-sm font-bold text-slate-900 uppercase">Uploaded Evidence</p>
-                    <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-inner">
-                      <table className="min-w-full text-xs">
-                        <tbody>
-                          {(event.iqacData?.checklist || []).filter(item => item.status !== 'pending').map((item, idx) => (
-                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-3 py-2 text-slate-600 font-medium">{item.requirement}</td>
-                              <td className="px-3 py-2 text-right">
-                                {item.file?.dataUrl ? (
-                                  <div className="flex items-center justify-end gap-3">
-                                    <button
-                                      onClick={() => {
-                                        const win = window.open();
-                                        win.document.write('<iframe src="' + item.file.dataUrl  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                      }}
-                                      title="View Document"
-                                      className="text-blue-600 hover:text-blue-800 transition-colors"
-                                    >
-                                      <Eye size={16} />
-                                    </button>
-                                    <a
-                                      href={item.file.dataUrl}
-                                      download={item.file.fileName}
-                                      className="text-cse-accent hover:underline font-bold"
-                                    >
-                                      Download
-                                    </a>
-                                  </div>
-                                ) : item.autoGenerated ? (
-                                  <div className="flex items-center justify-end gap-3">
-                                    <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold">Uploaded</span>
-                                    <button
-                                      onClick={() => {
-                                        if (item.requirement?.toLowerCase().includes('brochure') && (event.posterDataUrl || event.posterUrl)) {
-                                          const url = event.posterDataUrl || event.posterUrl;
-                                          const win = window.open();
-                                          win.document.write('<iframe src="' + url  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
-                                        } else {
-                                          console.log("System-generated " + item.requirement + " can be viewed and downloaded using the IQAC Export tools in the main Explore view.");
-                                        }
-                                      }}
-                                      className="text-blue-600 hover:text-blue-800 p-1.5 rounded-full hover:bg-blue-50 transition-all shadow-sm border border-blue-100"
-                                      title="View"
-                                    >
-                                      <Eye size={14} />
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-red-400 font-medium">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  
-                  {/* Resource Persons Summary */}
-                  {(event.iqacData?.resourcePersons || []).length > 0 && (
-                    <div className="col-span-1 lg:col-span-2 mt-2 pt-4 border-t border-slate-100">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Award size={16} className="text-amber-500" />
-                        <p className="text-sm font-bold text-slate-900 uppercase">Resource Persons</p>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {event.iqacData.resourcePersons.map((person, idx) => (
-                          <div key={idx} className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 bg-slate-50/50">
-                            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold shrink-0">
-                              {person.name?.[0] || 'RP'}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-slate-800 truncate">{person.name}</p>
-                              <p className="text-[10px] text-slate-500 truncate">{person.designation} · {person.organization}</p>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star 
-                                    key={i} 
-                                    size={10} 
-                                    fill={(person.rating || 5) > i ? 'currentColor' : 'none'}
-                                    className={(person.rating || 5) > i ? 'text-amber-400' : 'text-slate-200'}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </InfoSection>
-            ) : event.status === EventStatus.COMPLETED && (
-              <InfoSection title="8. IQAC Documentation" icon={FileCheck}>
-                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                  <FileText size={40} className="mx-auto text-slate-300 mb-3" />
-                  <p className="text-sm font-medium text-slate-900">Documentation Not Found</p>
-                  <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">This event was marked completed but the IQAC data payload is missing.</p>
-                </div>
-              </InfoSection>
-            )}
+            {/* ── 8. IQAC Documentation Checklist (Removed) ── */}
           
           {/* Action Buttons - Sticky Footer */}
           {/* ── IQAC Submission Banner (Organizer) ── */}

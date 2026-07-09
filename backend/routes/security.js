@@ -89,6 +89,26 @@ async function findUserByIdentifier(identifier) {
   return null;
 }
 
+async function findAuthenticatedUser(user) {
+  if (!user || !user.id) return null;
+  
+  // 1. Try to find the exact user by ID in the 'users' collection first (for staff)
+  const userDocRef = doc(db, 'users', user.id);
+  const userDocSnap = await getDoc(userDocRef);
+  if (userDocSnap.exists()) {
+    const data = userDocSnap.data();
+    return { 
+      userObj: { id: userDocSnap.id, ...data, password: undefined }, 
+      storedPassword: data.password, 
+      type: 'user', 
+      ref: userDocRef 
+    };
+  }
+  
+  // 2. For students, their email is unique, so fallback to findUserByIdentifier
+  return await findUserByIdentifier(user.email);
+}
+
 async function hashPassword(plain) {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(plain, salt);
@@ -142,13 +162,13 @@ router.post('/forgot-password', async (req, res) => {
       type: 'RESET'
     });
     
-    await logSecurityEvent(found.userObj, 'Password Reset OTP Requested', 'SUCCESS', reqDetails);
+    logSecurityEvent(found.userObj, 'Password Reset OTP Requested', 'SUCCESS', reqDetails).catch(err => console.error(err));
     
-    await sendEmail(
+    sendEmail(
       found.userObj.email,
       'Password Reset Verification - Event Management & IQAC Portal',
       emailTemplates.passwordResetOtpTemplate(found.userObj, otp)
-    );
+    ).catch(err => console.error(err));
     
     const [namePart, domainPart] = actualEmail.split('@');
     let maskedEmail = actualEmail;
@@ -282,13 +302,13 @@ router.post('/reset-password', async (req, res) => {
     await setDoc(found.ref, { password: hashed, updatedAt: new Date().toISOString() }, { merge: true });
     await deleteDoc(otpRef);
     
-    await logSecurityEvent(found.userObj, 'Password Reset', 'SUCCESS', reqDetails);
+    logSecurityEvent(found.userObj, 'Password Reset', 'SUCCESS', reqDetails).catch(err => console.error(err));
     
-    await sendEmail(
+    sendEmail(
       found.userObj.email,
       'Password Successfully Reset - Event Management & IQAC Portal',
       emailTemplates.passwordResetSuccessTemplate(found.userObj, reqDetails.date, reqDetails.time)
-    );
+    ).catch(err => console.error(err));
     
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
@@ -307,7 +327,7 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
   const reqDetails = getRequestDetails(req);
   
   try {
-    const found = await findUserByIdentifier(email);
+    const found = await findAuthenticatedUser(req.user);
     if (!found) return res.status(404).json({ success: false, message: 'User not found' });
     
     const isMatch = await verifyPassword(currentPassword, found.storedPassword);
@@ -339,13 +359,13 @@ router.post('/change-password/request', requireAuth, async (req, res) => {
       type: 'CHANGE'
     });
     
-    await logSecurityEvent(found.userObj, 'Password Change OTP Requested', 'SUCCESS', reqDetails);
+    logSecurityEvent(found.userObj, 'Password Change OTP Requested', 'SUCCESS', reqDetails).catch(err => console.error(err));
     
-    await sendEmail(
+    sendEmail(
       found.userObj.email,
       'Password Change Verification - Event Management & IQAC Portal',
       emailTemplates.passwordChangeOtpTemplate(found.userObj, otp)
-    );
+    ).catch(err => console.error(err));
     
     res.json({ success: true, message: 'OTP sent to your email.' });
   } catch (error) {
@@ -364,7 +384,7 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
   }
   
   try {
-    const found = await findUserByIdentifier(email);
+    const found = await findAuthenticatedUser(req.user);
     if (!found) return res.status(404).json({ success: false, message: 'User not found' });
     
     const otpRef = doc(db, 'otps', email.toLowerCase());
@@ -391,13 +411,13 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
     await setDoc(found.ref, { password: hashed, updatedAt: new Date().toISOString() }, { merge: true });
     await deleteDoc(otpRef);
     
-    await logSecurityEvent(found.userObj, 'Password Changed', 'SUCCESS', reqDetails);
+    logSecurityEvent(found.userObj, 'Password Changed', 'SUCCESS', reqDetails).catch(err => console.error(err));
     
-    await sendEmail(
+    sendEmail(
       found.userObj.email,
       'Password Successfully Changed - Event Management & IQAC Portal',
       emailTemplates.passwordChangeSuccessTemplate(found.userObj, reqDetails.date, reqDetails.time)
-    );
+    ).catch(err => console.error(err));
     
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {

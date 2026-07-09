@@ -173,7 +173,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                       type="text"
-                      className="input-field pl-10"
+                      className="input-field !pl-10"
                       placeholder="e.g. 24CS257 or faculty@sece.ac.in"
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
@@ -210,7 +210,7 @@ const ForgotPasswordModal = ({ onClose }) => {
                     <input
                       type="text"
                       maxLength={6}
-                      className="input-field pl-10 tracking-widest font-mono text-lg"
+                      className="input-field !pl-10 tracking-widest font-mono text-lg"
                       placeholder="000000"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}

@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import seceHeader from '../assets/sece header.jpeg';
 import { formatRollNo, formatEventRef, fallbackValue, formatVenue, getAttendanceMode } from '../utils/formatters';
 import { Loader2 } from 'lucide-react';
+import { generateODLetterBase64 } from '../utils/pdfGenerator';
 
 const ODLetterModal = ({ odRequest, event, onClose }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -82,161 +83,19 @@ const ODLetterModal = ({ odRequest, event, onClose }) => {
 
 
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      const displayDepartment = odRequest?.department || 'General';
-      const eventTime = `${event?.startTime || s1?.eventStartTime || '09:00'} - ${event?.endTime || s1?.eventEndTime || '16:00'}`;
-
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>OD Permission Letter - ${displayRollNo}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { 
-      size: A4 portrait; 
-      margin: 0; 
-    }
-    body { 
-      font-family: 'Times New Roman', Times, serif; 
-      color: #1a202c; 
-      background: #eee; 
-      -webkit-print-color-adjust: exact;
-    }
-    .page-container {
-      width: 210mm;
-      min-height: 297mm;
-      background: white;
-      margin: 0 auto;
-      padding: 15mm 20mm;
-      position: relative;
-    }
-    @media print {
-      body { background: white !important; }
-      .page-container { margin: 0 !important; padding: 15mm 20mm !important; box-shadow: none !important; }
-    }
-    .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #1a3a6b; padding-bottom: 20px; }
-    .header-image { width: 100%; max-height: 100px; object-fit: contain; margin-bottom: 15px; }
-    .inst-name { font-size: 16pt; font-weight: bold; color: #1a3a6b; text-transform: uppercase; }
-    .inst-sub { font-size: 12pt; font-weight: bold; color: #475569; margin-bottom: 15px; }
-    .doc-title { font-size: 16pt; font-weight: bold; color: #1a3a6b; text-decoration: underline; text-transform: uppercase; margin-bottom: 5px; }
-    .ref-code { font-size: 10pt; color: #64748b; font-family: monospace; }
-    
-    .section { margin-bottom: 25px; }
-    .section-title { font-size: 12pt; font-weight: bold; background: #f1f5f9; padding: 8px 12px; border-left: 4px solid #1a3a6b; margin-bottom: 12px; color: #1e293b; text-transform: uppercase; }
-    
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
-    .info-row { display: flex; font-size: 11pt; line-height: 1.5; border-bottom: 1px dashed #e2e8f0; padding-bottom: 4px; }
-    .info-label { font-weight: bold; width: 130px; color: #475569; flex-shrink: 0; }
-    .info-value { color: #0f172a; font-weight: 500; }
-    
-    .auth-statement { font-size: 11pt; line-height: 1.6; color: #334155; text-align: justify; margin: 30px 0; padding: 20px; border: 1px solid #cbd5e0; background: #f8fafc; border-radius: 8px; }
-    
-    .bottom-section { display: flex; flex-direction: column; gap: 40px; margin-top: 30px; }
-    
-    .qr-container { display: flex; flex-direction: column; align-items: flex-start; }
-    .qr-image { width: 100px; height: 100px; border: 1px solid #cbd5e0; padding: 4px; background: white; border-radius: 6px; margin-bottom: 4px; }
-    .qr-label { font-size: 8pt; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-    
-    .signatures { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; width: 100%; }
-    .sig-block { text-align: center; flex: 1 1 20%; min-width: 140px; }
-    .sig-title { font-size: 10pt; font-weight: bold; color: #1a3a6b; margin-bottom: 40px; }
-    .sig-line { border-top: 1px solid #1e293b; margin-bottom: 5px; padding-top: 4px; }
-    .sig-name { font-size: 10pt; font-weight: bold; color: #1e293b; }
-    .sig-role { font-size: 9pt; color: #64748b; }
-    
-    .footer { position: absolute; bottom: 15px; left: 0; width: 100%; text-align: center; font-size: 10pt; color: #64748b; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <div class="page-container">
-    <div class="header">
-      <img src="${seceHeader}" alt="SECE Header" class="header-image" />
-      <div class="inst-name">Sri Eshwar College of Engineering</div>
-      <div class="inst-sub">An Autonomous Institution</div>
-      <div class="doc-title">Official OD Permission Letter</div>
-      <div class="ref-code">Ref: ${eventRef}</div>
-    </div>
-    
-    <div class="section">
-      <div class="section-title">Student Information</div>
-      <div class="grid-2">
-        <div class="info-row"><span class="info-label">Student Name:</span><span class="info-value">${odRequest.studentName}</span></div>
-        <div class="info-row"><span class="info-label">Roll Number:</span><span class="info-value">${displayRollNo}</span></div>
-        <div class="info-row"><span class="info-label">Department:</span><span class="info-value">${displayDepartment}</span></div>
-        <div class="info-row"><span class="info-label">Class:</span><span class="info-value">${displayClassSection}</span></div>
-      </div>
-    </div>
-    
-    <div class="section">
-      <div class="section-title">Event Information</div>
-      <div class="grid-2">
-        <div class="info-row"><span class="info-label">Event Name:</span><span class="info-value">${eventTitle}</span></div>
-        <div class="info-row"><span class="info-label">Event Ref:</span><span class="info-value">${eventRef}</span></div>
-        <div class="info-row"><span class="info-label">Event Date:</span><span class="info-value">${eventDate}</span></div>
-        <div class="info-row"><span class="info-label">Start Time:</span><span class="info-value">${event?.startTime || s1?.eventStartTime || '09:00'}</span></div>
-        <div class="info-row"><span class="info-label">End Time:</span><span class="info-value">${event?.endTime || s1?.eventEndTime || '16:00'}</span></div>
-        <div class="info-row"><span class="info-label">Venue:</span><span class="info-value">${eventVenue}</span></div>
-      </div>
-    </div>
-    
-    <div class="auth-statement">
-      This On-Duty Permission Letter has been officially approved through the SECE Event Hub workflow. The QR Code may be used to verify the authenticity of this permission letter and retrieve the latest event information.
-      <br/><br/>
-      <strong>Verification Code:</strong> <span style="font-family: monospace; font-size: 12pt; background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">${verificationCode}</span>
-    </div>
-    
-    <div class="bottom-section">
-      <div class="qr-container">
-        <img src="${qrDataUrl}" alt="QR Code" class="qr-image" />
-        <div class="qr-label">Scan to Verify OD</div>
-      </div>
-      
-      <div class="signatures">
-        <div class="sig-block">
-          <div class="sig-title">Participant</div>
-          <div class="sig-line"></div>
-          <div class="sig-role">(Student Signature)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-title">Class Advisor</div>
-          <div class="sig-line"></div>
-          <div class="sig-role">(Class Advisor Signature)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-title">Event Organizer</div>
-          <div class="sig-line"></div>
-          <div class="sig-name">${approvedBy}</div>
-          <div class="sig-role">(Event Organizer)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-title">Head of Department</div>
-          <div class="sig-line"></div>
-          <div class="sig-name">${hodName}</div>
-          <div class="sig-role">(HOD Signature)</div>
-        </div>
-      </div>
-    </div>
-    
-    <div class="footer">Page 1 of 1</div>
-  </div>
-</body>
-</html>
-      `;
-
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 500);
+      const dataUri = await generateODLetterBase64(odRequest, event);
+      if (dataUri) {
+        const a = document.createElement('a');
+        a.href = dataUri;
+        a.download = `OD_Letter_${displayRollNo}_${event?.title || 'Event'}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       } else {
-        console.error('Pop-ups might be blocked.');
+        console.error('Failed to generate OD Letter PDF');
       }
     } catch (err) {
       console.error('Download failed', err);

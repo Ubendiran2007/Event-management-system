@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     AlertCircle, 
@@ -16,13 +16,16 @@ import {
     HelpCircle,
     Check,
     History,
-    X
+    X,
+    ChevronDown,
+    ChevronUp,
+    SlidersHorizontal
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useNotification } from '../context/NotificationContext';
 import { UserRole } from '../types';
 import Navbar from '../components/Navbar';
-import { formatRollNo, formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
+import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const ODCorrection = () => {
     const { currentUser } = useAppContext();
@@ -35,6 +38,7 @@ const ODCorrection = () => {
     const [processingId, setProcessingId] = useState(null);
     
     const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'approved', 'rejected'
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
     
     // New Request Form
     const [showForm, setShowForm] = useState(false);
@@ -47,6 +51,8 @@ const ODCorrection = () => {
     // Action Modal State
     const [actionModal, setActionModal] = useState({ isOpen: false, requestId: null, action: null });
     const [actionData, setActionData] = useState({ comments: '', rejectionReason: '' });
+
+    const [selectedRequest, setSelectedRequest] = useState(null);
 
     const isStudent = currentUser?.role === UserRole.STUDENT_GENERAL || currentUser?.role === UserRole.STUDENT_ORGANIZER;
     const isStaff = [UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser?.role);
@@ -245,10 +251,11 @@ const ODCorrection = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="h-screen flex flex-row overflow-hidden bg-slate-50">
             <Navbar />
             
-            <main className="max-w-4xl mx-auto px-6 py-10">
+            <main className="flex-1 flex flex-col min-h-0 relative px-6 py-10">
+                <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-8">
                     <div>
                         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">OD Corrections</h1>
@@ -269,25 +276,30 @@ const ODCorrection = () => {
 
                 {/* Tabs */}
                 {!showForm && (
-                    <div className="flex gap-4 mb-6 border-b border-slate-200 pb-2">
-                        <button 
-                            onClick={() => setActiveTab('pending')}
-                            className={`font-bold pb-2 border-b-2 transition-colors ${activeTab === 'pending' ? 'text-cse-accent border-cse-accent' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
-                        >
-                            Pending Requests
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('approved')}
-                            className={`font-bold pb-2 border-b-2 transition-colors ${activeTab === 'approved' ? 'text-emerald-600 border-emerald-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
-                        >
-                            Approved History
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('rejected')}
-                            className={`font-bold pb-2 border-b-2 transition-colors ${activeTab === 'rejected' ? 'text-red-600 border-red-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}
-                        >
-                            Rejected History
-                        </button>
+                    <div className="flex justify-end mb-6">
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsFilterOpen(!isFilterOpen)}
+                                className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl text-[13px] font-bold text-slate-700 transition-colors shadow-sm"
+                            >
+                                <SlidersHorizontal size={15} className="text-slate-500" />
+                                Filter: {activeTab === 'pending' ? 'Pending Requests' : activeTab === 'approved' ? 'Approved History' : 'Rejected History'}
+                                <ChevronDown size={14} className="text-slate-400 ml-1" />
+                            </button>
+                            {isFilterOpen && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-20 p-1">
+                                    {['pending', 'approved', 'rejected'].map(tab => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => { setActiveTab(tab); setIsFilterOpen(false); }}
+                                            className={`w-full text-left px-4 py-2.5 text-[13px] font-bold rounded-xl transition-colors ${activeTab === tab ? 'bg-blue-50 text-blue-700' : 'text-slate-800 hover:bg-slate-50'}`}
+                                        >
+                                            {tab === 'pending' ? 'Pending Requests' : tab === 'approved' ? 'Approved History' : 'Rejected History'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -360,7 +372,7 @@ const ODCorrection = () => {
                 )}
 
                 {!showForm && (
-                    <div className="space-y-6">
+                    <div className="flex-1 flex flex-col min-h-0 space-y-4">
                         {loading ? (
                             <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                                 <Loader2 className="animate-spin mb-4" size={40} />
@@ -373,107 +385,154 @@ const ODCorrection = () => {
                                 <p className="text-slate-500 mt-2">No OD correction requests in this category.</p>
                             </div>
                         ) : (
-                            requests.map(req => (
-                                <div key={req.id} className="glass-panel p-6 rounded-3xl border border-slate-200 hover:border-cse-accent/30 transition-all shadow-sm">
-                                    <div className="flex flex-col md:flex-row gap-6">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-lg">
-                                                    {req.studentName.charAt(0)}
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold text-slate-900 text-lg">
-                                                        {formatStudentNameWithRoll(req.studentName, req.rollNo, req.studentId)}
-                                                    </h4>
-                                                    <p className="text-sm text-slate-500 font-bold tracking-wider">
-                                                        {fallbackValue(req.department, 'department')}
-                                                    </p>
-                                                </div>
-                                                <div className="ml-auto">
-                                                    {getStatusBadge(req.status)}
-                                                </div>
+                          <div className="flex flex-col flex-1 min-h-0 bg-white rounded-b-2xl overflow-hidden shadow-sm border border-slate-100">
+                            <div className="w-full bg-slate-50 z-10 border-b border-slate-200 pr-[8px]">
+                              <table className="w-full text-left border-collapse table-fixed">
+                                <thead>
+                                  <tr className="bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                                    <th className="py-4 px-6 w-[35%]">STUDENT DETAILS</th>
+                                    <th className="py-4 px-6 w-[20%]">REQUESTED DATE</th>
+                                    <th className="py-4 px-6 w-[25%]">STATUS</th>
+                                    <th className="py-4 px-6 w-[20%] text-right">ACTIONS</th>
+                                  </tr>
+                                </thead>
+                              </table>
+                            </div>
+                            <div className="flex-1 overflow-y-scroll overflow-x-hidden min-h-0 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+                              <table className="w-full text-left border-collapse table-fixed">
+                                <tbody className="bg-white">
+                                {requests.map(req => (
+                                  <React.Fragment key={req.id}>
+                                   <tr className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedRequest(req)}>
+                                      <td className="py-4 px-6 w-[35%]">
+                                         <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-lg shrink-0 border border-blue-100">
+                                               {req.studentName.charAt(0)}
                                             </div>
-                                            
-                                            <div className="bg-slate-50/80 rounded-2xl p-4 mb-4 border border-slate-100">
-                                                <p className="text-sm text-slate-700 font-medium leading-relaxed italic mb-3">"{req.description}"</p>
-                                                <div className="flex flex-wrap gap-6 text-sm font-bold bg-white p-3 rounded-xl border border-slate-100">
-                                                    <div>
-                                                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider mb-1">Current OD</span>
-                                                        <span className="text-slate-700">{req.currentOdUsed ?? 0} Used / {req.currentOdLimit ?? 7} Limit</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-cse-accent block text-[10px] uppercase tracking-wider mb-1">Requested OD</span>
-                                                        <span className="text-blue-700">{req.requestedCount} Used / {req.requestedLimit} Limit</span>
-                                                    </div>
-                                                </div>
+                                            <div>
+                                               <h4 className="font-bold text-slate-900 text-sm">
+                                                  {formatStudentNameWithRoll(req.studentName, req.rollNo, req.studentId)}
+                                               </h4>
+                                               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">
+                                                  STUDENT | {fallbackValue(req.department, 'department')}
+                                               </p>
                                             </div>
-
-                                            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                                                <Clock size={14} /> Submitted on {new Date(req.createdAt).toLocaleDateString()}
-                                            </div>
-                                        </div>
-
-                                        {/* Actions Panel - Only show if pending and user is the right staff role */}
-                                        {isStaff && req.status.includes(currentUser.role.replace('_TEAM', '')) && activeTab === 'pending' && (
-                                            <div className="flex flex-row md:flex-col gap-3 justify-center min-w-[160px] border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-6">
-                                                <button 
-                                                    onClick={() => openActionModal(req.id, 'APPROVE')}
-                                                    className="w-full bg-emerald-500 text-white px-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-md shadow-emerald-500/20"
-                                                >
-                                                    <ShieldCheck size={18} /> Approve
-                                                </button>
-                                                <button 
-                                                    onClick={() => openActionModal(req.id, 'REJECT')}
-                                                    className="w-full bg-red-500 text-white px-4 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-red-600 transition-all shadow-md shadow-red-500/20"
-                                                >
-                                                    <XCircle size={18} /> Reject
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Timeline / Audit Trail */}
-                                    <div className="mt-6 pt-6 border-t border-slate-100">
-                                        <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                            <History size={14} /> Approval Workflow Timeline
-                                        </h5>
-                                        <div className="ml-2">
-                                            {renderTimelineItem('Submitted', { approverName: req.studentName, approverDept: req.className || req.department, decidedAt: req.createdAt })}
-                                            
-                                            {renderTimelineItem(
-                                                req.facultyDecision?.action === 'APPROVE' ? 'Faculty Approved' : req.facultyDecision?.action === 'REJECT' ? 'Faculty Rejected' : 'Pending Faculty Verification',
-                                                req.facultyDecision,
-                                                req.status === 'PENDING_FACULTY',
-                                                req.facultyDecision?.action === 'REJECT'
+                                         </div>
+                                      </td>
+                                      <td className="py-4 px-6 w-[20%]">
+                                         <p className="text-sm font-medium text-slate-700">
+                                            {new Date(req.createdAt).toLocaleDateString()}
+                                         </p>
+                                      </td>
+                                      <td className="py-4 px-6 w-[25%]">
+                                         {getStatusBadge(req.status)}
+                                      </td>
+                                      <td className="py-4 px-6 w-[20%] text-right">
+                                         <div className="flex items-center justify-end gap-2">
+                                            {isStaff && req.status.includes(currentUser.role.replace('_TEAM', '')) && activeTab === 'pending' && (
+                                               <>
+                                                  <button onClick={(e) => { e.stopPropagation(); openActionModal(req.id, 'APPROVE'); }} className="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white rounded-lg transition-colors shadow-sm" title="Approve">
+                                                     <ShieldCheck size={18} />
+                                                  </button>
+                                                  <button onClick={(e) => { e.stopPropagation(); openActionModal(req.id, 'REJECT'); }} className="p-2 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white rounded-lg transition-colors shadow-sm" title="Reject">
+                                                     <XCircle size={18} />
+                                                  </button>
+                                               </>
                                             )}
-                                            
-                                            {(req.facultyDecision?.action === 'APPROVE' || req.hodDecision) && renderTimelineItem(
-                                                req.hodDecision?.action === 'APPROVE' ? 'HOD Approved' : req.hodDecision?.action === 'REJECT' ? 'HOD Rejected' : 'Pending HOD Verification',
-                                                req.hodDecision,
-                                                req.status === 'PENDING_HOD',
-                                                req.hodDecision?.action === 'REJECT'
-                                            )}
-                                            
-                                            {(req.hodDecision?.action === 'APPROVE' || req.iqacDecision) && renderTimelineItem(
-                                                req.iqacDecision?.action === 'APPROVE' ? 'IQAC Approved (Completed)' : req.iqacDecision?.action === 'REJECT' ? 'IQAC Rejected' : 'Pending IQAC Review',
-                                                req.iqacDecision,
-                                                req.status === 'PENDING_IQAC',
-                                                req.iqacDecision?.action === 'REJECT'
-                                            )}
-                                        </div>
-                                        {req.status === 'COMPLETED' && (
-                                            <div className="mt-4 bg-emerald-50 text-emerald-800 p-3 rounded-lg text-xs font-medium flex items-center gap-2 border border-emerald-100">
-                                                <CheckCircle2 size={16} className="text-emerald-500"/>
-                                                OD values updated successfully on {new Date(req.odUpdatedAt).toLocaleString()}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))
+                                            <button className="p-2 text-slate-400 hover:text-slate-600 transition-colors ml-2">
+                                               <ChevronRight size={18} />
+                                            </button>
+                                         </div>
+                                      </td>
+                                   </tr>
+                                  </React.Fragment>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                         )}
                     </div>
                 )}
+                </div>
             </main>
+
+            {/* Details Modal */}
+            {selectedRequest && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                                <FileText className="text-cse-accent" /> Request Details
+                            </h3>
+                            <button onClick={() => setSelectedRequest(null)} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div>
+                                    <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Issue / Reason</h5>
+                                    <p className="text-sm font-medium text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-sm">
+                                        {selectedRequest.description}
+                                    </p>
+                                </div>
+                                <div>
+                                    <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Requested OD</h5>
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-sm flex gap-8">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Current ODs</span>
+                                            <span className="text-lg font-extrabold text-slate-700">{selectedRequest.currentOdUsed ?? 0} <span className="text-sm text-slate-400 font-semibold">/ {selectedRequest.currentOdLimit ?? 7}</span></span>
+                                        </div>
+                                        <div className="w-px bg-slate-200 self-stretch"></div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Requested ODs</span>
+                                            <span className="text-lg font-extrabold text-blue-600">{selectedRequest.requestedCount} <span className="text-sm text-blue-300 font-semibold">/ {selectedRequest.requestedLimit}</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-2 pt-6 border-t border-slate-200">
+                                <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <History size={14} /> Approval Workflow Timeline
+                                </h5>
+                                <div className="ml-2">
+                                    {renderTimelineItem('Submitted', { approverName: selectedRequest.studentName, approverDept: selectedRequest.className || selectedRequest.department, decidedAt: selectedRequest.createdAt })}
+                                    
+                                    {renderTimelineItem(
+                                        selectedRequest.facultyDecision?.action === 'APPROVE' ? 'Faculty Approved' : selectedRequest.facultyDecision?.action === 'REJECT' ? 'Faculty Rejected' : 'Pending Faculty Verification',
+                                        selectedRequest.facultyDecision,
+                                        selectedRequest.status === 'PENDING_FACULTY',
+                                        selectedRequest.facultyDecision?.action === 'REJECT'
+                                    )}
+                                    
+                                    {(selectedRequest.facultyDecision?.action === 'APPROVE' || selectedRequest.hodDecision) && renderTimelineItem(
+                                        selectedRequest.hodDecision?.action === 'APPROVE' ? 'HOD Approved' : selectedRequest.hodDecision?.action === 'REJECT' ? 'HOD Rejected' : 'Pending HOD Verification',
+                                        selectedRequest.hodDecision,
+                                        selectedRequest.status === 'PENDING_HOD',
+                                        selectedRequest.hodDecision?.action === 'REJECT'
+                                    )}
+                                    
+                                    {(selectedRequest.hodDecision?.action === 'APPROVE' || selectedRequest.iqacDecision) && renderTimelineItem(
+                                        selectedRequest.iqacDecision?.action === 'APPROVE' ? 'IQAC Approved (Completed)' : selectedRequest.iqacDecision?.action === 'REJECT' ? 'IQAC Rejected' : 'Pending IQAC Review',
+                                        selectedRequest.iqacDecision,
+                                        selectedRequest.status === 'PENDING_IQAC',
+                                        selectedRequest.iqacDecision?.action === 'REJECT'
+                                    )}
+                                </div>
+                                {selectedRequest.status === 'COMPLETED' && (
+                                    <div className="mt-4 bg-emerald-50 text-emerald-800 p-3 rounded-lg text-xs font-medium flex items-center gap-2 border border-emerald-100">
+                                        <CheckCircle2 size={16} className="text-emerald-500"/>
+                                        OD values updated successfully on {new Date(selectedRequest.odUpdatedAt).toLocaleString()}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
 
             {/* Action Modal */}
             {actionModal.isOpen && (

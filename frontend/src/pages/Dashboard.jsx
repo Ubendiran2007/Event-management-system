@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getRolePath } from '../utils/routeUtils';
 import {
   Calendar,
   Users,
@@ -16,6 +17,7 @@ import {
   FileCheck,
   FileText,
   Loader2,
+  X,
   XCircle,
   UserCheck,
   Copy,
@@ -59,7 +61,7 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 
-import { formatRollNo, formatStudentNameOnly, formatStudentNameWithRoll, formatEventRef, fallbackValue, getEventStatus, isRegistrationLocked } from '../utils/formatters';
+import { formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, getEventStatus, isRegistrationLocked } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
 
 
@@ -169,14 +171,32 @@ const Dashboard = () => {
     currentUser,
     events,
     odRequests,
-    organizerRequests,
-    loading,
-    approveOrganizer
+    loading
   } = useAppContext();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedODRequest, setSelectedODRequest] = useState(null);
   const [selectedEventDetail, setSelectedEventDetail] = useState(null);
-  const [activeTab, setActiveTab] = useState('events');
+  
+  const segments = location.pathname.split('/').filter(Boolean);
+  const feature = segments[segments.length - 1];
+  const validFeatures = ['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations'];
+  const currentFeature = validFeatures.includes(feature) ? feature : 'dashboard';
+  
+  const [activeTab, setActiveTab] = useState(currentFeature);
+  const expectedRolePrefix = getRolePath(currentUser?.role);
+
+  useEffect(() => {
+    setActiveTab(currentFeature);
+  }, [currentFeature]);
+
+  useEffect(() => {
+    if (currentUser && expectedRolePrefix) {
+      if (!location.pathname.startsWith(`/${expectedRolePrefix}`)) {
+        navigate(`/${expectedRolePrefix}/${currentFeature}`, { replace: true });
+      }
+    }
+  }, [currentUser, location.pathname, expectedRolePrefix, currentFeature, navigate]);
   const [togglingOD, setTogglingOD] = useState({});
   const [withdrawingOD, setWithdrawingOD] = useState({});
   const [expandedRegistrationGroups, setExpandedRegistrationGroups] = useState({});
@@ -184,14 +204,21 @@ const Dashboard = () => {
   const [copiedStates, setCopiedStates] = useState({});
   const [searchQueries, setSearchQueries] = useState({});
   const [, setShowAllEvents] = useState(false);
-  const [eventFilter, setEventFilter] = useState('all'); // all, posted, completed, iqac
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
+  const [eventFilter, setEventFilter] = useState(location.state?.filter || 'all'); // all, posted, completed, iqac
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [odFilter, setOdFilter] = useState('all');
+  const [isOdFilterOpen, setIsOdFilterOpen] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.filter) {
+      setEventFilter(location.state.filter);
+    }
+  }, [location.state]);
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const isDeptOfficer = currentUser?.role && currentUser.role !== UserRole.FACULTY && currentUser.role !== UserRole.STUDENT_GENERAL && currentUser.role !== UserRole.STUDENT_ORGANIZER;
   const canCreateEvent =
     currentUser?.role === UserRole.FACULTY ||
-    (currentUser?.role === UserRole.STUDENT_ORGANIZER && currentUser?.isApprovedOrganizer);
+    currentUser?.role === UserRole.STUDENT_ORGANIZER;
   const isStaff = currentUser?.role && ![UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER].includes(currentUser.role.toUpperCase());
   const canManageStudents = [UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser?.role);
 
@@ -200,11 +227,24 @@ const Dashboard = () => {
     return events.some(e => e.organizerId === currentUser.id);
   }, [events, currentUser]);
 
+  const downloadStudentListPDF = (group) => {
+    // Only include students who are explicitly approved and haven't withdrawn
+    const approvedStudents = group.requests.filter(req => req.status === 'APPROVED');
+    
+    if (approvedStudents.length === 0) {
+      alert('No students have been approved yet for this event.');
+      return;
+    }
+
+    // Re-use the existing beautifully formatted HTML-to-print PDF logic
+    downloadDeptListAsPDF('All Departments', approvedStudents, group);
+  };
+
   // ORIGINAL HOOKS START HERE
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.role === UserRole.STUDENT_GENERAL && activeTab === 'events' && !hasOrganizedEvents) {
-      setActiveTab('available');
+      navigate(`/${expectedRolePrefix}/available`, { replace: true });
     }
   }, [currentUser, activeTab, hasOrganizedEvents]);
 
@@ -237,7 +277,7 @@ const Dashboard = () => {
   // so that hook call order stays consistent across every render.
   const filteredEvents = useMemo(() => {
     if (!currentUser) return [];
-    return events.filter(ev => {
+    const result = events.filter(ev => {
       if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
         if (ev.organizerId === currentUser.id) return true;
         if (currentUser.role === UserRole.STUDENT_GENERAL) return false;
@@ -316,10 +356,10 @@ const Dashboard = () => {
   // For organizer: incoming registrations from students for their events
   const organizerIncomingOD = useMemo(() => {
     if (!currentUser) return [];
-    return (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY)
+    return (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || hasOrganizedEvents)
       ? odRequests.filter(r => r.organizerId === currentUser.id)
       : [];
-  }, [currentUser, odRequests]);
+  }, [currentUser, odRequests, hasOrganizedEvents]);
 
   const groupedOrganizerEvents = useMemo(() => {
     if (!currentUser) return [];
@@ -453,23 +493,27 @@ const Dashboard = () => {
       // 1. Must be POSTED or POSTPONED status
       if (ev.status !== EventStatus.POSTED && ev.status !== 'POSTPONED') return false;
 
-      // 2. Must NOT be the organizer of this event (string comparison for robustness)
-      if (String(ev.organizerId) === String(currentUser.id)) return false;
-
-      // 3. Must NOT be already registered for this event
-      const alreadyRegistered = (ev.registeredStudents || []).some(s => String(s?.userId) === String(currentUser.id));
-      if (alreadyRegistered) return false;
-
-      // 4. Must match the student's department, or be "Overall", or be mixed including their department.
+      // 2. Department visibility check
+      const globalRoles = [
+        UserRole.IQAC_TEAM,
+        UserRole.SYSTEM_ADMIN,
+        UserRole.HR_TEAM,
+        UserRole.AUDIO_TEAM,
+        UserRole.TRANSPORT_TEAM,
+        UserRole.BOYS_WARDEN,
+        UserRole.GIRLS_WARDEN,
+        UserRole.MEDIA,
+      ];
+      const hasGlobalVisibility = globalRoles.includes(currentUser?.role);
       const isOpenToAll = ev.openToAllDepartments === true || ev.audienceScope === 'Open To All' || String(ev.department).toLowerCase() === 'overall';
-      const isMyDept = ev.department === currentUser.department || (ev.requisition?.step1?.department === currentUser.department);
-      const isSelectedDept = Array.isArray(ev.selectedDepartments) && ev.selectedDepartments.includes(currentUser.department);
+      const isMyDept = String(ev.department).toLowerCase() === String(currentUser?.department).toLowerCase() || (ev.requisition?.step1?.department === currentUser?.department);
+      const isSelectedDept = Array.isArray(ev.selectedDepartments) && ev.selectedDepartments.includes(currentUser?.department);
       
-      if (!isOpenToAll && !isMyDept && !isSelectedDept) {
+      if (!hasGlobalVisibility && !isOpenToAll && !isMyDept && !isSelectedDept) {
         return false;
       }
 
-      // 5. Registration must be open (not locked)
+      // 3. Registration must be open (not locked)
       if (isRegistrationLocked(ev)) return false;
 
       // 4. Avoid ongoing and completed events (check date)
@@ -515,9 +559,15 @@ const Dashboard = () => {
   const getFilteredODRequests = () => {
     const role = currentUser.role?.toUpperCase();
     if (role === UserRole.STUDENT_GENERAL || role === UserRole.STUDENT_ORGANIZER) {
-      return odRequests
-        .filter(r => r.studentId === currentUser.id)
-        .sort((a, b) => {
+      let reqs = odRequests.filter(r => r.studentId === currentUser.id);
+      
+      if (odFilter === 'approved') reqs = reqs.filter(r => r.status === 'APPROVED');
+      else if (odFilter === 'rejected') reqs = reqs.filter(r => r.status === 'REJECTED');
+      else if (odFilter === 'withdrawn') reqs = reqs.filter(r => r.status === 'WITHDRAWN');
+      else if (odFilter === 'pending') reqs = reqs.filter(r => r.status && r.status.startsWith('PENDING'));
+      else if (odFilter === 'cancelled') reqs = reqs.filter(r => r.status === 'OD_CANCELLED' || r.status === 'CANCELLED');
+
+      return reqs.sort((a, b) => {
           // Put WITHDRAWN and REJECTED statuses at the bottom
           const isAInactive = a.status === 'WITHDRAWN' || a.status === 'REJECTED';
           const isBInactive = b.status === 'WITHDRAWN' || b.status === 'REJECTED';
@@ -988,236 +1038,369 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#f5f7fa]">
+    <div className="h-screen flex flex-row overflow-hidden bg-[#f8fafc]">
       <Navbar />
 
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="max-w-7xl mx-auto w-full h-full px-6 py-6 flex flex-col min-h-0">
+      <main className={`flex-1 flex flex-col min-h-0 overflow-y-auto relative ${activeTab === 'dashboard' ? '[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]' : 'scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent'}`}>
+        <div className="max-w-[1600px] mx-auto w-full min-h-full px-6 py-6 flex flex-col">
           {/* Header Section */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
-            <div>
-              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                {currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER ? 'Student Dashboard' : 'My Dashboard'}
+          {activeTab === 'dashboard' ? (
+            <div className="mb-6">
+              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                Welcome Back, {currentUser.name}! <span className="text-2xl">👋</span>
               </h2>
-              <p className="text-slate-500 font-medium mt-1">
-                {getDashboardSubtitle(currentUser.role)}
+              <p className="text-slate-400 font-bold tracking-widest text-[11px] uppercase mt-1">
+                INSTITUTION PORTAL OVERVIEW
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/explore')}
-                className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-              >
-                <Calendar size={18} /> Explore Events
-              </button>
-              {canCreateEvent && (
-                <button
-                  onClick={() => navigate('/create-event')}
-                  className="px-6 py-2.5 bg-cse-primary text-white rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-blue-900/10 active:scale-95"
-                >
-                  <Plus size={18} /> Create Event
-                </button>
+          ) : activeTab === 'events' ? (
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+              <div>
+                <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                  My Events
+                </h2>
+                <p className="text-slate-500 font-medium tracking-wide text-xs uppercase mt-1">
+                  MANAGE AND TRACK YOUR ORGANIZED COLLEGE EVENTS
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <button
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                  >
+                    <SlidersHorizontal size={16} className="text-slate-600" />
+                    <span>
+                      Filter: {isDeptOfficer ? (
+                        {
+                          'all': 'All Events',
+                          'pending': 'Pending Approval',
+                          'approved': 'Approved Events'
+                        }[eventFilter] || 'All Events'
+                      ) : (
+                        {
+                          'all': 'All Events',
+                          'process': 'In Process',
+                          'approved': 'Approved',
+                          'posted': 'Posted',
+                          'completed': 'Completed',
+                          'rejected': 'Rejected'
+                        }[eventFilter] || 'All Events'
+                      )}
+                    </span>
+                  </button>
+                  
+                  {isFilterOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {(isDeptOfficer ? [
+                          { id: 'all', label: 'All Events' },
+                          { id: 'pending', label: 'Pending Approval' },
+                          { id: 'approved', label: 'Approved Events' }
+                        ] : [
+                          { id: 'all', label: 'All Events' },
+                          { id: 'process', label: 'In Process' },
+                          { id: 'approved', label: 'Approved' },
+                          { id: 'posted', label: 'Posted' },
+                          { id: 'completed', label: 'Completed' },
+                          { id: 'rejected', label: 'Rejected' }
+                        ]).map(opt => (
+                          <button
+                            key={opt.id}
+                            onClick={() => { setEventFilter(opt.id); setShowAllEvents(false); setIsFilterOpen(false); }}
+                            className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${eventFilter === opt.id ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+              <div>
+                <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                  {activeTab === 'registrations' ? 'Registrations' : 
+                   activeTab === 'approvals' ? 'Approvals' :
+                   activeTab === 'modifications' ? 'Modifications' :
+                   activeTab === 'available' ? 'Available Events' :
+                   activeTab === 'my-registrations' ? 'My Registrations' :
+                   currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER ? 'Student Dashboard' : 'My Dashboard'}
+                </h2>
+                <p className="text-slate-500 font-medium mt-1">
+                  {activeTab === 'registrations' ? 'Review and manage event participant registrations' : 
+                   activeTab === 'available' ? 'Browse and register for upcoming events' :
+                   activeTab === 'my-registrations' ? 'Track your event registrations and OD requests' :
+                   getDashboardSubtitle(currentUser.role)}
+                </p>
+              </div>
+              {(activeTab === 'approvals' || activeTab === 'modifications') && (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsFilterOpen(!isFilterOpen)}
+                      className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                    >
+                      <SlidersHorizontal size={16} className="text-slate-600" />
+                      <span>
+                        Filter: {
+                          activeTab === 'approvals' ? (
+                            {
+                              'all': 'All Approvals',
+                              'pending': 'Pending Approval',
+                              'approved': 'Approved',
+                              'modified': 'Modified / Cancelled'
+                            }[eventFilter] || 'All Approvals'
+                          ) : (
+                            {
+                              'all': 'All Modifications',
+                              'cancellation': 'Cancellation',
+                              'postponement': 'Postponement'
+                            }[eventFilter] || 'All Modifications'
+                          )
+                        }
+                      </span>
+                    </button>
+                    
+                    {isFilterOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
+                        <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          {(activeTab === 'approvals' ? [
+                            { id: 'all', label: 'All Approvals' },
+                            { id: 'pending', label: 'Pending Approval' },
+                            { id: 'approved', label: 'Approved' },
+                            { id: 'modified', label: 'Modified / Cancelled' }
+                          ] : [
+                            { id: 'all', label: 'All Modifications' },
+                            { id: 'cancellation', label: 'Cancellation' },
+                            { id: 'postponement', label: 'Postponement' }
+                          ]).map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => { setEventFilter(opt.id); setIsFilterOpen(false); }}
+                              className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${eventFilter === opt.id ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               )}
-              {canManageStudents && (
+              {activeTab === 'dashboard' && (
+                <div className="flex items-center gap-3">
                 <button
-                  onClick={() => navigate('/manage-students')}
+                  onClick={() => navigate(`/${expectedRolePrefix}/explore`)}
                   className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
                 >
-                  <Users size={18} /> Manage Students
+                  <Calendar size={18} /> Explore Events
                 </button>
+                {canCreateEvent && (
+                  <button
+                    onClick={() => navigate(`/${expectedRolePrefix}/create-event`)}
+                    className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95"
+                  >
+                    <Plus size={18} /> Create Event
+                  </button>
+                )}
+                {canManageStudents && (
+                  <button
+                    onClick={() => navigate(`/${expectedRolePrefix}/manage-students`)}
+                    className="px-6 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                  >
+                    <Users size={18} /> Manage Students
+                  </button>
+                )}
+              </div>
+              )}
+              {activeTab === 'my-registrations' && (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsOdFilterOpen(!isOdFilterOpen)}
+                      className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                    >
+                      <SlidersHorizontal size={16} className="text-slate-600" />
+                      <span>
+                        Filter: {
+                          {
+                            'all': 'All Logs',
+                            'approved': 'Approved',
+                            'pending': 'Pending',
+                            'rejected': 'Rejected',
+                            'withdrawn': 'Withdrawn',
+                            'cancelled': 'Cancelled'
+                          }[odFilter] || 'All Logs'
+                        }
+                      </span>
+                    </button>
+                    
+                    {isOdFilterOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsOdFilterOpen(false)} />
+                        <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          {[
+                            { id: 'all', label: 'All Logs' },
+                            { id: 'approved', label: 'Approved' },
+                            { id: 'pending', label: 'Pending' },
+                            { id: 'rejected', label: 'Rejected' },
+                            { id: 'withdrawn', label: 'Withdrawn' },
+                            { id: 'cancelled', label: 'Cancelled' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              onClick={() => { setOdFilter(opt.id); setIsOdFilterOpen(false); }}
+                              className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${odFilter === opt.id ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
-            <div className="lg:col-span-2 flex flex-col min-h-0 space-y-6">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          {activeTab === 'dashboard' ? (
+            <div className="flex flex-col gap-6">
+              {/* Dashboard Overview Stats */}
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 {(() => {
                   const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                   const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
-
-                  // Base events for counts
                   const baseEvents = isOrg ? events.filter(e => e.organizerId === currentUser.id) : events;
-
-                  // Value mapping based on role
-                  const getStatItems = () => {
-                    const stats = [];
-
-                    // 1. TOTAL EVENTS
-                    stats.push({
-                      label: isOrg ? 'My Total Events' : (isStud ? 'Available Events' : 'Total Events'),
-                      value: isStud ? availableEvents.length : baseEvents.length,
-                      icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50'
-                    });
-
-                    // 2. POSTED / ACTIVE
-                    stats.push({
-                      label: isStud ? 'Approved ODs' : 'Posted',
-                      value: isStud
-                        ? filteredODRequests.filter(r => r.status === 'APPROVED').length
-                        : baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length,
-                      icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50'
-                    });
-
-                    // 3. PENDING
-                    stats.push({
-                      label: (isStaff || isMedia) ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : (isStud ? 'My Pending ODs' : 'Pending'),
-                      value: (isStaff || isMedia)
-                        ? (currentUser.role === UserRole.FACULTY
-                          ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length
-                          : filteredEvents.length)
-                        : (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length),
-                      icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50'
-                    });
-
-                    // 4. COMPLETED
-                    stats.push({
-                      label: isStud ? 'My Completed ODs' : 'Completed',
-                      value: isStud
-                        ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length
-                        : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length,
-                      icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100'
-                    });
-
-                    // 5. REJECTED
-                    stats.push({
-                      label: isStud ? 'My Rejected ODs' : 'Rejected',
-                      value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length,
-                      icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50'
-                    });
-
-
-
-                    return stats;
-                  };
-
-                  return getStatItems().map((stat, i) => (
-                    <div key={i} className="glass-panel px-4 py-3 rounded-2xl flex flex-col justify-center">
-                      <div className={`w-8 h-8 ${stat.bg} ${stat.color} rounded-[10px] flex items-center justify-center mb-1.5`}>
-                        <stat.icon size={16} />
+                  
+                  return [
+                    { label: 'MY TOTAL EVENTS', value: isStud ? availableEvents.length : baseEvents.length, icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' },
+                    { label: 'PENDING REVIEW', value: (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' },
+                    { label: 'REGISTERED ODS', value: isStud ? filteredODRequests.length : 408, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+                    { label: 'COMPLETED', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-100', border: 'border-slate-200' },
+                    { label: 'REJECTED', value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' }
+                  ].map((stat, i) => (
+                    <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-between relative overflow-hidden group">
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="text-[10px] font-extrabold text-slate-500 tracking-widest uppercase">{stat.label}</p>
+                        <div className={`w-8 h-8 rounded-full ${stat.bg} ${stat.color} flex items-center justify-center border ${stat.border}`}>
+                           <stat.icon size={16} strokeWidth={2.5} />
+                        </div>
                       </div>
-                      <p className="text-xl font-extrabold leading-none mb-1">{stat.value}</p>
-                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{stat.label}</p>
+                      <p className="text-3xl font-extrabold text-slate-900">{stat.value}</p>
                     </div>
                   ));
                 })()}
               </div>
 
-              {/* Tabs */}
-              <div className="rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm border border-slate-200 flex-1 min-h-0">
-                {!isDeptOfficer && (
-                  <div className="flex w-full border-b border-slate-200 bg-white sticky top-0 z-30 shrink-0">
-                    {(currentUser.role !== UserRole.STUDENT_GENERAL || hasOrganizedEvents) && (
-                      <button
-                        onClick={() => setActiveTab('events')}
-                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'events'
-                          ? 'text-blue-600 bg-white'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                          }`}
-                      >
-                        {currentUser.role === UserRole.FACULTY ? 'My Events' : isStaff ? 'Pending Approvals' : 'My Events'}
-                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${((isStaff || isMedia) && currentUser.role !== UserRole.FACULTY && filteredEvents.length > 0) ||
-                          (currentUser.role === UserRole.FACULTY && events.filter(e => e.organizerId === currentUser.id).length > 0)
-                          ? 'opacity-100 bg-blue-100 text-blue-700' : 'opacity-0'
-                          }`}>
-                          {currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id).length : filteredEvents.length}
-                        </span>
-                        {activeTab === 'events' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
-                      </button>
-                    )}
+              {/* Lower Section: Recent Events & Quick Actions */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[360px]">
+                  <div className="p-5 border-b border-slate-100 flex items-center gap-2">
+                     <Calendar size={18} className="text-blue-500" />
+                     <h3 className="font-extrabold text-sm uppercase tracking-wide text-slate-800">Recent Events Summary</h3>
+                  </div>
+                  <div className="flex-1 p-5 space-y-3">
+                     {(() => {
+                        const myCreated = events.filter(e => e.organizerId === currentUser.id);
+                        const myRegistered = events.filter(e => (e.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id)));
+                        
+                        const combinedMap = new Map();
+                        [...myCreated, ...myRegistered].forEach(e => combinedMap.set(e.id, e));
+                        
+                        // Sort by ID descending to get newest first, then slice to 4
+                        const recentLog = Array.from(combinedMap.values())
+                          .sort((a, b) => String(b.id).localeCompare(String(a.id)))
+                          .slice(0, 4);
 
-                    
-                    {/* Modification Requests Tab — for HOD and IQAC */}
-                    {(currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM) && (
-                      <button
-                        onClick={() => setActiveTab('modifications')}
-                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'modifications'
-                          ? 'text-blue-600 bg-white'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                          }`}
-                      >
-                        Pending Event Modification Requests
-                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL'))).length > 0 ? 'opacity-100 bg-amber-100 text-amber-700' : 'opacity-0'}`}>
-                          {events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL'))).length}
-                        </span>
-                        {activeTab === 'modifications' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
-                      </button>
-                    )}
-{/* Available Events Tab — for all students (general and organizer) */}
-                    {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
-                      <button
-                        onClick={() => setActiveTab('available')}
-                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'available'
-                          ? 'text-blue-600 bg-white'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                          }`}
-                      >
-                        Available Events
-                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${availableEvents.length > 0 ? 'opacity-100 bg-blue-100 text-blue-700' : 'opacity-0'}`}>
-                          {availableEvents.length}
-                        </span>
-                        {activeTab === 'available' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
-                      </button>
-                    )}
+                        return recentLog.length > 0 ? recentLog.map(ev => (
+                           <div key={ev.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100 hover:border-blue-100 transition-colors">
+                              <div>
+                                 <p className="font-bold text-slate-800 text-sm">{ev.title}</p>
+                                 <p className="text-xs text-slate-500 mt-1">{ev.date} · {ev.venue || 'To be allocated'}</p>
+                              </div>
+                              <StatusBadge status={ev.status} />
+                           </div>
+                        )) : (
+                           <p className="text-slate-500 text-sm text-center py-4">No recent events found.</p>
+                        );
+                     })()}
+                  </div>
+                </div>
 
-                    {/* Approvals tab — only for faculty */}
-                    {currentUser.role === UserRole.FACULTY && (
-                      <button
-                        onClick={() => setActiveTab('approvals')}
-                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'approvals'
-                          ? 'text-blue-600 bg-white'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                          }`}
-                      >
-                        Approvals
-                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${events.filter(e => e.status === EventStatus.PENDING_FACULTY).length > 0 ? 'opacity-100 bg-amber-100 text-amber-700' : 'opacity-0'}`}>
-                          {events.filter(e => e.status === EventStatus.PENDING_FACULTY).length || 0}
-                        </span>
-                        {activeTab === 'approvals' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
-                      </button>
-                    )}
-
-                    {/* My Registrations tab — for all students (general and organizer) */}
-                    {(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
-                      <button
-                        onClick={() => setActiveTab('od')}
-                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'od'
-                          ? 'text-blue-600 bg-white'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                          }`}
-                      >
-                        My Registrations
-                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${pendingODCount > 0 ? 'opacity-100 bg-purple-100 text-purple-700' : 'opacity-0'}`}>
-                          {pendingODCount}
-                        </span>
-                        {activeTab === 'od' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
-                      </button>
-                    )}
-
-                    {/* Manage Registrations tab — for student organizer and faculty to review incoming requests */}
-                    {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
-                      <button
-                        onClick={() => setActiveTab('registrations')}
-                        className={`flex-1 relative py-4 font-bold text-[14px] transition-all flex items-center justify-center whitespace-nowrap ${activeTab === 'registrations'
-                          ? 'text-blue-600 bg-white'
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                          }`}
-                      >
-                        Manage Registrations
-                        <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center shrink-0 ml-2 transition-opacity ${pendingOrganizerOD.length > 0 ? 'opacity-100 bg-amber-100 text-amber-700' : 'opacity-0'}`}>
-                          {pendingOrganizerOD.length}
-                        </span>
-                        {activeTab === 'registrations' && <span className="absolute bottom-0 left-0 w-full h-[3px] bg-blue-600 rounded-t-full" />}
-                      </button>
-                    )}
-
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+                  <div className="p-5 border-b border-slate-100 flex items-center gap-2">
+                     <LayoutDashboard size={18} className="text-blue-500" />
+                     <h3 className="font-extrabold text-sm uppercase tracking-wide text-slate-800">Quick Actions</h3>
+                  </div>
+                  <div className="p-5 space-y-3">
+                     {canCreateEvent && (
+                       <button onClick={() => navigate(`/${expectedRolePrefix}/create-event`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group">
+                          <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><Plus size={20} /></div>
+                          <div className="text-left"><p className="font-bold text-slate-800 text-sm">Create Event</p><p className="text-[11px] text-slate-500 font-medium">Initiate a new event</p></div>
+                       </button>
+                     )}
+                     <button onClick={() => navigate(`/${expectedRolePrefix}/od-correction`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-md transition-all group">
+                        <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><AlertCircle size={20} /></div>
+                        <div className="text-left"><p className="font-bold text-slate-800 text-sm">OD Corrections</p><p className="text-[11px] text-slate-500 font-medium">Review or submit corrections</p></div>
+                     </button>
+                     <button onClick={() => navigate(`/${expectedRolePrefix}/explore`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-emerald-300 hover:shadow-md transition-all group">
+                        <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><Search size={20} /></div>
+                        <div className="text-left"><p className="font-bold text-slate-800 text-sm">Explore Events</p><p className="text-[11px] text-slate-500 font-medium">Discover college events</p></div>
+                     </button>
+                     {canManageStudents && (
+                       <button onClick={() => navigate(`/${expectedRolePrefix}/manage-students`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-purple-300 hover:shadow-md transition-all group">
+                          <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><Users size={20} /></div>
+                          <div className="text-left"><p className="font-bold text-slate-800 text-sm">Explore Student</p><p className="text-[11px] text-slate-500 font-medium">Manage student records</p></div>
+                       </button>
+                     )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col flex-1 min-h-0 w-full max-w-[1400px] mx-auto">
+                <div className="flex flex-col flex-1 min-h-0 space-y-6 w-full">
+                {/* Hide stats for events list, registrations, available events, my registrations, approvals, and modifications */}
+                {activeTab !== 'events' && activeTab !== 'registrations' && activeTab !== 'available' && activeTab !== 'my-registrations' && activeTab !== 'approvals' && activeTab !== 'modifications' && (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                    {(() => {
+                      const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
+                      const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
+                      
+                      const baseEvents = isOrg ? events.filter(e => e.organizerId === currentUser.id) : events;
+                      const getStatItems = () => {
+                        const stats = [];
+                        stats.push({ label: isOrg ? 'My Total Events' : (isStud ? 'Available Events' : 'Total Events'), value: isStud ? availableEvents.length : baseEvents.length, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' });
+                        stats.push({ label: isStud ? 'Approved ODs' : 'Posted', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED').length : baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' });
+                        stats.push({ label: (isStaff || isMedia) ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : (isStud ? 'My Pending ODs' : 'Pending'), value: (isStaff || isMedia) ? (currentUser.role === UserRole.FACULTY ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length : filteredEvents.length) : (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length), icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' });
+                        stats.push({ label: isStud ? 'My Completed ODs' : 'Completed', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' });
+                        stats.push({ label: isStud ? 'My Rejected ODs' : 'Rejected', value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' });
+                        return stats;
+                      };
+                      return getStatItems().map((stat, i) => (
+                        <div key={i} className="glass-panel px-4 py-3 rounded-2xl flex flex-col justify-center">
+                          <div className={`w-8 h-8 ${stat.bg} ${stat.color} rounded-[10px] flex items-center justify-center mb-1.5`}>
+                            <stat.icon size={16} />
+                          </div>
+                          <p className="text-xl font-extrabold leading-none mb-1">{stat.value}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{stat.label}</p>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 )}
-
-
-                {/* Fixed-height scrollable container for tab content */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent flex flex-col bg-[#f5f7fa]">
+              <div className="rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm border border-slate-200 flex-1">
+                {/* Scrollable container for tab content - now relies on main page scroll */}
+                <div className="flex-1 flex flex-col bg-[#f5f7fa]">
                   {/* Events Tab Content */}
                   {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                     let displayEvents = [];
@@ -1240,7 +1423,8 @@ const Dashboard = () => {
                         else displayEvents = baseEvents;
                       } else {
                         if (eventFilter === 'all') displayEvents = baseEvents;
-                        else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && (e.status.startsWith('PENDING') || e.status === EventStatus.APPROVED));
+                        else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && e.status.startsWith('PENDING'));
+                        else if (eventFilter === 'approved') displayEvents = baseEvents.filter(e => e.status === EventStatus.APPROVED);
                         else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
                         else if (eventFilter === 'completed') displayEvents = baseEvents.filter(e => e.status === EventStatus.COMPLETED);
                         else if (eventFilter === 'rejected') displayEvents = baseEvents.filter(e => e.status === EventStatus.REJECTED);
@@ -1251,121 +1435,107 @@ const Dashboard = () => {
                         displayEvents = [...displayEvents].sort(sortEventsByEndDateDesc);
                       }
                     } else if (activeTab === 'approvals') {
-                      displayEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
+                      let pendingEvents = [];
+                      let pastApprovedEvents = [];
+
+                      if (currentUser.role === UserRole.FACULTY) {
+                        pendingEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
+                        pastApprovedEvents = events.filter(e => e.facultyApproval === 'APPROVED');
+                      } else if (currentUser.role === UserRole.HOD) {
+                        pendingEvents = events.filter(e => e.status === EventStatus.PENDING_HOD);
+                        pastApprovedEvents = approvedEvents;
+                      } else if (currentUser.role === UserRole.IQAC_TEAM) {
+                        pendingEvents = events.filter(e => e.status === EventStatus.PENDING_IQAC);
+                        pastApprovedEvents = approvedEvents;
+                      } else {
+                        // For departments (HR_TEAM, AUDIO_TEAM, etc.)
+                        pendingEvents = filteredEvents;
+                        pastApprovedEvents = approvedEvents;
+                      }
+
+                      if (eventFilter === 'approved') {
+                        displayEvents = pastApprovedEvents;
+                      } else if (eventFilter === 'pending') {
+                        displayEvents = pendingEvents;
+                      } else if (eventFilter === 'modified') {
+                        const allApprovals = Array.from(new Set([...pendingEvents, ...pastApprovedEvents]));
+                        displayEvents = allApprovals.filter(e => e.status === 'CANCELLED' || e.status === 'POSTPONED' || e.isPostponed || e.modificationRequest);
+                      } else {
+                        displayEvents = Array.from(new Set([...pendingEvents, ...pastApprovedEvents])).sort(sortEventsBySubmissionDesc);
+                      }
                     }
 
                     return (
                       <div className="flex flex-col h-full flex-1 min-h-0">
-                        {/* Sub-tabs for Event Categories */}
-                        {activeTab === 'events' && (
-                          <div className="px-8 py-4 sticky top-0 z-20 bg-white border-b border-slate-200 flex items-center gap-3 overflow-x-auto no-scrollbar shadow-sm shrink-0">
-                            {(() => {
-                              const tabs = isDeptOfficer ? [
-                                { id: 'all', label: 'All' },
-                                { id: 'pending', label: 'Pending Approval' },
-                                { id: 'approved', label: 'Approved Events' }
-                              ] : [
-                                { id: 'all', label: 'Show All' },
-                                { id: 'process', label: 'In Process' },
-                                { id: 'posted', label: 'Posted' },
-                                { id: 'completed', label: 'Completed' },
-                                { id: 'rejected', label: 'Rejected' }
-                              ];
-
-                              return tabs.map(tab => (
-                                <button
-                                  key={tab.id}
-                                  onClick={() => { setEventFilter(tab.id); setShowAllEvents(false); }}
-                                  className={`px-5 py-2 rounded-full text-[13px] font-bold transition-all whitespace-nowrap border ${eventFilter === tab.id
-                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                                    }`}
-                                >
-                                  {tab.label}
-                                </button>
-                              ));
-                            })()}
-                          </div>
-                        )}
+                        {/* Filters are now managed in the top header */}
                         {displayEvents.length > 0 ? (
-                          <div className="flex-1 p-5 space-y-4 flex flex-col">
-                            {displayEvents.map(event => (
-                              <div
-                                key={event.id}
-                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group"
-                              >
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[110px]">
-                                  <div className="flex items-center gap-5 flex-1 w-full min-w-0">
-                                    <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-blue-50 group-hover:to-blue-100 group-hover:text-blue-600 group-hover:border-blue-200 transition-all shrink-0 shadow-inner">
-                                      <Calendar size={24} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-3 mb-1.5 flex-wrap">
-                                        <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
-                                          {event.title}
-                                        </h4>
-                                        {event.status === 'CANCELLED' && (
-                                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-md text-[10px] font-bold border border-red-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
-                                            <XCircle size={10} /> Cancelled
-                                          </span>
-                                        )}
-                                        {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
-                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold border border-amber-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
-                                            <Clock size={10} /> Postponed
-                                          </span>
-                                        )}
-                                        {event.isResubmitted && (
-                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold border border-slate-200 uppercase tracking-wider shrink-0">
-                                            Resubmitted
-                                          </span>
-                                        )}
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                                          {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
-                                        </span>
-                                        {event.department && (
-                                          <span className="px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 bg-slate-50 text-slate-700 border-slate-200">
-                                            {event.department} Department
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
-                                        <span className="flex items-center gap-1.5 min-w-0">
-                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</span>
-                                        </span>
-                                        <span className="flex items-center gap-1.5 shrink-0">
-                                          <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
-                                    <StatusBadge status={event.status} />
-                                    <div className="flex items-center gap-3">
-                                      {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && event.organizerId === currentUser.id && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            navigate('/create-event', { state: { editingEvent: event } });
-                                          }}
-                                          className="px-5 py-2.5 rounded-lg text-[13px] font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
-                                        >
-                                          Edit
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedEventDetail(event);
-                                        }}
-                                        className="px-6 py-2.5 rounded-lg text-[13px] font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm active:scale-95"
-                                      >
-                                        View Details
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                          <div className="flex-1 overflow-x-hidden min-h-0 bg-white rounded-b-2xl w-full">
+                            <table className="w-full text-left border-collapse table-fixed">
+                              <thead>
+                                <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
+                                  <th className="py-4 px-6 w-[35%]">EVENT DETAILS</th>
+                                  <th className="py-4 px-6 w-[15%]">VENUE</th>
+                                  <th className="py-4 px-6 w-[22%]">DATE & TIME</th>
+                                  <th className="py-4 px-6 w-[15%]">STATUS</th>
+                                  <th className="py-4 px-6 w-[13%] text-right">ACTIONS</th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white">
+                                {displayEvents.map(event => (
+                                   <tr key={event.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedEventDetail(event)}>
+                                      <td className="py-4 px-6">
+                                         <div className="flex items-center gap-4">
+                                            <div className="w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0 border border-blue-100">
+                                               <Calendar size={20} />
+                                            </div>
+                                            <div>
+                                               <p className="font-bold text-slate-900 text-sm max-w-[300px] truncate">{event.title}</p>
+                                               <div className="flex items-center gap-1.5 mt-1">
+                                                  <span className={`px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded border ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                                     {event.creatorType || 'STUDENT'}
+                                                  </span>
+                                                  {event.department && (
+                                                     <span className="text-[10px] text-slate-500 font-bold uppercase">{event.department}</span>
+                                                  )}
+                                                  {event.status === 'CANCELLED' && (
+                                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-extrabold border border-red-200 uppercase flex items-center gap-1"><XCircle size={8}/> CANCELLED</span>
+                                                  )}
+                                                  {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
+                                                     <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold border border-amber-200 uppercase flex items-center gap-1"><Clock size={8}/> POSTPONED</span>
+                                                  )}
+                                               </div>
+                                            </div>
+                                         </div>
+                                      </td>
+                                      <td className="py-4 px-6">
+                                         <p className="text-sm font-medium text-slate-700 max-w-[150px] truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'TBA'}</p>
+                                      </td>
+                                      <td className="py-4 px-6">
+                                         <p className="text-sm font-medium text-slate-700 whitespace-nowrap">{event.date}</p>
+                                         <p className="text-[11px] font-medium text-slate-500 mt-0.5 whitespace-nowrap">{formatTime12(event.startTime) !== '-' ? formatTime12(event.startTime) : '09:00 AM'}</p>
+                                      </td>
+                                      <td className="py-4 px-6">
+                                         <StatusBadge status={event.status} />
+                                      </td>
+                                      <td className="py-4 px-6 text-right">
+                                         <div className="flex items-center justify-end gap-2">
+                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && event.organizerId === currentUser.id && (
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event`, { state: { editingEvent: event } }); }}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+                                              >
+                                                Edit
+                                              </button>
+                                            )}
+                                            <button onClick={(e) => { e.stopPropagation(); setSelectedEventDetail(event); }} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95">
+                                               View
+                                            </button>
+                                         </div>
+                                      </td>
+                                   </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-transparent min-h-[400px]">
@@ -1387,7 +1557,13 @@ const Dashboard = () => {
                   
                   {/* Modification Requests Tab Content */}
                   {activeTab === 'modifications' && (currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM) && (() => {
-                    const modEvents = events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL')));
+                    let modEvents = events.filter(e => e.modificationRequest && ((currentUser.role === UserRole.HOD && e.modificationRequest.status === 'PENDING_HOD_APPROVAL') || (currentUser.role === UserRole.IQAC_TEAM && e.modificationRequest.status === 'PENDING_IQAC_APPROVAL')));
+                    
+                    if (eventFilter === 'cancellation') {
+                        modEvents = modEvents.filter(e => e.modificationRequest.type === 'CANCEL');
+                    } else if (eventFilter === 'postponement') {
+                        modEvents = modEvents.filter(e => e.modificationRequest.type === 'POSTPONE');
+                    }
                     
                     return (
                       <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
@@ -1458,87 +1634,88 @@ const Dashboard = () => {
                           <p className="text-slate-500 font-medium text-sm">There are no new events open for registration right now.</p>
                         </div>
                       ) : (
-                        <div className="flex-1 p-5 space-y-4 flex flex-col">
-                          {availableEvents.map(event => {
-                            const isRegistered = (event.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id));
-                            const isProcessing = processingEventId === event.id;
+                        <div className="flex-1 overflow-x-auto min-h-0 bg-white rounded-b-2xl border-t border-slate-100">
+                          <table className="w-full text-left border-collapse min-w-[900px]">
+                            <thead>
+                              <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
+                                <th className="py-4 px-6">EVENT DETAILS</th>
+                                <th className="py-4 px-6">VENUE</th>
+                                <th className="py-4 px-6">DATE & TIME</th>
+                                <th className="py-4 px-6 text-right">ACTIONS</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white">
+                              {availableEvents.map(event => {
+                                const isRegistered = (event.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id));
+                                const isProcessing = processingEventId === event.id;
 
-                            return (
-                              <div
-                                key={event.id}
-                                className="bg-white rounded-2xl border border-slate-200 px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0"
-                              >
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[110px]">
-                                  <div className="flex items-center gap-5 flex-1 w-full min-w-0">
-                                    <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-blue-50 group-hover:to-blue-100 group-hover:text-blue-600 group-hover:border-blue-200 transition-all shrink-0 shadow-inner">
-                                      <Calendar size={24} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-3 mb-1.5 flex-wrap">
-                                        <h4 className="font-extrabold text-slate-900 text-[16px] xl:text-[18px] truncate max-w-full">
-                                          {event.title}
-                                        </h4>
-                                        {event.status === 'CANCELLED' && (
-                                          <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-md text-[10px] font-bold border border-red-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
-                                            <XCircle size={10} /> Cancelled
-                                          </span>
-                                        )}
-                                        {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
-                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold border border-amber-200 uppercase tracking-wider shrink-0 flex items-center gap-1">
-                                            <Clock size={10} /> Postponed
-                                          </span>
-                                        )}
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                                          {event.creatorType === 'FACULTY' ? 'Faculty Event' : 'Student Event'}
-                                        </span>
-                                        {event.department && (
-                                          <span className="px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider font-bold border shrink-0 bg-slate-50 text-slate-700 border-slate-200">
-                                            {event.department} Department
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-4 text-slate-500 text-[13px] font-medium flex-wrap">
-                                        <span className="flex items-center gap-1.5 min-w-0">
-                                          <MapPin size={15} className="text-slate-400 shrink-0" /> <span className="truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'Venue not alloted'}</span>
-                                        </span>
-                                        <span className="flex items-center gap-1.5 shrink-0">
-                                          <Clock size={15} className="text-slate-400 shrink-0" /> {event.date} {formatTime12(event.startTime) !== '-' ? `· ${formatTime12(event.startTime)}` : ''}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
-                                    {isRegistered ? (
-                                      <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
-                                        <CheckCircle2 size={14} /> Registered
-                                      </span>
-                                    ) : (
-                                      <button
-                                        disabled={isProcessing}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleRegister(event.id);
-                                        }}
-                                        className="px-5 py-2.5 bg-cse-primary text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
-                                      >
-                                        {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-                                        Register Now
-                                      </button>
-                                    )}
-                                    
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
+                                return (
+                                  <tr key={event.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedEventDetail(event)}>
+                                     <td className="py-4 px-6">
+                                        <div className="flex items-center gap-4">
+                                           <div className="w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0 border border-blue-100">
+                                              <Calendar size={20} />
+                                           </div>
+                                           <div>
+                                              <p className="font-extrabold text-slate-900 text-sm max-w-[300px] truncate">{event.title}</p>
+                                              <div className="flex items-center gap-1.5 mt-1">
+                                                 <span className={`px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded border ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                                    {event.creatorType || 'STUDENT'}
+                                                 </span>
+                                                 {event.department && (
+                                                    <span className="text-[10px] text-slate-500 font-bold uppercase">{event.department}</span>
+                                                 )}
+                                                 {event.status === 'CANCELLED' && (
+                                                    <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-extrabold border border-red-200 uppercase flex items-center gap-1"><XCircle size={8}/> CANCELLED</span>
+                                                 )}
+                                                 {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
+                                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold border border-amber-200 uppercase flex items-center gap-1"><Clock size={8}/> POSTPONED</span>
+                                                 )}
+                                              </div>
+                                           </div>
+                                        </div>
+                                     </td>
+                                     <td className="py-4 px-6">
+                                        <p className="text-sm font-semibold text-slate-700 max-w-[150px] truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'TBA'}</p>
+                                     </td>
+                                     <td className="py-4 px-6">
+                                        <p className="text-sm font-bold text-slate-700 whitespace-nowrap">{event.date}</p>
+                                        <p className="text-[11px] font-medium text-slate-500 mt-0.5 whitespace-nowrap">{formatTime12(event.startTime) !== '-' ? formatTime12(event.startTime) : '09:00 AM'}</p>
+                                     </td>
+                                     <td className="py-4 px-6 text-right">
+                                        <div className="flex items-center justify-end gap-2">
+                                           {isRegistered ? (
+                                             <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+                                               <CheckCircle2 size={14} /> Registered
+                                             </span>
+                                           ) : (
+                                             <button
+                                               disabled={isProcessing}
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 handleRegister(event.id);
+                                               }}
+                                               className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 active:scale-95"
+                                             >
+                                               {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+                                               Register Now
+                                             </button>
+                                           )}
+                                        </div>
+                                     </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
                   )}
 
                   {/* Registrations Tab — organizer sees incoming student OD requests */}
-                  {activeTab === 'registrations' && (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && (
-                    <div className="divide-y divide-slate-100 flex flex-col flex-1 min-h-0">
+                  {activeTab === 'registrations' && (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || hasOrganizedEvents) && (
+                    <div className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                       {groupedOrganizerEvents.length === 0 ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
@@ -1548,7 +1725,16 @@ const Dashboard = () => {
                           <p className="text-slate-500 font-medium text-sm">There are no OD requests to review at this time.</p>
                         </div>
                       ) : (
-                        groupedOrganizerEvents.map(group => {
+                        <div className="flex flex-col h-full">
+                          {/* Table Header */}
+                          <div className="hidden sm:grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                            <div className="col-span-4">Event Name</div>
+                            <div className="col-span-3">Venue</div>
+                            <div className="col-span-3">Date</div>
+                            <div className="col-span-2 text-right pr-2">Action</div>
+                          </div>
+                          <div className="divide-y divide-slate-100 overflow-y-auto min-h-0 flex-1">
+                            {groupedOrganizerEvents.map(group => {
                           const groupKey = group.eventId || group.eventTitle;
                           const isExpanded = expandedRegistrationGroups[groupKey] ?? false;
                           const pendingCount = group.requests.filter(r => r.status === 'PENDING_ORGANIZER').length;
@@ -1561,20 +1747,20 @@ const Dashboard = () => {
                             const initials = req.studentName ? req.studentName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'ST';
 
                             return (
-                              <div key={req.id} className="p-4 bg-white hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors group">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                  <div className="flex items-start gap-4">
-                                    <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-blue-200 rounded-full flex items-center justify-center text-blue-800 font-bold text-lg shadow-sm shrink-0 border border-white">
+                              <div key={req.id} className="px-4 py-2 bg-white hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors group">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-100 to-blue-200 rounded-full flex items-center justify-center text-blue-800 font-bold text-xs shadow-sm shrink-0 border border-white mt-0.5">
                                       {initials}
                                     </div>
-                                    <div className="flex flex-col justify-center min-h-[48px]">
-                                      <p className="font-bold text-slate-800 leading-tight">
+                                    <div className="flex flex-col justify-center min-h-[32px]">
+                                      <p className="font-bold text-xs text-slate-800 leading-tight">
                                         {formatStudentNameWithRoll(req.studentName, req.rollNo, req.studentId)}
                                       </p>
-                                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        <span className="text-xs text-slate-400 font-medium">{fallbackValue(req.class, 'general')}</span>
+                                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                        <span className="text-[10px] text-slate-400 font-medium">{fallbackValue(req.class, 'general')}</span>
                                         {req.registrationType && (
-                                          <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${req.registrationType === 'VOLUNTEER' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                                          <span className={`text-[8px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${req.registrationType === 'VOLUNTEER' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                                             }`}>
                                             {req.registrationType === 'VOLUNTEER' ? 'Volunteer' : 'Participant'}
                                           </span>
@@ -1582,34 +1768,34 @@ const Dashboard = () => {
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2 shrink-0 sm:mt-0 mt-2">
+                                  <div className="flex items-center gap-2 shrink-0 sm:mt-0 mt-1">
                                     {req.status === 'PENDING_ORGANIZER' ? (
                                       <div className="flex gap-2 w-full sm:w-auto">
                                         <button
                                           onClick={() => handleOrganizerApproval(req.id, false)}
                                           disabled={isToggling}
-                                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-white text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-300 disabled:opacity-50 transition-all shadow-sm"
+                                          className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-white text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-300 disabled:opacity-50 transition-all shadow-sm"
                                         >
-                                          {isToggling ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />} Reject
+                                          {isToggling ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />} Reject
                                         </button>
                                         <button
                                           onClick={() => handleOrganizerApproval(req.id, true)}
                                           disabled={isToggling}
-                                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 transition-all shadow-md shadow-emerald-500/20"
+                                          className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 transition-all shadow-sm"
                                         >
-                                          {isToggling ? <Loader2 size={14} className="animate-spin" /> : <UserCheck size={14} />} Approve
+                                          {isToggling ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={12} />} Approve
                                         </button>
                                       </div>
                                     ) : req.status === 'WITHDRAWN' ? (
-                                      <span className="px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-slate-100 text-slate-400 border border-slate-200">
+                                      <span className="px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-400 border border-slate-200">
                                         Withdrawn
                                       </span>
                                     ) : (
-                                      <span className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border shadow-sm ${req.status === 'APPROVED'
+                                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 border shadow-sm ${req.status === 'APPROVED'
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                         : 'bg-red-50 text-red-700 border-red-200'
                                         }`}>
-                                        {req.status === 'APPROVED' ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                        {req.status === 'APPROVED' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                                         {req.status === 'APPROVED' ? 'Approved' : 'Rejected'}
                                       </span>
                                     )}
@@ -1627,63 +1813,66 @@ const Dashboard = () => {
                           );
 
                           return (
-                            <div key={group.eventId || group.eventTitle} className="px-5 py-2.5">
-                              <button
-                                type="button"
-                                onClick={() => setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
-                                className={`w-full transition-all duration-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-left border ${isExpanded
-                                  ? 'bg-white border-blue-200 shadow-md ring-1 ring-blue-100 mb-3'
-                                  : 'bg-white border-slate-200 shadow-sm hover:border-blue-300 mb-0'
-                                  }`}
-                              >
-                                <div>
-                                  <p className={`text-base font-bold ${isExpanded ? 'text-blue-900' : 'text-slate-900'}`}>{group.eventTitle}</p>
-                                  {group.eventDate && (
-                                    <p className="text-xs font-medium text-slate-500 mt-1 flex items-center gap-1">
-                                      <Calendar size={12} /> {group.eventDate}
-                                    </p>
-                                  )}
+                            <div key={groupKey} className="flex flex-col group transition-colors hover:bg-slate-50/50">
+                              {/* Row Content */}
+                              <div className={`sm:grid sm:grid-cols-12 gap-4 items-center px-6 py-4 transition-colors ${isExpanded ? 'bg-blue-50/30' : ''}`}>
+                                <div className="col-span-4 mb-3 sm:mb-0">
+                                  <p className="text-sm font-bold text-slate-900 leading-tight mb-1">{group.eventTitle}</p>
+                                  <div className="flex items-center gap-3 sm:hidden text-xs font-medium text-slate-500 mt-2">
+                                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400"/> {sourceEvent?.venue || 'TBA'}</span>
+                                    <span className="flex items-center gap-1.5"><Calendar size={12} className="text-slate-400"/> {group.eventDate || '-'}</span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 shadow-sm border border-slate-200">
-                                    {group.requests.length} Requests
-                                  </span>
-                                  {pendingCount > 0 && (
-                                    <span className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm flex items-center gap-1">
-                                      <AlertCircle size={12} /> {pendingCount} Pending
-                                    </span>
-                                  )}
-                                  {sourceEvent?.status === 'COMPLETED' && (() => {
-                                    const attended = group.requests.filter(r => ['ATTENDED', 'FN', 'AN'].includes(r.attendanceStatus) && r.status === 'APPROVED');
-                                    const attendedCount = attended.length;
-                                    if (attendedCount > 0) {
-                                      const submitted = attended.filter(r => !!r.feedback).length;
-                                      const pending = attendedCount - submitted;
-                                      const percent = Math.round((submitted / attendedCount) * 100);
-                                      return (
-                                        <div className="hidden sm:flex items-center gap-2 border-l border-slate-200 pl-2 ml-1">
-                                          <span className="px-2 py-1 rounded border border-purple-200 bg-purple-50 text-purple-700 text-[10px] font-bold">
-                                            Feedback: {percent}%
-                                          </span>
-                                          <span className="text-[10px] font-semibold text-slate-500">
-                                            {submitted} Submitted / {pending} Pending
-                                          </span>
-                                        </div>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-                                  <span className={`p-1.5 rounded-lg transition-transform duration-300 ${isExpanded ? 'bg-blue-100 text-blue-700 rotate-180' : 'bg-slate-200 text-slate-600'}`}>
-                                    <ChevronDown size={16} />
-                                  </span>
+                                <div className="hidden sm:flex col-span-3 items-center gap-2 text-sm text-slate-600 font-medium">
+                                  <MapPin size={14} className="text-slate-400 shrink-0" />
+                                  <span className="truncate">{sourceEvent?.venue || 'TBA'}</span>
                                 </div>
-                              </button>
+                                <div className="hidden sm:flex col-span-3 items-center gap-2 text-sm text-slate-600 font-medium">
+                                  <Calendar size={14} className="text-slate-400 shrink-0" />
+                                  <span>{group.eventDate || '-'}</span>
+                                </div>
+                                <div className="col-span-2 flex items-center sm:justify-end justify-between gap-3">
+                                  <div className="flex items-center gap-2">
+                                    {pendingCount > 0 ? (
+                                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                                        {pendingCount} Pending
+                                      </span>
+                                    ) : (
+                                      <span className="hidden sm:inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                        {group.requests.length} Total
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
+                                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
+                                      isExpanded 
+                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                        : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'
+                                    }`}
+                                  >
+                                    {isExpanded ? 'Close' : 'View'}
+                                    <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                  </button>
+                                </div>
+                              </div>
 
                               {isExpanded && (
-                                <div className="animate-in slide-in-from-top-2 fade-in duration-200">
-                                  {/* Filter Search */}
-                                  <div className="mb-4">
-                                    <div className="relative">
+                                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" style={{ margin: 0 }}>
+                                  <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-slate-100">
+                                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                       <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                                           <Users className="text-blue-600" size={20} />
+                                           Registrations for {group.eventTitle}
+                                       </h3>
+                                       <button onClick={(e) => { e.stopPropagation(); setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: false })) }} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                                           <X size={20} />
+                                       </button>
+                                    </div>
+                                    <div className="p-6 flex flex-col flex-1 min-h-0 overflow-hidden">
+                                      {/* Filter Search & PDF */}
+                                      <div className="mb-4 flex flex-col sm:flex-row gap-3 shrink-0">
+                                    <div className="relative flex-1">
                                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                       <input
                                         type="text"
@@ -1693,6 +1882,64 @@ const Dashboard = () => {
                                         className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm bg-white cursor-pointer focus:cursor-text"
                                       />
                                     </div>
+                                    {(() => {
+                                      const approvedStudents = group.requests.filter(req => req.status === 'APPROVED');
+                                      const hasApproved = approvedStudents.length > 0;
+                                      const listText = approvedStudents.map((s, i) => `${i + 1}. ${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId)} - ${fallbackValue(s.class, 'general')}`).join('\n');
+                                      const copyKey = `${groupKey}-all`;
+                                      const isCopied = copiedStates[copyKey];
+
+                                      return (
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <button 
+                                            type="button"
+                                            disabled={!hasApproved}
+                                            onClick={(e) => { 
+                                              e.stopPropagation();
+                                              downloadStudentListPDF(group);
+                                            }}
+                                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                              hasApproved 
+                                                ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md' 
+                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                            }`}
+                                          >
+                                            <Download size={14} /> Download
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={!hasApproved}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              shareDeptList('All Participants', approvedStudents, group.eventTitle, group.eventDate);
+                                            }}
+                                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                              hasApproved 
+                                                ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200' 
+                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                            }`}
+                                          >
+                                            <ArrowUpRight size={14} /> Share
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={!hasApproved}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDATE: ${group.eventDate || '-'}\n\n${listText}`, copyKey);
+                                            }}
+                                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                                              !hasApproved ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' :
+                                              isCopied
+                                                ? 'bg-emerald-500 text-white'
+                                                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+                                            }`}
+                                          >
+                                            {isCopied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                                          </button>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
 
                                   {(() => {
@@ -1718,53 +1965,53 @@ const Dashboard = () => {
                                     const pendingFilteredAll = filteredAllRequests.filter(r => r.status === 'PENDING_ORGANIZER');
 
                                     return isVolunteerEnabledEvent ? (
-                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
-                                          <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100">
+                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
+                                        <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden shadow-sm">
+                                          <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 shrink-0">
                                             <div className="flex items-center justify-between gap-2">
                                               <div className="flex items-center gap-2">
                                                 <Users size={16} className="text-slate-500" />
                                                 <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Participants ({participantRequests.length})</p>
                                               </div>
-                                              {pendingFilteredParticipant.length > 1 && (
+                                              {pendingFilteredParticipant.length > 0 && (
                                                 <button
                                                   type="button"
                                                   onClick={() => handleBulkOrganizerApproval(filteredParticipantRequests, `${groupKey}-participants`)}
                                                   disabled={bulkApprovingGroups[`${groupKey}-participants`]}
                                                   className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
                                                 >
-                                                  {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve Filtered (${pendingFilteredParticipant.length})`}
+                                                  {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve All (${pendingFilteredParticipant.length})`}
                                                 </button>
                                               )}
                                             </div>
                                           </div>
-                                          <div className="divide-y divide-slate-100/80 max-h-[500px] overflow-y-auto scrollbar-thin">
+                                          <div className="divide-y divide-slate-100/80 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                                             {filteredParticipantRequests.length > 0 ? filteredParticipantRequests.map(renderRequestRow) : (
                                               <div className="p-8 text-center text-sm font-medium text-slate-400">No participant requests found.</div>
                                             )}
                                           </div>
                                         </div>
 
-                                        <div className="rounded-2xl border-2 border-indigo-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
-                                          <div className="px-5 py-4 bg-indigo-50/80 border-b-2 border-indigo-100">
+                                        <div className="rounded-2xl border-2 border-indigo-100 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden shadow-sm">
+                                          <div className="px-5 py-4 bg-indigo-50/80 border-b-2 border-indigo-100 shrink-0">
                                             <div className="flex items-center justify-between gap-2">
                                               <div className="flex items-center gap-2">
                                                 <ShieldCheck size={16} className="text-indigo-500" />
                                                 <p className="text-sm font-bold uppercase tracking-wider text-indigo-800">Volunteers ({volunteerRequests.length})</p>
                                               </div>
-                                              {pendingFilteredVolunteer.length > 1 && (
+                                              {pendingFilteredVolunteer.length > 0 && (
                                                 <button
                                                   type="button"
                                                   onClick={() => handleBulkOrganizerApproval(filteredVolunteerRequests, `${groupKey}-volunteers`)}
                                                   disabled={bulkApprovingGroups[`${groupKey}-volunteers`]}
                                                   className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
                                                 >
-                                                  {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve Filtered (${pendingFilteredVolunteer.length})`}
+                                                  {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve All (${pendingFilteredVolunteer.length})`}
                                                 </button>
                                               )}
                                             </div>
                                           </div>
-                                          <div className="divide-y divide-indigo-50/80 max-h-[500px] overflow-y-auto scrollbar-thin">
+                                          <div className="divide-y divide-indigo-50/80 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                                             {filteredVolunteerRequests.length > 0 ? filteredVolunteerRequests.map(renderRequestRow) : (
                                               <div className="p-8 text-center text-sm font-medium text-slate-400">No volunteer requests found.</div>
                                             )}
@@ -1772,24 +2019,24 @@ const Dashboard = () => {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm overflow-hidden shadow-sm">
-                                        <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 flex items-center justify-between gap-2">
+                                      <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden shadow-sm">
+                                        <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 flex items-center justify-between gap-2 shrink-0">
                                           <div className="flex items-center gap-2">
                                             <Users size={16} className="text-slate-500" />
                                             <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Registrations ({group.requests.length})</p>
                                           </div>
-                                          {pendingFilteredAll.length > 1 && (
+                                          {pendingFilteredAll.length > 0 && (
                                             <button
                                               type="button"
                                               onClick={() => handleBulkOrganizerApproval(filteredAllRequests, `${groupKey}-all`)}
                                               disabled={bulkApprovingGroups[`${groupKey}-all`]}
                                               className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm shadow-emerald-500/20"
                                             >
-                                              {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve Filtered (${pendingFilteredAll.length})`}
+                                              {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve All (${pendingFilteredAll.length})`}
                                             </button>
                                           )}
                                         </div>
-                                        <div className="divide-y divide-slate-100/80 max-h-[500px] overflow-y-auto scrollbar-thin">
+                                        <div className="divide-y divide-slate-100/80 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
                                           {filteredAllRequests.length > 0 ? filteredAllRequests.map(renderRequestRow) : (
                                             <div className="p-8 text-center text-sm font-medium text-slate-400">No requests found.</div>
                                           )}
@@ -1798,258 +2045,158 @@ const Dashboard = () => {
                                     );
                                   })()}
 
-                                  {/* ── Approved OD Lists by Department ── */}
-                                  {(() => {
-                                    const approvedRequests = group.requests.filter(r => r.status === 'APPROVED' && (r.registrationType || 'PARTICIPANT') === 'PARTICIPANT');
-                                    if (approvedRequests.length === 0) return null;
 
-                                    const byDept = approvedRequests.reduce((acc, r) => {
-                                      // Priority 1: Use student's explicit department if available
-                                      let d = r.department ? r.department.toUpperCase().trim() : '';
-
-                                      // Priority 2: Try to extract from the class/section name
-                                      if (!d && r.class) {
-                                        const cls = r.class.toUpperCase();
-                                        if (cls.includes('CSE')) d = 'CSE';
-                                        else if (cls.includes('ECE')) d = 'ECE';
-                                        else if (cls.includes('EEE')) d = 'EEE';
-                                        else if (cls.includes('IT')) d = 'IT';
-                                        else if (cls.includes('MECH')) d = 'MECH';
-                                        else if (cls.includes('CIVIL')) d = 'CIVIL';
-                                        else if (cls.includes('AIDS') || cls.includes('AI&DS') || cls.includes('AI & DS') || (cls.includes('AI') && !cls.includes('CIVIL'))) d = 'AI & DS';
-                                        else d = r.class.replace(/[0-9]/g, '').replace(/-/g, '').trim() || 'General';
-                                      }
-
-                                      if (!d) d = 'General';
-
-                                      if (!acc[d]) acc[d] = [];
-                                      acc[d].push(r);
-                                      return acc;
-                                    }, {});
-
-                                    return (
-                                      <div className="mt-8 border-t-2 border-slate-100 pt-6">
-                                        <div className="flex items-center gap-2 mb-4">
-                                          <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
-                                            <ClipboardCopy size={18} />
-                                          </div>
-                                          <div>
-                                            <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Approved Participant OD Lists by Dept</h4>
-                                            <p className="text-[10px] text-slate-500 font-medium">Grouped and ready to send to respectivos HODs</p>
-                                          </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                          {Object.entries(byDept).sort().map(([dept, students]) => {
-                                            const listText = students.map((s, i) => `${i + 1}. ${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId)} - ${fallbackValue(s.class, 'general')}`).join('\n');
-                                            const copyKey = `${groupKey}-${dept}`;
-                                            const isCopied = copiedStates[copyKey];
-
-                                            return (
-                                              <div key={dept} className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                                                  <div className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                                    <span className="text-xs font-bold text-slate-700 uppercase">{dept}</span>
-                                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">{students.length}</span>
-                                                  </div>
-                                                  <div className="flex items-center gap-2">
-                                                    <button
-                                                      onClick={() => downloadDeptListAsPDF(dept, students, group)}
-                                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-blue-600 hover:bg-blue-50 border border-slate-200 transition-all shadow-sm"
-                                                      title="Download as PDF"
-                                                    >
-                                                      <Download size={12} /> Download
-                                                    </button>
-                                                    <button
-                                                      onClick={() => shareDeptList(dept, students, group.eventTitle, group.eventDate)}
-                                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-indigo-600 hover:bg-indigo-50 border border-slate-200 transition-all shadow-sm"
-                                                      title="Share List"
-                                                    >
-                                                      <ArrowUpRight size={12} /> Share
-                                                    </button>
-                                                    <button
-                                                      onClick={() => copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDATE: ${group.eventDate || '-'}\nDEPARTMENT: ${dept}\n\n${listText}`, copyKey)}
-                                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${isCopied
-                                                        ? 'bg-emerald-500 text-white'
-                                                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                                                        }`}
-                                                    >
-                                                      {isCopied ? (
-                                                        <><Check size={12} /> Copied!</>
-                                                      ) : (
-                                                        <><Copy size={12} /> Copy</>
-                                                      )}
-                                                    </button>
-                                                  </div>
-                                                </div>
-                                                <div className="p-3 max-h-40 overflow-y-auto">
-                                                  <ol className="space-y-1.5">
-                                                    {students.map((s, idx) => (
-                                                      <li key={s.id} className="text-xs text-slate-600 flex items-start gap-2">
-                                                        <span className="text-[10px] font-bold text-slate-400 mt-0.5 w-4 shrink-0">{idx + 1}.</span>
-                                                        <div className="min-w-0">
-                                                          <span className="font-semibold text-slate-800">
-                                                            {formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId)}
-                                                          </span>
-                                                          <span className="text-[10px] text-slate-500 ml-1.5">{fallbackValue(s.class, 'general')}</span>
-                                                        </div>
-                                                      </li>
-                                                    ))}
-                                                  </ol>
-                                                </div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
+                                    </div>
+                                  </div>
                                 </div>
                               )}
                             </div>
                           );
-                        })
+                        })}
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
 
                   {/* My Registrations Tab — for all students */}
-                  {activeTab === 'od' && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
-                    <div className="flex-1 p-5 space-y-4 flex flex-col">
-                      {filteredODRequests.map(request => {
-                        let regStatus = 'Pending';
-                        if (request.status === ODRequestStatus.APPROVED) regStatus = 'Approved';
-                        else if (request.status === ODRequestStatus.REJECTED) regStatus = 'Rejected';
-                        else if (request.status === ODRequestStatus.WITHDRAWN) regStatus = 'Withdrawn';
-                        else if (request.status === 'OD_CANCELLED' || request.status === 'CANCELLED') regStatus = 'Cancelled';
-                        else regStatus = 'Pending';
-
-                        let regBadgeClass = '';
-                        if (regStatus === 'Approved') regBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                        else if (regStatus === 'Rejected') regBadgeClass = 'bg-red-50 text-red-700 border-red-200';
-                        else if (regStatus === 'Withdrawn') regBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
-                        else if (regStatus === 'Cancelled') regBadgeClass = 'bg-red-50 text-red-700 border-red-200';
-                        else regBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
-                        
-                        const sourceEvent = events.find(e => e.id === request.eventId);
-                        let eventBadge = null;
-                        if (sourceEvent) {
-                            const now = new Date().getTime();
-                            
-                            const sDateStr = sourceEvent.requisition?.step1?.eventStartDate || sourceEvent.date;
-                            const sTimeStr = sourceEvent.requisition?.step1?.eventStartTime || sourceEvent.startTime || '00:00';
-                            let eventStart = 0;
-                            if (sDateStr) {
-                                const [y, mo, d] = String(sDateStr).split('-').map(Number);
-                                const [h, m] = String(sTimeStr).split(':').map(Number);
-                                eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
-                            }
-
-                            const eDateStr = sourceEvent.requisition?.step1?.eventEndDate || sourceEvent.endDate || sDateStr;
-                            const eTimeStr = sourceEvent.requisition?.step1?.eventEndTime || sourceEvent.endTime || '23:59';
-                            let eventEnd = 0;
-                            if (eDateStr) {
-                                const [y, mo, d] = String(eDateStr).split('-').map(Number);
-                                const [h, m] = String(eTimeStr).split(':').map(Number);
-                                eventEnd = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
-                            }
-
-                            const computedStatus = getEventStatus(sourceEvent);
-                            const isPostponed = sourceEvent.status === 'POSTPONED' || sourceEvent.isPostponed;
-
-                            if (sourceEvent.status === 'CANCELLED') {
-                                eventBadge = { text: '🔴 CANCELLED', class: 'bg-red-50 text-red-700 border-red-200' };
-                            } else if (computedStatus === 'ongoing') {
-                                eventBadge = { text: '🟢 ONGOING', class: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-                            } else if (isPostponed && computedStatus === 'upcoming') {
-                                eventBadge = { text: '🟡 POSTPONED', class: 'bg-amber-50 text-amber-700 border-amber-200' };
-                            } else if (computedStatus === 'completed' || sourceEvent.status === 'COMPLETED') {
-                                eventBadge = { text: '✅ COMPLETED', class: 'bg-blue-50 text-blue-700 border-blue-200' };
-                            }
-                        }
-
-                        return (
-                          <div
-                            key={request.id}
-                            onClick={() => setSelectedODRequest(request)}
-                            className="bg-white rounded-2xl border border-slate-200 px-6 py-5 hover:shadow-lg hover:border-purple-200 transition-all shadow-[0_2px_10px_rgba(0,0,0,0.03)] group cursor-pointer shrink-0"
-                          >
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[90px]">
-                              <div className="flex items-center gap-5 flex-1 w-full min-w-0">
-                                <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 group-hover:from-purple-50 group-hover:to-purple-100 group-hover:text-purple-600 group-hover:border-purple-200 transition-all shrink-0 shadow-inner">
-                                  <FileText size={24} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-extrabold text-slate-900 text-[16px] truncate">{request.eventName || request.eventTitle || 'Untitled Event'}</h4>
-                                  <div className="flex items-center gap-3 mt-2 flex-wrap text-slate-500">
-                                    <span className="text-xs font-semibold text-slate-600">
-                                      {formatStudentNameWithRoll(request.studentName, request.rollNo, request.studentId)}
-                                    </span>
-                                  </div>
-                                  <p className="text-xs font-semibold text-slate-500 mt-2 flex items-center gap-1.5">
-                                    <Clock size={14} className="text-slate-400" />
-                                    {request.eventDate}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-4 shrink-0 sm:mt-0 mt-2 pl-[76px] sm:pl-0 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-0 border-slate-100 pt-4 sm:pt-0">
-                                <div className="flex items-center gap-2">
-                                  {eventBadge && (
-                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${eventBadge.class}`}>
-                                      {eventBadge.text}
-                                    </span>
-                                  )}
-                                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm ${regBadgeClass}`}>
-                                    {regStatus}
-                                  </span>
-                                </div>
-                                {(() => {
-                                  const sourceEvent = events.find(e => e.id === request.eventId);
-                                  
-                                  const isEventStartedLocal = () => {
-                                      if (!sourceEvent) return false;
-                                      const sDate = sourceEvent.requisition?.step1?.eventStartDate || sourceEvent.date;
-                                      const sTime = sourceEvent.requisition?.step1?.eventStartTime || sourceEvent.startTime || '00:00';
-                                      if (!sDate) return false;
-                                      const [y, mo, d] = String(sDate).split('-').map(Number);
-                                      const [h, m] = String(sTime).split(':').map(Number);
-                                      const eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
-                                      return new Date().getTime() >= eventStart;
-                                  };
-
-                                  const isLocked = isRegistrationLocked(sourceEvent) || isEventStartedLocal();
-                                  const isCancelled = sourceEvent?.status === 'CANCELLED';
-                                  const isValidStatus = request.status && (request.status.startsWith('PENDING') || request.status === ODRequestStatus.APPROVED);
-                                  const canWithdraw = isValidStatus && !isLocked && !isCancelled;
-
-                                  if (canWithdraw) {
-                                    return (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
-                                        disabled={withdrawingOD[request.id]}
-                                        className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 disabled:opacity-60 transition-colors"
-                                      >
-                                        {withdrawingOD[request.id] ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />}
-                                        Withdraw
-                                      </button>
-                                    );
-                                  } else if (request.status === ODRequestStatus.APPROVED && isLocked) {
-                                    return (
-                                      <span className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
-                                        <Lock size={11} /> Registration Locked
-                                      </span>
-                                    );
-                                  }
-                                  return null;
-                                })()}
-                                <ChevronRight size={18} className="text-slate-300 group-hover:text-purple-500" />
-                              </div>
-                            </div>
+                  {activeTab === 'my-registrations' && (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && (
+                    <div className="flex flex-col flex-1 min-h-0 bg-white rounded-b-2xl overflow-hidden">
+                      {filteredODRequests.length > 0 ? (
+                        <div className="w-full flex flex-col flex-1 min-h-0">
+                          <div className="w-full bg-slate-50 z-10 shadow-sm pr-[6px]">
+                            <table className="w-full text-left border-collapse table-fixed">
+                              <thead className="bg-slate-50">
+                                <tr className="border-b border-slate-200 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                                  <th className="py-4 px-6 w-[22%]">EVENT NAME</th>
+                                  <th className="py-4 px-6 w-[25%]">DATE</th>
+                                  <th className="py-4 px-6 w-[23%]">VENUE</th>
+                                  <th className="py-4 px-6 w-[15%]">STATUS</th>
+                                  <th className="py-4 px-6 w-[15%] text-right">ACTION</th>
+                                </tr>
+                              </thead>
+                            </table>
                           </div>
-                        );
-                      })}
-                      {filteredODRequests.length === 0 && (
+                          <div className="w-full flex-1 min-h-0 overflow-y-scroll">
+                            <table className="w-full text-left border-collapse table-fixed">
+                              <tbody className="bg-white">
+                              {filteredODRequests.map(request => {
+                                let regStatus = 'Pending';
+                                if (request.status === ODRequestStatus.APPROVED) regStatus = 'Approved';
+                                else if (request.status === ODRequestStatus.REJECTED) regStatus = 'Rejected';
+                                else if (request.status === ODRequestStatus.WITHDRAWN) regStatus = 'Withdrawn';
+                                else if (request.status === 'OD_CANCELLED' || request.status === 'CANCELLED') regStatus = 'Cancelled';
+                                else regStatus = 'Pending';
+
+                                let regBadgeClass = '';
+                                if (regStatus === 'Approved') regBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                                else if (regStatus === 'Rejected') regBadgeClass = 'bg-red-50 text-red-700 border-red-200';
+                                else if (regStatus === 'Withdrawn') regBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
+                                else if (regStatus === 'Cancelled') regBadgeClass = 'bg-red-50 text-red-700 border-red-200';
+                                else regBadgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+                                
+                                const sourceEvent = events.find(e => e.id === request.eventId);
+                                let eventBadge = null;
+                                if (sourceEvent) {
+                                    const computedStatus = getEventStatus(sourceEvent);
+                                    const isPostponed = sourceEvent.status === 'POSTPONED' || sourceEvent.isPostponed;
+
+                                    if (sourceEvent.status === 'CANCELLED') {
+                                        eventBadge = { text: '🔴 CANCELLED', class: 'bg-red-50 text-red-700 border-red-200' };
+                                    } else if (computedStatus === 'ongoing') {
+                                        eventBadge = { text: '🟢 ONGOING', class: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                                    } else if (isPostponed && computedStatus === 'upcoming') {
+                                        eventBadge = { text: '🟡 POSTPONED', class: 'bg-amber-50 text-amber-700 border-amber-200' };
+                                    } else if (computedStatus === 'completed' || sourceEvent.status === 'COMPLETED') {
+                                        eventBadge = { text: '✅ COMPLETED', class: 'bg-blue-50 text-blue-700 border-blue-200' };
+                                    }
+                                }
+
+                                return (
+                                  <tr
+                                    key={request.id}
+                                    onClick={() => setSelectedODRequest(request)}
+                                    className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                                  >
+                                    <td className="py-4 px-6 w-[22%]">
+                                      <h4 className="font-bold text-slate-900 text-sm truncate" title={request.eventName || request.eventTitle || 'Untitled Event'}>
+                                        {request.eventName || request.eventTitle || 'Untitled Event'}
+                                      </h4>
+                                      <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                                        {formatStudentNameWithRoll(request.studentName, request.rollNo, request.studentId)}
+                                      </p>
+                                    </td>
+                                    <td className="py-4 px-6 w-[25%]">
+                                      <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 whitespace-nowrap">
+                                        <Calendar size={14} className="text-slate-400 shrink-0" />
+                                        {request.eventDate}
+                                      </p>
+                                    </td>
+                                    <td className="py-4 px-6 w-[23%]">
+                                      <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 truncate" title={sourceEvent?.venue || 'To be allocated'}>
+                                        <MapPin size={14} className="text-slate-400 shrink-0" />
+                                        {sourceEvent?.venue || 'To be allocated'}
+                                      </p>
+                                    </td>
+                                    <td className="py-4 px-6 w-[15%]">
+                                      <div className="flex items-start">
+                                        <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border shadow-sm ${regBadgeClass}`}>
+                                          {regStatus}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="py-4 px-6 w-[15%] text-right">
+                                      <div className="flex flex-row items-center justify-end gap-4">
+                                        {(() => {
+                                          const isEventStartedLocal = () => {
+                                              if (!sourceEvent) return false;
+                                              const sDate = sourceEvent.requisition?.step1?.eventStartDate || sourceEvent.date;
+                                              const sTime = sourceEvent.requisition?.step1?.eventStartTime || sourceEvent.startTime || '00:00';
+                                              if (!sDate) return false;
+                                              const [y, mo, d] = String(sDate).split('-').map(Number);
+                                              const [h, m] = String(sTime).split(':').map(Number);
+                                              const eventStart = new Date(y, mo - 1, d, h, m, 0, 0).getTime();
+                                              return new Date().getTime() >= eventStart;
+                                          };
+                                          
+                                          const isLocked = isRegistrationLocked(sourceEvent) || isEventStartedLocal();
+                                          const isCancelled = sourceEvent?.status === 'CANCELLED';
+                                          const isValidStatus = request.status && (request.status.startsWith('PENDING') || request.status === ODRequestStatus.APPROVED);
+                                          const canWithdraw = isValidStatus && !isLocked && !isCancelled;
+
+                                          if (canWithdraw) {
+                                            return (
+                                              <button
+                                                onClick={(e) => { e.stopPropagation(); handleWithdraw(request.id); }}
+                                                disabled={withdrawingOD[request.id]}
+                                                className="flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-semibold bg-red-50 text-red-500 hover:bg-red-100 border border-red-100 disabled:opacity-60 transition-colors"
+                                              >
+                                                {withdrawingOD[request.id] ? <Loader2 size={11} className="animate-spin" /> : <XCircle size={11} />}
+                                                Withdraw
+                                              </button>
+                                            );
+                                          } else if (request.status === ODRequestStatus.APPROVED && isLocked) {
+                                            return (
+                                              <span className="flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 text-slate-500 border border-slate-200 text-center w-full max-w-[120px]">
+                                                <Lock size={10} /> Locked
+                                              </span>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
+                                        <div className="flex items-center text-[10px] text-slate-400 font-medium group-hover:text-purple-500 transition-colors cursor-pointer">
+                                          View Details <ChevronRight size={12} />
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          </div>
+                        </div>
+                      ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
                             <FileText size={36} />
@@ -2063,188 +2210,11 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6 flex flex-col min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent pr-2 pb-8">
-              {/* Faculty Specific: Organizer Requests (kept for faculty sidebar) */}
-              {currentUser.role === UserRole.FACULTY && (
-                <div className="glass-panel rounded-2xl p-6">
-                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <Users size={18} className="text-cse-accent" /> Organizer Requests
-                  </h3>
-                  <div className="space-y-4">
-                    {organizerRequests.map(req => (
-                      <div key={req.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
-                        <div>
-                          <p className="text-sm font-semibold">{req.name}</p>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{req.status}</p>
-                        </div>
-                        {req.status === 'pending' && (
-                          <button
-                            onClick={() => approveOrganizer(req.id)}
-                            className="p-1.5 bg-white text-cse-accent rounded-lg border border-slate-200 hover:bg-cse-accent hover:text-white transition-all"
-                          >
-                            <CheckCircle2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Quick Actions (Context-Aware for All Users) */}
-              <div className="glass-panel rounded-2xl p-6 space-y-3">
-                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <Plus size={18} className="text-cse-accent" /> Quick Actions
-                </h3>
-
-                {/* 1. Explore Events - For Everyone */}
-                <div
-                  onClick={() => navigate('/explore')}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
-                >
-                  <div className="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
-                    <Calendar size={18} />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-800">Explore Events</p>
-                    <p className="text-xs text-slate-500 font-medium">Browse department events</p>
-                  </div>
-                  <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
-                </div>
-
-                {/* 2. Create Event - For Faculty and Approved Student Organizers */}
-                {(currentUser.role === UserRole.FACULTY || currentUser.isApprovedOrganizer) && (
-                  <div
-                    onClick={() => navigate('/create-event')}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
-                  >
-                    <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
-                      <Plus size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">Create Event</p>
-                      <p className="text-xs text-slate-500 font-medium">Submit new proposal</p>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
-                  </div>
-                )}
-
-                {/* 3. System Audit - For IQAC Team */}
-                {currentUser.role === UserRole.IQAC_TEAM && (
-                  <div
-                    onClick={() => navigate('/security')}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-all group"
-                  >
-                    <div className="w-9 h-9 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                      <Shield size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">System Audit</p>
-                      <p className="text-xs text-slate-500 font-medium">Monitor account security</p>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-600" />
-                  </div>
-                )}
-
-                {/* 3. Manage Students - For Staff (merged into quick actions) */}
-                {canManageStudents && (
-                  <div
-                    onClick={() => navigate('/manage-students')}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-cse-accent/40 hover:bg-cse-accent/5 transition-all group"
-                  >
-                    <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center group-hover:bg-cse-accent group-hover:text-white transition-all">
-                      <Users size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">Manage Students</p>
-                      <p className="text-xs text-slate-500 font-medium">Grant organizer rights</p>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-cse-accent" />
-                  </div>
-                )}
-                {currentUser.role === UserRole.IQAC_TEAM && (
-                  <div
-                    onClick={() => setShowResetConfirm(true)}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-red-200 hover:bg-red-50 transition-all group"
-                  >
-                    <div className="w-9 h-9 bg-red-50 text-red-600 rounded-xl flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
-                      <History size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">Reset Semester ODs</p>
-                      <p className="text-xs text-slate-500 font-medium">Clear all student usage counts</p>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-red-500" />
-                  </div>
-                )}
-
-                <ConfirmationModal
-                  isOpen={showResetConfirm}
-                  onClose={() => setShowResetConfirm(false)}
-                  onConfirm={async () => {
-                    setIsResetting(true);
-                    try {
-                      const res = await fetch('http://localhost:5001/api/students/reset-od-usage', {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
-                        }
-                      });
-                      const data = await res.json();
-                      if (!data.success) throw new Error(data.message);
-                      setShowResetConfirm(false);
-                      // UI updates automatically via Firestore listeners
-                    } catch (err) {
-                      console.error("Failed to reset OD usage:", err.message);
-                    } finally {
-                      setIsResetting(false);
-                    }
-                  }}
-                  title="Reset All Student ODs?"
-                  message="This action will clear the OD usage count for EVERY student in the institution. This should only be performed at the beginning of a new semester. This action cannot be undone."
-                  confirmText="Yes, Reset All"
-                  type="danger"
-                  isProcessing={isResetting}
-                />
-                {/* 6. OD Correction Requests */}
-                {[UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER, UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role) && (
-                  <div
-                    onClick={() => navigate('/od-correction')}
-                    className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 cursor-pointer hover:border-amber-200 hover:bg-amber-50 transition-all group"
-                  >
-                    <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center group-hover:bg-amber-600 group-hover:text-white transition-all">
-                      <AlertCircle size={18} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-800">OD Correction</p>
-                      <p className="text-xs text-slate-500 font-medium">{(currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) ? 'Request adjustment' : 'Review requests'}</p>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-300 group-hover:text-amber-500" />
-                  </div>
-                )}
-
-                {/* 4. Extend IQAC Window — Context-aware approval or simple extension */}
-                {currentUser.role === UserRole.HOD && (() => {
-                  const pendingExtensions = events.filter(ev => ev.iqacExtensionRequest?.status === 'PENDING');
-                  if (pendingExtensions.length === 0) return null;
-                  return (
-                    <IQACExtensionApprovalWidget
-                      events={pendingExtensions}
-                      hodName={currentUser.name}
-                    />
-                  );
-                })()}
-
-
-              </div>
             </div>
-          </div>
+            </>
+          )}
         </div>
       </main>
-
       {/* OD Request Detail Modal — students only */}
       {selectedODRequest && !isStaff && (
         <ODRequestDetailModal

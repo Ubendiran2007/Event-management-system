@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search } from 'lucide-react';
+import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import Navbar from '../components/Navbar';
@@ -27,16 +27,19 @@ const SecurityProfile = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
-  const [showFullHistory, setShowFullHistory] = useState(false);
   const [timelineFilter, setTimelineFilter] = useState('All');
+  const [isTimelineFilterOpen, setIsTimelineFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
+  const ITEMS_PER_PAGE = 5;
 
   const [iqacRoleFilter, setIqacRoleFilter] = useState('All');
   const [iqacStatusFilter, setIqacStatusFilter] = useState('All');
   const [iqacTimeFilter, setIqacTimeFilter] = useState('All Time');
   const [iqacPage, setIqacPage] = useState(1);
   const IQAC_ITEMS_PER_PAGE = 10;
+  const [isIqacRoleOpen, setIsIqacRoleOpen] = useState(false);
+  const [isIqacStatusOpen, setIsIqacStatusOpen] = useState(false);
+  const [isIqacTimeOpen, setIsIqacTimeOpen] = useState(false);
 
   const [attendanceAuditEventId, setAttendanceAuditEventId] = useState('');
   const [eventSearchQuery, setEventSearchQuery] = useState('');
@@ -45,6 +48,9 @@ const SecurityProfile = () => {
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   const [auditSessionFilter, setAuditSessionFilter] = useState('All');
   const [auditDateFilter, setAuditDateFilter] = useState('All');
+  const [isEventSelectOpen, setIsEventSelectOpen] = useState(false);
+  const [isAuditSessionOpen, setIsAuditSessionOpen] = useState(false);
+  const [isAuditDateOpen, setIsAuditDateOpen] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'attendanceAudit' && attendanceAuditEventId) {
@@ -110,10 +116,13 @@ const SecurityProfile = () => {
     
     let filtered = events;
     if (eventSearchQuery.trim()) {
+      const q = eventSearchQuery.trim().toLowerCase();
       filtered = events.filter(ev => {
         if (ev.id === attendanceAuditEventId) return true; // Keep selected event in list so dropdown doesn't break
         const title = (ev.title || ev.requisition?.step1?.eventName || '').toLowerCase();
-        return title.includes(eventSearchQuery.trim().toLowerCase());
+        const dateStr = (ev.requisition?.step1?.eventStartDate || ev.date || '').toLowerCase();
+        const organizer = (ev.requisition?.step1?.organizerName || '').toLowerCase();
+        return title.includes(q) || dateStr.includes(q) || organizer.includes(q);
       });
     }
     
@@ -191,6 +200,21 @@ const SecurityProfile = () => {
   useEffect(() => {
     fetchLogs();
   }, [currentUser]);
+
+  useEffect(() => {
+    if (activeTab === 'iqac' && currentUser?.role === 'IQAC_TEAM') {
+      const token = localStorage.getItem('sessionToken');
+      fetch('http://localhost:5001/api/security/iqac-audit', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setIqacLogs(data.logs);
+          else console.warn('[IQAC Audit] fetch failed:', data);
+        })
+        .catch(err => console.error('[IQAC Audit] error:', err));
+    }
+  }, [activeTab, currentUser]);
 
   const handleChangePasswordRequest = async (e) => {
     e.preventDefault();
@@ -301,10 +325,10 @@ const SecurityProfile = () => {
 
   if (!currentUser) return null;
 
-  const getProcessedTimeline = (isFullHistory) => {
+  const getProcessedTimeline = () => {
     let filtered = securityTimeline;
 
-    if (isFullHistory && timelineFilter !== 'All') {
+    if (timelineFilter !== 'All') {
       filtered = filtered.filter(log => {
         const act = log.activity.toLowerCase();
         if (timelineFilter === 'Login') return act.includes('login');
@@ -313,12 +337,6 @@ const SecurityProfile = () => {
         if (timelineFilter === 'Security Alerts') return log.status === 'WARNING' || log.status === 'FAILURE';
         if (timelineFilter === 'Account Lock') return act.includes('lock');
         return true;
-      });
-    } else if (!isFullHistory) {
-      const highValuePatterns = ['login', 'password changed', 'password reset', 'account locked', 'suspicious', 'otp verified'];
-      filtered = filtered.filter(log => {
-        const act = log.activity.toLowerCase();
-        return highValuePatterns.some(p => act.includes(p)) && !act.includes('otp requested');
       });
     }
 
@@ -335,23 +353,19 @@ const SecurityProfile = () => {
     });
     if (currentGroup) grouped.push(currentGroup);
 
-    if (!isFullHistory) {
-      grouped = grouped.slice(0, 4);
-    }
-
     return grouped;
   };
 
-  const previewTimeline = getProcessedTimeline(false);
-  const fullTimeline = getProcessedTimeline(true);
-  const totalPages = Math.ceil(fullTimeline.length / ITEMS_PER_PAGE);
+  const fullTimeline = getProcessedTimeline();
+  const totalPages = Math.ceil(fullTimeline.length / ITEMS_PER_PAGE) || 1;
   const currentTimelinePage = fullTimeline.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
+    <div className="h-screen flex flex-row overflow-hidden bg-slate-50 font-sans text-slate-900">
       <Navbar />
       
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 w-full">
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
@@ -362,13 +376,6 @@ const SecurityProfile = () => {
               <p className="text-slate-500 font-medium">Manage your password, login history, and security alerts</p>
             </div>
           </div>
-          
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="btn-secondary whitespace-nowrap"
-          >
-            Back to Dashboard
-          </button>
         </div>
 
         <div className="flex gap-2 border-b border-slate-200 mb-8 overflow-x-auto no-scrollbar">
@@ -411,116 +418,116 @@ const SecurityProfile = () => {
         </div>
 
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-1 space-y-6">
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <Activity size={18} className="text-blue-500" />
-                  Security Summary
+          <div className="w-full">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-indigo-500" />
+                  Security Activity Timeline
                 </h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center py-2 border-b border-slate-50">
-                    <span className="text-slate-500 text-sm font-medium">Last Login</span>
-                    <span className="text-slate-800 text-sm font-semibold">{loginHistory[0] ? new Date(loginHistory[0].timestamp).toLocaleDateString() : 'N/A'}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b border-slate-50">
-                    <span className="text-slate-500 text-sm font-medium">Active Sessions</span>
-                    <span className="text-slate-800 text-sm font-semibold">1</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-slate-500 text-sm font-medium">Recent Activities</span>
-                    <span className="text-slate-800 text-sm font-semibold">{securityTimeline.length}</span>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsTimelineFilterOpen(!isTimelineFilterOpen)}
+                      className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                    >
+                      <SlidersHorizontal size={16} className="text-slate-600" />
+                      <span>Filter: {timelineFilter}</span>
+                    </button>
+                    
+                    {isTimelineFilterOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsTimelineFilterOpen(false)} />
+                        <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          {['All', 'Login', 'Password', 'OTP', 'Security Alerts', 'Account Lock'].map(f => (
+                            <button
+                              key={f}
+                              onClick={() => { setTimelineFilter(f); setCurrentPage(1); setIsTimelineFilterOpen(false); }}
+                              className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${timelineFilter === f ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                            >
+                              {f === 'All' ? 'All Logs' : f}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
-
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                  <Clock size={18} className="text-amber-500" />
-                  Recent Login History
-                </h3>
-                <div className="space-y-4">
-                  {loginHistory.slice(0, 3).map((log) => (
-                    <div key={log.id} className="flex gap-3">
-                      <div className="mt-1"><Monitor size={16} className="text-slate-400" /></div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">{log.browser} on {log.os}</p>
-                        <p className="text-xs text-slate-500">{new Date(log.timestamp).toLocaleString()} • {log.ip}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {loginHistory.length === 0 && <p className="text-sm text-slate-500">No recent logins found.</p>}
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <AlertTriangle size={18} className="text-indigo-500" />
-                    Security Activity Timeline
-                  </h3>
-                </div>
-                <div className="p-0">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-100">
-                      <tr>
-                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Date & Time</th>
-                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Activity</th>
-                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">IP Address</th>
+              <div className="p-0 overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[600px]">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Activity</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">IP Address</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {currentTimelinePage.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-800">
+                          {log.activity} {log.count > 1 && <span className="text-xs text-slate-500 ml-1 font-semibold bg-slate-100 px-2 py-0.5 rounded-full">({log.count} Times)</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                            log.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                            log.status === 'WARNING' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                            'bg-red-50 text-red-600 border-red-200'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-500 font-mono whitespace-nowrap">
+                          {log.ip || '-'}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {previewTimeline.map((log) => (
-                        <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
-                            {new Date(log.timestamp).toLocaleString()}
-                          </td>
-                          <td className="px-6 py-4 text-sm font-medium text-slate-800">
-                            {log.activity} {log.count > 1 && <span className="text-xs text-slate-500 ml-1 font-semibold">({log.count} Times)</span>}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                              log.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600' :
-                              log.status === 'WARNING' ? 'bg-amber-50 text-amber-600' :
-                              'bg-red-50 text-red-600'
-                            }`}>
-                              {log.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-500 font-mono">
-                            {log.ip || '-'}
-                          </td>
-                        </tr>
-                      ))}
-                      {previewTimeline.length === 0 && (
-                        <tr>
-                          <td colSpan="4" className="px-6 py-8 text-center text-slate-500">
-                            No high-value security activities recorded recently.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                
-                <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+                    ))}
+                    {currentTimelinePage.length === 0 && (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
+                          <AlertTriangle size={32} className="mx-auto mb-3 text-slate-300" />
+                          <p className="font-semibold text-slate-600">No activity records found</p>
+                          <p className="text-xs mt-1">Try adjusting your filters</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
                   <button 
-                    onClick={() => setShowFullHistory(true)}
-                    className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors w-full text-center py-1"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   >
-                    View Full History
+                    Previous
+                  </button>
+                  <span className="text-sm font-medium text-slate-500">
+                    Page <span className="font-bold text-slate-800">{currentPage}</span> of {totalPages}
+                  </span>
+                  <button 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  >
+                    Next
                   </button>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}
 
         {activeTab === 'password' && (
-          <div className="max-w-xl mx-auto glass-panel p-8 rounded-2xl">
+          <div className="max-w-lg mx-auto relative left-8 glass-panel p-8 rounded-2xl">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <KeyRound size={32} />
@@ -545,7 +552,7 @@ const SecurityProfile = () => {
                   <div className="relative">
                     <input
                       type={showCurrentPassword ? 'text' : 'password'}
-                      className="input-field pr-10"
+                      className="input-field !pr-10"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       required
@@ -613,7 +620,7 @@ const SecurityProfile = () => {
                   <div className="relative">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
-                      className="input-field pr-10"
+                      className="input-field !pr-10"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       autoComplete="new-password"
@@ -630,7 +637,7 @@ const SecurityProfile = () => {
                   <div className="relative">
                     <input
                       type={showConfirmPassword ? 'text' : 'password'}
-                      className="input-field pr-10"
+                      className="input-field !pr-10"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       autoComplete="new-password"
@@ -673,41 +680,89 @@ const SecurityProfile = () => {
               </h3>
               
               <div className="flex flex-wrap items-center gap-3">
-                <select 
-                  value={iqacRoleFilter}
-                  onChange={(e) => setIqacRoleFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-300"
-                >
-                  <option value="All">All Roles</option>
-                  <option value="STUDENT_GENERAL">Student</option>
-                  <option value="STUDENT_ORGANIZER">Organizer</option>
-                  <option value="FACULTY">Faculty</option>
-                  <option value="HOD">HOD</option>
-                  <option value="IQAC_TEAM">IQAC</option>
-                </select>
+                {/* Role Filter */}
+                <div className="relative">
+                  <button
+                    onClick={() => { setIsIqacRoleOpen(!isIqacRoleOpen); setIsIqacStatusOpen(false); setIsIqacTimeOpen(false); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                  >
+                    <SlidersHorizontal size={16} className="text-slate-600" />
+                    <span>Role: {iqacRoleFilter === 'All' ? 'All Roles' : iqacRoleFilter === 'STUDENT_GENERAL' ? 'Student' : iqacRoleFilter === 'STUDENT_ORGANIZER' ? 'Organizer' : iqacRoleFilter === 'IQAC_TEAM' ? 'IQAC' : iqacRoleFilter === 'HR_TEAM' ? 'HR' : iqacRoleFilter === 'SYSTEM_ADMIN' ? 'ICTS' : iqacRoleFilter === 'BOYS_WARDEN' ? 'Boys Warden' : iqacRoleFilter === 'GIRLS_WARDEN' ? 'Girls Warden' : iqacRoleFilter === 'AUDIO_TEAM' ? 'Audio' : iqacRoleFilter === 'TRANSPORT_TEAM' ? 'Transport' : iqacRoleFilter}</span>
+                  </button>
+                  {isIqacRoleOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsIqacRoleOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-y-auto max-h-[280px] flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {[['All', 'All Roles'], ['STUDENT_GENERAL', 'Student'], ['STUDENT_ORGANIZER', 'Organizer'], ['FACULTY', 'Faculty'], ['HOD', 'HOD'], ['IQAC_TEAM', 'IQAC'], ['HR_TEAM', 'HR'], ['SYSTEM_ADMIN', 'ICTS'], ['BOYS_WARDEN', 'Boys Warden'], ['GIRLS_WARDEN', 'Girls Warden'], ['AUDIO_TEAM', 'Audio'], ['MEDIA', 'Media'], ['TRANSPORT_TEAM', 'Transport']].map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => { setIqacRoleFilter(val); setIsIqacRoleOpen(false); }}
+                            className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${iqacRoleFilter === val ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
 
-                <select 
-                  value={iqacStatusFilter}
-                  onChange={(e) => setIqacStatusFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-300"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="SUCCESS">Success</option>
-                  <option value="FAILURE">Failure</option>
-                </select>
+                {/* Status Filter */}
+                <div className="relative">
+                  <button
+                    onClick={() => { setIsIqacStatusOpen(!isIqacStatusOpen); setIsIqacRoleOpen(false); setIsIqacTimeOpen(false); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                  >
+                    <SlidersHorizontal size={16} className="text-slate-600" />
+                    <span>Status: {iqacStatusFilter === 'All' ? 'All Statuses' : iqacStatusFilter}</span>
+                  </button>
+                  {isIqacStatusOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsIqacStatusOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {[['All', 'All Statuses'], ['SUCCESS', 'Success'], ['FAILURE', 'Failure']].map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => { setIqacStatusFilter(val); setIsIqacStatusOpen(false); }}
+                            className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${iqacStatusFilter === val ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
 
-                <select 
-                  value={iqacTimeFilter}
-                  onChange={(e) => setIqacTimeFilter(e.target.value)}
-                  className="px-3 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-300"
-                >
-                  <option value="All Time">All Time</option>
-                  <option value="Last 24 Hours">Last 24 Hours</option>
-                  <option value="Last 7 Days">Last 7 Days</option>
-                  <option value="Last 30 Days">Last 30 Days</option>
-                </select>
+                {/* Time Filter */}
+                <div className="relative">
+                  <button
+                    onClick={() => { setIsIqacTimeOpen(!isIqacTimeOpen); setIsIqacRoleOpen(false); setIsIqacStatusOpen(false); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                  >
+                    <SlidersHorizontal size={16} className="text-slate-600" />
+                    <span>{iqacTimeFilter}</span>
+                  </button>
+                  {isIqacTimeOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsIqacTimeOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {['All Time', 'Last 24 Hours', 'Last 7 Days', 'Last 30 Days'].map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => { setIqacTimeFilter(f); setIsIqacTimeOpen(false); }}
+                            className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${iqacTimeFilter === f ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
+
 
             <div className="flex-1 overflow-y-auto no-scrollbar relative">
               <table className="w-full text-left border-collapse min-w-[800px]">
@@ -792,129 +847,7 @@ const SecurityProfile = () => {
             </div>
           </div>
         )}
-        {/* History Modal */}
-        {showFullHistory && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-            <div className="w-full max-w-5xl h-[75vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-              
-              {/* Modal Header */}
-              <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white shrink-0">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <AlertTriangle size={20} className="text-indigo-500" />
-                  Security Activity History
-                </h3>
-                
-                <div className="flex items-center gap-4">
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar">
-                    {['All', 'Login', 'Password', 'OTP', 'Security Alerts', 'Account Lock'].map(f => (
-                      <button
-                        key={f}
-                        onClick={() => { setTimelineFilter(f); setCurrentPage(1); }}
-                        className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap transition-colors ${
-                          timelineFilter === f ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-                  <button 
-                    onClick={() => { setShowFullHistory(false); setTimelineFilter('All'); setCurrentPage(1); }}
-                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors shrink-0"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
 
-              {/* Modal Body (Scrollable) */}
-              <div className="flex-1 overflow-y-auto p-0 bg-slate-50/50">
-                <table className="w-full text-left border-collapse bg-white">
-                  <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Activity</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">IP Address</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {currentTimelinePage.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
-                          {new Date(log.timestamp).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-800">
-                          {log.activity} {log.count > 1 && <span className="text-xs text-slate-500 ml-1 font-semibold bg-slate-100 px-2 py-0.5 rounded-full">({log.count} Times)</span>}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-                            log.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600' :
-                            log.status === 'WARNING' ? 'bg-amber-50 text-amber-600' :
-                            'bg-red-50 text-red-600'
-                          }`}>
-                            {log.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-500 font-mono">
-                          {log.ip || '-'}
-                        </td>
-                      </tr>
-                    ))}
-                    {currentTimelinePage.length === 0 && (
-                      <tr>
-                        <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
-                          <div className="flex flex-col items-center justify-center gap-3">
-                            <AlertTriangle size={32} className="text-slate-300" />
-                            <p>No security activities recorded for this filter.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              
-              {/* Modal Footer (Sticky) */}
-              <div className="px-6 py-4 border-t border-slate-100 bg-white shrink-0 flex items-center justify-between shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
-                <div className="text-sm text-slate-500 font-medium">
-                  {fullTimeline.length > 0 ? (
-                    <>Showing <span className="text-slate-800 font-semibold">{(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, fullTimeline.length)}</span> of <span className="text-slate-800 font-semibold">{fullTimeline.length}</span></>
-                  ) : (
-                    'No results'
-                  )}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <button 
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(prev => prev - 1)}
-                    className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                  >
-                    Previous
-                  </button>
-                  <span className="px-2 text-sm font-medium text-slate-400">
-                    Page {currentPage} of {Math.max(1, totalPages)}
-                  </span>
-                  <button 
-                    disabled={currentPage === totalPages || totalPages === 0}
-                    onClick={() => setCurrentPage(prev => prev + 1)}
-                    className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                  >
-                    Next
-                  </button>
-                  <div className="w-px h-6 bg-slate-200 mx-2"></div>
-                  <button 
-                    onClick={() => { setShowFullHistory(false); setTimelineFilter('All'); setCurrentPage(1); }}
-                    className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
-                  >
-                    Close History
-                  </button>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
 
 
         {activeTab === 'attendanceAudit' && currentUser.role === 'IQAC_TEAM' && (
@@ -927,27 +860,93 @@ const SecurityProfile = () => {
                 </h3>
                 
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  {/* Search with autocomplete */}
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       placeholder="Search events..."
                       value={eventSearchQuery}
-                      onChange={(e) => setEventSearchQuery(e.target.value)}
+                      onChange={(e) => { setEventSearchQuery(e.target.value); setIsEventSelectOpen(false); }}
+                      onFocus={() => { if (eventSearchQuery.trim()) setIsEventSelectOpen(false); }}
                       className="pl-8 pr-4 py-2 font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 w-full shadow-sm text-sm"
                     />
+                    {eventSearchQuery.trim() && filteredEventsForAudit.length > 0 && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setEventSearchQuery('')} />
+                        <div className="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-y-auto max-h-[260px] flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          {filteredEventsForAudit.map(ev => {
+                            const rawDate = ev.requisition?.step1?.eventStartDate || ev.date || ev.startDate || '';
+                            const displayDate = rawDate ? rawDate.split('T')[0] : '';
+                            const eventName = ev.title || ev.requisition?.step1?.eventName || 'Untitled';
+                            return (
+                              <button
+                                key={ev.id}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => { setAttendanceAuditEventId(ev.id); setEventSearchQuery(''); }}
+                                className={`px-4 py-2.5 text-left text-[13px] font-semibold transition-colors whitespace-normal leading-snug ${attendanceAuditEventId === ev.id ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-indigo-50'}`}
+                              >
+                                {eventName}
+                                {displayDate && <span className="opacity-60 text-[11px] ml-1">({displayDate})</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <select 
-                    value={attendanceAuditEventId}
-                    onChange={(e) => setAttendanceAuditEventId(e.target.value)}
-                    className="px-4 py-2 font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 w-full sm:w-80 shadow-sm text-sm"
-                  >
-                    <option value="">Select Event...</option>
-                    {filteredEventsForAudit?.map(ev => (
-                      <option key={ev.id} value={ev.id}>{ev.title || ev.requisition?.step1?.eventName} ({ev.date})</option>
-                    ))}
-                  </select>
+
+                  {/* Event Select Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsEventSelectOpen(!isEventSelectOpen)}
+                      className="flex items-center justify-between gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-xl font-semibold transition-all text-sm w-full sm:w-80"
+                    >
+                      <span className="truncate text-slate-600">
+                        {attendanceAuditEventId
+                          ? (() => {
+                              const ev = events?.find(e => e.id === attendanceAuditEventId);
+                              return ev?.title || ev?.requisition?.step1?.eventName || 'Selected Event';
+                            })()
+                          : 'Select Event...'}
+                      </span>
+                      <svg className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {isEventSelectOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsEventSelectOpen(false)} />
+                        <div className="absolute right-0 mt-2 w-96 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-y-auto max-h-[260px] flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <button
+                            onClick={() => { setAttendanceAuditEventId(''); setIsEventSelectOpen(false); }}
+                            className={`px-4 py-2.5 text-left text-[13px] font-bold transition-colors ${!attendanceAuditEventId ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                          >
+                            Select Event...
+                          </button>
+                          {events?.slice().sort((a, b) => {
+                            const dateA = new Date(a.requisition?.step1?.eventStartDate || a.date || 0);
+                            const dateB = new Date(b.requisition?.step1?.eventStartDate || b.date || 0);
+                            return dateB - dateA;
+                          }).map(ev => {
+                            const rawDate = ev.requisition?.step1?.eventStartDate || ev.date || ev.startDate || '';
+                            const displayDate = rawDate ? rawDate.split('T')[0] : '';
+                            const eventName = ev.title || ev.requisition?.step1?.eventName || 'Untitled';
+                            return (
+                              <button
+                                key={ev.id}
+                                onClick={() => { setAttendanceAuditEventId(ev.id); setIsEventSelectOpen(false); }}
+                                className={`px-4 py-2.5 text-left text-[13px] font-semibold transition-colors whitespace-normal leading-snug ${attendanceAuditEventId === ev.id ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                              >
+                                {eventName}
+                                {displayDate && <span className="opacity-60 text-[11px] ml-1">({displayDate})</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
+
               </div>
 
               {attendanceAuditEventId && (
@@ -959,24 +958,59 @@ const SecurityProfile = () => {
                     onChange={(e) => setAuditSearchQuery(e.target.value)}
                     className="px-4 py-2 text-sm bg-white border border-slate-200 rounded-lg flex-1 min-w-[200px] outline-none focus:border-indigo-400 shadow-sm"
                   />
-                  <select 
-                    value={auditSessionFilter}
-                    onChange={(e) => setAuditSessionFilter(e.target.value)}
-                    className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
-                  >
-                    <option value="All">All Sessions</option>
-                    <option value="S1">Session 1</option>
-                    <option value="S2">Session 2</option>
-                    <option value="BOTH">Both Sessions</option>
-                  </select>
-                  <select 
-                    value={auditDateFilter}
-                    onChange={(e) => setAuditDateFilter(e.target.value)}
-                    className="px-3 py-2 text-sm font-semibold bg-white border border-slate-200 rounded-lg text-slate-700 outline-none focus:border-indigo-400 shadow-sm"
-                  >
-                    <option value="All">All Dates</option>
-                    {eventDates.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
+                  {/* Session Filter */}
+                  <div className="relative">
+                    <button
+                      onClick={() => { setIsAuditSessionOpen(!isAuditSessionOpen); setIsAuditDateOpen(false); }}
+                      className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                    >
+                      <SlidersHorizontal size={16} className="text-slate-600" />
+                      <span>Session: {auditSessionFilter === 'All' ? 'All Sessions' : auditSessionFilter}</span>
+                    </button>
+                    {isAuditSessionOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsAuditSessionOpen(false)} />
+                        <div className="absolute left-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          {[['All', 'All Sessions'], ['S1', 'Session 1'], ['S2', 'Session 2'], ['BOTH', 'Both Sessions']].map(([val, label]) => (
+                            <button
+                              key={val}
+                              onClick={() => { setAuditSessionFilter(val); setIsAuditSessionOpen(false); }}
+                              className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${auditSessionFilter === val ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                            >{label}</button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Date Filter */}
+                  <div className="relative">
+                    <button
+                      onClick={() => { setIsAuditDateOpen(!isAuditDateOpen); setIsAuditSessionOpen(false); }}
+                      className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                    >
+                      <SlidersHorizontal size={16} className="text-slate-600" />
+                      <span>Date: {auditDateFilter === 'All' ? 'All Dates' : auditDateFilter}</span>
+                    </button>
+                    {isAuditDateOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setIsAuditDateOpen(false)} />
+                        <div className="absolute left-0 mt-2 w-44 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-y-auto max-h-[240px] flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <button
+                            onClick={() => { setAuditDateFilter('All'); setIsAuditDateOpen(false); }}
+                            className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${auditDateFilter === 'All' ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                          >All Dates</button>
+                          {eventDates.map(d => (
+                            <button
+                              key={d}
+                              onClick={() => { setAuditDateFilter(d); setIsAuditDateOpen(false); }}
+                              className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${auditDateFilter === d ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+                            >{d}</button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1057,8 +1091,8 @@ const SecurityProfile = () => {
             )}
           </div>
         )}
+        </div>
       </main>
-
     </div>
   );
 };

@@ -1836,6 +1836,7 @@ const ExploreEvents = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showODModal, setShowODModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -1867,11 +1868,36 @@ const ExploreEvents = () => {
       // Show POSTED, COMPLETED, CANCELLED, POSTPONED events in the explore page
       const visibleEvents = allEvents
         .filter(e => {
-          if (e.status === EventStatus.POSTED || e.status === EventStatus.COMPLETED) return true;
-          if (e.status === 'CANCELLED' || e.status === 'POSTPONED') {
-            return !!e.iqacApprovedAt; // Only show if they were previously posted
+          // 1. Status check
+          const isValidStatus = e.status === EventStatus.POSTED || 
+                                e.status === EventStatus.COMPLETED ||
+                                ((e.status === 'CANCELLED' || e.status === 'POSTPONED') && !!e.iqacApprovedAt);
+          
+          if (!isValidStatus) return false;
+
+          // 2. Department visibility check
+          if (currentUser) {
+            const globalRoles = [
+              UserRole.IQAC_TEAM,
+              UserRole.SYSTEM_ADMIN,
+              UserRole.HR_TEAM,
+              UserRole.AUDIO_TEAM,
+              UserRole.TRANSPORT_TEAM,
+              UserRole.BOYS_WARDEN,
+              UserRole.GIRLS_WARDEN,
+              UserRole.MEDIA,
+            ];
+            const hasGlobalVisibility = globalRoles.includes(currentUser?.role);
+            const isOpenToAll = e.openToAllDepartments === true || e.audienceScope === 'Open To All' || String(e.department).toLowerCase() === 'overall';
+            const isMyDept = String(e.department).toLowerCase() === String(currentUser?.department).toLowerCase() || (e.requisition?.step1?.department === currentUser?.department);
+            const isSelectedDept = Array.isArray(e.selectedDepartments) && e.selectedDepartments.includes(currentUser?.department);
+            
+            if (!hasGlobalVisibility && !isOpenToAll && !isMyDept && !isSelectedDept) {
+              return false;
+            }
           }
-          return false;
+
+          return true;
         })
         .sort(sortEventsByEventDateDesc);
       setEvents(visibleEvents);
@@ -2123,41 +2149,66 @@ const ExploreEvents = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <div className="h-screen flex flex-row overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Explore Events</h1>
-            <p className="text-slate-600">Discover and register for upcoming events</p>
+      <main className="flex-1 flex flex-col min-h-0 relative">
+        <div className="bg-slate-50 border-b border-slate-200 px-6 py-6 z-30 shrink-0">
+          <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 mb-1">Explore Events</h1>
+              <p className="text-slate-600">Discover and register for upcoming events</p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative">
+                <button
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  className="flex items-center gap-2 bg-white border border-slate-200 text-slate-800 py-2 px-5 rounded-full hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
+                >
+                  <svg className="w-[18px] h-[18px] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                  Filter: {filter === 'all' ? 'All Events' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </button>
+
+                <AnimatePresence>
+                  {isFilterOpen && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsFilterOpen(false)}
+                      />
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 z-50 overflow-hidden"
+                      >
+                        {['all', 'upcoming', 'ongoing', 'completed'].map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => {
+                              setFilter(f);
+                              setIsFilterOpen(false);
+                            }}
+                            className={`w-full text-left px-4 py-3 text-sm font-extrabold transition-colors ${
+                              filter === f 
+                                ? 'bg-blue-600 text-white' 
+                                : 'text-slate-700 hover:bg-slate-50 hover:text-blue-600'
+                            }`}
+                          >
+                            {f === 'all' ? 'All Events' : f.charAt(0).toUpperCase() + f.slice(1)}
+                          </button>
+                        ))}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={() => navigate(currentUser ? '/dashboard' : '/')}
-            className="btn-secondary whitespace-nowrap"
-          >
-            {currentUser ? 'Back to Dashboard' : 'Back to Home'}
-          </button>
         </div>
 
-        <div className="flex gap-3 mb-6 overflow-x-auto pb-2">
-          {['all', 'upcoming', 'ongoing', 'completed'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-6 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                filter === f
-                  ? 'bg-cse-accent text-white'
-                  : 'bg-white text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-              <span className="ml-2 text-sm opacity-75">
-                ({f === 'all' ? events.length : events.filter(e => getEventStatus(e) === f).length})
-              </span>
-            </button>
-          ))}
-        </div>
-
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="max-w-7xl mx-auto w-full">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={40} className="animate-spin text-cse-accent" />
@@ -2175,7 +2226,8 @@ const ExploreEvents = () => {
               ))}
             </div>
         )}
-      </div>
+          </div>
+        </div>
       {showODModal && selectedEvent && (
         <ODLetterModal
           odRequest={(odRequests || []).find(r => r.eventId === selectedEvent.id && r.studentId === currentUser?.id && r.status === 'APPROVED')}
@@ -2204,17 +2256,18 @@ const ExploreEvents = () => {
 
       <AnimatePresence>
         {showEventDetail && selectedEvent && (
-          selectedEvent.iqacSubmittedAt
-            ? <IQACSummaryModal
-                event={selectedEvent}
-                onClose={() => { setShowEventDetail(false); setSelectedEvent(null); }}
-              />
-            : <EventDetailModal
-                event={selectedEvent}
-                onClose={() => { setShowEventDetail(false); setSelectedEvent(null); }}
-              />
-        )}
-      </AnimatePresence>
+            selectedEvent.iqacSubmittedAt
+              ? <IQACSummaryModal
+                  event={selectedEvent}
+                  onClose={() => { setShowEventDetail(false); setSelectedEvent(null); }}
+                />
+              : <EventDetailModal
+                  event={selectedEvent}
+                  onClose={() => { setShowEventDetail(false); setSelectedEvent(null); }}
+                />
+          )}
+        </AnimatePresence>
+      </main>
     </div>
   );
 };

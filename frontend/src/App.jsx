@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppProvider, useAppContext } from './context/AppContext';
 import { NotificationProvider } from './context/NotificationContext';
 import './App.css';
 
@@ -13,6 +13,41 @@ const ManageStudents = lazy(() => import('./pages/ManageStudents'));
 const ODCorrection = lazy(() => import('./pages/ODCorrection'));
 const SecurityProfile = lazy(() => import('./pages/SecurityProfile'));
 
+import { ROLE_PATHS, getRolePath } from './utils/routeUtils';
+
+const RoleRoutes = () => (
+  <Routes>
+    {/* Dashboard-hosted feature routes */}
+    <Route path="dashboard" element={<Dashboard />} />
+    <Route path="events" element={<Dashboard />} />
+    <Route path="approvals" element={<Dashboard />} />
+    <Route path="registrations" element={<Dashboard />} />
+    <Route path="modifications" element={<Dashboard />} />
+    <Route path="available" element={<Dashboard />} />
+    <Route path="my-registrations" element={<Dashboard />} />
+
+    {/* Dedicated Pages */}
+    <Route path="create-event" element={<CreateEvent />} />
+    <Route path="explore" element={<ExploreEvents />} />
+    <Route path="iqac" element={<IQACSubmission />} />
+    <Route path="manage-students" element={<ManageStudents />} />
+    <Route path="od-correction" element={<ODCorrection />} />
+    <Route path="security" element={<SecurityProfile />} />
+    
+    {/* Fallback within role */}
+    <Route path="*" element={<Dashboard />} />
+  </Routes>
+);
+
+const FallbackRoute = () => {
+  const { currentUser } = useAppContext();
+  if (currentUser) {
+    const rolePrefix = getRolePath(currentUser.role);
+    return <Navigate to={`/${rolePrefix}/dashboard`} replace />;
+  }
+  return <Navigate to="/login" replace />;
+};
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -22,13 +57,14 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Login />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/create-event" element={<CreateEvent />} />
-              <Route path="/explore" element={<ExploreEvents />} />
-              <Route path="/iqac" element={<IQACSubmission />} />
-              <Route path="/manage-students" element={<ManageStudents />} />
-              <Route path="/od-correction" element={<ODCorrection />} />
-              <Route path="/security" element={<SecurityProfile />} />
+              
+              {/* Generate nested routes for every role path */}
+              {ROLE_PATHS.map((rolePath) => (
+                <Route key={rolePath} path={`/${rolePath}/*`} element={<RoleRoutes />} />
+              ))}
+              
+              {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
+              <Route path="*" element={<FallbackRoute />} />
             </Routes>
           </Suspense>
         </NotificationProvider>

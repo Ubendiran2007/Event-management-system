@@ -214,30 +214,47 @@ const ManageStudents = () => {
         : accessibleStudents.filter(s => s.role === UserRole.STUDENT_ORGANIZER).length;
 
     return (
-        <div className="min-h-screen pb-20">
+        <div className="h-screen flex flex-row overflow-hidden bg-[#f8fafc]">
             <Navbar />
 
-            <main className="max-w-5xl mx-auto px-6 py-8">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                    <div>
-                        <h2 className="text-3xl font-bold text-slate-900">Manage Students</h2>
-                        <p className="text-slate-500 mt-1">
-                            {selectedClass ? `Viewing students in ${selectedClass}` : 'Select a class to manage students'}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3 md:order-2">
-                        {currentUser.role === UserRole.IQAC_TEAM && (
-                            <button onClick={handleResetODUsage} className="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold text-sm hover:bg-rose-100 transition-all flex items-center gap-2">
-                                <UserX size={16} /> Reset All OD Usage
-                            </button>
-                        )}
-                        <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
-                            Back to Dashboard
-                        </button>
+            <main className="flex-1 flex flex-col min-h-0 relative">
+                {/* Header (Sticky) */}
+                <div className="bg-[#f8fafc] border-b border-slate-200 px-6 py-6 z-30 shrink-0">
+                    <div className="max-w-5xl mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-900">Manage Students</h2>
+                            <p className="text-slate-500 mt-1">
+                                {selectedClass ? `Viewing students in ${selectedClass}` : 'Select a class to manage students'}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-3 md:order-2">
+                            {currentUser.role === UserRole.IQAC_TEAM && (
+                                <button onClick={handleResetODUsage} className="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold text-sm hover:bg-rose-100 transition-all flex items-center gap-2">
+                                    <UserX size={16} /> Reset All OD Usage
+                                </button>
+                            )}
+                            {selectedClass ? (
+                                <button
+                                    onClick={() => {
+                                        setSelectedClass(null);
+                                        setSearchQuery('');
+                                    }}
+                                    className="btn-secondary whitespace-nowrap flex items-center gap-2"
+                                >
+                                    <ArrowLeft size={16} />
+                                    Back to Classes
+                                </button>
+                            ) : (
+                                <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
+                                    Back to Dashboard
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
 
+                <div className="flex-1 overflow-y-auto px-6 py-8">
+                    <div className="max-w-5xl mx-auto w-full">
                 {loading ? (
                     <div className="flex items-center justify-center py-20">
                         <Loader2 className="animate-spin text-cse-accent" size={36} />
@@ -305,18 +322,6 @@ const ManageStudents = () => {
                 ) : (
                     // STUDENTS VIEW (Class Selected)
                     <>
-                        {/* Back Button */}
-                        <button
-                            onClick={() => {
-                                setSelectedClass(null);
-                                setSearchQuery('');
-                            }}
-                            className="mb-6 px-4 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600 hover:text-slate-900 flex items-center gap-2 font-medium"
-                        >
-                            <ArrowLeft size={16} />
-                            Back to Classes
-                        </button>
-
                         {/* Search Bar */}
                         <div className="relative mb-6">
                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -465,6 +470,8 @@ const ManageStudents = () => {
                         )}
                     </>
                 )}
+                    </div>
+                </div>
             </main>
 
             <ConfirmationModal

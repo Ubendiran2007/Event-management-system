@@ -3306,10 +3306,11 @@ const CreateEvent = () => {
   };
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="h-screen flex flex-row overflow-hidden bg-[#f8fafc]">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative p-6 pb-20">
+        <div className="max-w-7xl mx-auto w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-3xl font-bold text-slate-900">Create Event Requisition</h2>
@@ -3401,6 +3402,7 @@ const CreateEvent = () => {
             )}
           </div>
         </motion.div>
+        </div>
       </main>
     </div>
   );

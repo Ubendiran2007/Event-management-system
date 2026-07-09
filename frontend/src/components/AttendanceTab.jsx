@@ -462,69 +462,69 @@ const AttendanceTab = ({ event }) => {
         const showConfigPanel = !configLocked;
 
         return showConfigPanel ? (
-        <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm text-center max-w-lg mx-auto">
-          <h3 className="text-xl font-bold text-slate-800 mb-2">Attendance Configuration</h3>
-          <p className="text-sm text-slate-500 mb-6">Select the attendance format for {new Date(selectedDate).toLocaleDateString()}. {currentConfig ? 'You can modify this until Session 1 starts.' : 'This is required before starting the session.'}</p>
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm text-center max-w-md mx-auto">
+          <h3 className="text-lg font-bold text-slate-800 mb-1">Attendance Configuration</h3>
+          <p className="text-xs text-slate-500 mb-4">Select the attendance format for {new Date(selectedDate).toLocaleDateString()}. {currentConfig ? 'You can modify this until Session 1 starts.' : 'This is required before starting the session.'}</p>
           
-          <div className="space-y-4 mb-8">
-            <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${attendanceTypeSelection === 'Single Session' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+          <div className="space-y-3 mb-5">
+            <label className={`flex items-center gap-2.5 p-3 border rounded-xl cursor-pointer transition-colors ${attendanceTypeSelection === 'Single Session' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
               <input type="radio" name="attendanceType" value="Single Session"
                 checked={attendanceTypeSelection === 'Single Session'}
                 onChange={(e) => setAttendanceTypeSelection(e.target.value)}
                 className="w-4 h-4 text-indigo-600" />
               <div className="text-left">
                 <p className="font-bold text-slate-800">Single Session</p>
-                <p className="text-xs text-slate-500">One continuous attendance session (max 3 hours).</p>
+                <p className="text-[11px] text-slate-500">One continuous attendance session (max 3 hours).</p>
               </div>
             </label>
-            <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${attendanceTypeSelection === 'Both Sessions' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+            <label className={`flex items-center gap-2.5 p-3 border rounded-xl cursor-pointer transition-colors ${attendanceTypeSelection === 'Both Sessions' ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
               <input type="radio" name="attendanceType" value="Both Sessions"
                 checked={attendanceTypeSelection === 'Both Sessions'}
                 onChange={(e) => setAttendanceTypeSelection(e.target.value)}
                 className="w-4 h-4 text-indigo-600" />
               <div className="text-left">
                 <p className="font-bold text-slate-800">Both Sessions</p>
-                <p className="text-xs text-slate-500">Two separate attendance sessions (e.g., Forenoon &amp; Afternoon).</p>
+                <p className="text-[11px] text-slate-500">Two separate attendance sessions (e.g., Forenoon &amp; Afternoon).</p>
               </div>
             </label>
           </div>
 
           {isOrganizer ? (
             <button onClick={handleSaveConfig} disabled={isProcessing || (currentConfig && currentConfig.attendanceType === attendanceTypeSelection)}
-              className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-sm transition-colors disabled:opacity-60 mb-6">
+              className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-sm transition-colors disabled:opacity-60 mb-4">
               {isProcessing && <Loader2 size={16} className="animate-spin inline mr-2" />}
               {currentConfig && currentConfig.attendanceType === attendanceTypeSelection ? '✓ Configuration Saved' : 'Save & Continue'}
             </button>
           ) : (
-            <p className="text-sm text-slate-400 mb-6">Waiting for organizer to configure attendance.</p>
+            <p className="text-sm text-slate-400 mb-4">Waiting for organizer to configure attendance.</p>
           )}
 
-          <div className={`mt-6 p-5 rounded-xl border ${!isEventDateStarted ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} text-left`}>
-            <div className="flex items-center justify-between mb-4">
+          <div className={`mt-4 p-4 rounded-xl border ${!isEventDateStarted ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'} text-left`}>
+            <div className="flex items-center justify-between mb-3">
               <h4 className={`font-bold ${!isEventDateStarted ? 'text-amber-900' : 'text-emerald-900'}`}>Event Readiness</h4>
               <div className={`px-3 py-1 text-xs font-bold rounded-full ${!isEventDateStarted ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
                 Status: {!isEventDateStarted ? 'Upcoming' : 'Ready'}
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <p className={`text-xs font-semibold ${!isEventDateStarted ? 'text-amber-700/70' : 'text-emerald-700/70'}`}>Event Start</p>
-                <p className={`text-sm font-bold ${!isEventDateStarted ? 'text-amber-900' : 'text-emerald-900'}`}>
+                <p className={`text-[10px] uppercase font-bold tracking-wide ${!isEventDateStarted ? 'text-amber-700/70' : 'text-emerald-700/70'}`}>Event Start</p>
+                <p className={`text-xs font-bold ${!isEventDateStarted ? 'text-amber-900' : 'text-emerald-900'}`}>
                   {startDateTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')} &bull; {startDateTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </p>
               </div>
               <div>
-                <p className={`text-xs font-semibold ${!isEventDateStarted ? 'text-amber-700/70' : 'text-emerald-700/70'}`}>Current Time</p>
-                <p className={`text-sm font-bold ${!isEventDateStarted ? 'text-amber-900' : 'text-emerald-900'}`}>
+                <p className={`text-[10px] uppercase font-bold tracking-wide ${!isEventDateStarted ? 'text-amber-700/70' : 'text-emerald-700/70'}`}>Current Time</p>
+                <p className={`text-xs font-bold ${!isEventDateStarted ? 'text-amber-900' : 'text-emerald-900'}`}>
                   {now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')} &bull; {now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </p>
               </div>
             </div>
 
             {!isEventDateStarted ? (
-              <p className="text-sm font-bold text-amber-800 flex items-center gap-2">
-                <Clock size={16} /> Attendance scanning will be available when the event starts.
+              <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5 pt-2 border-t border-amber-200/50">
+                <Clock size={14} /> Attendance scanning will be available when the event starts.
               </p>
             ) : (
               <div className="space-y-4 border-t border-emerald-200/60 pt-4">
