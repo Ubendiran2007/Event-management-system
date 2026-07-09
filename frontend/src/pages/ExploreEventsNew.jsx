@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User, Lock } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User, Lock, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, isRegistrationLocked } from '../utils/formatters';
@@ -2203,6 +2203,12 @@ const ExploreEvents = () => {
                   )}
                 </AnimatePresence>
               </div>
+              <button 
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-800 py-2 px-5 rounded-full hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
+              >
+                Back to Dashboard
+              </button>
             </div>
           </div>
         </div>

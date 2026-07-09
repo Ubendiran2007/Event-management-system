@@ -419,7 +419,7 @@ const SecurityProfile = () => {
 
         {activeTab === 'overview' && (
           <div className="w-full">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
               <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
                   <AlertTriangle size={18} className="text-indigo-500" />
@@ -454,7 +454,7 @@ const SecurityProfile = () => {
                   </div>
                 </div>
               </div>
-              <div className="p-0 overflow-x-auto">
+              <div className="p-0 overflow-x-auto rounded-b-2xl">
                 <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
@@ -502,7 +502,7 @@ const SecurityProfile = () => {
               
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl">
                   <button 
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}

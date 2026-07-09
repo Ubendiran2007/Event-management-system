@@ -30,7 +30,7 @@ import { EventStatus, UserRole } from '../types';
 import { validateUpload } from '../utils/fileValidation';
 
 
-const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Other'];
+const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Hackathon', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
 const DEPARTMENTS = ['CSE', 'ECE', 'CCE', 'Cyber', 'CSBS', 'MECH', 'IT', 'AI&DS', 'AIML', 'EEE'];
 
@@ -94,6 +94,7 @@ const defaultTransportJourney = {
 };
 
 const createPassenger = (i = 1) => ({ id: Date.now() + i, sno: i, name: '', employeeId: '', designation: '', contactNumber: '' });
+const createAccomGuest = (i = 1) => ({ id: Date.now() + i, name: '', designation: '', organization: '', mobileNumber: '', email: '' });
 const createDiningRow = (i = 1) => ({
   id: Date.now() + i,
   date: '',
@@ -361,11 +362,7 @@ const CreateEvent = () => {
 
     // Step 6: Accommodation / Dining
     accommodation: {
-      guestNames: '',
-      guestDesignation: '',
-      industryInstitute: '',
-      mobileNumber: '',
-      email: '',
+      guests: [createAccomGuest()],
       address: '',
       maleGuests: '',
       femaleGuests: '',
@@ -444,17 +441,15 @@ const CreateEvent = () => {
     return d.toISOString().split('T')[0];
   }, []);
 
-  // Update related dates automatically if event start/end dates are filled and they are empty
+  // Update related dates and auto-fill details automatically if they are filled and targets are empty
   useEffect(() => {
-    if (!form.startDate) return;
-
     setForm(prev => {
       let next = { ...prev };
       let changed = false;
 
       const updateIfEmpty = (path, value) => {
+        if (!value) return; // don't fill with empty strings
         const segments = path.split('.');
-        let ptr = next;
         
         // Check if value is already there
         let current = next;
@@ -475,21 +470,68 @@ const CreateEvent = () => {
         }
       };
 
-      updateIfEmpty('externalTransport.onwardJourney.vehicleDate', form.startDate);
-      updateIfEmpty('externalTransport.returnJourney.vehicleDate', form.startDate);
-      updateIfEmpty('internalTransport.onwardJourney.vehicleDate', form.startDate);
-      updateIfEmpty('internalTransport.returnJourney.vehicleDate', form.startDate);
-      updateIfEmpty('audioDate', form.startDate);
-      updateIfEmpty('accommodation.arrivalDate', form.startDate);
+      if (form.startDate) {
+        updateIfEmpty('externalTransport.onwardJourney.vehicleDate', form.startDate);
+        updateIfEmpty('externalTransport.returnJourney.vehicleDate', form.startDate);
+        updateIfEmpty('internalTransport.onwardJourney.vehicleDate', form.startDate);
+        updateIfEmpty('internalTransport.returnJourney.vehicleDate', form.startDate);
+        updateIfEmpty('audioDate', form.startDate);
+        updateIfEmpty('accommodation.arrivalDate', form.startDate);
+      }
 
       if (form.endDate && !prev.accommodation.departureDate) {
         next.accommodation = { ...next.accommodation, departureDate: form.endDate };
         changed = true;
       }
 
+      // Organizer details
+      if (form.organizerName) {
+        updateIfEmpty('externalTransport.organizerName', form.organizerName);
+        updateIfEmpty('internalTransport.indenterName', form.organizerName);
+      }
+      
+      if (form.department) {
+        updateIfEmpty('externalTransport.department', form.department);
+        updateIfEmpty('internalTransport.department', form.department);
+      }
+      
+      if (form.mobileNumber) {
+        updateIfEmpty('externalTransport.contactNumber', form.mobileNumber);
+        updateIfEmpty('internalTransport.contactNumber', form.mobileNumber);
+        if (next.accommodation.guests && next.accommodation.guests.length > 0 && !next.accommodation.guests[0].mobileNumber) {
+           next.accommodation.guests[0].mobileNumber = form.mobileNumber;
+           next.accommodation.guests = [...next.accommodation.guests];
+           changed = true;
+        }
+      }
+
+      // Guest details
+      if (form.guests && form.guests.length > 0) {
+        const primaryGuest = form.guests[0];
+        if (next.accommodation.guests && next.accommodation.guests.length > 0) {
+          let accomGuest = next.accommodation.guests[0];
+          let changedAccomGuest = false;
+          if (primaryGuest.name && !accomGuest.name) { accomGuest.name = primaryGuest.name; changedAccomGuest = true; }
+          if (primaryGuest.designation && !accomGuest.designation) { accomGuest.designation = primaryGuest.designation; changedAccomGuest = true; }
+          if (primaryGuest.organization && !accomGuest.organization) { accomGuest.organization = primaryGuest.organization; changedAccomGuest = true; }
+          
+          if (changedAccomGuest) {
+            next.accommodation = {
+              ...next.accommodation,
+              guests: [accomGuest, ...next.accommodation.guests.slice(1)]
+            };
+            changed = true;
+          }
+        }
+      }
+
       return changed ? next : prev;
     });
-  }, [form.startDate, form.endDate]);
+  }, [
+    form.startDate, form.endDate, 
+    form.organizerName, form.department, form.mobileNumber,
+    form.guests
+  ]);
 
   // Track whether user has manually overridden audio times
   const [audioTimesUserEdited, setAudioTimesUserEdited] = useState(false);
@@ -1237,13 +1279,15 @@ const CreateEvent = () => {
         setStepError('Please fill arrival/departure date and time for accommodation.');
         return false;
       }
-      if (a.email && !isValidEmail(a.email)) {
-        setStepError('Accommodation email must contain @ and be all lowercase.');
-        return false;
-      }
-      if (a.mobileNumber && !isValidPhone(a.mobileNumber)) {
-        setStepError('Accommodation mobile number must be exactly 10 digits.');
-        return false;
+      for (const [idx, g] of a.guests.entries()) {
+        if (g.email && !isValidEmail(g.email)) {
+          setStepError(`Guest ${idx + 1} email must contain @ and be all lowercase.`);
+          return false;
+        }
+        if (g.mobileNumber && !isValidPhone(g.mobileNumber)) {
+          setStepError(`Guest ${idx + 1} mobile number must be exactly 10 digits.`);
+          return false;
+        }
       }
       const arrival = new Date(a.arrivalDate);
       const departure = new Date(a.departureDate);
@@ -1573,6 +1617,11 @@ const CreateEvent = () => {
         annexureV_accommodation: form.accommodationRequired
           ? {
               ...form.accommodation,
+              guestNames: form.accommodation.guests.map(g => g.name).filter(Boolean).join(', '),
+              guestDesignation: form.accommodation.guests.map(g => g.designation).filter(Boolean).join(', '),
+              industryInstitute: form.accommodation.guests.map(g => g.organization).filter(Boolean).join(', '),
+              mobileNumber: form.accommodation.guests.map(g => g.mobileNumber).filter(Boolean).join(', '),
+              email: form.accommodation.guests.map(g => g.email).filter(Boolean).join(', '),
               numberOfDays: accommodationDays,
             }
           : null,
@@ -2138,6 +2187,8 @@ const CreateEvent = () => {
                     </label>
                     <input
                       type="number"
+                      min="0"
+                      onKeyDown={onlyDigitsKeyDown}
                       disabled={!form[key].selected}
                       placeholder="Quantity"
                       className={inputClass}
@@ -2842,45 +2893,54 @@ const CreateEvent = () => {
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Lbl>Guest Name(s)</Lbl>
-              <input className={inputClass} value={form.accommodation.guestNames} onChange={(e) => updateNested('accommodation.guestNames', e.target.value)} placeholder="Guest full name" />
-            </div>
-            <div className="space-y-1">
-              <Lbl>Guest Designation</Lbl>
-              <input className={inputClass} value={form.accommodation.guestDesignation} onChange={(e) => updateNested('accommodation.guestDesignation', e.target.value)} placeholder="e.g. Professor" />
-            </div>
-            <div className="space-y-1">
-              <Lbl>Industry / Institute</Lbl>
-              <input className={inputClass} value={form.accommodation.industryInstitute} onChange={(e) => updateNested('accommodation.industryInstitute', e.target.value)} placeholder="e.g. IIT Madras" />
-            </div>
-            <div className="space-y-1">
-              <Lbl>Mobile Number</Lbl>
-              <input
-                id="accom_mobileNumber"
-                type="tel"
-                className={fieldCls('accom_mobileNumber')}
-                value={form.accommodation.mobileNumber}
-                maxLength={10}
-                onKeyDown={onlyDigitsKeyDown}
-                onChange={(e) => { updateNested('accommodation.mobileNumber', e.target.value); setFE('accom_mobileNumber', ''); }}
-                onBlur={(e) => validateField('accom_mobileNumber', e.target.value)}
-                placeholder="10-digit number"
-              />
-              <FieldMsg errKey="accom_mobileNumber" hint="Exactly 10 digits, numbers only" />
-            </div>
-            <div className="space-y-1">
-              <Lbl>Email</Lbl>
-              <input
-                id="accom_email"
-                type="email"
-                className={fieldCls('accom_email')}
-                value={form.accommodation.email}
-                onChange={(e) => { updateNested('accommodation.email', e.target.value.toLowerCase()); setFE('accom_email', ''); }}
-                onBlur={(e) => validateField('accom_email', e.target.value)}
-                placeholder="lowercase@example.com"
-              />
-              <FieldMsg errKey="accom_email" hint="Must contain @ and be all lowercase" />
+            {/* Guests Table */}
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between mb-3">
+                <Lbl>Guest Details</Lbl>
+                <button type="button" onClick={() => setForm(prev => ({ ...prev, accommodation: { ...prev.accommodation, guests: [...prev.accommodation.guests, createAccomGuest(prev.accommodation.guests.length + 1)] } }))} className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
+                  <Plus size={12} /> Add Guest
+                </button>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      {['#', 'Guest Name', 'Designation', 'Organization', 'Mobile Number', 'Email', ''].map((h) => (
+                        <th key={h} className="px-3 py-2 text-left font-bold text-slate-700 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {form.accommodation.guests.map((g, idx) => (
+                      <tr key={g.id} className="hover:bg-slate-50/50">
+                        <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
+                        <td className="px-1 py-1">
+                          <input className={inputClass} placeholder="Name" value={g.name} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], name: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input className={inputClass} placeholder="Designation" value={g.designation} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], designation: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input className={inputClass} placeholder="Organization" value={g.organization} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], organization: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input type="tel" className={inputClass} placeholder="10-digit" maxLength={10} onKeyDown={onlyDigitsKeyDown} value={g.mobileNumber} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], mobileNumber: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                        </td>
+                        <td className="px-1 py-1">
+                          <input type="email" className={inputClass} placeholder="Email" value={g.email} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], email: e.target.value.toLowerCase() }; updateNested('accommodation.guests', newGuests); }} />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {form.accommodation.guests.length > 1 && (
+                            <button type="button" onClick={() => { const newGuests = form.accommodation.guests.filter((_, i) => i !== idx); updateNested('accommodation.guests', newGuests); }} className="text-red-400 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-lg transition-colors">
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div className="space-y-1">
               <Lbl>Address</Lbl>
@@ -3035,7 +3095,7 @@ const CreateEvent = () => {
                         {form.accommodation.mealSchedule.map((row) => (
                           <tr key={row.id} className="border-t border-slate-200">
                             <td className="px-2 py-2"><input type="date" min={diningMinDate} className={inputClass} value={row.date} onChange={(e) => updateDiningRow(row.id, 'date', e.target.value)} /></td>
-                            <td className="px-2 py-2"><input type="number" className={inputClass} value={row.guestCount} onChange={(e) => updateDiningRow(row.id, 'guestCount', e.target.value)} /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" onKeyDown={onlyDigitsKeyDown} className={inputClass} value={row.guestCount} onChange={(e) => updateDiningRow(row.id, 'guestCount', e.target.value)} /></td>
                             {['breakfast', 'morningRefreshment', 'lunchVeg', 'lunchNonVeg', 'eveningRefreshment', 'dinnerVeg', 'dinnerNonVeg'].map((key) => (
                               <td key={key} className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={row[key]} onChange={(e) => updateDiningRow(row.id, key, e.target.checked)} />
@@ -3119,6 +3179,8 @@ const CreateEvent = () => {
                     <label className="text-sm font-semibold text-slate-700 mb-1 block">Other Material Count (Optional)</label>
                     <input
                       type="number"
+                      min="0"
+                      onKeyDown={onlyDigitsKeyDown}
                       placeholder="e.g. 50"
                       className={inputClass}
                       value={form.media.otherMaterialCount || ''}
