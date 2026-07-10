@@ -35,7 +35,7 @@ const ForgotPasswordModal = ({ onClose }) => {
     setLoading(true);
     setAlert(null);
     try {
-      const res = await fetch('http://localhost:5001/api/security/forgot-password', {
+      const res = await fetch('https://event-management-system-dpzc.onrender.com/api/security/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier })
@@ -68,7 +68,7 @@ const ForgotPasswordModal = ({ onClose }) => {
     setLoading(true);
     setAlert(null);
     try {
-      const res = await fetch('http://localhost:5001/api/security/verify-otp', {
+      const res = await fetch('https://event-management-system-dpzc.onrender.com/api/security/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier, otp, type: 'RESET' })
@@ -107,7 +107,7 @@ const ForgotPasswordModal = ({ onClose }) => {
     setLoading(true);
     setAlert(null);
     try {
-      const res = await fetch('http://localhost:5001/api/security/reset-password', {
+      const res = await fetch('https://event-management-system-dpzc.onrender.com/api/security/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier, otp, newPassword })

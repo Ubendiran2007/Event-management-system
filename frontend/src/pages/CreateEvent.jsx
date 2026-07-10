@@ -232,7 +232,7 @@ const CreateEvent = () => {
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
-        const response = await fetch('http://localhost:5001/api/events/coordinators/list');
+        const response = await fetch('https://event-management-system-dpzc.onrender.com/api/events/coordinators/list');
         const data = await response.json();
         if (data.success && data.coordinators) {
           const depts = [...new Set(data.coordinators.map(c => c.department).filter(Boolean))].sort();
@@ -1653,8 +1653,8 @@ const CreateEvent = () => {
     try {
       const payload = buildPayload();
       const endpoint = isResubmissionEdit
-        ? `http://localhost:5001/api/events/${editingEvent.id}/resubmit-edit`
-        : 'http://localhost:5001/api/events';
+        ? `https://event-management-system-dpzc.onrender.com/api/events/${editingEvent.id}/resubmit-edit`
+        : 'https://event-management-system-dpzc.onrender.com/api/events';
       const method = isResubmissionEdit ? 'PUT' : 'POST';
 
       const response = await fetch(endpoint, {

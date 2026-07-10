@@ -18,7 +18,7 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose, googleFormLink }) => 
     }
     setIsSubmitting(true);
     try {
-      const res = await fetch(`http://localhost:5001/api/od-requests/${odRequestId}/feedback`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${odRequestId}/feedback`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rating: 5, comment: 'Submitted via Google Form' }),
@@ -43,7 +43,7 @@ const FeedbackModal = ({ odRequestId, eventTitle, onClose, googleFormLink }) => 
     setIsSubmitting(true);
     setError('');
     try {
-      const res = await fetch(`http://localhost:5001/api/od-requests/${odRequestId}/feedback`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${odRequestId}/feedback`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rating: 5, comment }), // Default rating to 5 internally

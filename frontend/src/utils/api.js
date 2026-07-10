@@ -8,7 +8,7 @@
  *   - 401 responses (expired/invalid token) are handled globally
  */
 
-const API_BASE = 'http://localhost:5001';
+const API_BASE = 'https://event-management-system-dpzc.onrender.com';
 
 function getToken() {
   return localStorage.getItem('sessionToken') || '';

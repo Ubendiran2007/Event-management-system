@@ -37,7 +37,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
   // Fetch fresh data from backend API on mount
   useEffect(() => {
     if (!event?.id) return;
-    fetch(`http://localhost:5001/api/iqac/${event.id}`)
+    fetch(`https://event-management-system-dpzc.onrender.com/api/iqac/${event.id}`)
       .then(r => r.json())
       .then(data => {
         if (data.success) setFreshIqacData(data);
@@ -1972,7 +1972,7 @@ const ExploreEvents = () => {
 
     try {
       // 1. Create OD Request
-      const odResponse = await fetch(`http://localhost:5001/api/od-requests`, {
+      const odResponse = await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2001,7 +2001,7 @@ const ExploreEvents = () => {
       }
 
       // 2. Persist registration to Firestore
-      const response = await fetch(`http://localhost:5001/api/events/${eventId}/register`, {
+      const response = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${eventId}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEntry),
@@ -2044,10 +2044,10 @@ const ExploreEvents = () => {
       // Withdraw OD request if one exists
       const odReq = (odRequests || []).find(r => r.eventId === eventId && r.studentId === currentUser.id && r.status !== 'WITHDRAWN');
       if (odReq) {
-        await fetch(`http://localhost:5001/api/od-requests/${odReq.id}/withdraw`, { method: 'PATCH' });
+        await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${odReq.id}/withdraw`, { method: 'PATCH' });
       }
 
-      await fetch(`http://localhost:5001/api/events/${eventId}/withdraw`, {
+      await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${eventId}/withdraw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id }),

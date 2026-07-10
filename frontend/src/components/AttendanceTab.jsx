@@ -147,7 +147,7 @@ const AttendanceTab = ({ event }) => {
     if (!isOrganizer) return;
     setIsProcessing(true);
     try {
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/attendance-config`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/attendance-config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
         body: JSON.stringify({ date: selectedDate, attendanceType: attendanceTypeSelection })
@@ -181,7 +181,7 @@ const AttendanceTab = ({ event }) => {
     
     setIsProcessing(true);
     try {
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/attendance-session`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/attendance-session`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
         body: JSON.stringify({ date: selectedDate, sessionKey, action })
@@ -210,7 +210,7 @@ const AttendanceTab = ({ event }) => {
     if (!confirmed) return;
     setIsProcessing(true);
     try {
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/finalize-attendance`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/finalize-attendance`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
         body: JSON.stringify({ date: selectedDate })
@@ -272,7 +272,7 @@ const AttendanceTab = ({ event }) => {
       }
       
       console.log('[Scanner] Backend Validation Started for', rollNo);
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/attendance`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/attendance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
         body: JSON.stringify({ rollNo, studentName, eventId, registrationId, date: selectedDate })
@@ -322,7 +322,7 @@ const AttendanceTab = ({ event }) => {
   const handleExport = async (format = 'excel') => {
     setIsProcessing(true);
     try {
-      const res  = await fetch(`http://localhost:5001/api/iqac/${event.id}`, {
+      const res  = await fetch(`https://event-management-system-dpzc.onrender.com/api/iqac/${event.id}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
       });
       const data = await res.json();

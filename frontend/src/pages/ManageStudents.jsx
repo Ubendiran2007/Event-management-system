@@ -139,7 +139,7 @@ const ManageStudents = () => {
         // Convert display format "CSE B" → Firestore path format "CSE-B"
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
-            const res = await fetch(`http://localhost:5001/api/students/${student.id}/role`, {
+            const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/students/${student.id}/role`, {
                 method: 'PATCH',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -164,7 +164,7 @@ const ManageStudents = () => {
         setTogglingId(`${student.id}-${field}`);
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
-            const res = await fetch(`http://localhost:5001/api/students/${student.id}/od-stats`, {
+            const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/students/${student.id}/od-stats`, {
                 method: 'PATCH',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -188,7 +188,7 @@ const ManageStudents = () => {
     const confirmResetODUsage = async () => {
         setIsResetting(true);
         try {
-            const res = await fetch('http://localhost:5001/api/students/reset-od-usage', {
+            const res = await fetch('https://event-management-system-dpzc.onrender.com/api/students/reset-od-usage', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',

@@ -232,7 +232,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsUploadingPoster(true);
     setPosterUploadError('');
     try {
-      const patchRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster`, {
+      const patchRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove', updatedBy: currentUser.name })
@@ -267,7 +267,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setCancelError(null);
     try {
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/cancel`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/cancel`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -302,7 +302,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setPostponeError(null);
     try {
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/postpone`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/postpone`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -355,7 +355,7 @@ const EventDetailModal = ({ event, onClose }) => {
          return;
       }
 
-      const patchRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster`, {
+      const patchRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -395,7 +395,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setPosterUploadError('');
     try {
-      const wfRes = await fetch(`http://localhost:5001/api/events/${event.id}/poster-workflow`, {
+      const wfRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster-workflow`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -427,7 +427,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsRequestingExtension(true);
     setApprovalError('');
     try {
-      const res = await fetch(`http://localhost:5001/api/events/${event.id}/request-iqac-extension`, {
+      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/request-iqac-extension`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
