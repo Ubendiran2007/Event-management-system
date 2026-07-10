@@ -213,7 +213,7 @@ router.post('/', async (req, res) => {
       } catch (err) {
         console.error('[events/create/bg] Error in email handler:', err.message);
       }
-    }();
+    })();
 
     return res.status(201).json({
       success: true,
@@ -507,7 +507,7 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
       } catch (err) {
         console.error('[events/status/bg] Email handler error:', err.message);
       }
-    }();
+    })();
 
 
     return res.json({
@@ -613,7 +613,7 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
             console.error('[events/dept-approval/bg] Error sending rejection email:', e.message);
           }
         }
-      }();
+      })();
 
       return res.json({
         success: true,
@@ -643,7 +643,7 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
         } catch (e) {
           console.error('[events/dept-approval/bg] Error starting IQAC notifications:', e.message);
         }
-      }();
+      })();
     } else {
       await updateDoc(eventRef, updatePayload);
  
@@ -654,7 +654,7 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
         } catch (e) {
           console.error('[events/dept-approval/bg] Error starting intermediate notifications:', e.message);
         }
-      }();
+      })();
     }
 
     return res.json({
@@ -777,7 +777,7 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       } catch (emailError) {
         console.error('[events/resubmit-edit/bg] Error sending email:', emailError.message);
       }
-    }();
+    })();
 
     return res.json({
       success: true,
@@ -1262,7 +1262,7 @@ router.patch('/:id/request-iqac-extension', async (req, res) => {
       } catch (err) {
         console.error('[events/request-iqac-extension/bg] background err:', err.message);
       }
-    }();
+    })();
 
     return res.json({ success: true, message: 'IQAC extension requested successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1303,7 +1303,7 @@ router.patch('/:id/approve-iqac-extension', async (req, res) => {
       } catch (err) {
         console.error('[events/approve-iqac-extension/bg] background err:', err.message);
       }
-    }();
+    })();
 
     return res.json({ success: true, message: 'IQAC extension approved successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1341,7 +1341,7 @@ router.patch('/:id/reject-iqac-extension', async (req, res) => {
       } catch (err) {
         console.error('[events/reject-iqac-extension/bg] background err:', err.message);
       }
-    }();
+    })();
 
     return res.json({ success: true, message: 'IQAC extension rejected successfully' });
   } catch (error) {
@@ -1449,7 +1449,7 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
       } catch (err) {
         console.error('[events/cancel/bg] Email handler error:', err.message);
       }
-    }();
+    })();
 
     return res.json({ success: true, message: 'Event cancelled successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1534,7 +1534,7 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
       } catch (err) {
         console.error('[events/postpone/bg] Email handler error:', err.message);
       }
-    }();
+    })();
 
     return res.json({ success: true, message: 'Event postponed successfully', event: { id: req.params.id, ...eventData, ...firestoreUpdate } });
   } catch (error) {

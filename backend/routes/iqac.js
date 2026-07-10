@@ -358,7 +358,7 @@ router.post('/:eventId', async (req, res) => {
       } catch (e) {
         console.error('[iqac/submit/bg] Error in email handler:', e.message);
       }
-    }();
+    })();
 
     res.json({
       success: true,

@@ -335,7 +335,7 @@ router.patch('/:id/status', async (req, res) => {
       } catch (err) {
         console.error('[odRequests/status/bg] Error sending email:', err.message);
       }
-    }();
+    })();
 
     res.json({ success: true, message: 'Status updated', id, status });
   } catch (err) {
