@@ -349,7 +349,7 @@ router.post('/:eventId', async (req, res) => {
       iqacData: sanitizedIqacData,
     });
 
-    setImmediate(async () => {
+    await (async () => {
       try {
         const { handleEventStatusChange } = require('../services/emailHandler');
         const updatedEventData = { ...event, status: 'COMPLETED', iqacSubmittedAt: new Date().toISOString() };
@@ -358,7 +358,7 @@ router.post('/:eventId', async (req, res) => {
       } catch (e) {
         console.error('[iqac/submit/bg] Error in email handler:', e.message);
       }
-    });
+    }();
 
     res.json({
       success: true,

@@ -327,7 +327,7 @@ router.patch('/:id/status', async (req, res) => {
       }
     }
 
-    setImmediate(async () => {
+    await (async () => {
       try {
         if (current.email && (status === 'APPROVED' || status === 'REJECTED')) {
           await handleODStatusChange({ id, ...current }, status, req.body.odLetterBase64);
@@ -335,7 +335,7 @@ router.patch('/:id/status', async (req, res) => {
       } catch (err) {
         console.error('[odRequests/status/bg] Error sending email:', err.message);
       }
-    });
+    }();
 
     res.json({ success: true, message: 'Status updated', id, status });
   } catch (err) {

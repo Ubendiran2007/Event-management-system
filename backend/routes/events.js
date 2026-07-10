@@ -196,7 +196,7 @@ router.post('/', async (req, res) => {
 
     // ── Background Notifications (centralized handler) ─────────────────
     const payloadWithId = { id: docRef.id, ...payload };
-    setImmediate(async () => {
+    await (async () => {
       try {
         // Resolve faculty email if student-created event
         if (payload.status === 'PENDING_FACULTY') {
@@ -213,7 +213,7 @@ router.post('/', async (req, res) => {
       } catch (err) {
         console.error('[events/create/bg] Error in email handler:', err.message);
       }
-    });
+    }();
 
     return res.status(201).json({
       success: true,
@@ -495,7 +495,7 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
     }
 
     // ── Background Notifications (centralized handler) ──────────────────────
-    setImmediate(async () => {
+    await (async () => {
       try {
         if (finalStatus === 'CANCELLED') {
           await handleEventCancelled(eventData);
@@ -507,7 +507,7 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
       } catch (err) {
         console.error('[events/status/bg] Email handler error:', err.message);
       }
-    });
+    }();
 
 
     return res.json({
@@ -605,7 +605,7 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
 
       await updateDoc(eventRef, updatePayload);
 
-      setImmediate(async () => {
+      await (async () => {
         if (eventData.organizerEmail) {
           try {
             await sendEventStatusNotification(eventData.organizerEmail, { id: req.params.id, ...eventData, ...updatePayload }, 'REJECTED');
@@ -613,7 +613,7 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
             console.error('[events/dept-approval/bg] Error sending rejection email:', e.message);
           }
         }
-      });
+      }();
 
       return res.json({
         success: true,
@@ -637,24 +637,24 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
       updatePayload.status = 'PENDING_IQAC';
       await updateDoc(eventRef, updatePayload);
 
-      setImmediate(async () => {
+      await (async () => {
         try {
           await handleEventStatusChange({ id: req.params.id, lastApprovedDept: department, ...eventData, ...updatePayload }, 'PENDING_DEPARTMENTS', 'PENDING_IQAC');
         } catch (e) {
           console.error('[events/dept-approval/bg] Error starting IQAC notifications:', e.message);
         }
-      });
+      }();
     } else {
       await updateDoc(eventRef, updatePayload);
  
-      setImmediate(async () => {
+      await (async () => {
         try {
           // Pass a pseudo-status 'DEPARTMENT_APPROVED' so the handler emails the organizer about this intermediate step
           await handleEventStatusChange({ id: req.params.id, lastApprovedDept: department, ...eventData, ...updatePayload }, eventData.status, 'DEPARTMENT_APPROVED');
         } catch (e) {
           console.error('[events/dept-approval/bg] Error starting intermediate notifications:', e.message);
         }
-      });
+      }();
     }
 
     return res.json({
@@ -761,7 +761,7 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     await updateDoc(eventRef, updatePayload);
 
     // After resubmitting, notify the faculty in the background
-    setImmediate(async () => {
+    await (async () => {
       try {
         const payloadWithId = { id: req.params.id, ...updatePayload };
         let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
@@ -777,7 +777,7 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       } catch (emailError) {
         console.error('[events/resubmit-edit/bg] Error sending email:', emailError.message);
       }
-    });
+    }();
 
     return res.json({
       success: true,
@@ -1251,7 +1251,7 @@ router.patch('/:id/request-iqac-extension', async (req, res) => {
     const updatePayload = { iqacExtensionRequest, updatedAt: new Date().toISOString() };
     await updateDoc(eventRef, updatePayload);
 
-    setImmediate(async () => {
+    await (async () => {
       try {
         const hodEmails = await getOfficialEmailsByRole('HOD');
         if (hodEmails.length > 0) {
@@ -1262,7 +1262,7 @@ router.patch('/:id/request-iqac-extension', async (req, res) => {
       } catch (err) {
         console.error('[events/request-iqac-extension/bg] background err:', err.message);
       }
-    });
+    }();
 
     return res.json({ success: true, message: 'IQAC extension requested successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1295,7 +1295,7 @@ router.patch('/:id/approve-iqac-extension', async (req, res) => {
     };
     await updateDoc(eventRef, updatePayload);
 
-    setImmediate(async () => {
+    await (async () => {
       try {
         if (eventData.organizerEmail) {
           await sendIQACExtensionStatusEmail(eventData.organizerEmail, { id: req.params.id, ...eventData }, true);
@@ -1303,7 +1303,7 @@ router.patch('/:id/approve-iqac-extension', async (req, res) => {
       } catch (err) {
         console.error('[events/approve-iqac-extension/bg] background err:', err.message);
       }
-    });
+    }();
 
     return res.json({ success: true, message: 'IQAC extension approved successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1333,7 +1333,7 @@ router.patch('/:id/reject-iqac-extension', async (req, res) => {
     };
     await updateDoc(eventRef, updatePayload);
 
-    setImmediate(async () => {
+    await (async () => {
       try {
         if (eventData.organizerEmail) {
           await sendIQACExtensionStatusEmail(eventData.organizerEmail, { id: req.params.id, ...eventData }, false);
@@ -1341,7 +1341,7 @@ router.patch('/:id/reject-iqac-extension', async (req, res) => {
       } catch (err) {
         console.error('[events/reject-iqac-extension/bg] background err:', err.message);
       }
-    });
+    }();
 
     return res.json({ success: true, message: 'IQAC extension rejected successfully' });
   } catch (error) {
@@ -1443,13 +1443,13 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
 
     // Notifications
     const { handleEventStatusChange } = require('../services/emailHandler');
-    setImmediate(async () => {
+    await (async () => {
       try {
         await handleEventStatusChange({ id: req.params.id, ...eventData, ...updatePayload }, eventData.status, newStatus);
       } catch (err) {
         console.error('[events/cancel/bg] Email handler error:', err.message);
       }
-    });
+    }();
 
     return res.json({ success: true, message: 'Event cancelled successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1528,13 +1528,13 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
 
     // Notifications
     const { handleEventStatusChange } = require('../services/emailHandler');
-    setImmediate(async () => {
+    await (async () => {
       try {
         await handleEventStatusChange({ id: req.params.id, ...eventData, ...firestoreUpdate }, eventData.status, newStatus);
       } catch (err) {
         console.error('[events/postpone/bg] Email handler error:', err.message);
       }
-    });
+    }();
 
     return res.json({ success: true, message: 'Event postponed successfully', event: { id: req.params.id, ...eventData, ...firestoreUpdate } });
   } catch (error) {
