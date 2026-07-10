@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../firebase');
-const { collection, getDocs, doc, updateDoc, writeBatch } = require('firebase/firestore');
+const { collection, getDocs, doc, updateDoc, writeBatch, setDoc, deleteDoc } = require('firebase/firestore');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // Protect all Manage Students APIs
@@ -59,6 +59,154 @@ router.get('/', async (req, res) => {
     res.json({ success: true, students: allStudents, total: allStudents.length });
   } catch (err) {
     console.error('Error fetching students:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/students — add a single student
+router.post('/', async (req, res) => {
+  if (checkDb(res)) return;
+  const { name, rollNo, email, department, className, section, phone, odLimit, password } = req.body;
+
+  if (!name || !rollNo || !email || !className || !section || !department || !phone) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+  if (!CLASSES.includes(className)) {
+    return res.status(400).json({ success: false, message: `className must be one of: ${CLASSES.join(', ')}` });
+  }
+
+  try {
+    const studentId = `student_${rollNo}`;
+    const studentRef = doc(db, 'students', className, 'members', studentId);
+    
+    const studentData = {
+      name,
+      rollNo,
+      email,
+      username: email,
+      class: className,
+      section: section || className,
+      department: department || '',
+      phone: phone || '',
+      role: 'STUDENT_GENERAL',
+      password: password || rollNo,
+      odUsed: 0,
+      odLimit: odLimit !== undefined ? Number(odLimit) : 7,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      odResetTimestamp: new Date().toISOString()
+    };
+
+    await setDoc(studentRef, studentData);
+    res.json({ success: true, message: 'Student added successfully', student: { id: studentId, ...studentData } });
+  } catch (err) {
+    console.error('Error adding student:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/students/bulk — add multiple students
+router.post('/bulk', async (req, res) => {
+  if (checkDb(res)) return;
+  const { students } = req.body;
+
+  if (!Array.isArray(students) || students.length === 0) {
+    return res.status(400).json({ success: false, message: 'An array of students is required' });
+  }
+
+  try {
+    let batch = writeBatch(db);
+    let count = 0;
+    const addedStudents = [];
+
+    for (const student of students) {
+      const { name, rollNo, email, department, className, section, phone, odLimit, password } = student;
+      if (!name || !rollNo || !email || !className || !section || !department || !phone || !CLASSES.includes(className)) continue;
+
+      const studentId = `student_${rollNo}`;
+      const studentRef = doc(db, 'students', className, 'members', studentId);
+      
+      const studentData = {
+        name,
+        rollNo,
+        email,
+        username: email,
+        class: className,
+        section: section || className,
+        department: department || '',
+        phone: phone || '',
+        role: 'STUDENT_GENERAL',
+        password: password || rollNo,
+        odUsed: 0,
+        odLimit: odLimit !== undefined ? Number(odLimit) : 7,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        odResetTimestamp: new Date().toISOString()
+      };
+
+      batch.set(studentRef, studentData);
+      addedStudents.push({ id: studentId, ...studentData });
+      count++;
+
+      if (count % 490 === 0) {
+        await batch.commit();
+        batch = writeBatch(db);
+      }
+    }
+
+    if (count % 490 !== 0) {
+      await batch.commit();
+    }
+
+    res.json({ success: true, message: `Successfully added ${count} students`, addedCount: count, students: addedStudents });
+  } catch (err) {
+    console.error('Error bulk adding students:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/students/:id — update a student
+router.put('/:id', async (req, res) => {
+  if (checkDb(res)) return;
+  const { id } = req.params;
+  const { className, ...updateData } = req.body;
+
+  if (!className || !CLASSES.includes(className)) {
+    return res.status(400).json({ success: false, message: 'Valid className is required' });
+  }
+
+  try {
+    const studentRef = doc(db, 'students', className, 'members', id);
+    // Don't allow changing core ID fields directly or setting empty class
+    delete updateData.id;
+    updateData.updatedAt = new Date().toISOString();
+
+    await updateDoc(studentRef, updateData);
+    res.json({ success: true, message: 'Student updated successfully' });
+  } catch (err) {
+    console.error('Error updating student:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/students/:id — delete a student
+router.delete('/:id', async (req, res) => {
+  if (checkDb(res)) return;
+  const { id } = req.params;
+  const { className } = req.body; // or req.query
+
+  const targetClass = className || req.query.className;
+
+  if (!targetClass || !CLASSES.includes(targetClass)) {
+    return res.status(400).json({ success: false, message: 'Valid className is required' });
+  }
+
+  try {
+    const studentRef = doc(db, 'students', targetClass, 'members', id);
+    await deleteDoc(studentRef);
+    res.json({ success: true, message: 'Student deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting student:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

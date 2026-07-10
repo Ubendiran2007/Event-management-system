@@ -13,6 +13,7 @@ import {
   subscribeToEvents,
   subscribeToODRequests,
   subscribeToStudents,
+  subscribeToUsers,
 } from '../services/firebaseService';
 
 const AppContext = createContext(null);
@@ -32,6 +33,7 @@ export const AppProvider = ({ children }) => {
   });
   const [events, setEvents] = useState([]);
   const [students, setStudents] = useState([]);
+  const [staffUsers, setStaffUsers] = useState([]);
   const [odRequests, setODRequests] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedODRequest, setSelectedODRequest] = useState(null);
@@ -65,11 +67,17 @@ export const AppProvider = ({ children }) => {
       setLoading(false);
     });
 
+    // Subscribe to users
+    const unsubscribeUsers = subscribeToUsers((fetchedUsers) => {
+      setStaffUsers(fetchedUsers);
+    });
+
     // Cleanup subscriptions
     return () => {
       unsubscribeEvents();
       unsubscribeOD();
       unsubscribeStudents();
+      unsubscribeUsers();
     };
   }, []);
 
@@ -345,6 +353,7 @@ export const AppProvider = ({ children }) => {
     currentUser,
     events: filteredEvents,
     students,
+    staffUsers,
     odRequests,
     selectedEvent,
     selectedODRequest,

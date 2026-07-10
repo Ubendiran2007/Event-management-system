@@ -100,7 +100,7 @@ const Navbar = () => {
   }
 
   if ([UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role)) {
-    navItems.push({ id: 'manage-students', label: 'Manage Students', icon: UserCog, path: '/manage-students' });
+    navItems.push({ id: 'manage-students', label: 'User Management', icon: UserCog, path: '/manage-students' });
   }
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });

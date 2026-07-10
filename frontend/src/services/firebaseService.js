@@ -145,6 +145,14 @@ export const fetchUsers = async () => {
   }
 };
 
+export const subscribeToUsers = (callback) => {
+  const usersCollection = collection(db, 'users');
+  return onSnapshot(usersCollection, (snapshot) => {
+    const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(users);
+  });
+};
+
 // ==================== EVENTS ====================
 export const fetchEvents = async () => {
   try {
