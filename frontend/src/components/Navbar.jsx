@@ -28,7 +28,7 @@ const Navbar = () => {
   } else if (location.pathname.includes('/security')) {
     currentActive = 'security';
   } else if (location.pathname.includes('/manage-students')) {
-    currentActive = 'registrations';
+    currentActive = 'manage-students';
   } else if (feature === 'iqac') {
     currentActive = 'approvals';
   }
