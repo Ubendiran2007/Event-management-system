@@ -31,6 +31,7 @@ import AttendanceTab from './AttendanceTab';
 import RegistrationsTab from './RegistrationsTab';
 import { formatRollNo, formatStudentNameWithRoll, formatEventRef, fallbackValue, getEventStatus } from '../utils/formatters';
 import { validateUpload } from '../utils/fileValidation';
+import { getRolePath } from '../utils/routeUtils';
 
 
 const InfoSection = ({ title, icon: Icon, children }) => (
@@ -132,7 +133,7 @@ const EventDetailModal = ({ event, onClose }) => {
   //   1. Event is POSTED (not yet completed/submitted)
   //   2. They are the organizer
   //   3. Either within 7 days of event end OR faculty has granted an extension
-  const isOrganizer = (currentUser?.id && event.organizerId === currentUser.id) || currentUser?.role === UserRole.FACULTY;
+  const isOrganizer = (currentUser?.id && (event.organizerId === currentUser.id || event.organizerEmail === currentUser?.email)) || currentUser?.role === UserRole.FACULTY;
   const iqacAlreadySubmitted = Boolean(event.iqacSubmittedAt);
   const isPostedForIqac = event.status === EventStatus.POSTED || event.status === EventStatus.COMPLETED || event.status === 'POSTPONED' || event.status === EventStatus.APPROVED;
 
@@ -643,7 +644,7 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {(currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && event.organizerId === currentUser.id && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && (
+              {(currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser?.email) && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && getEventStatus(event) !== 'completed' && (
                 <>
                   <button onClick={() => { setShowPostponeModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg">Postpone Event</button>
                   <button onClick={() => { setShowCancelModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg">Cancel Event</button>
@@ -735,8 +736,8 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
             </div>
 
-            {/* Approval Workflow & Timeline (Visible to organizer, staff, or everyone once posted) */}
-            {(event.organizerId === currentUser.id || currentUser.role !== UserRole.STUDENT || [EventStatus.POSTED, EventStatus.COMPLETED].includes(event.status)) && (
+            {/* Approval Workflow & Timeline (Visible to organizer and staff only) */}
+            {(isOrganizer || currentUser.role !== UserRole.STUDENT) && (
               <>
                 <div className="glass-panel p-4 rounded-xl">
                   <p className="text-xs font-bold text-slate-400 uppercase mb-3">Approval Workflow</p>
@@ -929,7 +930,7 @@ const EventDetailModal = ({ event, onClose }) => {
                   })()}
 
                   {/* Rejection Audit Trail Banner */}
-                  {event.status === EventStatus.REJECTED && (
+                  {event.status === EventStatus.REJECTED && (isOrganizer || currentUser.role !== UserRole.STUDENT) && (
                     <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl space-y-3">
                       <div className="flex items-center gap-2 text-red-800">
                         <XCircle size={18} className="shrink-0" />
@@ -1205,7 +1206,10 @@ const EventDetailModal = ({ event, onClose }) => {
               </InfoSection>
             )}
 
-            {/* 2. Venue Requirements - Annexure I */}
+            {/* ── Internal Requirements (Annexures 2 to 7) - Hidden from General Students ── */}
+            {(isOrganizer || currentUser.role !== UserRole.STUDENT) && (
+              <>
+                {/* 2. Venue Requirements - Annexure I */}
             {venueAnnex ? (
               <InfoSection title="2. Venue Requirements (Annexure I)" icon={Building2}>
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -1722,6 +1726,8 @@ const EventDetailModal = ({ event, onClose }) => {
                 <p className="text-sm text-slate-400">Not required for this event.</p>
               </InfoSection>
             )}
+              </>
+            )}
             
             {/* ── 8. IQAC Documentation Checklist (Removed) ── */}
           
@@ -1751,7 +1757,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     </p>
                   </div>
                   <button
-                    onClick={() => { setSelectedEvent(event); navigate('/iqac'); }}
+                    onClick={() => { setSelectedEvent(event); onClose(); navigate(`/${getRolePath(currentUser.role)}/iqac`); }}
                     className="px-6 py-2.5 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all shadow-md shadow-cse-accent/20 active:scale-95 flex items-center gap-2 whitespace-nowrap shrink-0"
                   >
                     <FileCheck size={16} /> Submit IQAC Report

@@ -1738,7 +1738,7 @@ const EventCard = ({
 
         <div className="flex flex-wrap gap-2">
           {/* Register — only upcoming, only non-organizers */}
-          {isStudent && !registered && isUpcoming && event.organizerId !== currentUser?.id && (
+          {isStudent && !registered && isUpcoming && (event.organizerId !== currentUser?.id && event.organizerEmail !== currentUser?.email) && (
             <button onClick={(e) => { e.stopPropagation(); onRegister(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Register

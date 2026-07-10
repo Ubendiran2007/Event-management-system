@@ -352,28 +352,44 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
       updates.finalOdUsed  = data.requestedCount;
       updates.finalOdLimit = data.requestedLimit;
 
-      // Update the student document in the structured members collection
+      // Update the student document in the structured members collection and the users collection
       try {
         let updatedUsers = false;
-        if (data.className && data.rollNo) {
-          const studentQuery = query(collection(db, 'students', data.className, 'members'), where('rollNo', '==', data.rollNo));
-          const studentSnap = await getDocs(studentQuery);
-          
-          if (!studentSnap.empty) {
-            // Calculate exact offset based on current approved registrations
-            const odQuery = query(collection(db, 'odRequests'), where('rollNo', '==', data.rollNo), where('status', '==', 'APPROVED'));
-            const odSnap = await getDocs(odQuery);
-            const actualApproved = odSnap.size;
-            const newOffset = data.requestedCount - actualApproved;
+        if (data.rollNo) {
+          const odQuery = query(collection(db, 'odRequests'), where('rollNo', '==', data.rollNo), where('status', '==', 'APPROVED'));
+          const odSnap = await getDocs(odQuery);
+          const actualApproved = odSnap.size;
+          const newOffset = data.requestedCount - actualApproved;
 
-            await updateDoc(studentSnap.docs[0].ref, {
+          if (data.className) {
+            const studentQuery = query(collection(db, 'students', data.className, 'members'), where('rollNo', '==', data.rollNo));
+            const studentSnap = await getDocs(studentQuery);
+            
+            if (!studentSnap.empty) {
+              await updateDoc(studentSnap.docs[0].ref, {
+                odUsed:  data.requestedCount,
+                odLimit: data.requestedLimit,
+                odCorrectionOffset: newOffset,
+                odResetTimestamp: now
+              });
+              updatedUsers = true;
+            }
+          }
+
+          const usersQuery = query(collection(db, 'users'), where('rollNo', '==', data.rollNo));
+          const usersSnap = await getDocs(usersQuery);
+          if (!usersSnap.empty) {
+            await updateDoc(usersSnap.docs[0].ref, {
               odUsed:  data.requestedCount,
               odLimit: data.requestedLimit,
-              odCorrectionOffset: newOffset
+              odCorrectionOffset: newOffset,
+              odResetTimestamp: now
             });
-            
-            console.log('[correctionRequests] OD counts updated for student:', data.rollNo);
             updatedUsers = true;
+          }
+            
+          if (updatedUsers) {
+            console.log('[correctionRequests] OD counts updated for student:', data.rollNo);
           }
         }
         

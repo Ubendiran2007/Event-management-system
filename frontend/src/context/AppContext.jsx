@@ -79,7 +79,10 @@ export const AppProvider = ({ children }) => {
     const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
     if (!isStudent || students.length === 0) return;
 
-    const updatedStudent = students.find(s => s.id === currentUser.id);
+    const updatedStudent = students.find(s => 
+      (s.rollNo && currentUser.rollNo && s.rollNo === currentUser.rollNo) || 
+      s.id === currentUser.id
+    );
     if (!updatedStudent) return;
 
     const odChanged =

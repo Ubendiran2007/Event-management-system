@@ -23,16 +23,15 @@ const Navbar = () => {
   // Derive active tab logic from URL
   let currentActive = 'dashboard';
   const feature = location.pathname.split('/').filter(Boolean).pop();
-  if (['events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations'].includes(feature)) {
+  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations'].includes(feature)) {
     currentActive = feature;
   } else if (location.pathname.includes('/security')) {
     currentActive = 'security';
   } else if (location.pathname.includes('/manage-students')) {
     currentActive = 'registrations';
-  } else if (location.pathname.includes('/iqac')) {
+  } else if (feature === 'iqac') {
     currentActive = 'approvals';
   }
-  else if (location.pathname === '/dashboard') currentActive = 'dashboard';
 
   const handleNavClick = (view, path) => {
     if (path) {
@@ -46,9 +45,9 @@ const Navbar = () => {
   // Helper for badges
   const getBadgeCount = (view) => {
     if (view === 'events') {
-      const hasOrgEvents = (events || []).some(e => String(e.organizerId) === String(currentUser.id));
+      const hasOrgEvents = (events || []).some(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email));
       if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrgEvents) {
-         return (events || []).filter(e => String(e.organizerId) === String(currentUser.id)).length;
+         return (events || []).filter(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email)).length;
       }
       return 0;
     }
@@ -76,7 +75,7 @@ const Navbar = () => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' }
   ];
 
-  const hasOrganizedEvents = (events || []).some(e => String(e.organizerId) === String(currentUser.id));
+  const hasOrganizedEvents = (events || []).some(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email));
   if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents) {
     navItems.push({ id: 'events', label: 'My Events', icon: CalendarDays, path: '/events' });
   }

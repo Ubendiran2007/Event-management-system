@@ -57,7 +57,7 @@ const AttendanceTab = ({ event }) => {
     setLocalConfigs(event.attendanceConfigs || {});
   }, [event.attendanceConfigs]);
 
-  const isOrganizer = (currentUser?.role === 'STUDENT_ORGANIZER' || currentUser?.role === 'FACULTY') && event.organizerId === currentUser?.id;
+  const isOrganizer = (currentUser?.role === 'STUDENT_ORGANIZER' || currentUser?.role === 'FACULTY') && (event.organizerId === currentUser?.id || event.organizerEmail === currentUser?.email);
   const currentConfig = localConfigs[selectedDate];
   
   const displayDateStr = new Date(selectedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
@@ -106,27 +106,38 @@ const AttendanceTab = ({ event }) => {
   });
 
   const attendanceProgressPercent = totalApproved > 0 ? Math.round((fullyAttended / totalApproved) * 100) : 0;
-  const currentSessionStatus = currentConfig ? (
-     currentConfig.session1Status === 'Running' ? 'Session 1 Running' : 
-     currentConfig.session2Status === 'Running' ? 'Session 2 Running' : 
-     (currentConfig.attendanceFinalized ? 'Closed (Finalized)' : 'Closed')
-  ) : 'Not Configured';
-
   const startTimeStr = event?.time || event?.requisition?.step1?.eventStartTime || '09:00';
+  const endTimeStr = event?.endTime || event?.requisition?.step1?.eventEndTime || '17:00';
   const isFirstDay = selectedDate === eventDates[0];
+  const isLastDay = selectedDate === eventDates[eventDates.length - 1];
+  
   const startDateTime = new Date(selectedDate);
   if (isFirstDay && startTimeStr) {
-    // Only the first day of the event is gated by the actual start time
     const [hours, minutes] = startTimeStr.split(':').map(Number);
     startDateTime.setHours(hours, minutes, 0, 0);
   } else {
-    // For Day 2, Day 3 etc. — scanning opens from the start of the day (midnight)
-    // because participants arrive for a new session, not at the original event start time
     startDateTime.setHours(0, 0, 0, 0);
   }
-  // Derived from live `now` state — re-evaluates every second automatically
-  const isEventDateStarted = now.getTime() >= startDateTime.getTime();
 
+  const endDateTime = new Date(selectedDate);
+  if (isLastDay && endTimeStr) {
+    const [hours, minutes] = endTimeStr.split(':').map(Number);
+    endDateTime.setHours(hours, minutes, 0, 0);
+  } else {
+    endDateTime.setHours(23, 59, 59, 999);
+  }
+
+  const isEventDateStarted = now.getTime() >= startDateTime.getTime();
+  const isEventDateEnded = now.getTime() >= endDateTime.getTime();
+  const isAutoFinalized = now.getTime() >= endDateTime.getTime() + 24 * 60 * 60 * 1000;
+  
+  const isEffectivelyFinalized = currentConfig?.attendanceFinalized || isAutoFinalized;
+
+  const currentSessionStatus = currentConfig ? (
+     currentConfig.session1Status === 'Running' ? 'Session 1 Running' : 
+     currentConfig.session2Status === 'Running' ? 'Session 2 Running' : 
+     (isEffectivelyFinalized ? 'Closed (Finalized)' : 'Closed')
+  ) : 'Not Configured';
   useEffect(() => {
     if (currentConfig) setAttendanceTypeSelection(currentConfig.attendanceType);
   }, [currentConfig]);
@@ -230,7 +241,7 @@ const AttendanceTab = ({ event }) => {
   };
 
   const handleScan = async (decodedText) => {
-    if (!decodedText || isProcessing || currentConfig?.attendanceFinalized) return;
+    if (!decodedText || isProcessing || isEffectivelyFinalized || isEventDateEnded) return;
     setIsProcessing(true);
     setScanResult(null);
     console.log('[Scanner] Decoded Payload:', decodedText);
@@ -407,6 +418,18 @@ const AttendanceTab = ({ event }) => {
     const nowMs = now.getTime();
     let changed = false;
     const updatedConfig = { ...currentConfig };
+
+    if (isEventDateEnded) {
+      if (updatedConfig.session1Status === 'Running') {
+        updatedConfig.session1Status = 'Closed';
+        changed = true;
+      }
+      if (updatedConfig.session2Status === 'Running') {
+        updatedConfig.session2Status = 'Closed';
+        changed = true;
+      }
+    }
+
     if (updatedConfig.session1Status === 'Running' && updatedConfig.session1StartTime) {
       if (nowMs - new Date(updatedConfig.session1StartTime).getTime() > 3 * 60 * 60 * 1000) {
         updatedConfig.session1Status = 'Closed';
@@ -421,7 +444,7 @@ const AttendanceTab = ({ event }) => {
       }
     }
     if (changed) setLocalConfigs(prev => ({ ...prev, [selectedDate]: updatedConfig }));
-  }, [now, currentConfig, selectedDate]);
+  }, [now, currentConfig, selectedDate, isEventDateEnded]);
 
 
   // ── Renders ────────────────────────────────────────────────────────────────
@@ -572,7 +595,7 @@ const AttendanceTab = ({ event }) => {
                     <h4 className="font-bold text-slate-800">Session 1</h4>
                     <p className="text-xs font-semibold mt-1">Status: <span className={currentConfig.session1Status === 'Running' ? 'text-emerald-600' : 'text-slate-500'}>{currentConfig.session1Status}</span></p>
                   </div>
-                  {isOrganizer && currentConfig.session1Status === 'NotStarted' && !currentConfig.attendanceFinalized && (
+                  {isOrganizer && currentConfig.session1Status === 'NotStarted' && !isEffectivelyFinalized && !isEventDateEnded && (
                      <button onClick={() => setSessionStartDialog({ sessionKey: 'S1' })} disabled={isProcessing} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">Start Session 1</button>
                   )}
                   {isOrganizer && currentConfig.session1Status === 'Running' && (
@@ -591,7 +614,7 @@ const AttendanceTab = ({ event }) => {
                         <h4 className="font-bold text-slate-800">Session 2</h4>
                         <p className="text-xs font-semibold mt-1">Status: <span className={resolvedS2Status === 'Running' ? 'text-emerald-600' : 'text-slate-500'}>{resolvedS2Status}</span></p>
                       </div>
-                      {isOrganizer && resolvedS2Status === 'NotStarted' && !currentConfig.attendanceFinalized && (
+                      {isOrganizer && resolvedS2Status === 'NotStarted' && !isEffectivelyFinalized && !isEventDateEnded && (
                          <button onClick={() => setSessionStartDialog({ sessionKey: 'S2' })} disabled={isProcessing} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">Start Session 2</button>
                       )}
                       {isOrganizer && resolvedS2Status === 'Running' && (
@@ -707,7 +730,7 @@ const AttendanceTab = ({ event }) => {
 
             {isOrganizer && (
               <div className="space-y-3">
-                {currentConfig.attendanceFinalized && (
+                {isEffectivelyFinalized && (
                   <div className="flex gap-2">
                     <button onClick={() => handleExport('excel')} disabled={isProcessing}
                       className="flex-1 px-4 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-bold text-indigo-700 hover:bg-indigo-100 shadow-sm transition-colors text-center">
@@ -719,21 +742,21 @@ const AttendanceTab = ({ event }) => {
                     </button>
                   </div>
                 )}
-                {!currentConfig.attendanceFinalized && (
+                {!isEffectivelyFinalized && currentConfig.session1Status !== 'NotStarted' && (
                   <button onClick={() => setShowCorrectionModal(true)}
                     className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-colors">
                     Manual Attendance Correction
                   </button>
                 )}
-                {currentConfig.attendanceFinalized && (
+                {isEffectivelyFinalized && (
                   <div className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500 text-center">
                     Manual correction disabled — attendance is finalized.
                   </div>
                 )}
                 {currentConfig.session1Status !== 'Running' && currentConfig.session2Status !== 'Running' && (
-                   <button onClick={handleFinalize} disabled={currentConfig.attendanceFinalized || isProcessing}
-                     className={`w-full px-4 py-2 rounded-lg text-sm font-bold transition-colors ${currentConfig.attendanceFinalized ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}`}>
-                     {currentConfig.attendanceFinalized ? finalizedBtnText : finalizeBtnText}
+                   <button onClick={handleFinalize} disabled={isEffectivelyFinalized || isProcessing}
+                     className={`w-full px-4 py-2 rounded-lg text-sm font-bold transition-colors ${isEffectivelyFinalized ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'}`}>
+                     {isEffectivelyFinalized ? finalizedBtnText : finalizeBtnText}
                    </button>
                 )}
               </div>

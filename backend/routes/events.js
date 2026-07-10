@@ -815,6 +815,11 @@ router.post('/:id/register', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Cannot register for an event that is not approved and posted.' });
     }
 
+    // Prevent organizers from registering for their own event
+    if (String(eventData.organizerId) === String(userId) || (eventData.organizerEmail && userEmail && eventData.organizerEmail.toLowerCase() === userEmail.toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Organizers cannot register for their own events.' });
+    }
+
     const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
     const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
     

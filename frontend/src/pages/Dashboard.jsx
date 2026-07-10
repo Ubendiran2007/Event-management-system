@@ -208,6 +208,30 @@ const Dashboard = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [odFilter, setOdFilter] = useState('all');
   const [isOdFilterOpen, setIsOdFilterOpen] = useState(false);
+  const [isResettingAllOD, setIsResettingAllOD] = useState(false);
+
+  const handleResetAllOD = async () => {
+    if (window.confirm("WARNING: This will reset the OD used count to ZERO for ALL students across the entire institution. This action is typically only done at the start of a new semester.\n\nAre you absolutely sure you want to proceed?")) {
+      setIsResettingAllOD(true);
+      try {
+        const response = await fetch('http://localhost:5001/api/students/reset-od-usage', {
+          method: 'POST'
+        });
+        const data = await response.json();
+        if (data.success) {
+          alert(`Success: ${data.message}`);
+          window.location.reload(); // Reload to refresh data
+        } else {
+          alert(`Error: ${data.message}`);
+        }
+      } catch (error) {
+        console.error('Failed to reset ODs:', error);
+        alert('An error occurred while attempting to reset OD usage.');
+      } finally {
+        setIsResettingAllOD(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (location.state?.filter) {
@@ -224,7 +248,7 @@ const Dashboard = () => {
 
   const hasOrganizedEvents = useMemo(() => {
     if (!currentUser || !events) return false;
-    return events.some(e => e.organizerId === currentUser.id);
+    return events.some(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email));
   }, [events, currentUser]);
 
   const downloadStudentListPDF = (group) => {
@@ -279,12 +303,12 @@ const Dashboard = () => {
     if (!currentUser) return [];
     const result = events.filter(ev => {
       if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
-        if (ev.organizerId === currentUser.id) return true;
+        if ((ev.organizerId === currentUser.id || ev.organizerEmail === currentUser.email)) return true;
         if (currentUser.role === UserRole.STUDENT_GENERAL) return false;
       }
       if (currentUser.role === UserRole.FACULTY) {
         // Faculty sees events pending their approval OR events they created as organizer
-        return ev.status === EventStatus.PENDING_FACULTY || ev.organizerId === currentUser.id;
+        return ev.status === EventStatus.PENDING_FACULTY || (ev.organizerId === currentUser.id || ev.organizerEmail === currentUser.email);
       }
       if (currentUser.role === UserRole.HOD) return ev.status === EventStatus.PENDING_HOD;
       if (currentUser.role === UserRole.MEDIA) {
@@ -357,7 +381,7 @@ const Dashboard = () => {
   const organizerIncomingOD = useMemo(() => {
     if (!currentUser) return [];
     return (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || hasOrganizedEvents)
-      ? odRequests.filter(r => r.organizerId === currentUser.id)
+      ? odRequests.filter(r => (r.organizerId === currentUser.id || r.organizerEmail === currentUser.email))
       : [];
   }, [currentUser, odRequests, hasOrganizedEvents]);
 
@@ -1278,14 +1302,14 @@ const Dashboard = () => {
                 {(() => {
                   const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                   const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
-                  const baseEvents = isOrg ? events.filter(e => e.organizerId === currentUser.id) : events;
+                  const baseEvents = isOrg ? events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email)) : events;
                   
                   return [
-                    { label: 'MY TOTAL EVENTS', value: isStud ? availableEvents.length : baseEvents.length, icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' },
-                    { label: 'PENDING REVIEW', value: (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' },
-                    { label: 'REGISTERED ODS', value: isStud ? filteredODRequests.length : 408, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-                    { label: 'COMPLETED', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-100', border: 'border-slate-200' },
-                    { label: 'REJECTED', value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' }
+                    { label: isStud ? 'AVAILABLE EVENTS' : 'MY TOTAL EVENTS', value: isStud ? availableEvents.length : baseEvents.length, icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50', border: 'border-blue-100' },
+                    { label: isStud ? 'PENDING ODs' : 'PENDING REVIEW', value: (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length), icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-100' },
+                    { label: isStud ? 'ODS USED' : 'TOTAL REGISTRATIONS', value: isStud ? `${currentUser.odUsed || 0} / ${currentUser.odLimit || 7}` : baseEvents.reduce((acc, ev) => acc + (ev.registeredStudents?.length || 0), 0), icon: isStud ? CheckCircle2 : Users, color: 'text-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+                    { label: isStud ? 'APPROVED ODs' : 'COMPLETED', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED').length : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-100', border: 'border-slate-200' },
+                    { label: isStud ? 'REJECTED ODs' : 'REJECTED', value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' }
                   ].map((stat, i) => (
                     <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-between relative overflow-hidden group">
                       <div className="flex justify-between items-start mb-2">
@@ -1307,13 +1331,17 @@ const Dashboard = () => {
                      <Calendar size={18} className="text-blue-500" />
                      <h3 className="font-extrabold text-sm uppercase tracking-wide text-slate-800">Recent Events Summary</h3>
                   </div>
-                  <div className="flex-1 p-5 space-y-3">
+                   <div className="flex-1 p-5 space-y-3">
                      {(() => {
-                        const myCreated = events.filter(e => e.organizerId === currentUser.id);
+                        const myCreated = events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email));
                         const myRegistered = events.filter(e => (e.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id)));
+                        const available = events.filter(e => e.status === EventStatus.POSTED && !(e.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id)));
                         
                         const combinedMap = new Map();
-                        [...myCreated, ...myRegistered].forEach(e => combinedMap.set(e.id, e));
+                        // Store relationship type
+                        available.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'New Event' }));
+                        myRegistered.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'Registered' }));
+                        myCreated.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'Created' }));
                         
                         // Sort by ID descending to get newest first, then slice to 4
                         const recentLog = Array.from(combinedMap.values())
@@ -1323,7 +1351,14 @@ const Dashboard = () => {
                         return recentLog.length > 0 ? recentLog.map(ev => (
                            <div key={ev.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100 hover:border-blue-100 transition-colors">
                               <div>
-                                 <p className="font-bold text-slate-800 text-sm">{ev.title}</p>
+                                 <div className="flex items-center gap-2">
+                                   <p className="font-bold text-slate-800 text-sm">{ev.title}</p>
+                                   <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                      ev._relation === 'Created' ? 'bg-purple-100 text-purple-700' :
+                                      ev._relation === 'Registered' ? 'bg-indigo-100 text-indigo-700' :
+                                      'bg-amber-100 text-amber-700'
+                                   }`}>{ev._relation}</span>
+                                 </div>
                                  <p className="text-xs text-slate-500 mt-1">{ev.date} · {ev.venue || 'To be allocated'}</p>
                               </div>
                               <StatusBadge status={ev.status} />
@@ -1361,6 +1396,14 @@ const Dashboard = () => {
                           <div className="text-left"><p className="font-bold text-slate-800 text-sm">Explore Student</p><p className="text-[11px] text-slate-500 font-medium">Manage student records</p></div>
                        </button>
                      )}
+                     {currentUser?.role === UserRole.IQAC_TEAM && (
+                       <button onClick={handleResetAllOD} disabled={isResettingAllOD} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-red-300 hover:shadow-md transition-all group disabled:opacity-50">
+                          <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                            {isResettingAllOD ? <Loader2 size={20} className="animate-spin" /> : <History size={20} />}
+                          </div>
+                          <div className="text-left"><p className="font-bold text-red-700 text-sm">Reset All OD</p><p className="text-[11px] text-red-500 font-medium">Reset OD usage for new semester</p></div>
+                       </button>
+                     )}
                   </div>
                 </div>
               </div>
@@ -1376,7 +1419,7 @@ const Dashboard = () => {
                       const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                       const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
                       
-                      const baseEvents = isOrg ? events.filter(e => e.organizerId === currentUser.id) : events;
+                      const baseEvents = isOrg ? events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email)) : events;
                       const getStatItems = () => {
                         const stats = [];
                         stats.push({ label: isOrg ? 'My Total Events' : (isStud ? 'Available Events' : 'Total Events'), value: isStud ? availableEvents.length : baseEvents.length, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' });
@@ -1405,7 +1448,7 @@ const Dashboard = () => {
                   {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                     let displayEvents = [];
                     if (activeTab === 'events') {
-                      const rawBaseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => e.organizerId === currentUser.id) :
+                      const rawBaseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email)) :
                         isDeptOfficer ? [...filteredEvents, ...approvedEvents] :
                           filteredEvents;
                       let baseEvents = Array.from(new Map(rawBaseEvents.map(e => [e.id, e])).values());
@@ -1519,7 +1562,7 @@ const Dashboard = () => {
                                       </td>
                                       <td className="py-4 px-6 text-right">
                                          <div className="flex items-center justify-end gap-2">
-                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && event.organizerId === currentUser.id && (
+                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
                                               <button
                                                 onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event`, { state: { editingEvent: event } }); }}
                                                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
