@@ -75,8 +75,17 @@ const Navbar = () => {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' }
   ];
 
+  const excludedRoles = [
+    UserRole.HOD, UserRole.HR_TEAM, UserRole.MEDIA, 
+    UserRole.AUDIO_TEAM, UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN, 
+    UserRole.SYSTEM_ADMIN, UserRole.IQAC_TEAM
+  ];
+
   const hasOrganizedEvents = (events || []).some(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email));
-  if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents) {
+  const canSeeMyEvents = !excludedRoles.includes(currentUser.role) && 
+    (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents);
+
+  if (canSeeMyEvents) {
     navItems.push({ id: 'events', label: 'My Events', icon: CalendarDays, path: '/events' });
   }
   
@@ -95,7 +104,7 @@ const Navbar = () => {
     navItems.push({ id: 'approvals', label: 'Approvals', icon: CheckCircle2, badge: getBadgeCount('approvals'), path: '/approvals' });
   }
 
-  if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents) {
+  if (canSeeMyEvents) {
     navItems.push({ id: 'registrations', label: 'Manage Registrations', icon: ClipboardList, path: '/registrations' });
   }
 
