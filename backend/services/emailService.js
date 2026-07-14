@@ -111,10 +111,13 @@ async function sendMailWithFallback(mailOptions) {
   }
 
   try {
+    console.log(`[DEBUG-INSTRUMENTATION] About to call transporter.sendMail() for: ${mailOptions.to}`);
     const res = await transporter.sendMail(mailOptions);
+    console.log(`[DEBUG-INSTRUMENTATION] transporter.sendMail() SUCCESS. Provider response: ${res.response}`);
     await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
     return res;
   } catch (primaryError) {
+    console.error(`[DEBUG-INSTRUMENTATION] transporter.sendMail() FAILED. Error: ${primaryError.message}`, primaryError);
     // Auth failures (bad credentials) should NOT retry SSL — credentials will fail
     // there too. Skip straight to Resend or throw.
     if (isAuthSmtpError(primaryError)) {
@@ -519,6 +522,7 @@ module.exports = {
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
   sendEmail: async (optionsOrTo, subject, html) => {
+    console.log('[DEBUG-INSTRUMENTATION] sendEmail() entered');
     try {
       let mailOptions;
       if (typeof optionsOrTo === 'object' && optionsOrTo !== null) {
@@ -539,9 +543,13 @@ module.exports = {
         };
       }
       
+      console.log(`[DEBUG-INSTRUMENTATION] Preparing email for recipient: ${mailOptions.to}`);
+      console.log('[DEBUG-INSTRUMENTATION] Calling sendMailWithFallback()');
       const result = await sendMailWithFallback(mailOptions);
+      console.log(`[DEBUG-INSTRUMENTATION] sendEmail() completed SUCCESS. Message ID: ${result.messageId}`);
       return { success: true, messageId: result.messageId };
     } catch (error) {
+      console.error('[DEBUG-INSTRUMENTATION] sendEmail() completed FAILURE:', error);
       console.error('[Email Service] Generic send failed:', error);
       return { success: false, error: error.message };
     }

@@ -127,6 +127,7 @@ async function verifyPassword(plain, stored) {
 // ==========================================
 
 router.post('/forgot-password', async (req, res) => {
+  console.log('[DEBUG-INSTRUMENTATION] /forgot-password API entered');
   const { identifier } = req.body;
   const reqDetails = getRequestDetails(req);
   
@@ -135,6 +136,8 @@ router.post('/forgot-password', async (req, res) => {
     if (!found) {
       return res.status(404).json({ success: false, message: 'Account not found. Please enter a valid College Email, Roll Number, or Employee ID.' });
     }
+    
+    console.log('[DEBUG-INSTRUMENTATION] /forgot-password Validation completed');
     
     const actualEmail = found.userObj.email.toLowerCase();
     
@@ -162,13 +165,20 @@ router.post('/forgot-password', async (req, res) => {
       type: 'RESET'
     });
     
+    console.log('[DEBUG-INSTRUMENTATION] /forgot-password Database update completed');
+    
     logSecurityEvent(found.userObj, 'Password Reset OTP Requested', 'SUCCESS', reqDetails).catch(err => console.error(err));
     
+    console.log('[DEBUG-INSTRUMENTATION] /forgot-password About to call sendEmail()');
     sendEmail(
       found.userObj.email,
       'Password Reset Verification - Event Management & IQAC Portal',
       emailTemplates.passwordResetOtpTemplate(found.userObj, otp)
-    ).catch(err => console.error(err));
+    ).then(() => {
+      console.log('[DEBUG-INSTRUMENTATION] /forgot-password sendEmail() completed (async)');
+    }).catch(err => {
+      console.error('[DEBUG-INSTRUMENTATION] /forgot-password sendEmail() threw error:', err);
+    });
     
     const [namePart, domainPart] = actualEmail.split('@');
     let maskedEmail = actualEmail;
