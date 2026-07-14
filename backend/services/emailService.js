@@ -3,56 +3,21 @@ const templates = require('./emailTemplates');
 const { db } = require('../firebase');
 const { collection, addDoc } = require('firebase/firestore');
 
-const RESEND_API_URL = 'https://api.resend.com/emails';
-
 function getSenderAddress() {
-  return process.env.RESEND_FROM_EMAIL || process.env.GMAIL_USER;
+  return process.env.EMAIL_FROM || process.env.EMAIL_USER;
 }
 
-function hasResendConfig() {
-  return Boolean(process.env.RESEND_API_KEY) && Boolean(getSenderAddress());
-}
-
-// Configure SMTP transporter with Gmail credentials
-// dnsOptions family:4 forces IPv4 resolution to avoid ENETUNREACH on IPv6-only networks
+// Configure SMTP transporter with credentials
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
   secure: process.env.SMTP_SECURE === 'true' ? true : false,
   auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
   dnsOptions: { family: 4 },
 });
-
-function createFallbackTransporter() {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-    dnsOptions: { family: 4 },
-  });
-}
-
-function isNetworkSmtpError(error) {
-  const msg = String(error?.message || '');
-  const code = String(error?.code || '');
-  return (
-    /ETIMEDOUT|ECONNECTION|ESOCKET|ENOTFOUND|EHOSTUNREACH|ENETUNREACH/i.test(msg) ||
-    /ETIMEDOUT|ECONNECTION|ESOCKET|ENOTFOUND|EHOSTUNREACH|ENETUNREACH/i.test(code)
-  );
-}
-
-function isAuthSmtpError(error) {
-  const code = String(error?.code || '');
-  const responseCode = error?.responseCode;
-  return code === 'EAUTH' || responseCode === 535 || responseCode === 530 || responseCode === 534;
-}
 
 async function logEmailAudit(mailOptions, status, errorMessage = '', smtpResponse = '') {
   try {
@@ -84,138 +49,24 @@ async function sendMailWithFallback(mailOptions) {
     mailOptions.to = [...new Set(mailOptions.to.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
   }
 
-  // ── Test Mode Email Redirection ──────────────────────────────────────────────
-  // When EMAIL_TEST_MODE=true  → all emails are intercepted and sent to EMAIL_TEST_RECIPIENT
-  // When EMAIL_TEST_MODE=false → emails are delivered to actual recipients (production mode)
+  // -- Test Mode Email Redirection ----------------------------------------------
   if (process.env.EMAIL_TEST_MODE === 'true') {
     const testRecipient = process.env.EMAIL_TEST_RECIPIENT || 'ubendirankumar@gmail.com';
-    console.log(`[Email Service] ⚠️  TEST MODE: Redirecting email for "${mailOptions.to}" → ${testRecipient}`);
+    console.log(`[Email Service] ??  TEST MODE: Redirecting email for "${mailOptions.to}" ? ${testRecipient}`);
     mailOptions._originalTo = mailOptions.to; // preserve for audit log
     mailOptions.to = testRecipient;
   } else {
-    console.log(`[Email Service] 📧 PRODUCTION: Sending email to "${mailOptions.to}"`);
-  }
-
-
-  const useResendOnly = String(process.env.EMAIL_PROVIDER || '').toLowerCase() === 'resend';
-
-  if (useResendOnly) {
-    try {
-      const res = await sendMailViaResend(mailOptions);
-      await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API');
-      return res;
-    } catch (err) {
-      await logEmailAudit(mailOptions, 'FAILED', err.message);
-      throw err;
-    }
+    console.log(`[Email Service] ?? PRODUCTION: Sending email to "${mailOptions.to}"`);
   }
 
   try {
-    console.log(`[DEBUG-INSTRUMENTATION] About to call transporter.sendMail() for: ${mailOptions.to}`);
     const res = await transporter.sendMail(mailOptions);
-    console.log(`[DEBUG-INSTRUMENTATION] transporter.sendMail() SUCCESS. Provider response: ${res.response}`);
     await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
     return res;
-  } catch (primaryError) {
-    console.error(`[DEBUG-INSTRUMENTATION] transporter.sendMail() FAILED. Error: ${primaryError.message}`, primaryError);
-    // Auth failures (bad credentials) should NOT retry SSL — credentials will fail
-    // there too. Skip straight to Resend or throw.
-    if (isAuthSmtpError(primaryError)) {
-      console.error('[Email Service] SMTP authentication failed — credentials may be invalid or revoked. Check GMAIL_APP_PASSWORD in .env');
-      if (hasResendConfig()) {
-        console.warn('[Email Service] Falling back to Resend API...');
-        try {
-          const res = await sendMailViaResend(mailOptions);
-          await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API (Fallback)');
-          return res;
-        } catch (err) {
-          await logEmailAudit(mailOptions, 'FAILED', err.message);
-          throw err;
-        }
-      }
-      await logEmailAudit(mailOptions, 'FAILED', primaryError.message);
-      throw primaryError;
-    }
-
-    // Non-network, non-auth errors (e.g. message rejected) → try Resend directly
-    if (!isNetworkSmtpError(primaryError)) {
-      if (hasResendConfig()) {
-        console.warn('[Email Service] SMTP send failed, trying HTTPS provider fallback:', primaryError.message);
-        try {
-          const res = await sendMailViaResend(mailOptions);
-          await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API (Fallback)');
-          return res;
-        } catch (err) {
-          await logEmailAudit(mailOptions, 'FAILED', err.message);
-          throw err;
-        }
-      }
-      await logEmailAudit(mailOptions, 'FAILED', primaryError.message);
-      throw primaryError;
-    }
-
-    // Network errors → retry on SSL port 465, then Resend
-    console.warn('[Email Service] Primary SMTP send failed, trying SSL fallback (465):', primaryError.message);
-    try {
-      const fallbackTransporter = createFallbackTransporter();
-      const res = await fallbackTransporter.sendMail(mailOptions);
-      await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
-      return res;
-    } catch (fallbackError) {
-      if (!hasResendConfig()) {
-        await logEmailAudit(mailOptions, 'FAILED', fallbackError.message);
-        throw fallbackError;
-      }
-      console.warn('[Email Service] SMTP SSL fallback failed, trying HTTPS provider fallback:', fallbackError.message);
-      try {
-        const res = await sendMailViaResend(mailOptions);
-        await logEmailAudit(mailOptions, 'SUCCESS', '', 'Resend API (Fallback)');
-        return res;
-      } catch (err) {
-        await logEmailAudit(mailOptions, 'FAILED', err.message);
-        throw err;
-      }
-    }
+  } catch (error) {
+    await logEmailAudit(mailOptions, 'FAILED', error.message);
+    throw error;
   }
-}
-
-async function sendMailViaResend(mailOptions) {
-  if (!hasResendConfig()) {
-    throw new Error('Resend fallback is not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL.');
-  }
-
-  const payload = {
-    from: getSenderAddress(),
-    to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
-    subject: mailOptions.subject,
-    html: mailOptions.html,
-    text: mailOptions.text,
-  };
-
-  if (mailOptions.attachments && mailOptions.attachments.length > 0) {
-    payload.attachments = mailOptions.attachments.map(att => ({
-      filename: att.filename,
-      content: att.content // Resend expects base64 content here if it is base64 encoded
-    }));
-  }
-
-  const response = await fetch(RESEND_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const reason = data?.message || data?.error || `HTTP ${response.status}`;
-    throw new Error(`Resend API failed: ${reason}`);
-  }
-
-  return { messageId: data?.id || 'resend-message' };
 }
 
 // Verify transporter connection
@@ -246,7 +97,7 @@ async function sendPosterRequestEmail(eventData, mediaEmail) {
     const mailOptions = {
       from: getSenderAddress(),
       to: mediaEmail,
-      subject: `Poster Request – Event: ${eventData.title}`,
+      subject: `Poster Request � Event: ${eventData.title}`,
       html,
       text: `Poster Request\n\nEvent: ${eventData.title}\nPlease design a poster for this event.\n\n---\nThis is an automated email.`
     };
@@ -266,7 +117,7 @@ async function sendPosterReadyEmail(eventData, organizerEmail) {
     const mailOptions = {
       from: getSenderAddress(),
       to: organizerEmail,
-      subject: `Poster Ready – Event: ${eventData.title}`,
+      subject: `Poster Ready � Event: ${eventData.title}`,
       html,
       text: `Poster Ready\n\nEvent: ${eventData.title}\nYour poster is ready for review.\n\n---\nThis is an automated email.`
     };
@@ -286,7 +137,7 @@ async function sendEventNotificationToFaculty(eventData, facultyEmail) {
     const mailOptions = {
       from: getSenderAddress(),
       to: facultyEmail,
-      subject: `New Event Proposal – Requires Your Review: ${eventData.title}`,
+      subject: `New Event Proposal � Requires Your Review: ${eventData.title}`,
       html,
       text: `New Event Proposal\n\nEvent: ${eventData.title}\nRequires your review.\n\n---\nThis is an automated email.`
     };
@@ -307,7 +158,7 @@ async function sendApprovalRequestToRole(eventData, approverEmail, approverRole)
     const mailOptions = {
       from: getSenderAddress(),
       to: approverEmail,
-      subject: `Event Requires ${roleLabel} Approval – ${eventData.title}`,
+      subject: `Event Requires ${roleLabel} Approval � ${eventData.title}`,
       html,
       text: `Approval Required\n\nEvent: ${eventData.title}\nPending ${roleLabel} review.\n\n---\nThis is an automated email.`
     };
@@ -522,7 +373,6 @@ module.exports = {
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
   sendEmail: async (optionsOrTo, subject, html) => {
-    console.log('[DEBUG-INSTRUMENTATION] sendEmail() entered');
     try {
       let mailOptions;
       if (typeof optionsOrTo === 'object' && optionsOrTo !== null) {
@@ -543,13 +393,9 @@ module.exports = {
         };
       }
       
-      console.log(`[DEBUG-INSTRUMENTATION] Preparing email for recipient: ${mailOptions.to}`);
-      console.log('[DEBUG-INSTRUMENTATION] Calling sendMailWithFallback()');
       const result = await sendMailWithFallback(mailOptions);
-      console.log(`[DEBUG-INSTRUMENTATION] sendEmail() completed SUCCESS. Message ID: ${result.messageId}`);
       return { success: true, messageId: result.messageId };
     } catch (error) {
-      console.error('[DEBUG-INSTRUMENTATION] sendEmail() completed FAILURE:', error);
       console.error('[Email Service] Generic send failed:', error);
       return { success: false, error: error.message };
     }
