@@ -1335,14 +1335,14 @@ const Dashboard = () => {
                     { label: isStud ? 'APPROVED ODs' : 'COMPLETED', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED').length : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileText, color: 'text-slate-500', bg: 'bg-slate-100', border: 'border-slate-200' },
                     { label: isStud ? 'REJECTED ODs' : 'REJECTED', value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50', border: 'border-rose-100' }
                   ].map((stat, i) => (
-                    <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-between relative overflow-hidden group">
-                      <div className="flex justify-between items-start mb-2">
+                    <div key={i} className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 flex items-center justify-between relative overflow-hidden group">
+                      <div className="flex flex-col gap-1">
                         <p className="text-[10px] font-extrabold text-slate-500 tracking-widest uppercase">{stat.label}</p>
-                        <div className={`w-8 h-8 rounded-full ${stat.bg} ${stat.color} flex items-center justify-center border ${stat.border}`}>
-                           <stat.icon size={16} strokeWidth={2.5} />
-                        </div>
+                        <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-none">{stat.value}</p>
                       </div>
-                      <p className="text-3xl font-extrabold text-slate-900">{stat.value}</p>
+                      <div className={`w-8 h-8 rounded-full ${stat.bg} ${stat.color} flex items-center justify-center border ${stat.border} shrink-0`}>
+                         <stat.icon size={16} strokeWidth={2.5} />
+                      </div>
                     </div>
                   ));
                 })()}
