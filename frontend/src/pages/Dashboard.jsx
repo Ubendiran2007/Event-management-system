@@ -1536,7 +1536,7 @@ const Dashboard = () => {
                       <div className="flex flex-col h-full flex-1 min-h-0">
                         {/* Filters are now managed in the top header */}
                         {displayEvents.length > 0 ? (
-                          <div className="flex-1 overflow-hidden min-h-0 bg-white rounded-b-2xl w-full">
+                          <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-b-2xl w-full scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                             <table className="w-full text-left border-collapse table-fixed">
                               <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
