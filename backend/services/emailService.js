@@ -49,21 +49,46 @@ async function sendMailWithFallback(mailOptions) {
     mailOptions.to = [...new Set(mailOptions.to.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
   }
 
-  // -- Test Mode Email Redirection ----------------------------------------------
+  // ── Test Mode Email Redirection ──────────────────────────────────────────────
   if (process.env.EMAIL_TEST_MODE === 'true') {
     const testRecipient = process.env.EMAIL_TEST_RECIPIENT || 'ubendirankumar@gmail.com';
-    console.log(`[Email Service] ??  TEST MODE: Redirecting email for "${mailOptions.to}" ? ${testRecipient}`);
+    console.log(`[Email Service] ⚠️  TEST MODE: Redirecting email for "${mailOptions.to}" → ${testRecipient}`);
     mailOptions._originalTo = mailOptions.to; // preserve for audit log
     mailOptions.to = testRecipient;
   } else {
-    console.log(`[Email Service] ?? PRODUCTION: Sending email to "${mailOptions.to}"`);
+    console.log(`[Email Service] 📧 PRODUCTION: Sending email to "${mailOptions.to}"`);
   }
 
   try {
+    console.log('[Email Service] Transporter Config:', JSON.stringify({
+      host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true' ? true : false,
+      auth_user: process.env.EMAIL_USER,
+      from: mailOptions.from
+    }));
+    
+    console.log('[Email Service] Calling transporter.sendMail()');
     const res = await transporter.sendMail(mailOptions);
+    console.log('[Email Service] Email sent successfully');
+    console.log('[Email Service] Provider Result:', JSON.stringify({
+      messageId: res.messageId,
+      accepted: res.accepted,
+      rejected: res.rejected,
+      response: res.response
+    }, null, 2));
     await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
     return res;
   } catch (error) {
+    console.error('[Email Service] sendMail() threw an error!');
+    console.error('[Email Service] Error Name:', error.name);
+    console.error('[Email Service] Error Code:', error.code);
+    console.error('[Email Service] Error Response:', error.response);
+    console.error('[Email Service] Error ResponseCode:', error.responseCode);
+    console.error('[Email Service] Error Command:', error.command);
+    console.error('[Email Service] Error Message:', error.message);
+    console.error('[Email Service] Error Stack:', error.stack);
+    
     await logEmailAudit(mailOptions, 'FAILED', error.message);
     throw error;
   }
@@ -97,7 +122,7 @@ async function sendPosterRequestEmail(eventData, mediaEmail) {
     const mailOptions = {
       from: getSenderAddress(),
       to: mediaEmail,
-      subject: `Poster Request � Event: ${eventData.title}`,
+      subject: `Poster Request – Event: ${eventData.title}`,
       html,
       text: `Poster Request\n\nEvent: ${eventData.title}\nPlease design a poster for this event.\n\n---\nThis is an automated email.`
     };
@@ -117,7 +142,7 @@ async function sendPosterReadyEmail(eventData, organizerEmail) {
     const mailOptions = {
       from: getSenderAddress(),
       to: organizerEmail,
-      subject: `Poster Ready � Event: ${eventData.title}`,
+      subject: `Poster Ready – Event: ${eventData.title}`,
       html,
       text: `Poster Ready\n\nEvent: ${eventData.title}\nYour poster is ready for review.\n\n---\nThis is an automated email.`
     };
@@ -137,7 +162,7 @@ async function sendEventNotificationToFaculty(eventData, facultyEmail) {
     const mailOptions = {
       from: getSenderAddress(),
       to: facultyEmail,
-      subject: `New Event Proposal � Requires Your Review: ${eventData.title}`,
+      subject: `New Event Proposal – Requires Your Review: ${eventData.title}`,
       html,
       text: `New Event Proposal\n\nEvent: ${eventData.title}\nRequires your review.\n\n---\nThis is an automated email.`
     };
@@ -158,7 +183,7 @@ async function sendApprovalRequestToRole(eventData, approverEmail, approverRole)
     const mailOptions = {
       from: getSenderAddress(),
       to: approverEmail,
-      subject: `Event Requires ${roleLabel} Approval � ${eventData.title}`,
+      subject: `Event Requires ${roleLabel} Approval – ${eventData.title}`,
       html,
       text: `Approval Required\n\nEvent: ${eventData.title}\nPending ${roleLabel} review.\n\n---\nThis is an automated email.`
     };
