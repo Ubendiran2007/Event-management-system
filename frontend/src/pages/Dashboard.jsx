@@ -36,7 +36,8 @@ import {
   History,
   Info,
   UserPlus,
-  Lock
+  Lock,
+  MoreVertical
 } from 'lucide-react';
 
 const formatTime12 = (t24) => {
@@ -53,7 +54,7 @@ const formatTime12 = (t24) => {
 };
 import { useAppContext } from '../context/AppContext';
 import { UserRole, EventStatus, ODRequestStatus } from '../types';
-import Navbar from '../components/Navbar';
+import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
@@ -1062,20 +1063,34 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="h-screen flex flex-row overflow-hidden bg-[#f8fafc]">
-      <Navbar />
-
-      <main className={`flex-1 flex flex-col min-h-0 overflow-y-auto relative ${activeTab === 'dashboard' ? '[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]' : 'scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent'}`}>
-        <div className="max-w-[1600px] mx-auto w-full min-h-full px-6 py-6 flex flex-col">
+    <Layout>
+      <div className={`flex-1 flex flex-col min-h-0 overflow-y-auto relative ${activeTab === 'dashboard' ? '[&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]' : 'scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent'}`}>
+        <div className="max-w-[1600px] mx-auto w-full min-h-full px-4 sm:px-6 py-6 flex flex-col">
           {/* Header Section */}
           {activeTab === 'dashboard' ? (
-            <div className="mb-6">
-              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                Welcome Back, {currentUser.name}! <span className="text-2xl">👋</span>
-              </h2>
-              <p className="text-slate-400 font-bold tracking-widest text-[11px] uppercase mt-1">
-                INSTITUTION PORTAL OVERVIEW
-              </p>
+            <div className="mb-6 flex flex-row items-start justify-between gap-4">
+              <div>
+                <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                  Welcome Back, {currentUser.name}! <span className="text-2xl">👋</span>
+                </h2>
+                <p className="text-slate-400 font-bold tracking-widest text-[11px] uppercase mt-1">
+                  INSTITUTION PORTAL OVERVIEW
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {[UserRole.HOD, UserRole.IQAC_TEAM, UserRole.PRINCIPAL, UserRole.FACULTY].includes(currentUser.role) && (
+                  <button onClick={() => navigate(getRolePath(currentUser.role, 'approvals'))} className="p-2 bg-white border border-slate-200 rounded-full text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm" title="Approvals">
+                    <FileCheck size={20} className="hidden sm:block m-0.5" />
+                    <MoreVertical size={20} className="sm:hidden m-0.5" />
+                  </button>
+                )}
+                {currentUser.role === UserRole.ADMIN && (
+                  <button onClick={() => navigate('/security')} className="p-2 bg-white border border-slate-200 rounded-full text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm" title="Security">
+                    <Shield size={20} className="hidden sm:block m-0.5" />
+                    <MoreVertical size={20} className="sm:hidden m-0.5" />
+                  </button>
+                )}
+              </div>
             </div>
           ) : activeTab === 'events' ? (
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
@@ -1298,7 +1313,7 @@ const Dashboard = () => {
           {activeTab === 'dashboard' ? (
             <div className="flex flex-col gap-6">
               {/* Dashboard Overview Stats */}
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {(() => {
                   const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                   const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
@@ -1347,11 +1362,11 @@ const Dashboard = () => {
                           .slice(0, 4);
 
                         return recentLog.length > 0 ? recentLog.map(ev => (
-                           <div key={ev.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100 hover:border-blue-100 transition-colors">
+                           <div key={ev.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100 hover:border-blue-100 transition-colors gap-3">
                               <div>
-                                 <div className="flex items-center gap-2">
+                                 <div className="flex flex-wrap items-center gap-2">
                                    <p className="font-bold text-slate-800 text-sm">{ev.title}</p>
-                                   <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                   <span className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${
                                       ev._relation === 'Created' ? 'bg-purple-100 text-purple-700' :
                                       ev._relation === 'Registered' ? 'bg-indigo-100 text-indigo-700' :
                                       'bg-amber-100 text-amber-700'
@@ -1359,7 +1374,9 @@ const Dashboard = () => {
                                  </div>
                                  <p className="text-xs text-slate-500 mt-1">{ev.date} · {ev.venue || 'To be allocated'}</p>
                               </div>
-                              <StatusBadge status={ev.status} />
+                              <div className="shrink-0 flex justify-start sm:justify-end">
+                                <StatusBadge status={ev.status} />
+                              </div>
                            </div>
                         )) : (
                            <p className="text-slate-500 text-sm text-center py-4">No recent events found.</p>
@@ -1412,7 +1429,7 @@ const Dashboard = () => {
                 <div className="flex flex-col flex-1 min-h-0 space-y-6 w-full">
                 {/* Hide stats for events list, registrations, available events, my registrations, approvals, and modifications */}
                 {activeTab !== 'events' && activeTab !== 'registrations' && activeTab !== 'available' && activeTab !== 'my-registrations' && activeTab !== 'approvals' && activeTab !== 'modifications' && (
-                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                     {(() => {
                       const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
                       const isStud = currentUser.role === UserRole.STUDENT_GENERAL;
@@ -1510,8 +1527,8 @@ const Dashboard = () => {
                       <div className="flex flex-col h-full flex-1 min-h-0">
                         {/* Filters are now managed in the top header */}
                         {displayEvents.length > 0 ? (
-                          <div className="flex-1 overflow-x-hidden min-h-0 bg-white rounded-b-2xl w-full">
-                            <table className="w-full text-left border-collapse table-fixed">
+                          <div className="flex-1 overflow-x-auto min-h-0 bg-white rounded-b-2xl w-full">
+                            <table className="w-full text-left border-collapse min-w-[700px]">
                               <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
                                   <th className="py-4 px-6 w-[35%]">EVENT DETAILS</th>
@@ -2105,8 +2122,8 @@ const Dashboard = () => {
                     <div className="flex flex-col flex-1 min-h-0 bg-white rounded-b-2xl overflow-hidden">
                       {filteredODRequests.length > 0 ? (
                         <div className="w-full flex flex-col flex-1 min-h-0">
-                          <div className="w-full bg-slate-50 z-10 shadow-sm pr-[6px]">
-                            <table className="w-full text-left border-collapse table-fixed">
+                          <div className="w-full bg-slate-50 z-10 shadow-sm pr-[6px] overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[700px]">
                               <thead className="bg-slate-50">
                                 <tr className="border-b border-slate-200 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
                                   <th className="py-4 px-6 w-[22%]">EVENT NAME</th>
@@ -2118,8 +2135,8 @@ const Dashboard = () => {
                               </thead>
                             </table>
                           </div>
-                          <div className="w-full flex-1 min-h-0 overflow-y-scroll">
-                            <table className="w-full text-left border-collapse table-fixed">
+                          <div className="w-full flex-1 min-h-0 overflow-auto">
+                            <table className="w-full text-left border-collapse min-w-[700px]">
                               <tbody className="bg-white">
                               {filteredODRequests.map(request => {
                                 let regStatus = 'Pending';
@@ -2255,7 +2272,7 @@ const Dashboard = () => {
             </>
           )}
         </div>
-      </main>
+      </div>
       {/* OD Request Detail Modal — students only */}
       {selectedODRequest && !isStaff && (
         <ODRequestDetailModal
@@ -2271,7 +2288,7 @@ const Dashboard = () => {
           onClose={() => setSelectedEventDetail(null)}
         />
       )}
-    </div>
+    </Layout>
   );
 };
 

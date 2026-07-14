@@ -2152,20 +2152,20 @@ const ExploreEvents = () => {
     <div className="h-screen flex flex-row overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100">
       <Navbar />
       <main className="flex-1 flex flex-col min-h-0 relative">
-        <div className="bg-slate-50 border-b border-slate-200 px-6 py-6 z-30 shrink-0">
-          <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 py-4 sm:py-6 z-30 shrink-0">
+          <div className="max-w-7xl mx-auto w-full flex flex-row items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 mb-1">Explore Events</h1>
-              <p className="text-slate-600">Discover and register for upcoming events</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-0 sm:mb-1">Explore Events</h1>
+              <p className="text-slate-600 hidden sm:block">Discover and register for upcoming events</p>
             </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex items-center gap-3 shrink-0 flex-wrap">
               <div className="relative">
                 <button
                   onClick={() => setIsFilterOpen(!isFilterOpen)}
-                  className="flex items-center gap-2 bg-white border border-slate-200 text-slate-800 py-2 px-5 rounded-full hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
+                  className="flex items-center gap-2 bg-white border border-slate-200 text-slate-800 py-2 px-4 rounded-full hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
                 >
                   <svg className="w-[18px] h-[18px] text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
-                  Filter: {filter === 'all' ? 'All Events' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  Filter: {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
                 </button>
 
                 <AnimatePresence>
@@ -2205,9 +2205,9 @@ const ExploreEvents = () => {
               </div>
               <button 
                 onClick={() => navigate('/dashboard')}
-                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-800 py-2 px-5 rounded-full hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-800 py-2 px-4 rounded-full hover:bg-slate-50 transition-colors shadow-sm font-bold text-sm"
               >
-                Back to Dashboard
+                <ChevronLeft size={16} /> <span className="text-sm font-bold">Back</span>
               </button>
             </div>
           </div>

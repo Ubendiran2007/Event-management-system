@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { formatEventRef, fallbackValue } from '../utils/formatters';
 import { motion, AnimatePresence } from 'framer-motion';
-import Navbar from '../components/Navbar';
+import Layout from '../components/Layout';
 import TimePicker from '../components/TimePicker';
 import { useAppContext } from '../context/AppContext';
 import { EventStatus, UserRole } from '../types';
@@ -1823,7 +1823,7 @@ const CreateEvent = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-semibold text-slate-700">Professional Society Involved</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {PROFESSIONAL_SOCIETIES.map((s) => (
                   <label key={s} className="text-sm flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2">
                     <input type="checkbox" checked={form.professionalSocieties.includes(s)} onChange={() => toggleArrayValue('professionalSocieties', s)} />
@@ -2105,7 +2105,7 @@ const CreateEvent = () => {
                 <p className="text-sm text-slate-400">No guests added yet.</p>
               )}
               {(form.guests || []).map((guest, idx) => (
-                <div key={idx} className="grid grid-cols-3 gap-4 items-end border border-slate-200 rounded-xl bg-slate-50 px-3 py-2 mb-2 relative">
+                <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:items-end border border-slate-200 rounded-xl bg-slate-50 px-3 py-2 mb-2 relative">
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">Name</label>
                     <input
@@ -3363,30 +3363,23 @@ const CreateEvent = () => {
   };
 
   return (
-    <div className="h-screen flex flex-row overflow-hidden bg-[#f8fafc]">
-      <Navbar />
-
-      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative p-6 pb-20">
-        <div className="max-w-7xl mx-auto w-full">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-3xl font-bold text-slate-900">Create Event Requisition</h2>
-            <p className="text-slate-500 mt-1">Toggle requirements in Step 1 — only selected steps will appear in the stepper.</p>
-            {isResubmissionEdit && (
-              <p className="text-amber-600 mt-2 text-sm font-medium">Editing rejected event before resubmission. Update details like date/time, then submit again.</p>
-            )}
+    <Layout>
+      <div className="w-full relative p-4 sm:p-6 pb-20 max-w-7xl mx-auto">
+        <div className="sticky top-0 z-30 bg-[#f8fafc] pt-4 sm:pt-6 pb-3 -mt-4 sm:-mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 mb-6 border-b border-slate-200">
+          <div className="flex flex-row items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">Create Event Requisition</h2>
+              <p className="text-slate-500 mt-1 text-sm hidden sm:block">Toggle requirements in Step 1 — only selected steps will appear in the stepper.</p>
+              {isResubmissionEdit && (
+                <p className="text-amber-600 mt-2 text-sm font-medium">Editing rejected event before resubmission. Update details like date/time, then submit again.</p>
+              )}
+            </div>
+            <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap">
+              <ChevronLeft size={16} /> Back
+            </button>
           </div>
-          <button onClick={() => navigate('/dashboard')} className="btn-secondary">
-            Back to Dashboard
-          </button>
-        </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-6xl mx-auto"
-        >
-          <div className="glass-panel p-4 rounded-2xl mb-6 overflow-x-auto">
+          <div className="glass-panel p-4 rounded-2xl overflow-x-auto shadow-sm">
             <div className="flex items-center gap-2 min-w-max">
               {steps.map((step, idx) => {
                 const Icon = step.icon;
@@ -3400,7 +3393,7 @@ const CreateEvent = () => {
                       disabled={idx > maxReachedIndex}
                       title={idx > maxReachedIndex ? 'Complete previous steps first' : undefined}
                       className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition-colors ${
-                        active ? 'bg-blue-600 text-white border-blue-600' : done ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : idx > maxReachedIndex ? 'bg-white text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200'
+                        active ? 'bg-blue-600 text-white border-blue-600' : done ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-inner' : idx > maxReachedIndex ? 'bg-white text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200'
                       }`}
                     >
                       <Icon size={15} />
@@ -3412,7 +3405,13 @@ const CreateEvent = () => {
               })}
             </div>
           </div>
+        </div>
 
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-6xl mx-auto"
+        >
           {renderStepContent()}
 
           {submitError && (
@@ -3459,9 +3458,8 @@ const CreateEvent = () => {
             )}
           </div>
         </motion.div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 };
 

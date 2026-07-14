@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import defaultPoster from '../assets/sece.avif';
 import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp, Check, Circle, LayoutGrid, Globe, Eye } from 'lucide-react';
-import Navbar from '../components/Navbar';
+import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue } from '../utils/formatters';
 import { EventStatus } from '../types';
@@ -952,9 +952,8 @@ const IQACSubmission = () => {
   if (!currentUser || !selectedEvent || !eventInfo) return null;
 
   return (
-    <div className="h-screen flex flex-row overflow-hidden bg-slate-50 relative">
-      <Navbar />
-      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative pb-14">
+    <Layout>
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto relative pb-14">
         <div className="max-w-6xl mx-auto w-full">
       {/* Fixed Toast Notification for File Upload Errors */}
       {fileAlert && (
@@ -1364,8 +1363,8 @@ const IQACSubmission = () => {
                 </p>
               </div>
 
-              <div className="mt-3 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white">
-                <table className="min-w-full text-sm">
+              <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white">
+                <table className="min-w-[800px] w-full text-sm">
                   <thead className="sticky top-0 bg-slate-100">
                     <tr>
                       <th className="px-3 py-2 text-left font-semibold text-slate-700">#</th>
@@ -1463,8 +1462,8 @@ const IQACSubmission = () => {
           })()}
 
           {autoFeedbackSummary?.comments?.length > 0 ? (
-            <div className="max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-md custom-scrollbar">
-              <table className="min-w-full text-sm divide-y divide-slate-200">
+            <div className="max-h-80 overflow-auto rounded-xl border border-slate-200 bg-white shadow-md custom-scrollbar">
+              <table className="min-w-[800px] w-full text-sm divide-y divide-slate-200">
                 <thead className="bg-[#f8fafc] sticky top-0 z-10">
                   <tr>
                     {(autoFeedbackSummary.csvHeaders || ['student', 'rollNo', 'class', 'comment']).map((header, idx) => (
@@ -1747,8 +1746,8 @@ const IQACSubmission = () => {
 
           <div className="mt-8">
             {guestFeedback.length > 0 ? (
-              <div className="overflow-hidden border border-slate-200 rounded-xl bg-white">
-                <table className="min-w-full divide-y divide-slate-200">
+              <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white">
+                <table className="min-w-[600px] w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
                     <tr>
                       {Object.keys(guestFeedback[0] || {}).filter(k => k !== 'id').map((header, idx) => (
@@ -2244,8 +2243,8 @@ const IQACSubmission = () => {
         )}
         </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
-import Navbar from '../components/Navbar';
+import Layout from '../components/Layout';
 import AlertCard from '../components/AlertCard';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
@@ -361,10 +361,8 @@ const SecurityProfile = () => {
   const currentTimelinePage = fullTimeline.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   return (
-    <div className="h-screen flex flex-row overflow-hidden bg-slate-50 font-sans text-slate-900">
-      <Navbar />
-      
-      <main className="flex-1 flex flex-col min-h-0 overflow-y-auto relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+    <Layout>
+      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 w-full">
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -1092,8 +1090,8 @@ const SecurityProfile = () => {
           </div>
         )}
         </div>
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 };
 

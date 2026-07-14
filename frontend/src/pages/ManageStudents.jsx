@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Users, ChevronRight, ShieldCheck, UserCheck, UserX, ArrowLeft, Search, Loader2,
+    Users, ChevronRight, ChevronLeft, ShieldCheck, UserCheck, UserX, ArrowLeft, Search, Loader2,
     Plus, Trash2, Edit, Upload, FileSpreadsheet, X, Building2
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
-import Navbar from '../components/Navbar';
+import Layout from '../components/Layout';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { formatRollNo, formatStudentNameWithRoll } from '../utils/formatters';
 import * as XLSX from 'xlsx';
@@ -325,19 +325,17 @@ const ManageStudents = () => {
         }
     };
 
-    return (
-        <div className="h-screen flex flex-row overflow-hidden bg-[#f8fafc]">
-            <Navbar />
-
-            <main className="flex-1 flex flex-col min-h-0 relative">
+      return (
+    <Layout>
+      <div className="flex-1 flex flex-col min-h-0 relative">
                 <div className="bg-[#f8fafc] border-b border-slate-200 px-6 pt-6 z-30 shrink-0">
                     <div className="max-w-6xl mx-auto w-full">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                        <div className="flex flex-row items-center justify-between gap-4 mb-4">
                             <div>
-                                <h2 className="text-3xl font-bold text-slate-900">User Management</h2>
-                                <p className="text-slate-500 mt-1">Manage institutional users and roles</p>
+                                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">User Management</h2>
+                                <p className="text-slate-500 mt-1 text-sm hidden sm:block">Manage institutional users and roles</p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
                                 {isIQAC && activeTab === 'students' && (
                                     <>
                                         <button onClick={() => { setEditingStudent(null); setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '' }); setShowStudentModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
@@ -351,6 +349,9 @@ const ManageStudents = () => {
                                         </button>
                                     </>
                                 )}
+                                <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap ml-2">
+                                    <ChevronLeft size={16} /> Back
+                                </button>
                                 {isIQAC && activeTab === 'staff' && (
                                     <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] }); setShowStaffModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
                                         <Plus size={16} /> Add Staff
@@ -525,7 +526,7 @@ const ManageStudents = () => {
                         )}
                     </div>
                 </div>
-            </main>
+            </div>
 
             {/* Delete Confirmations */}
             <ConfirmationModal isOpen={!!deletingStudent} onClose={() => setDeletingStudent(null)} onConfirm={handleDeleteStudent} title="Delete Student" message={`Are you sure you want to delete ${deletingStudent?.name}?`} confirmText="Delete" type="danger" isProcessing={isProcessing} />
@@ -647,8 +648,8 @@ const ManageStudents = () => {
                     </div>
                 </div>
             )}
-        </div>
-    );
+    </Layout>
+  );
 };
 
 export default ManageStudents;
