@@ -634,29 +634,29 @@ const EventDetailModal = ({ event, onClose }) => {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-white/95 backdrop-blur border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 z-10">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-900">{event.title}</h2>
+          <div className="bg-white/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 z-10 relative">
+            <div className="pr-10">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 pr-2">{event.title}</h2>
               <p className="text-sm text-slate-500 mt-1">Approval review workspace</p>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="rounded-full bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 border border-blue-200">{eventDateRange}</span>
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700 border border-emerald-200">{enabledRequirementCount} requirements enabled</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 pr-10 sm:pr-0">
               {(currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser?.email) && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && getEventStatus(event) !== 'completed' && (
                 <>
-                  <button onClick={() => { setShowPostponeModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg">Postpone Event</button>
-                  <button onClick={() => { setShowCancelModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg">Cancel Event</button>
+                  <button onClick={() => { setShowPostponeModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg shrink-0">Postpone Event</button>
+                  <button onClick={() => { setShowCancelModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg shrink-0">Cancel Event</button>
                 </>
               )}
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
             </div>
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <X size={20} />
+            </button>
           </div>
           
           {/* Tab Navigation for Organizers */}
@@ -2127,20 +2127,20 @@ const EventDetailModal = ({ event, onClose }) => {
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
                     />
                   </div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="text-sm text-slate-600">
                       {getNextApprover() && (
                         <p className="flex items-center gap-2">
-                          <CheckCircle2 size={16} className="text-emerald-600" />
-                          Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span>
+                          <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                          <span>Approving will forward to: <span className="font-semibold text-cse-accent">{getNextApprover()}</span></span>
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       <button
                         onClick={handleReject}
                         disabled={isProcessing || !rejectionReason.trim()}
-                        className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isProcessing ? (
                           <><Loader2 size={18} className="animate-spin" /> Processing...</>
@@ -2151,7 +2151,7 @@ const EventDetailModal = ({ event, onClose }) => {
                       <button
                         onClick={handleApprove}
                         disabled={isProcessing}
-                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isProcessing ? (
                           <><Loader2 size={18} className="animate-spin" /> Approving...</>
@@ -2160,17 +2160,17 @@ const EventDetailModal = ({ event, onClose }) => {
                         )}
                       </button>
                     </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </>
-        )}
-              </>
-            )}
-      </div>
-    </motion.div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+            </>
+          )}
+    </div>
+  </motion.div>
 
     {/* Cancel Event Modal */}
     {showCancelModal && (
