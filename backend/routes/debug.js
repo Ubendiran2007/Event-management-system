@@ -13,8 +13,8 @@ router.get('/email', async (req, res) => {
 
   const logs = [];
   const log = (msg) => {
-    console.log([DEBUG ENDPOINT] );
-    logs.push([] );
+    console.log(`[DEBUG ENDPOINT] ${msg}`);
+    logs.push(`[${new Date().toISOString()}] ${msg}`);
   };
 
   log('--- Starting /debug/email Endpoint ---');
@@ -34,7 +34,7 @@ router.get('/email', async (req, res) => {
   };
   
   for (const [key, val] of Object.entries(envVars)) {
-    log(${key}: );
+    log(`${key}: ${val}`);
   }
 
   // 2. Create the email transporter
@@ -51,7 +51,7 @@ router.get('/email', async (req, res) => {
   };
   
   // Don't log the password or user in the response, but log the rest of the config
-  log(Transporter config: {"host":"","port":,"secure":,"auth":{"user":"***","pass":"***"}});
+  log(`Transporter config: {"host":"${transporterConfig.host}","port":${transporterConfig.port},"secure":${transporterConfig.secure},"auth":{"user":"***","pass":"***"}}`);
   
   const transporter = nodemailer.createTransport(transporterConfig);
 
@@ -61,9 +61,9 @@ router.get('/email', async (req, res) => {
     await transporter.verify();
     log('transporter.verify() SUCCESS: SMTP connection established and authenticated.');
   } catch (error) {
-    log(	ransporter.verify() FAILED: );
-    log(Error details: Code=, Command=);
-    log(Stack Trace:\n);
+    log(`transporter.verify() FAILED: ${error.message}`);
+    log(`Error details: Code=${error.code}, Command=${error.command}`);
+    log(`Stack Trace:\n${error.stack}`);
     return res.status(500).json({
       success: false,
       message: 'SMTP Verification Failed',
@@ -76,7 +76,7 @@ router.get('/email', async (req, res) => {
     });
   }
 
-  // 4. Attempt to send a simple test email
+  // 4. Attempt to send a test email
   log('Attempting to send a test email...');
   try {
     const toEmail = process.env.EMAIL_TEST_RECIPIENT || process.env.GMAIL_USER;
@@ -84,7 +84,7 @@ router.get('/email', async (req, res) => {
         log('No recipient found. Set EMAIL_TEST_RECIPIENT or GMAIL_USER.');
         throw new Error('No recipient configured for test email.');
     }
-    log(Sending test email...);
+    log(`Sending test email...`);
     
     const info = await transporter.sendMail({
       from: '"Event Management Debug" <' + process.env.GMAIL_USER + '>',
@@ -93,8 +93,8 @@ router.get('/email', async (req, res) => {
       text: "If you receive this email, the SMTP transporter works correctly from Render.",
     });
     
-    log(sendMail() SUCCESS! Message ID: );
-    log(Provider Response: );
+    log(`sendMail() SUCCESS! Message ID: ${info.messageId}`);
+    log(`Provider Response: ${info.response}`);
     
     return res.json({
       success: true,
@@ -104,9 +104,9 @@ router.get('/email', async (req, res) => {
       messageId: info.messageId
     });
   } catch (error) {
-    log(sendMail() FAILED: );
-    log(Error details: Code=, Command=);
-    log(Stack Trace:\n);
+    log(`sendMail() FAILED: ${error.message}`);
+    log(`Error details: Code=${error.code}, Command=${error.command}`);
+    log(`Stack Trace:\n${error.stack}`);
     return res.status(500).json({
       success: false,
       message: 'SMTP SendMail Failed',
