@@ -28,6 +28,7 @@ import {
   Search,
   Filter,
   SlidersHorizontal,
+  ArrowLeft,
   ArrowUpRight,
   Clock3,
   LayoutDashboard,
@@ -1157,6 +1158,11 @@ const Dashboard = () => {
                     </>
                   )}
                 </div>
+                {activeTab !== 'dashboard' && currentUser.role !== UserRole.STUDENT_ORGANIZER && (
+                  <button onClick={() => navigate(`/${expectedRolePrefix}`)} className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center justify-center gap-2">
+                     <ArrowLeft size={18} /> <span className="hidden sm:inline">Back</span>
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -1177,8 +1183,8 @@ const Dashboard = () => {
                    getDashboardSubtitle(currentUser.role)}
                 </p>
               </div>
-              {(activeTab === 'approvals' || activeTab === 'modifications') && (
-                <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
+                {(activeTab === 'approvals' || activeTab === 'modifications') && (
                   <div className="relative">
                     <button
                       onClick={() => setIsFilterOpen(!isFilterOpen)}
@@ -1231,8 +1237,11 @@ const Dashboard = () => {
                       </>
                     )}
                   </div>
-                </div>
-              )}
+                )}
+                <button onClick={() => navigate(`/${expectedRolePrefix}`)} className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center justify-center gap-2">
+                   <ArrowLeft size={18} /> <span className="hidden sm:inline">Back</span>
+                </button>
+              </div>
               {activeTab === 'dashboard' && (
                 <div className="flex items-center gap-3">
                 <button
@@ -1527,65 +1536,70 @@ const Dashboard = () => {
                       <div className="flex flex-col h-full flex-1 min-h-0">
                         {/* Filters are now managed in the top header */}
                         {displayEvents.length > 0 ? (
-                          <div className="flex-1 overflow-x-auto min-h-0 bg-white rounded-b-2xl w-full">
-                            <table className="w-full text-left border-collapse min-w-[700px]">
+                          <div className="flex-1 overflow-hidden min-h-0 bg-white rounded-b-2xl w-full">
+                            <table className="w-full text-left border-collapse table-fixed">
                               <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
-                                  <th className="py-4 px-6 w-[35%]">EVENT DETAILS</th>
-                                  <th className="py-4 px-6 w-[15%]">VENUE</th>
-                                  <th className="py-4 px-6 w-[22%]">DATE & TIME</th>
-                                  <th className="py-4 px-6 w-[15%]">STATUS</th>
-                                  <th className="py-4 px-6 w-[13%] text-right">ACTIONS</th>
+                                  <th className="py-3 sm:py-4 px-3 sm:px-6 w-[55%] sm:w-[35%]">EVENT DETAILS</th>
+                                  <th className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[15%]">VENUE</th>
+                                  <th className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[22%]">DATE & TIME</th>
+                                  <th className="py-3 sm:py-4 px-3 sm:px-6 w-[25%] sm:w-[15%]">STATUS</th>
+                                  <th className="py-3 sm:py-4 px-3 sm:px-6 w-[20%] sm:w-[13%] text-right">ACTIONS</th>
                                 </tr>
                               </thead>
                               <tbody className="bg-white">
                                 {displayEvents.map(event => (
                                    <tr key={event.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedEventDetail(event)}>
-                                      <td className="py-4 px-6">
-                                         <div className="flex items-center gap-4">
-                                            <div className="w-11 h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0 border border-blue-100">
-                                               <Calendar size={20} />
+                                      <td className="py-3 sm:py-4 px-3 sm:px-6 w-[55%] sm:w-[35%]">
+                                         <div className="flex items-center gap-2 sm:gap-4">
+                                            <div className="w-8 h-8 sm:w-11 sm:h-11 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0 border border-blue-100">
+                                               <Calendar size={20} className="w-4 h-4 sm:w-5 sm:h-5" />
                                             </div>
-                                            <div>
-                                               <p className="font-bold text-slate-900 text-sm max-w-[300px] truncate">{event.title}</p>
-                                               <div className="flex items-center gap-1.5 mt-1">
-                                                  <span className={`px-1.5 py-0.5 text-[9px] font-extrabold uppercase rounded border ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                            <div className="min-w-0">
+                                               <p className="font-bold text-slate-900 text-xs sm:text-sm truncate">{event.title}</p>
+                                               <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5 sm:hidden truncate">
+                                                  {event.date} • {event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'TBA'}
+                                               </p>
+                                               <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mt-1">
+                                                  <span className={`px-1 sm:px-1.5 py-0.5 text-[8px] sm:text-[9px] font-extrabold uppercase rounded border ${event.creatorType === 'FACULTY' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                                      {event.creatorType || 'STUDENT'}
                                                   </span>
                                                   {event.department && (
-                                                     <span className="text-[10px] text-slate-500 font-bold uppercase">{event.department}</span>
+                                                     <span className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase truncate max-w-[80px] sm:max-w-none">{event.department}</span>
                                                   )}
                                                   {event.status === 'CANCELLED' && (
-                                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-extrabold border border-red-200 uppercase flex items-center gap-1"><XCircle size={8}/> CANCELLED</span>
+                                                     <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[8px] sm:text-[9px] font-extrabold border border-red-200 uppercase flex items-center gap-1"><XCircle size={8}/> CANCELLED</span>
                                                   )}
                                                   {(event.status === 'POSTPONED' || event.isPostponed) && getEventStatus(event) === 'upcoming' && (
-                                                     <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-extrabold border border-amber-200 uppercase flex items-center gap-1"><Clock size={8}/> POSTPONED</span>
+                                                     <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[8px] sm:text-[9px] font-extrabold border border-amber-200 uppercase flex items-center gap-1"><Clock size={8}/> POSTPONED</span>
                                                   )}
                                                </div>
                                             </div>
                                          </div>
                                       </td>
-                                      <td className="py-4 px-6">
-                                         <p className="text-sm font-medium text-slate-700 max-w-[150px] truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'TBA'}</p>
+                                      <td className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[15%]">
+                                         <p className="text-sm font-medium text-slate-700 truncate">{event.venue && !['to be allocated','tba','n/a',''].includes(String(event.venue).toLowerCase().trim()) ? event.venue : 'TBA'}</p>
                                       </td>
-                                      <td className="py-4 px-6">
+                                      <td className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[22%]">
                                          <p className="text-sm font-medium text-slate-700 whitespace-nowrap">{event.date}</p>
                                          <p className="text-[11px] font-medium text-slate-500 mt-0.5 whitespace-nowrap">{formatTime12(event.startTime) !== '-' ? formatTime12(event.startTime) : '09:00 AM'}</p>
                                       </td>
-                                      <td className="py-4 px-6">
-                                         <StatusBadge status={event.status} />
+                                      <td className="py-3 sm:py-4 px-2 sm:px-6 w-[25%] sm:w-[15%]">
+                                         <div className="scale-[0.65] sm:scale-100 origin-left">
+                                           <StatusBadge status={event.status} />
+                                         </div>
                                       </td>
-                                      <td className="py-4 px-6 text-right">
-                                         <div className="flex items-center justify-end gap-2">
+                                      <td className="py-3 sm:py-4 px-3 sm:px-6 w-[20%] sm:w-[13%] text-right">
+                                         <div className="flex items-center justify-end gap-1 sm:gap-2">
                                             {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
                                               <button
                                                 onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event`, { state: { editingEvent: event } }); }}
-                                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+                                                className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
                                               >
                                                 Edit
                                               </button>
                                             )}
-                                            <button onClick={(e) => { e.stopPropagation(); setSelectedEventDetail(event); }} className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95">
+                                            <button onClick={(e) => { e.stopPropagation(); setSelectedEventDetail(event); }} className="px-2 sm:px-4 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] sm:text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95">
                                                View
                                             </button>
                                          </div>

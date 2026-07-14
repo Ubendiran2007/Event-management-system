@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal } from 'lucide-react';
+import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import Layout from '../components/Layout';
 import AlertCard from '../components/AlertCard';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
+import { getRolePath } from '../utils/routeUtils';
 
 const SecurityProfile = () => {
   const { currentUser, events } = useAppContext();
@@ -374,6 +375,12 @@ const SecurityProfile = () => {
               <p className="text-slate-500 font-medium">Manage your password, login history, and security alerts</p>
             </div>
           </div>
+          <button 
+            onClick={() => navigate(`/${getRolePath(currentUser?.role || 'student')}`)} 
+            className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center justify-center gap-2"
+          >
+             <ArrowLeft size={18} /> <span className="hidden sm:inline">Back</span>
+          </button>
         </div>
 
         <div className="flex gap-2 border-b border-slate-200 mb-8 overflow-x-auto no-scrollbar">
@@ -418,19 +425,19 @@ const SecurityProfile = () => {
         {activeTab === 'overview' && (
           <div className="w-full">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-              <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <AlertTriangle size={18} className="text-indigo-500" />
+              <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-row items-center justify-between gap-2 sm:gap-4">
+                <h3 className="font-bold text-slate-800 flex items-center gap-1 sm:gap-2 text-sm sm:text-base">
+                  <AlertTriangle size={18} className="text-indigo-500 hidden sm:block" />
                   Security Activity Timeline
                 </h3>
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <button
                       onClick={() => setIsTimelineFilterOpen(!isTimelineFilterOpen)}
-                      className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+                      className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-lg sm:rounded-2xl font-extrabold transition-all text-[11px] sm:text-[13px]"
                     >
-                      <SlidersHorizontal size={16} className="text-slate-600" />
-                      <span>Filter: {timelineFilter}</span>
+                      <SlidersHorizontal size={14} className="text-slate-600 sm:w-4 sm:h-4" />
+                      <span>Filter: <span className="hidden sm:inline">{timelineFilter}</span><span className="sm:hidden">{timelineFilter === 'All' ? 'All' : timelineFilter}</span></span>
                     </button>
                     
                     {isTimelineFilterOpen && (
@@ -452,27 +459,27 @@ const SecurityProfile = () => {
                   </div>
                 </div>
               </div>
-              <div className="p-0 overflow-x-auto rounded-b-2xl">
-                <table className="w-full text-left border-collapse min-w-[600px]">
+              <div className="p-0 overflow-hidden rounded-b-2xl">
+                <table className="w-full text-left border-collapse table-fixed">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Activity</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">IP Address</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[25%]">Date & Time</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[45%]">Activity</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[20%] sm:w-[15%]">Status</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell sm:w-[15%]">IP Address</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {currentTimelinePage.map((log) => (
                       <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 text-sm text-slate-600 whitespace-nowrap">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-600 break-words">
                           {new Date(log.timestamp).toLocaleString()}
                         </td>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-800">
-                          {log.activity} {log.count > 1 && <span className="text-xs text-slate-500 ml-1 font-semibold bg-slate-100 px-2 py-0.5 rounded-full">({log.count} Times)</span>}
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm font-medium text-slate-800 break-words">
+                          {log.activity} {log.count > 1 && <span className="text-[8px] sm:text-xs text-slate-500 ml-1 font-semibold bg-slate-100 px-1.5 sm:px-2 py-0.5 rounded-full">({log.count} Times)</span>}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                        <td className="px-3 sm:px-6 py-3 sm:py-4">
+                          <span className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-bold uppercase tracking-wider border ${
                             log.status === 'SUCCESS' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
                             log.status === 'WARNING' ? 'bg-amber-50 text-amber-600 border-amber-200' :
                             'bg-red-50 text-red-600 border-red-200'
@@ -480,7 +487,7 @@ const SecurityProfile = () => {
                             {log.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-500 font-mono whitespace-nowrap">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-500 font-mono whitespace-nowrap hidden sm:table-cell">
                           {log.ip || '-'}
                         </td>
                       </tr>
@@ -500,21 +507,21 @@ const SecurityProfile = () => {
               
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl">
+                <div className="px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl">
                   <button 
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   >
                     Previous
                   </button>
-                  <span className="text-sm font-medium text-slate-500">
+                  <span className="text-[11px] sm:text-sm font-medium text-slate-500 text-center">
                     Page <span className="font-bold text-slate-800">{currentPage}</span> of {totalPages}
                   </span>
                   <button 
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   >
                     Next
                   </button>
@@ -525,7 +532,7 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'password' && (
-          <div className="max-w-lg mx-auto relative left-8 glass-panel p-8 rounded-2xl">
+          <div className="w-full max-w-lg mx-auto glass-panel p-6 sm:p-8 rounded-2xl">
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <KeyRound size={32} />
