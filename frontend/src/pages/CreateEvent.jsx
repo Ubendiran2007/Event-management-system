@@ -363,7 +363,6 @@ const CreateEvent = () => {
     // Step 6: Accommodation / Dining
     accommodation: {
       guests: [createAccomGuest()],
-      address: '',
       maleGuests: '',
       femaleGuests: '',
       arrivalDate: '',
@@ -2941,10 +2940,6 @@ const CreateEvent = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
-            <div className="space-y-1">
-              <Lbl>Address</Lbl>
-              <input className={inputClass} value={form.accommodation.address} onChange={(e) => updateNested('accommodation.address', e.target.value)} placeholder="Full address" />
             </div>
             <div className="space-y-1">
               <Lbl>Male Guests</Lbl>
