@@ -3,6 +3,14 @@ const nodemailer = require('nodemailer');
 const router = express.Router();
 
 router.get('/email', async (req, res) => {
+  // Security check: require a debug token in production to prevent unauthorized access
+  const providedToken = req.headers['x-debug-token'] || req.query.token;
+  const expectedToken = process.env.DEBUG_TOKEN;
+  
+  if (!expectedToken || providedToken !== expectedToken) {
+    return res.status(403).json({ success: false, message: 'Forbidden. Invalid or missing debug token.' });
+  }
+
   const logs = [];
   const log = (msg) => {
     console.log([DEBUG ENDPOINT] );
@@ -19,8 +27,8 @@ router.get('/email', async (req, res) => {
     SMTP_HOST: process.env.SMTP_HOST || 'undefined',
     SMTP_PORT: process.env.SMTP_PORT || 'undefined',
     SMTP_SECURE: process.env.SMTP_SECURE || 'undefined',
-    GMAIL_USER: process.env.GMAIL_USER ? 'SET (length: ' + process.env.GMAIL_USER.length + ')' : 'MISSING',
-    GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD ? 'SET (length: ' + process.env.GMAIL_APP_PASSWORD.length + ')' : 'MISSING',
+    GMAIL_USER: process.env.GMAIL_USER ? true : false,
+    GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD ? true : false,
     EMAIL_TEST_MODE: process.env.EMAIL_TEST_MODE || 'undefined',
     EMAIL_TEST_RECIPIENT: process.env.EMAIL_TEST_RECIPIENT || 'undefined',
   };
@@ -42,8 +50,8 @@ router.get('/email', async (req, res) => {
     dnsOptions: { family: 4 }, // Force IPv4 as per the original codebase
   };
   
-  // Don't log the password in the response, but log the rest of the config
-  log(Transporter config: {"host":"","port":,"secure":,"auth":{"user":"","pass":"***"}});
+  // Don't log the password or user in the response, but log the rest of the config
+  log(Transporter config: {"host":"","port":,"secure":,"auth":{"user":"***","pass":"***"}});
   
   const transporter = nodemailer.createTransport(transporterConfig);
 
@@ -63,8 +71,7 @@ router.get('/email', async (req, res) => {
       error: {
         message: error.message,
         code: error.code,
-        command: error.command,
-        stack: error.stack
+        command: error.command
       }
     });
   }
@@ -73,7 +80,11 @@ router.get('/email', async (req, res) => {
   log('Attempting to send a test email...');
   try {
     const toEmail = process.env.EMAIL_TEST_RECIPIENT || process.env.GMAIL_USER;
-    log(Sending test email to: );
+    if (!toEmail) {
+        log('No recipient found. Set EMAIL_TEST_RECIPIENT or GMAIL_USER.');
+        throw new Error('No recipient configured for test email.');
+    }
+    log(Sending test email...);
     
     const info = await transporter.sendMail({
       from: '"Event Management Debug" <' + process.env.GMAIL_USER + '>',
@@ -103,8 +114,7 @@ router.get('/email', async (req, res) => {
       error: {
         message: error.message,
         code: error.code,
-        command: error.command,
-        stack: error.stack
+        command: error.command
       }
     });
   }
