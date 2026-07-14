@@ -1335,11 +1335,9 @@ const Dashboard = () => {
                      {(() => {
                         const myCreated = events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email));
                         const myRegistered = events.filter(e => (e.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id)));
-                        const available = events.filter(e => e.status === EventStatus.POSTED && !(e.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id)));
                         
                         const combinedMap = new Map();
                         // Store relationship type
-                        available.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'New Event' }));
                         myRegistered.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'Registered' }));
                         myCreated.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'Created' }));
                         
