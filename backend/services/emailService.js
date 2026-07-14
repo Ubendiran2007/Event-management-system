@@ -1,13 +1,26 @@
-const nodemailer = require('nodemailer');
+﻿const nodemailer = require('nodemailer');
 const templates = require('./emailTemplates');
 const { db } = require('../firebase');
 const { collection, addDoc } = require('firebase/firestore');
+const net = require('net');
 
 function getSenderAddress() {
   return process.env.EMAIL_FROM || process.env.EMAIL_USER;
 }
 
-// Configure SMTP transporter with credentials
+// 6. Verify Runtime Configuration
+console.log('--- VERIFY RUNTIME CONFIGURATION ---');
+console.log('SMTP_HOST:', process.env.SMTP_HOST || 'smtp-relay.brevo.com');
+console.log('SMTP_PORT:', process.env.SMTP_PORT || '587');
+console.log('SMTP_SECURE:', process.env.SMTP_SECURE || 'false');
+console.log('EMAIL_USER exists:', !!process.env.EMAIL_USER);
+console.log('EMAIL_PASS exists:', !!process.env.EMAIL_PASS);
+console.log('EMAIL_FROM:', process.env.EMAIL_FROM);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('EMAIL_PROVIDER:', process.env.EMAIL_PROVIDER);
+console.log('------------------------------------');
+
+// Configure SMTP transporter with credentials and timeouts
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
@@ -17,14 +30,69 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
   dnsOptions: { family: 4 },
+  // 2. Configure Transport Timeouts
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
+  // 3. Enable Nodemailer Debugging
+  logger: true,
+  debug: true
 });
+
+// 4. TCP Connectivity Test & 5. Promise Timeout for Verify
+(async () => {
+  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const port = parseInt(process.env.SMTP_PORT || '587');
+  
+  console.log('[Email Service] TCP Connectivity Test: Starting raw connection test...');
+  await new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(10000);
+    
+    socket.on('lookup', (err, address, family, host) => {
+      console.log(`[Email Service] TCP: DNS lookup resolved to IP ${address} (IPv${family})`);
+    });
+    
+    socket.on('connect', () => {
+      console.log('[Email Service] TCP: Socket Connected');
+      socket.destroy();
+    });
+    
+    socket.on('timeout', () => {
+      console.log('[Email Service] TCP: Socket Timeout');
+      socket.destroy();
+    });
+    
+    socket.on('error', (err) => {
+      console.log('[Email Service] TCP: Socket Error -', err.message);
+    });
+    
+    socket.on('close', () => {
+      console.log('[Email Service] TCP: Socket Closed');
+      resolve();
+    });
+    
+    socket.connect(port, host);
+  });
+
+  console.log('[Email Service] Running transporter.verify() with 15s timeout limit...');
+  try {
+    const verifyPromise = transporter.verify();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('TRANSPORTER_VERIFY_TIMEOUT_15S')), 15000)
+    );
+    await Promise.race([verifyPromise, timeoutPromise]);
+    console.log('[Email Service] SMTP connection verified successfully');
+  } catch (error) {
+    console.error('[Email Service] SMTP connection verification failed:', error.message);
+  }
+})();
 
 async function logEmailAudit(mailOptions, status, errorMessage = '', smtpResponse = '') {
   try {
     if (!db) return;
     await addDoc(collection(db, 'emailLogs'), {
       recipient: Array.isArray(mailOptions.to) ? mailOptions.to.join(',') : mailOptions.to,
-      // When test mode redirected the email, record who was the intended recipient
       originalRecipient: mailOptions._originalTo || null,
       testModeActive: process.env.EMAIL_TEST_MODE === 'true',
       subject: mailOptions.subject || '',
@@ -42,66 +110,55 @@ async function logEmailAudit(mailOptions, status, errorMessage = '', smtpRespons
 }
 
 async function sendMailWithFallback(mailOptions) {
-  // Deduplicate recipients
   if (Array.isArray(mailOptions.to)) {
     mailOptions.to = [...new Set(mailOptions.to)];
   } else if (typeof mailOptions.to === 'string') {
     mailOptions.to = [...new Set(mailOptions.to.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
   }
 
-  // ── Test Mode Email Redirection ──────────────────────────────────────────────
   if (process.env.EMAIL_TEST_MODE === 'true') {
     const testRecipient = process.env.EMAIL_TEST_RECIPIENT || 'ubendirankumar@gmail.com';
     console.log(`[Email Service] ⚠️  TEST MODE: Redirecting email for "${mailOptions.to}" → ${testRecipient}`);
-    mailOptions._originalTo = mailOptions.to; // preserve for audit log
+    mailOptions._originalTo = mailOptions.to;
     mailOptions.to = testRecipient;
   } else {
     console.log(`[Email Service] 📧 PRODUCTION: Sending email to "${mailOptions.to}"`);
   }
 
   try {
-    console.log('[Email Service] Transporter Config:', JSON.stringify({
-      host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true' ? true : false,
-      auth_user: process.env.EMAIL_USER,
-      from: mailOptions.from
-    }));
+    console.log('Calling transporter.sendMail()');
     
-    console.log('[Email Service] Calling transporter.sendMail()');
-    const res = await transporter.sendMail(mailOptions);
-    console.log('[Email Service] Email sent successfully');
+    const sendPromise = transporter.sendMail(mailOptions);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('TRANSPORTER_SEND_TIMEOUT_15S')), 15000)
+    );
+    
+    const res = await Promise.race([sendPromise, timeoutPromise]);
+    
+    console.log('Email sent successfully');
     console.log('[Email Service] Provider Result:', JSON.stringify({
       messageId: res.messageId,
       accepted: res.accepted,
       rejected: res.rejected,
       response: res.response
     }, null, 2));
+    
     await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
     return res;
   } catch (error) {
     console.error('[Email Service] sendMail() threw an error!');
-    console.error('[Email Service] Error Name:', error.name);
-    console.error('[Email Service] Error Code:', error.code);
-    console.error('[Email Service] Error Response:', error.response);
-    console.error('[Email Service] Error ResponseCode:', error.responseCode);
-    console.error('[Email Service] Error Command:', error.command);
-    console.error('[Email Service] Error Message:', error.message);
-    console.error('[Email Service] Error Stack:', error.stack);
+    console.error('error.name:', error.name);
+    console.error('error.code:', error.code);
+    console.error('error.command:', error.command);
+    console.error('error.response:', error.response);
+    console.error('error.responseCode:', error.responseCode);
+    console.error('error.message:', error.message);
+    console.error('stack trace:', error.stack);
     
     await logEmailAudit(mailOptions, 'FAILED', error.message);
-    throw error;
+    throw error; // Never swallow exceptions
   }
 }
-
-// Verify transporter connection
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('[Email Service] SMTP connection failed:', error);
-  } else {
-    console.log('[Email Service] SMTP connection verified');
-  }
-});
 
 function getEventReference(eventData = {}) {
   return (
@@ -421,7 +478,7 @@ module.exports = {
       const result = await sendMailWithFallback(mailOptions);
       return { success: true, messageId: result.messageId };
     } catch (error) {
-      console.error('[Email Service] Generic send failed:', error);
+      console.error('[Email Service] Generic send failed:', error.message);
       return { success: false, error: error.message };
     }
   }
