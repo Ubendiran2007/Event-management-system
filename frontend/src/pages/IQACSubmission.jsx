@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import defaultPoster from '../assets/sece.avif';
-import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp, Check, Circle, LayoutGrid, Globe, Eye } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileCheck2, Loader2, Upload, X, Plus, Star, FileText, Camera, FileUp, Check, Circle, LayoutGrid, Globe, Eye, ArrowLeft } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue } from '../utils/formatters';
@@ -971,33 +971,39 @@ const IQACSubmission = () => {
       )}
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-        <div className="flex justify-end mb-6">
-          <button onClick={() => navigate('/dashboard')} className="btn-secondary whitespace-nowrap">
-            Back to Dashboard
-          </button>
-        </div>
-
-        <header className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/50 p-6 shadow-sm">
+        <header className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-blue-50/50 p-6 shadow-sm relative">
+          <div className="absolute top-6 right-6 lg:hidden">
+             <button onClick={() => navigate('/dashboard')} className="p-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg flex items-center justify-center transition-all shadow-sm">
+                <ArrowLeft size={16} />
+             </button>
+          </div>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+            <div className="pr-12 lg:pr-0">
               <h1 className="text-2xl font-bold text-slate-900">IQAC Submission Checklist</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-600">
                 Final step of the event lifecycle. Upload, verify, and lock all documentation for a complete IQAC closure report.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 text-sm lg:min-w-[320px]">
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completed</p>
-                <p className="mt-1 font-bold text-slate-900">{progressStats.completedCount}/{CHECKLIST_ITEMS.length}</p>
+            <div className="flex flex-col lg:items-end gap-4">
+              <div className="hidden lg:block">
+                <button onClick={() => navigate('/dashboard')} className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl flex items-center justify-center transition-all shadow-sm gap-2 font-bold text-sm">
+                   <ArrowLeft size={18} /> Back
+                </button>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progress</p>
-                <p className="mt-1 font-bold text-cse-accent">{progressStats.progressPercent}%</p>
-              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm w-full lg:min-w-[320px]">
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Completed</p>
+                  <p className="mt-1 font-bold text-slate-900">{progressStats.completedCount}/{CHECKLIST_ITEMS.length}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Progress</p>
+                  <p className="mt-1 font-bold text-cse-accent">{progressStats.progressPercent}%</p>
+                </div>
               <div className="col-span-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Event</p>
                 <p className="mt-1 truncate font-semibold text-slate-900">{eventInfo.title}</p>
               </div>
+            </div>
             </div>
           </div>
 

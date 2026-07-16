@@ -906,7 +906,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
             />
           </div>
 
-          <div className="flex flex-col sm:flex-row items-start justify-between gap-6 relative z-10">
+          <button onClick={onClose} className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 p-2 bg-white/80 backdrop-blur-sm hover:bg-white border border-slate-300 text-slate-600 rounded-full transition-colors shadow-sm" title="Close">
+             <X size={18} />
+          </button>
+
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-6 relative z-10 pr-10 sm:pr-12">
             {/* Poster Thumbnail */}
             <div className="shrink-0 w-24 h-32 rounded-xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-200 hidden sm:block">
                <img 
@@ -931,20 +935,17 @@ const IQACSummaryModal = ({ event, onClose }) => {
               </p>
             </div>
             
-            <div className="flex flex-col items-end gap-3 shrink-0">
-              <button onClick={onClose} className="p-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-600 rounded-full transition-colors shadow-sm" title="Close">
-                <X size={18} />
-              </button>
+            <div className="flex flex-col items-start sm:items-end gap-3 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
               {submittedOn && (
-                <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full mt-1 shadow-sm">
-                  <FileCheck size={12} className="text-emerald-500" /> Submitted on {submittedOn}
+                <div className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full mt-1 shadow-sm w-full sm:w-auto justify-center sm:justify-start">
+                  <FileCheck size={12} className="text-emerald-500 shrink-0" /> <span className="truncate">Submitted on {submittedOn}</span>
                 </div>
               )}
               <button
                 onClick={downloadEventReportHTML}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm w-full sm:w-auto justify-center"
               >
-                <Download size={13} /> Download Summary
+                <Download size={13} className="shrink-0" /> Download Summary
               </button>
             </div>
           </div>
