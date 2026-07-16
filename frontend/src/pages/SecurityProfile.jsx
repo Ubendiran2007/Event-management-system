@@ -463,10 +463,10 @@ const SecurityProfile = () => {
                 <table className="w-full text-left border-collapse table-fixed">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
-                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[25%]">Date & Time</th>
-                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[45%]">Activity</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[20%]">Date & Time</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[40%]">Activity</th>
                       <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[20%] sm:w-[15%]">Status</th>
-                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell sm:w-[15%]">IP Address</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell sm:w-[25%]">IP Address</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -487,7 +487,7 @@ const SecurityProfile = () => {
                             {log.status}
                           </span>
                         </td>
-                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-500 font-mono whitespace-nowrap hidden sm:table-cell">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-500 font-mono break-words break-all hidden sm:table-cell">
                           {log.ip || '-'}
                         </td>
                       </tr>
