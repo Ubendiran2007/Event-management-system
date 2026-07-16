@@ -1465,9 +1465,9 @@ const Dashboard = () => {
                     })()}
                   </div>
                 )}
-              <div className="rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm border border-slate-200 flex-1">
+              <div className="rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm border border-slate-200 flex-1 min-h-0">
                 {/* Scrollable container for tab content - now relies on main page scroll */}
-                <div className="flex-1 flex flex-col bg-[#f5f7fa]">
+                <div className="flex-1 flex flex-col bg-[#f5f7fa] min-h-0">
                   {/* Events Tab Content */}
                   {(activeTab === 'events' || activeTab === 'approvals') && (() => {
                     let displayEvents = [];
@@ -1536,18 +1536,23 @@ const Dashboard = () => {
                       <div className="flex flex-col h-full flex-1 min-h-0">
                         {/* Filters are now managed in the top header */}
                         {displayEvents.length > 0 ? (
-                          <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-b-2xl w-full scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
-                            <table className="w-full text-left border-collapse table-fixed">
-                              <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
-                                  <th className="py-3 sm:py-4 px-3 sm:px-6 w-[55%] sm:w-[35%]">EVENT DETAILS</th>
-                                  <th className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[15%]">VENUE</th>
-                                  <th className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[22%]">DATE & TIME</th>
-                                  <th className="py-3 sm:py-4 px-3 sm:px-6 w-[25%] sm:w-[15%]">STATUS</th>
-                                  <th className="py-3 sm:py-4 px-3 sm:px-6 w-[20%] sm:w-[13%] text-right">ACTIONS</th>
-                                </tr>
-                              </thead>
-                              <tbody className="bg-white">
+                          <div className="flex flex-col h-full flex-1 min-h-0">
+                            <div className="w-full bg-slate-50/50 border-b border-slate-200 pr-[6px]">
+                              <table className="w-full text-left border-collapse table-fixed">
+                                <thead>
+                                  <tr className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
+                                    <th className="py-3 sm:py-4 px-3 sm:px-6 w-[55%] sm:w-[35%]">EVENT DETAILS</th>
+                                    <th className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[15%]">VENUE</th>
+                                    <th className="py-3 sm:py-4 px-3 sm:px-6 hidden sm:table-cell sm:w-[22%]">DATE & TIME</th>
+                                    <th className="py-3 sm:py-4 px-3 sm:px-6 w-[25%] sm:w-[15%]">STATUS</th>
+                                    <th className="py-3 sm:py-4 px-3 sm:px-6 w-[20%] sm:w-[13%] text-right">ACTIONS</th>
+                                  </tr>
+                                </thead>
+                              </table>
+                            </div>
+                            <div className="flex-1 overflow-y-auto min-h-0 bg-white rounded-b-2xl w-full scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
+                              <table className="w-full text-left border-collapse table-fixed">
+                                <tbody className="bg-white">
                                 {displayEvents.map(event => (
                                    <tr key={event.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => setSelectedEventDetail(event)}>
                                       <td className="py-3 sm:py-4 px-3 sm:px-6 w-[55%] sm:w-[35%]">
@@ -1609,6 +1614,7 @@ const Dashboard = () => {
                               </tbody>
                             </table>
                           </div>
+                        </div>
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-transparent min-h-[400px]">
                             <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
@@ -1648,7 +1654,7 @@ const Dashboard = () => {
                             <p className="text-slate-500 font-medium text-sm">There are no pending postponement or cancellation requests.</p>
                           </div>
                         ) : (
-                          <div className="flex-1 p-5 space-y-4 flex flex-col">
+                          <div className="flex-1 p-5 space-y-4 flex flex-col overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                             {modEvents.map(event => (
                               <div key={event.id} className="bg-white rounded-2xl border border-slate-200 px-6 py-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] shrink-0 group">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 min-h-[90px]">
@@ -1706,7 +1712,7 @@ const Dashboard = () => {
                           <p className="text-slate-500 font-medium text-sm">There are no new events open for registration right now.</p>
                         </div>
                       ) : (
-                        <div className="flex-1 overflow-x-auto min-h-0 bg-white rounded-b-2xl border-t border-slate-100">
+                        <div className="flex-1 overflow-auto min-h-0 bg-white rounded-b-2xl border-t border-slate-100 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                           <table className="w-full text-left border-collapse min-w-[900px]">
                             <thead>
                               <tr className="border-b border-slate-200 bg-slate-50/50 text-[10px] font-extrabold text-slate-500 uppercase tracking-widest sticky top-0 z-10">
@@ -1797,7 +1803,7 @@ const Dashboard = () => {
                           <p className="text-slate-500 font-medium text-sm">There are no OD requests to review at this time.</p>
                         </div>
                       ) : (
-                        <div className="flex flex-col h-full">
+                        <div className="flex flex-col flex-1 min-h-0">
                           {/* Table Header */}
                           <div className="hidden sm:grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
                             <div className="col-span-4">Event Name</div>
