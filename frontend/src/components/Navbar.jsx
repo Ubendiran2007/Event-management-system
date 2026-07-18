@@ -6,7 +6,7 @@ import { UserRole } from '../types';
 import { getRolePath } from '../utils/routeUtils';
 
 const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
-  const { currentUser, handleLogout, students, events } = useAppContext();
+  const { currentUser, handleLogout, students, events, staffUsers } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -103,6 +103,14 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const liveStudent = (students || []).find(s => s.id === currentUser.id);
   const displayData = liveStudent || currentUser;
 
+  let classAdvisorName = null;
+  if ((currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && displayData.class) {
+    const advisor = (staffUsers || []).find(u => u.role === UserRole.FACULTY && u.assignedClasses && u.assignedClasses.includes(displayData.class));
+    if (advisor) {
+      classAdvisorName = advisor.name;
+    }
+  }
+
   return (
     <>
       {/* Mobile Overlay */}
@@ -161,16 +169,25 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
         {/* User Profile Footer */}
         <div className="p-4 border-t border-slate-100">
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 mb-3 border border-slate-100">
-            <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-              {displayData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+          <div className="flex flex-col gap-2 p-3 rounded-xl bg-slate-50 mb-3 border border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                {displayData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-extrabold text-slate-900 truncate">{displayData.name}</p>
+                <p className="text-[11px] text-slate-500 font-medium truncate capitalize">
+                  {(displayData.role || 'GUEST').replace('_', ' ').toLowerCase()}
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-extrabold text-slate-900 truncate">{displayData.name}</p>
-              <p className="text-[11px] text-slate-500 font-medium truncate capitalize">
-                {(displayData.role || 'GUEST').replace('_', ' ').toLowerCase()}
-              </p>
-            </div>
+            
+            {classAdvisorName && (
+              <div className="pt-2 mt-1 border-t border-slate-200">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Class Advisor</p>
+                <p className="text-xs font-semibold text-slate-700 truncate">{classAdvisorName}</p>
+              </div>
+            )}
           </div>
           
           <button
