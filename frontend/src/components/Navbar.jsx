@@ -1,4 +1,4 @@
-﻿import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
@@ -43,32 +43,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     }
   };
 
-  // Helper for badges
-  const getBadgeCount = (view) => {
-    if (view === 'events') {
-      const hasOrgEvents = (events || []).some(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email));
-      if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrgEvents) {
-         return (events || []).filter(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email)).length;
-      }
-      return 0;
-    }
-    if (view === 'approvals') {
-       if (currentUser.role === UserRole.FACULTY) {
-          return (events || []).filter(e => e.status === 'PENDING_FACULTY').length;
-       }
-       if (currentUser.role === UserRole.HOD) {
-          return (events || []).filter(e => e.status === 'PENDING_HOD').length;
-       }
-       if (currentUser.role === UserRole.IQAC_TEAM) {
-          return (events || []).filter(e => e.status === 'PENDING_IQAC').length;
-       }
-       return 0;
-    }
-    if (view === 'registrations') {
-       return 400; // Placeholder from screenshot
-    }
-    return 0;
-  };
+
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' }
@@ -100,7 +75,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     UserRole.MEDIA
   ];
   if (approvalRoles.includes(currentUser.role)) {
-    navItems.push({ id: 'approvals', label: 'Approvals', icon: CheckCircle2, badge: getBadgeCount('approvals'), path: '/approvals' });
+    navItems.push({ id: 'approvals', label: 'Approvals', icon: CheckCircle2, path: '/approvals' });
   }
 
   if (canSeeMyEvents) {
@@ -167,13 +142,6 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                   <item.icon size={20} className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} strokeWidth={isActive ? 2.5 : 2} />
                   <span className="whitespace-nowrap truncate">{item.label}</span>
                 </div>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                    isActive ? 'bg-blue-500/30 text-white' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {item.badge}
-                  </span>
-                )}
               </button>
             );
           })}
