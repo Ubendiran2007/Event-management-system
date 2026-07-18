@@ -568,7 +568,7 @@ const ManageStudents = () => {
                                 <div className="divide-y divide-slate-100">
                                     {ALL_CLASSES.map((cls, idx) => {
                                         const assignedFaculty = allowedStaff.filter(s => s.role === 'FACULTY' && (s.assignedClasses || []).includes(cls));
-                                        const isLastItem = idx === ALL_CLASSES.length - 1;
+                                        const isNearBottom = idx >= Math.max(0, ALL_CLASSES.length - 2);
                                         return (
                                             <div key={cls} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors last:rounded-b-2xl">
                                                 <div className="flex items-center gap-4">
@@ -611,7 +611,7 @@ const ManageStudents = () => {
                                                         {openDropdownId === cls && (
                                                             <>
                                                                 <div className="fixed inset-0 z-40" onClick={() => setOpenDropdownId(null)} />
-                                                                <div className={`absolute right-0 w-full bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in duration-200 ${isLastItem ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'}`} style={{ zIndex: 9999 }}>
+                                                                <div className={`absolute right-0 w-full bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in duration-200 ${isNearBottom ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'}`} style={{ zIndex: 9999 }}>
                                                                     <div className="max-h-60 overflow-y-auto">
                                                                         {allowedStaff
                                                                             .filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === 'CSE' && !(s.assignedClasses || []).includes(cls))
