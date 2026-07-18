@@ -589,7 +589,8 @@ const IQACSummaryModal = ({ event, onClose }) => {
         </tr>`).join('')
       : '<tr><td colspan="5" style="text-align:center;color:#888">No guest feedback recorded</td></tr>';
 
-    const clRows = checklist.map(c => `<tr>
+    const effectiveChecklist = checklist.filter(c => !(String(c.requirement).includes('(Optional)') && c.status === 'pending'));
+    const clRows = effectiveChecklist.map(c => `<tr>
       <td>${c.requirement}</td>
       <td style="color:${c.status==='pending'?'#c00':c.status==='verified'?'#007a00':'#0055cc'};font-weight:bold">${checklistStatusLabel(c.status)}</td>
     </tr>`).join('');
@@ -1526,7 +1527,6 @@ const IQACSummaryModal = ({ event, onClose }) => {
               <p className="text-sm text-slate-400 italic">No guest or resource person feedback was recorded.</p>
             )}
           </SectionCard>
-
           {/* ── Geo Tag ── */}
           {(iqac.geoTag || event.geoTagUrl || event.locationUrl) && (
             <SectionCard title="Geo Tag" icon={<MapPin size={15} />} accent="green">
@@ -1546,10 +1546,13 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
           {/* ── Documentation Checklist — always shown ── */}
           <SectionCard title="Documentation Checklist" icon={<FileCheck size={15} />} accent="emerald" className="lg:col-span-2 shadow-md">
-            {checklist.length > 0 ? (
+            {checklist.length > 0 ? (() => {
+              const effectiveChecklist = checklist.filter(c => !(String(c.requirement).includes('(Optional)') && c.status === 'pending'));
+              const completedCount = effectiveChecklist.filter(c => c.status !== 'pending').length;
+              return (
               <>
                 <div className="space-y-2">
-                  {checklist.filter(item => item.status !== 'pending').map((item) => {
+                  {effectiveChecklist.filter(item => item.status !== 'pending').map((item) => {
                     const dlAction = getDownloadAction(item);
                     const vAction = getViewAction(item);
                     
@@ -1590,14 +1593,14 @@ const IQACSummaryModal = ({ event, onClose }) => {
                 <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
                   <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
                     <div className="h-full bg-emerald-500 rounded-full transition-all"
-                      style={{ width: `${Math.round((checklist.filter(c => c.status !== 'pending').length / checklist.length) * 100)}%` }} />
+                      style={{ width: `${effectiveChecklist.length > 0 ? Math.round((completedCount / effectiveChecklist.length) * 100) : 0}%` }} />
                   </div>
                   <span className="text-xs font-bold text-emerald-600 shrink-0">
-                    {checklist.filter(c => c.status !== 'pending').length}/{checklist.length} Complete
+                    {completedCount}/{effectiveChecklist.length} Complete
                   </span>
                 </div>
               </>
-            ) : (
+            );})() : (
               <p className="text-sm text-slate-400 italic">No documentation checklist was recorded in this submission.</p>
             )}
           </SectionCard>

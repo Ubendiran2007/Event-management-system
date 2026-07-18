@@ -2047,7 +2047,7 @@ const IQACSubmission = () => {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-bold text-slate-900">Section 7 - IQAC Documentation Checklist</h2>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-              {CHECKLIST_ITEMS.length} Required Items
+              {CHECKLIST_ITEMS.filter(i => !i.label.includes('(Optional)')).length} Required Items
             </span>
           </div>
 
