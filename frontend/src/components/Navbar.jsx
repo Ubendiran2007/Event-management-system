@@ -85,7 +85,13 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const isClassAdvisor = currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
   
   if (currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM || isClassAdvisor) {
-    navItems.push({ id: 'manage-students', label: 'User Management', icon: UserCog, path: '/manage-students' });
+    const isHODorIQAC = currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM;
+    navItems.push({ 
+      id: 'manage-students', 
+      label: isHODorIQAC ? 'User Management' : 'Manage Students', 
+      icon: UserCog, 
+      path: '/manage-students' 
+    });
   }
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });

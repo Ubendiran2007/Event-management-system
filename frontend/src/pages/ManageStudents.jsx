@@ -371,8 +371,12 @@ const ManageStudents = () => {
                     <div className="max-w-6xl mx-auto w-full">
                         <div className="flex flex-row items-center justify-between gap-4 mb-4">
                             <div>
-                                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">User Management</h2>
-                                <p className="text-slate-500 mt-1 text-sm hidden sm:block">Manage institutional users and roles</p>
+                                <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">
+                                    {(isIQAC || isHOD) ? 'User Management' : 'Manage Students'}
+                                </h2>
+                                <p className="text-slate-500 mt-1 text-sm hidden sm:block">
+                                    {(isIQAC || isHOD) ? 'Manage institutional users and roles' : 'Manage your assigned classes and students'}
+                                </p>
                             </div>
                             <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
                                 {isIQAC && activeTab === 'students' && (
