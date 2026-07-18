@@ -411,10 +411,16 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
       updatePayload.hodApprovedAt = new Date().toISOString();
       updatePayload.hodApprovedBy = approvedBy || 'HOD';
 
-      // AUTO-ADVANCE: If no departments are required, skip PENDING_DEPARTMENTS and go to PENDING_IQAC
+      // AUTO-ADVANCE: Skip PENDING_DEPARTMENTS and go to PENDING_IQAC if:
+      // - No departments are required
+      // - Event is a modification request (POSTPONE or CANCEL)
+      // - Event is an IQAC Resubmission
       const requiredDepts = getRequiredDepartments(rawEventData);
-      if (requiredDepts.length === 0) {
-        console.log(`[events/status] No departments required for event ${req.params.id}. Auto-advancing to PENDING_IQAC.`);
+      const isModification = !!rawEventData.modificationRequest;
+      const isIqacResubmission = rawEventData.iqacResubmission === true;
+
+      if (requiredDepts.length === 0 || isModification || isIqacResubmission) {
+        console.log(`[events/status] Bypassing departments for event ${req.params.id}. Auto-advancing to PENDING_IQAC.`);
         finalStatus = 'PENDING_IQAC';
         updatePayload.status = finalStatus;
       }
@@ -731,11 +737,13 @@ router.put('/:id/resubmit-edit', async (req, res) => {
 
     // Reset all approvals upon resubmission
     const newDeptApprovals = {};
+    const wasIqacRejection = eventData.rejectedByRole === 'IQAC_TEAM';
 
     const updatePayload = {
       ...req.body,
       status: isFacultyOrganizer ? 'PENDING_HOD' : 'PENDING_FACULTY',
       isResubmitted: true,
+      iqacResubmission: wasIqacRejection,
       updatedAt: new Date().toISOString(),
       posterStatus,
       posterWorkflow,

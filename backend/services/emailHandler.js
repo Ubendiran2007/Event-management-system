@@ -474,7 +474,24 @@ async function handleEventCancelled(eventData) {
   const facultyEmail = eventData.coordinator?.facultyEmail || eventData.facultyEmail;
   if (isValidEmail(facultyEmail)) staffEmails.add(facultyEmail);
 
-  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM', 'MEDIA', 'TRANSPORT_TEAM', 'SYSTEM_ADMIN'];
+  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM'];
+  const reqs = eventData.requisition?.step1?.requirements || {};
+  const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
+  
+  if (isRequired('venueRequired'))     rolesToNotify.push('HR_TEAM');
+  if (isRequired('audioRequired'))     rolesToNotify.push('AUDIO_TEAM');
+  if (isRequired('ictsRequired'))      rolesToNotify.push('SYSTEM_ADMIN');
+  if (isRequired('transportRequired')) rolesToNotify.push('TRANSPORT_TEAM');
+  if (isRequired('mediaRequired'))     rolesToNotify.push('MEDIA');
+  if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
+    const accom = eventData.requisition?.annexureV_accommodation || {};
+    const males   = Number(accom.maleGuests   || 0);
+    const females = Number(accom.femaleGuests  || 0);
+    if (males > 0) rolesToNotify.push('BOYS_WARDEN');
+    if (females > 0) rolesToNotify.push('GIRLS_WARDEN');
+    if (males === 0 && females === 0) rolesToNotify.push('BOYS_WARDEN');
+  }
+
   for (const role of rolesToNotify) {
     const roleEmails = await getEmailsByRole(role);
     roleEmails.forEach(e => staffEmails.add(e));
@@ -570,7 +587,24 @@ async function handleEventPostponed(eventData) {
   const facultyEmail = eventData.coordinator?.facultyEmail || eventData.facultyEmail;
   if (isValidEmail(facultyEmail)) staffEmails.add(facultyEmail);
 
-  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM', 'MEDIA', 'TRANSPORT_TEAM', 'SYSTEM_ADMIN'];
+  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM'];
+  const reqs = eventData.requisition?.step1?.requirements || {};
+  const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
+  
+  if (isRequired('venueRequired'))     rolesToNotify.push('HR_TEAM');
+  if (isRequired('audioRequired'))     rolesToNotify.push('AUDIO_TEAM');
+  if (isRequired('ictsRequired'))      rolesToNotify.push('SYSTEM_ADMIN');
+  if (isRequired('transportRequired')) rolesToNotify.push('TRANSPORT_TEAM');
+  if (isRequired('mediaRequired'))     rolesToNotify.push('MEDIA');
+  if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
+    const accom = eventData.requisition?.annexureV_accommodation || {};
+    const males   = Number(accom.maleGuests   || 0);
+    const females = Number(accom.femaleGuests  || 0);
+    if (males > 0) rolesToNotify.push('BOYS_WARDEN');
+    if (females > 0) rolesToNotify.push('GIRLS_WARDEN');
+    if (males === 0 && females === 0) rolesToNotify.push('BOYS_WARDEN');
+  }
+
   for (const role of rolesToNotify) {
     const roleEmails = await getEmailsByRole(role);
     roleEmails.forEach(e => staffEmails.add(e));
