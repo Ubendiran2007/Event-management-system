@@ -12,7 +12,7 @@ import { formatRollNo, formatStudentNameWithRoll } from '../utils/formatters';
 import * as XLSX from 'xlsx';
 
 const ALL_CLASSES = [
-  'CSE-B', 'CSE-D', 'ECE-A', 'ECE-B', 'CCE-A', 'CSBS-A', 'MECH-A', 'CYBER-A', 'EEE-A', 'AIML-A', 'AIDS-A'
+  'CSE-A', 'CSE-B', 'CSE-C', 'CSE-D'
 ];
 
 const STAFF_ROLES = [
@@ -20,11 +20,12 @@ const STAFF_ROLES = [
   'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA', 'IQAC_TEAM'
 ];
 
-const ManageStudents = () => {
+const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === \localhost\ ? \\ : \https://event-management-system-dpzc.onrender.com\);\n\nconst ManageStudents = () => {
     const { currentUser, students, staffUsers, loading } = useAppContext();
     const navigate = useNavigate();
     
     // Tabs & View State
+    const [openDropdownId, setOpenDropdownId] = useState(null);
     const [activeTab, setActiveTab] = useState('students'); // 'students' | 'staff'
     const [selectedDepartment, setSelectedDepartment] = useState(null); // e.g. 'CSE'
     const [selectedClass, setSelectedClass] = useState(null); // e.g. 'CSE-B'
@@ -61,6 +62,7 @@ const ManageStudents = () => {
 
     if (!currentUser || ![UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role)) return null;
     const isIQAC = currentUser.role === UserRole.IQAC_TEAM;
+    const isHOD = currentUser.role === UserRole.HOD;
 
     // --- Students Logic ---
     const mergedStudents = students || [];
@@ -74,9 +76,11 @@ const ManageStudents = () => {
                 const assigned = currentUser.assignedClasses.map(c => c.replace(/-/g, ' ').toUpperCase());
                 return assigned.includes(sClass);
             }
-            if (!currentUser.department) return false;
-            const sDept = (s.department || '').toUpperCase();
-            const uDept = (currentUser.department || '').toUpperCase();
+            const uDept = (currentUser.department || 'CSE').toUpperCase();
+            let sDept = (s.department || '').toUpperCase();
+            if (!sDept && s.class) {
+                sDept = s.class.split('-')[0].toUpperCase();
+            }
             if (uDept === 'AI&DS' || uDept === 'AIDS') return sDept === 'AI&DS' || sDept === 'AIDS';
             return sDept === uDept;
         })
@@ -99,6 +103,7 @@ const ManageStudents = () => {
         deptMap[prefix].push(cls);
     });
     const departments = Object.keys(deptMap).sort();
+    const effectiveDepartment = selectedDepartment || (departments.length === 1 ? departments[0] : null);
 
     const classStudents = selectedClass && classMap[selectedClass] ? classMap[selectedClass] : [];
     const filteredClassStudents = classStudents.filter(s =>
@@ -108,7 +113,9 @@ const ManageStudents = () => {
     );
 
     // --- Staff Logic ---
-    const filteredStaff = (staffUsers || []).filter(s => 
+    const allowedStaff = (staffUsers || []);
+
+    const filteredStaff = allowedStaff.filter(s => 
         s.name.toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
         s.email.toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
         s.role.toLowerCase().includes(staffSearchQuery.toLowerCase())
@@ -120,8 +127,8 @@ const ManageStudents = () => {
         setIsProcessing(true);
         try {
             const url = editingStudent 
-                ? `https://event-management-system-dpzc.onrender.com/api/students/${editingStudent.id}`
-                : `https://event-management-system-dpzc.onrender.com/api/students`;
+                ? `/api/students/${editingStudent.id}`
+                : `/api/students`;
             const method = editingStudent ? 'PUT' : 'POST';
             
             const payload = { ...studentForm, className: studentForm.class.replace(/\s+/g, '-') };
@@ -150,7 +157,7 @@ const ManageStudents = () => {
         setIsProcessing(true);
         try {
             const className = deletingStudent.class.replace(/\s+/g, '-');
-            const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/students/${deletingStudent.id}`, {
+            const res = await fetch(`/api/students/${deletingStudent.id}`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ className })
@@ -171,8 +178,8 @@ const ManageStudents = () => {
         setIsProcessing(true);
         try {
             const url = editingStaff 
-                ? `https://event-management-system-dpzc.onrender.com/api/users/${editingStaff.id}`
-                : `https://event-management-system-dpzc.onrender.com/api/users`;
+                ? `/api/users/${editingStaff.id}`
+                : `/api/users`;
             const method = editingStaff ? 'PUT' : 'POST';
             
             const res = await fetch(url, {
@@ -198,7 +205,7 @@ const ManageStudents = () => {
         if (!deletingStaff) return;
         setIsProcessing(true);
         try {
-            const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/users/${deletingStaff.id}`, {
+            const res = await fetch(`/api/users/${deletingStaff.id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
             });
@@ -228,7 +235,7 @@ const ManageStudents = () => {
                 
                 const formatted = data.map(row => ({
                     name: row.Name || row.name || '',
-                    rollNo: String(row.RollNo || row.rollNo || row.Roll_No || row.rollno || ''),
+                    rollNo: String(row.RollNo || row.rollno || row.Roll_No || ''),
                     email: row.Email || row.email || '',
                     className: String(row.Class || row.class || '').replace(/\s+/g, '-'),
                     section: String(row.Section || row.section || ''),
@@ -252,7 +259,7 @@ const ManageStudents = () => {
         if (bulkData.length === 0) return;
         setIsProcessing(true);
         try {
-            const res = await fetch('https://event-management-system-dpzc.onrender.com/api/students/bulk', {
+            const res = await fetch('/api/students/bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ students: bulkData })
@@ -276,7 +283,7 @@ const ManageStudents = () => {
     const confirmResetODUsage = async () => {
         setIsProcessing(true);
         try {
-            const res = await fetch('https://event-management-system-dpzc.onrender.com/api/students/reset-od-usage', {
+            const res = await fetch('/api/students/reset-od-usage', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
             });
@@ -296,7 +303,7 @@ const ManageStudents = () => {
         const newRole = student.role === UserRole.STUDENT_ORGANIZER ? UserRole.STUDENT_GENERAL : UserRole.STUDENT_ORGANIZER;
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
-            await fetch(`https://event-management-system-dpzc.onrender.com/api/students/${student.id}/role`, {
+            await fetch(`/api/students/${student.id}/role`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ role: newRole, className, isApprovedOrganizer: newRole === UserRole.STUDENT_ORGANIZER }),
@@ -313,7 +320,7 @@ const ManageStudents = () => {
         setTogglingId(`${student.id}-${field}`);
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
-            await fetch(`https://event-management-system-dpzc.onrender.com/api/students/${student.id}/od-stats`, {
+            await fetch(`/api/students/${student.id}/od-stats`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ className, [field]: value }),
@@ -325,7 +332,7 @@ const ManageStudents = () => {
         }
     };
 
-      return (
+    return (
     <Layout>
       <div className="flex-1 flex flex-col min-h-0 relative">
                 <div className="bg-[#f8fafc] border-b border-slate-200 px-6 pt-6 z-30 shrink-0">
@@ -361,22 +368,35 @@ const ManageStudents = () => {
                         </div>
 
                         {/* Tabs */}
-                        {isIQAC && (
-                            <div className="flex space-x-6 border-b border-slate-200 mt-4">
+                        {(isIQAC || isHOD) && (
+                            <div className="flex space-x-6 border-b border-slate-200 mt-4 overflow-x-auto no-scrollbar">
+                                {(isIQAC || isHOD) && (
                                 <button
                                     onClick={() => setActiveTab('students')}
-                                    className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'students' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
+                                    className={`pb-3 whitespace-nowrap font-semibold text-sm transition-colors relative ${activeTab === 'students' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Students
                                     {activeTab === 'students' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-cse-accent rounded-t-full" />}
                                 </button>
+                                )}
+                                {isIQAC && (
                                 <button
                                     onClick={() => setActiveTab('staff')}
-                                    className={`pb-3 font-semibold text-sm transition-colors relative ${activeTab === 'staff' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
+                                    className={`pb-3 whitespace-nowrap font-semibold text-sm transition-colors relative ${activeTab === 'staff' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Staff Directory
                                     {activeTab === 'staff' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-cse-accent rounded-t-full" />}
                                 </button>
+                                )}
+                                {isHOD && (
+                                <button
+                                    onClick={() => setActiveTab('advisors')}
+                                    className={`pb-3 whitespace-nowrap font-semibold text-sm transition-colors relative ${activeTab === 'advisors' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Class Advisor Management
+                                    {activeTab === 'advisors' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-cse-accent rounded-t-full" />}
+                                </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -388,7 +408,7 @@ const ManageStudents = () => {
                             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cse-accent" size={36} /></div>
                         ) : activeTab === 'students' ? (
                             /* STUDENTS VIEW */
-                            !selectedDepartment ? (
+                            !effectiveDepartment ? (
                                 /* 1. Show Departments */
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
@@ -417,11 +437,13 @@ const ManageStudents = () => {
                                 /* 2. Show Classes for Selected Department */
                                 <>
                                     <div className="flex items-center gap-4 mb-6">
-                                        <button onClick={() => setSelectedDepartment(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
-                                        <h3 className="text-xl font-bold text-slate-900">{selectedDepartment} Department Classes</h3>
+                                        {departments.length > 1 && (
+                                            <button onClick={() => setSelectedDepartment(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
+                                        )}
+                                        <h3 className="text-xl font-bold text-slate-900">{effectiveDepartment} Department Classes</h3>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {deptMap[selectedDepartment].map(cls => (
+                                        {deptMap[effectiveDepartment].map(cls => (
                                             <button key={cls} onClick={() => { setSelectedClass(cls); setSearchQuery(''); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
                                                 <div className="text-left">
                                                     <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{cls}</h3>
@@ -491,7 +513,7 @@ const ManageStudents = () => {
                                     </div>
                                 </>
                             )
-                        ) : (
+                        ) : activeTab === 'staff' ? (
                             /* STAFF VIEW */
                             <>
                                 <div className="relative mb-6 max-w-md">
@@ -523,7 +545,101 @@ const ManageStudents = () => {
                                     </div>
                                 </div>
                             </>
-                        )}
+                        ) : activeTab === 'advisors' && isHOD ? (
+                            /* ADVISORS VIEW */
+                            <div className="glass-panel rounded-2xl overflow-hidden">
+                                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                                    <h3 className="text-lg font-bold text-slate-800">Assign Class Advisors</h3>
+                                    <p className="text-sm text-slate-500 mt-1">Map CSE classes to faculty members for monitoring event tracking and attendance.</p>
+                                </div>
+                                <div className="divide-y divide-slate-100">
+                                    {ALL_CLASSES.map(cls => {
+                                        const assignedFaculty = allowedStaff.filter(s => s.role === 'FACULTY' && (s.assignedClasses || []).includes(cls));
+                                        return (
+                                            <div key={cls} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-100">{cls}</div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-900 text-sm">Class {cls}</p>
+                                                        {assignedFaculty.length > 0 ? (
+                                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                                {assignedFaculty.map(f => (
+                                                                    <span key={f.id} className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
+                                                                        <UserCheck size={12} /> {f.name}
+                                                                        <button onClick={async () => {
+                                                                            setIsProcessing(true);
+                                                                            try {
+                                                                                await fetch(`/api/users/${f.id}`, {
+                                                                                    method: 'PUT',
+                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                                                                                    body: JSON.stringify({ ...f, assignedClasses: (f.assignedClasses || []).filter(c => c !== cls) })
+                                                                                });
+                                                                            } catch(e) { console.error(e); } finally { setIsProcessing(false); }
+                                                                        }} className="ml-1 text-emerald-400 hover:text-emerald-700" title="Remove assignment"><X size={12}/></button>
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-xs text-slate-400 mt-1 italic">No advisor assigned</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 w-full md:w-auto">
+                                                    <div className="relative w-full md:w-64">
+                                                        <button
+                                                            onClick={() => setOpenDropdownId(openDropdownId === cls ? null : cls)}
+                                                            className="flex items-center justify-between w-full px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-lg font-bold transition-all text-[13px]"
+                                                        >
+                                                            <span className="truncate">Assign new advisor...</span>
+                                                            <svg className={`w-4 h-4 transition-transform ${openDropdownId === cls ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                                                        </button>
+                                                        
+                                                        {openDropdownId === cls && (
+                                                            <>
+                                                                <div className="fixed inset-0 z-40" onClick={() => setOpenDropdownId(null)} />
+                                                                <div className="absolute right-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                                    <div className="max-h-60 overflow-y-auto">
+                                                                        {allowedStaff
+                                                                            .filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === 'CSE' && !(s.assignedClasses || []).includes(cls))
+                                                                            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                                                                            .map((fac, idx) => (
+                                                                                <button
+                                                                                    key={fac.id}
+                                                                                    onClick={async () => {
+                                                                                        setOpenDropdownId(null);
+                                                                                        setIsProcessing(true);
+                                                                                        try {
+                                                                                            const currentAssigned = fac.assignedClasses || [];
+                                                                                            if (!currentAssigned.includes(cls)) {
+                                                                                                await fetch(`/api/users/${fac.id}`, {
+                                                                                                    method: 'PUT',
+                                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                                                                                                    body: JSON.stringify({ ...fac, assignedClasses: [...currentAssigned, cls] })
+                                                                                                });
+                                                                                            }
+                                                                                        } catch(err) { console.error(err); }
+                                                                                        setIsProcessing(false);
+                                                                                    }}
+                                                                                    className={`w-full px-4 py-2.5 text-left text-[14px] font-bold transition-colors text-slate-800 hover:bg-slate-50`}
+                                                                                >
+                                                                                    {fac.name}
+                                                                                </button>
+                                                                            ))}
+                                                                        {allowedStaff.filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === 'CSE' && !(s.assignedClasses || []).includes(cls)).length === 0 && (
+                                                                            <div className="px-4 py-3 text-[13px] text-slate-500 italic text-center font-medium">No available faculty</div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </div>

@@ -32,7 +32,7 @@ import { validateUpload } from '../utils/fileValidation';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Hackathon', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
-const DEPARTMENTS = ['CSE', 'ECE', 'CCE', 'Cyber', 'CSBS', 'MECH', 'IT', 'AI&DS', 'AIML', 'EEE'];
+const DEPARTMENTS = ['CSE'];
 
 const VENUE_OPTIONS = [
   'Classroom', 'Lab', 'Main Board Room', 'IQAC Board Room', 'Synapse Studio', 'Courtyard',

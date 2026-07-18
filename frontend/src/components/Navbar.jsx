@@ -1,4 +1,4 @@
-import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
@@ -23,7 +23,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   // Derive active tab logic from URL
   let currentActive = 'dashboard';
   const feature = location.pathname.split('/').filter(Boolean).pop();
-  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations'].includes(feature)) {
+  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking'].includes(feature)) {
     currentActive = feature;
   } else if (location.pathname.includes('/security')) {
     currentActive = 'security';
@@ -87,6 +87,10 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   }
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });
+
+  if (currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0) {
+    navItems.push({ id: 'tracking', label: 'Event Tracking', icon: Activity, path: '/tracking' });
+  }
 
   const liveStudent = (students || []).find(s => s.id === currentUser.id);
   const displayData = liveStudent || currentUser;

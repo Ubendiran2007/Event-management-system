@@ -12,6 +12,7 @@ const IQACSubmission = lazy(() => import('./pages/IQACSubmission'));
 const ManageStudents = lazy(() => import('./pages/ManageStudents'));
 const ODCorrection = lazy(() => import('./pages/ODCorrection'));
 const SecurityProfile = lazy(() => import('./pages/SecurityProfile'));
+const EventTracking = lazy(() => import('./pages/EventTracking'));
 
 import { ROLE_PATHS, getRolePath } from './utils/routeUtils';
 
@@ -25,6 +26,7 @@ const RoleRoutes = () => (
     <Route path="modifications" element={<Dashboard />} />
     <Route path="available" element={<Dashboard />} />
     <Route path="my-registrations" element={<Dashboard />} />
+    <Route path="tracking" element={<EventTracking />} />
 
     {/* Dedicated Pages */}
     <Route path="create-event" element={<CreateEvent />} />

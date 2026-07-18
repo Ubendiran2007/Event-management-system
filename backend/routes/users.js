@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 
 // Protect all Manage Users APIs
 router.use(requireAuth);
-router.use(requireRole(['IQAC_TEAM'])); // Only IQAC can manage staff
+router.use(requireRole(['IQAC_TEAM', 'HOD'])); // IQAC and HOD can manage staff
 
 const checkDb = (res) => {
   if (!db) {
