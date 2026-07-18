@@ -59,10 +59,17 @@ const ManageStudents = () => {
     // Security Check
     useEffect(() => {
         if (!currentUser) navigate('/');
-        else if (![UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role)) navigate('/dashboard');
+        else {
+            const isClassAdvisor = currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
+            if (![UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role) && !isClassAdvisor) {
+                navigate('/dashboard');
+            }
+        }
     }, [currentUser, navigate]);
 
-    if (!currentUser || ![UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role)) return null;
+    if (!currentUser) return null;
+    const isClassAdvisor = currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
+    if (![UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role) && !isClassAdvisor) return null;
     const isIQAC = currentUser.role === UserRole.IQAC_TEAM;
     const isHOD = currentUser.role === UserRole.HOD;
 

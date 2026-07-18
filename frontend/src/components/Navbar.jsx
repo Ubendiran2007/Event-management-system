@@ -82,7 +82,9 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     navItems.push({ id: 'registrations', label: 'Manage Registrations', icon: ClipboardList, path: '/registrations' });
   }
 
-  if ([UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser.role)) {
+  const isClassAdvisor = currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
+  
+  if (currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM || isClassAdvisor) {
     navItems.push({ id: 'manage-students', label: 'User Management', icon: UserCog, path: '/manage-students' });
   }
 
