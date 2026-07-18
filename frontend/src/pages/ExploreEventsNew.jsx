@@ -754,11 +754,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
     // 1. Special Case: Official IQAC Report
     if (req.includes('event report') || req.includes('event-report')) {
-      if (type === 'view') {
-        setShowOfficialReport(true);
-      } else {
-        downloadEventReportHTML();
-      }
+      setShowOfficialReport(true);
       return;
     }
 
