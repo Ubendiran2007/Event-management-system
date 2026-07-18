@@ -1507,7 +1507,7 @@ const Dashboard = () => {
 
                       if (currentUser.role === UserRole.FACULTY) {
                         pendingEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
-                        pastApprovedEvents = events.filter(e => e.facultyApproval === 'APPROVED');
+                        pastApprovedEvents = events.filter(e => e.facultyApproval === 'APPROVED' || e.facultyApprovedAt);
                       } else if (currentUser.role === UserRole.HOD) {
                         pendingEvents = events.filter(e => e.status === EventStatus.PENDING_HOD);
                         pastApprovedEvents = approvedEvents;

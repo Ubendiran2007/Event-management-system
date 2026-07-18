@@ -327,7 +327,7 @@ const CreateEvent = () => {
     // Step 5: Transport
     externalTransport: {
       // Organizer (auto-filled)
-      facultyId: '',
+      rollNo: '',
       organizerName: '',
       organizerDesignation: '',
       contactNumber: '',
@@ -338,6 +338,11 @@ const CreateEvent = () => {
       guestDesignation: '',
       guestContact: '',
       guestEmail: '',
+      // Accompanying Faculty
+      facultyAccompanying: false,
+      accompanyingFacultyName: '',
+      accompanyingFacultyId: '',
+      accompanyingFacultyContact: '',
       // Visit
       purposeOfVisit: '',
       modeOfTransport: 'Car',
@@ -497,31 +502,6 @@ const CreateEvent = () => {
       if (form.mobileNumber) {
         updateIfEmpty('externalTransport.contactNumber', form.mobileNumber);
         updateIfEmpty('internalTransport.contactNumber', form.mobileNumber);
-        if (next.accommodation.guests && next.accommodation.guests.length > 0 && !next.accommodation.guests[0].mobileNumber) {
-           next.accommodation.guests[0].mobileNumber = form.mobileNumber;
-           next.accommodation.guests = [...next.accommodation.guests];
-           changed = true;
-        }
-      }
-
-      // Guest details
-      if (form.guests && form.guests.length > 0) {
-        const primaryGuest = form.guests[0];
-        if (next.accommodation.guests && next.accommodation.guests.length > 0) {
-          let accomGuest = next.accommodation.guests[0];
-          let changedAccomGuest = false;
-          if (primaryGuest.name && !accomGuest.name) { accomGuest.name = primaryGuest.name; changedAccomGuest = true; }
-          if (primaryGuest.designation && !accomGuest.designation) { accomGuest.designation = primaryGuest.designation; changedAccomGuest = true; }
-          if (primaryGuest.organization && !accomGuest.organization) { accomGuest.organization = primaryGuest.organization; changedAccomGuest = true; }
-          
-          if (changedAccomGuest) {
-            next.accommodation = {
-              ...next.accommodation,
-              guests: [accomGuest, ...next.accommodation.guests.slice(1)]
-            };
-            changed = true;
-          }
-        }
       }
 
       return changed ? next : prev;
@@ -538,6 +518,8 @@ const CreateEvent = () => {
   const [audioVenueUserEdited, setAudioVenueUserEdited] = useState(false);
   // Track whether user has manually overridden external transport guest details
   const [extGuestUserEdited, setExtGuestUserEdited] = useState(false);
+  // Track whether user has manually overridden accommodation guest details
+  const [accomGuestUserEdited, setAccomGuestUserEdited] = useState(false);
 
   // Sync Audio Date, Venue, Times, and Transport Guest automatically from Event Info
   useEffect(() => {
@@ -586,14 +568,33 @@ const CreateEvent = () => {
           updated.externalTransport = { ...updated.externalTransport, guestDesignation: rp.designation };
           changed = true;
         }
-        // Note: form.guests doesn't natively include contactNumber or email, 
-        // but if it did for legacy reasons, we could sync them here too.
+      }
+
+      // Sync Accommodation Guest Details
+      if (!accomGuestUserEdited && prev.guests?.length > 0) {
+        const rp = prev.guests[0];
+        if (prev.accommodation.guests && prev.accommodation.guests.length > 0) {
+          let accomGuest = { ...prev.accommodation.guests[0] };
+          let changedAccomGuest = false;
+          
+          if (rp.name !== undefined && accomGuest.name !== rp.name) { accomGuest.name = rp.name; changedAccomGuest = true; }
+          if (rp.designation !== undefined && accomGuest.designation !== rp.designation) { accomGuest.designation = rp.designation; changedAccomGuest = true; }
+          if (rp.organization !== undefined && accomGuest.organization !== rp.organization) { accomGuest.organization = rp.organization; changedAccomGuest = true; }
+
+          if (changedAccomGuest) {
+            updated.accommodation = {
+              ...updated.accommodation,
+              guests: [accomGuest, ...prev.accommodation.guests.slice(1)]
+            };
+            changed = true;
+          }
+        }
       }
 
       return changed ? updated : prev;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, form.guests, audioTimesUserEdited, audioVenueUserEdited, extGuestUserEdited]);
+  }, [form.startDate, form.startTime, form.endTime, form.venueSelection, form.guests, audioTimesUserEdited, audioVenueUserEdited, extGuestUserEdited, accomGuestUserEdited]);
 
   const eventStartMinDate = todayIso;
   const eventEndMinDate = form.startDate || todayIso;
@@ -1304,12 +1305,12 @@ const CreateEvent = () => {
     }
 
     if (stepKey === STEP_KEYS.TRANSPORT && form.transportRequired) {
-      if (!form.externalTransport.facultyId && !form.internalTransport.indenterName) {
+      if (!form.externalTransport.rollNo && !form.internalTransport.indenterName) {
         setStepError('Please complete key Transport fields.');
         return false;
       }
       
-      if (form.externalTransport.facultyId) {
+      if (form.externalTransport.rollNo) {
         if (!form.externalTransport.contactNumber) {
           setStepError('Please complete key Transport fields (Contact number for external).');
           return false;
@@ -1321,6 +1322,16 @@ const CreateEvent = () => {
         if (form.externalTransport.emailId && !isValidEmail(form.externalTransport.emailId)) {
           setStepError('External Transport email must contain @ and be all lowercase.');
           return false;
+        }
+        if (form.externalTransport.facultyAccompanying) {
+          if (!form.externalTransport.accompanyingFacultyName?.trim()) {
+            setStepError('Please enter the name of the faculty receiving the guest.');
+            return false;
+          }
+          if (!isValidPhone(form.externalTransport.accompanyingFacultyContact)) {
+            setStepError('Contact number for faculty receiving the guest must be exactly 10 digits.');
+            return false;
+          }
         }
       }
 
@@ -1405,7 +1416,7 @@ const CreateEvent = () => {
     } else if (stepKey === STEP_KEYS.ICTS && form.ictsRequired) {
       check('expectedInternetUsers', form.expectedInternetUsers);
     } else if (stepKey === STEP_KEYS.TRANSPORT && form.transportRequired) {
-      if (form.externalTransport.facultyId) {
+      if (form.externalTransport.rollNo) {
         check('ext_contactNumber', form.externalTransport.contactNumber);
         check('ext_emailId', form.externalTransport.emailId);
       }
@@ -2651,7 +2662,7 @@ const CreateEvent = () => {
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Organizer Information <span className="text-slate-300 font-normal normal-case tracking-normal">(auto-filled)</span></p>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {[
-                          { lbl: 'Faculty ID', path: 'externalTransport.facultyId', placeholder: 'e.g. F-1001' },
+                          { lbl: 'Roll No', path: 'externalTransport.rollNo', placeholder: 'e.g. 21CS101' },
                           { lbl: 'Organizer Name', path: 'externalTransport.organizerName', placeholder: currentUser?.name || '' },
                           { lbl: 'Designation', path: 'externalTransport.organizerDesignation', placeholder: currentUser?.designation || '' },
                           { lbl: 'Department', path: 'externalTransport.department', placeholder: currentUser?.department || '' },
@@ -2711,6 +2722,37 @@ const CreateEvent = () => {
                     {/* Visit info */}
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Visit Information</p>
+
+                      <div className="mb-4 p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer w-fit">
+                          <input type="checkbox" checked={form.externalTransport.facultyAccompanying || false}
+                            onChange={(e) => updateNested('externalTransport.facultyAccompanying', e.target.checked)} />
+                          Will any faculty go and receive the guest?
+                        </label>
+                        {form.externalTransport.facultyAccompanying && (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                            <div className="space-y-1">
+                              <label className="text-sm font-semibold text-slate-700">Faculty Name <span className="text-red-500">*</span></label>
+                              <input className={inputClass} placeholder="Enter faculty name"
+                                value={form.externalTransport.accompanyingFacultyName}
+                                onChange={(e) => updateNested('externalTransport.accompanyingFacultyName', e.target.value)} />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-sm font-semibold text-slate-700">Faculty ID</label>
+                              <input className={inputClass} placeholder="e.g. F-1001"
+                                value={form.externalTransport.accompanyingFacultyId}
+                                onChange={(e) => updateNested('externalTransport.accompanyingFacultyId', e.target.value)} />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-sm font-semibold text-slate-700">Contact Number <span className="text-red-500">*</span></label>
+                              <input className={inputClass} placeholder="10-digit number" type="tel" maxLength={10} onKeyDown={onlyDigitsKeyDown}
+                                value={form.externalTransport.accompanyingFacultyContact}
+                                onChange={(e) => updateNested('externalTransport.accompanyingFacultyContact', e.target.value)} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                         <div className="space-y-1 sm:col-span-2">
                           <label className="text-sm font-semibold text-slate-700">Purpose of Visit <span className="text-red-500">*</span></label>
@@ -2895,7 +2937,28 @@ const CreateEvent = () => {
             {/* Guests Table */}
             <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-3">
-                <Lbl>Guest Details</Lbl>
+                <div className="flex items-center gap-3">
+                  <Lbl>Guest Details</Lbl>
+                  {!accomGuestUserEdited && form.guests?.length > 0 && form.guests[0]?.name && (
+                    <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">⟳ Synced from Event Info</span>
+                  )}
+                  {accomGuestUserEdited && (
+                    <button type="button" onClick={() => { 
+                      setAccomGuestUserEdited(false); 
+                      const rp = form.guests?.[0];
+                      if (rp && form.accommodation.guests?.length > 0) {
+                        const newGuests = [...form.accommodation.guests];
+                        newGuests[0] = { 
+                          ...newGuests[0], 
+                          name: rp.name || '', 
+                          designation: rp.designation || '', 
+                          organization: rp.organization || '' 
+                        };
+                        updateNested('accommodation.guests', newGuests);
+                      }
+                    }} className="text-[10px] font-semibold text-slate-400 hover:text-blue-500 transition-colors">↺ Reset to event guest</button>
+                  )}
+                </div>
                 <button type="button" onClick={() => setForm(prev => ({ ...prev, accommodation: { ...prev.accommodation, guests: [...prev.accommodation.guests, createAccomGuest(prev.accommodation.guests.length + 1)] } }))} className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
                   <Plus size={12} /> Add Guest
                 </button>
@@ -2914,19 +2977,19 @@ const CreateEvent = () => {
                       <tr key={g.id} className="hover:bg-slate-50/50">
                         <td className="px-3 py-2 text-slate-400 font-medium">{idx + 1}</td>
                         <td className="px-1 py-1">
-                          <input className={inputClass} placeholder="Name" value={g.name} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], name: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                          <input className={inputClass} placeholder="Name" value={g.name} onChange={(e) => { setAccomGuestUserEdited(true); const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], name: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
                         </td>
                         <td className="px-1 py-1">
-                          <input className={inputClass} placeholder="Designation" value={g.designation} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], designation: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                          <input className={inputClass} placeholder="Designation" value={g.designation} onChange={(e) => { setAccomGuestUserEdited(true); const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], designation: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
                         </td>
                         <td className="px-1 py-1">
-                          <input className={inputClass} placeholder="Organization" value={g.organization} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], organization: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                          <input className={inputClass} placeholder="Organization" value={g.organization} onChange={(e) => { setAccomGuestUserEdited(true); const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], organization: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
                         </td>
                         <td className="px-1 py-1">
-                          <input type="tel" className={inputClass} placeholder="10-digit" maxLength={10} onKeyDown={onlyDigitsKeyDown} value={g.mobileNumber} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], mobileNumber: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
+                          <input type="tel" className={inputClass} placeholder="10-digit" maxLength={10} onKeyDown={onlyDigitsKeyDown} value={g.mobileNumber} onChange={(e) => { setAccomGuestUserEdited(true); const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], mobileNumber: e.target.value }; updateNested('accommodation.guests', newGuests); }} />
                         </td>
                         <td className="px-1 py-1">
-                          <input type="email" className={inputClass} placeholder="Email" value={g.email} onChange={(e) => { const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], email: e.target.value.toLowerCase() }; updateNested('accommodation.guests', newGuests); }} />
+                          <input type="email" className={inputClass} placeholder="Email" value={g.email} onChange={(e) => { setAccomGuestUserEdited(true); const newGuests = [...form.accommodation.guests]; newGuests[idx] = { ...newGuests[idx], email: e.target.value.toLowerCase() }; updateNested('accommodation.guests', newGuests); }} />
                         </td>
                         <td className="px-3 py-2 text-right">
                           {form.accommodation.guests.length > 1 && (
