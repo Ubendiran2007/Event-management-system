@@ -14,7 +14,7 @@ import EventDetailModal from '../components/EventDetailModal';
 import EventReportModal from '../components/EventReportModal';
 import { sortEventsByEventDateDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 import defaultPoster from '../assets/sece.avif';
-
+import { seceHeaderBase64 } from '../assets/seceHeaderBase64';
 const formatTime12 = (t24) => {
   if (!t24) return "-";
   try {
@@ -395,6 +395,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       </style></head>
       <body>
         <div class="container">
+          <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #e2e8f0;padding-bottom:20px;"><img src="${seceHeaderBase64}" style="max-width:100%;height:auto;border-radius:8px;" alt="College Header" /></div>
           <h2>Geotagged Photographs - ${event.title}</h2>
           <p style="text-align:center;color:#666;margin-bottom:30px;">Event Date: ${s1?.eventStartDate || event.date} | Venue: ${event.venue}</p>
           ${images}
@@ -427,6 +428,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       tr:hover td{background:#f8fafc;}
     </style></head><body>
       <div class="container">
+        <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #e2e8f0;padding-bottom:20px;"><img src="${seceHeaderBase64}" style="max-width:100%;height:auto;border-radius:8px;" alt="College Header" /></div>
         <h2>Attendance Sheet - ${event.title}</h2>
         <p style="font-size:12px;color:#666;">Generated on ${new Date().toLocaleDateString()}</p>
         <table><thead><tr><th>#</th><th>Student Name</th><th>Roll No</th><th>Status (P/FN/AN/A)</th></tr></thead><tbody>${rows}</tbody></table>
@@ -475,6 +477,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       tr:hover td{background:#fdf4ff;}
     </style></head><body>
       <div class="container">
+        <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #e2e8f0;padding-bottom:20px;"><img src="${seceHeaderBase64}" style="max-width:100%;height:auto;border-radius:8px;" alt="College Header" /></div>
         <h2>Participant Feedback - ${event.title}</h2>
         <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
       </div>
@@ -521,6 +524,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       td{padding:12px;border-bottom:1px solid #fff7ed;font-size:14px;}
     </style></head><body>
       <div class="container">
+        <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #e2e8f0;padding-bottom:20px;"><img src="${seceHeaderBase64}" style="max-width:100%;height:auto;border-radius:8px;" alt="College Header" /></div>
         <h2>Resource Person Feedback - ${event.title}</h2>
         <table><thead><tr><th>#</th>${ths}</tr></thead><tbody>${rows}</tbody></table>
       </div>
@@ -547,6 +551,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
       td{padding:12px;border-bottom:1px solid #f0f9ff;font-size:14px;}
     </style></head><body>
       <div class="container">
+        <div style="text-align:center;margin-bottom:30px;border-bottom:2px solid #e2e8f0;padding-bottom:20px;"><img src="${seceHeaderBase64}" style="max-width:100%;height:auto;border-radius:8px;" alt="College Header" /></div>
         <h2>Event Schedule - ${event.title}</h2>
         <table><thead><tr><th>#</th><th>Time / Date</th><th>Agenda / Activity</th><th>Speaker</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
