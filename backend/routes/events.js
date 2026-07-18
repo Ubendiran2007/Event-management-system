@@ -10,6 +10,8 @@ const {
   query,
   where,
   runTransaction,
+  writeBatch,
+  arrayUnion,
   deleteField
 } = require('firebase/firestore');
 const { db } = require('../firebase');
@@ -481,7 +483,32 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
       }
     }
 
-    await updateDoc(eventRef, updatePayload);
+    // [MODULE 3] Atomic Write to events and eventApprovalLogs
+    const batch = writeBatch(db);
+    
+    // [LEGACY COMPATIBILITY - REMOVE LATER] Dual-write to embedded array
+    const legacyAction = {
+      status: finalStatus,
+      approvedBy,
+      role: actingRole,
+      timestamp: new Date().toISOString(),
+      remarks: finalStatus === 'REJECTED' ? updatePayload.rejectionReason : ''
+    };
+    updatePayload.eventActions = arrayUnion(legacyAction);
+    batch.update(eventRef, updatePayload);
+
+    // [NEW ARCHITECTURE] Write to normalized eventApprovalLogs collection
+    const logRef = doc(collection(db, 'eventApprovalLogs'));
+    batch.set(logRef, {
+      eventId: req.params.id,
+      action: finalStatus,
+      approvedBy,
+      role: actingRole,
+      remarks: finalStatus === 'REJECTED' ? updatePayload.rejectionReason : '',
+      timestamp: new Date().toISOString()
+    });
+
+    await batch.commit();
     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
     const notificationStatus = finalStatus; // Use the potentially advanced status for notifications
 
@@ -1436,18 +1463,34 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
       iqacApprovedBy: null
     };
 
-    // Audit Trail
-    const eventActions = eventData.eventActions || [];
-    eventActions.push({
+    // [MODULE 3] Atomic Write for cancellation
+    const batch = writeBatch(db);
+    
+    // [LEGACY COMPATIBILITY - REMOVE LATER] Dual-write to embedded array
+    const legacyAction = {
       action: 'CANCEL_REQUESTED',
-      by: req.user.name || req.user.email,
+      status: newStatus,
+      approvedBy: req.user.name || req.user.email,
       role: req.user.role,
-      timestamp: now,
-      reason: cancellationReason.trim()
-    });
-    updatePayload.eventActions = eventActions;
+      timestamp: new Date().toISOString(),
+      remarks: cancellationReason.trim()
+    };
+    updatePayload.eventActions = arrayUnion(legacyAction);
+    
+    batch.update(eventRef, updatePayload);
 
-    await updateDoc(eventRef, updatePayload);
+    // [NEW ARCHITECTURE] Write to normalized eventApprovalLogs collection
+    const logRef = doc(collection(db, 'eventApprovalLogs'));
+    batch.set(logRef, {
+      eventId: req.params.id,
+      action: newStatus,
+      approvedBy: req.user.name || req.user.email,
+      role: req.user.role,
+      remarks: cancellationReason.trim(),
+      timestamp: new Date().toISOString()
+    });
+
+    await batch.commit();
 
     // Notifications
     const { handleEventStatusChange } = require('../services/emailHandler');
@@ -1532,7 +1575,33 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
       eventActions
     };
 
-    await updateDoc(eventRef, firestoreUpdate);
+    // [MODULE 3] Atomic Write for postpone
+    const batch = writeBatch(db);
+    
+    // [LEGACY COMPATIBILITY - REMOVE LATER] Dual-write to embedded array
+    const legacyAction = {
+      action: 'POSTPONE_REQUESTED',
+      status: newStatus,
+      approvedBy: req.user.name || req.user.email,
+      role: req.user.role,
+      timestamp: new Date().toISOString(),
+      remarks: reason.trim()
+    };
+    firestoreUpdate.eventActions = arrayUnion(legacyAction);
+    batch.update(eventRef, firestoreUpdate);
+
+    // [NEW ARCHITECTURE] Write to normalized eventApprovalLogs collection
+    const logRef = doc(collection(db, 'eventApprovalLogs'));
+    batch.set(logRef, {
+      eventId: req.params.id,
+      action: newStatus,
+      approvedBy: req.user.name || req.user.email,
+      role: req.user.role,
+      remarks: reason,
+      timestamp: new Date().toISOString()
+    });
+
+    await batch.commit();
 
     // Notifications
     const { handleEventStatusChange } = require('../services/emailHandler');

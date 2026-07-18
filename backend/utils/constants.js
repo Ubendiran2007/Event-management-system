@@ -1,6 +1,6 @@
-// Master Constants and Enums for the Frontend
+// Master Constants and Enums for the Application
 
-export const UserRole = {
+const Roles = {
   STUDENT_GENERAL: 'STUDENT_GENERAL',
   STUDENT_ORGANIZER: 'STUDENT_ORGANIZER',
   FACULTY: 'FACULTY',
@@ -16,7 +16,7 @@ export const UserRole = {
   MEDIA: 'MEDIA'
 };
 
-export const Status = {
+const Status = {
   ACTIVE: 'ACTIVE',
   INACTIVE: 'INACTIVE',
   ARCHIVED: 'ARCHIVED',
@@ -25,7 +25,7 @@ export const Status = {
   GRADUATED: 'GRADUATED'
 };
 
-export const EventStatus = {
+const EventApprovalStage = {
   PENDING_CLASS_ADVISOR: 'PENDING_CLASS_ADVISOR',
   PENDING_HOD: 'PENDING_HOD',
   PENDING_DEPARTMENTS: 'PENDING_DEPARTMENTS',
@@ -35,11 +35,10 @@ export const EventStatus = {
   REJECTED: 'REJECTED',
   POSTPONED: 'POSTPONED',
   CANCELLED: 'CANCELLED',
-  COMPLETED: 'COMPLETED',
-  POSTED: 'POSTED' // Legacy support if needed
+  COMPLETED: 'COMPLETED'
 };
 
-export const ODRequestStatus = {
+const ODApprovalStage = {
   PENDING_ORGANIZER: 'PENDING_ORGANIZER',
   PENDING_CLASS_ADVISOR: 'PENDING_CLASS_ADVISOR',
   PENDING_HOD: 'PENDING_HOD',
@@ -49,7 +48,7 @@ export const ODRequestStatus = {
   WITHDRAWN: 'WITHDRAWN'
 };
 
-export const AssignmentType = {
+const AssignmentType = {
   CLASS_ADVISOR: 'CLASS_ADVISOR',
   MENTOR: 'MENTOR',
   EVENT_COORDINATOR: 'EVENT_COORDINATOR',
@@ -59,7 +58,7 @@ export const AssignmentType = {
   SPORTS_COORDINATOR: 'SPORTS_COORDINATOR'
 };
 
-export const DocumentType = {
+const DocumentType = {
   BROCHURE: 'BROCHURE',
   REPORT: 'REPORT',
   CERTIFICATE: 'CERTIFICATE',
@@ -67,9 +66,19 @@ export const DocumentType = {
   POSTER: 'POSTER'
 };
 
-export const ApprovalAction = {
+const ApprovalAction = {
   APPROVE: 'APPROVE',
   REJECT: 'REJECT',
   POSTPONE: 'POSTPONE',
   CANCEL: 'CANCEL'
+};
+
+module.exports = {
+  Roles,
+  Status,
+  EventApprovalStage,
+  ODApprovalStage,
+  AssignmentType,
+  DocumentType,
+  ApprovalAction
 };

@@ -13,6 +13,69 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { Status } from '../types';
+
+// ==================== MASTER COLLECTIONS ====================
+export const fetchDepartments = async () => {
+  try {
+    const q = query(collection(db, 'departments'), where('status', '==', Status.ACTIVE));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error fetching departments:', error);
+    return [];
+  }
+};
+
+export const fetchAcademicBatches = async () => {
+  try {
+    const q = query(collection(db, 'academicBatches'), where('status', '==', Status.ACTIVE));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error fetching academic batches:', error);
+    return [];
+  }
+};
+
+export const fetchSections = async (departmentId = null, batchId = null) => {
+  try {
+    let q = query(collection(db, 'sections'), where('status', '==', Status.ACTIVE));
+    if (departmentId) q = query(q, where('departmentId', '==', departmentId));
+    if (batchId) q = query(q, where('batchId', '==', batchId));
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error fetching sections:', error);
+    return [];
+  }
+};
+
+export const fetchVenues = async () => {
+  try {
+    const q = query(collection(db, 'venues'), where('status', '==', Status.ACTIVE));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error fetching venues:', error);
+    return [];
+  }
+};
+
+export const fetchSystemSettings = async () => {
+  try {
+    const docRef = doc(db, 'systemSettings', 'global');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching system settings:', error);
+    return null;
+  }
+};
 
 // ==================== STUDENTS ====================
 const ALL_CLASSES = [

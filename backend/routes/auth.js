@@ -322,7 +322,7 @@ router.post('/login', async (req, res) => {
     let isStudent = false;
     let studentRefPath = null;
 
-    // ── 1. Check the top-level "users" collection ──────────────────────────
+    // ── 1. Check the top-level "users" collection (Module 2 Architecture) ──
     const usersQuery = query(
       collection(db, 'users'),
       where('email', '==', email.toLowerCase())
@@ -332,9 +332,34 @@ router.post('/login', async (req, res) => {
     if (!usersSnapshot.empty) {
       const userDoc = usersSnapshot.docs[0];
       const userData = userDoc.data();
+      
+      // Lifecycle check
+      if (userData.status && userData.status !== 'ACTIVE' && userData.status !== 'GRADUATED') {
+         return res.status(403).json({ success: false, message: `Account is ${userData.status}` });
+      }
+
       foundStoredPassword = userData.password;
       const { password: _pw, ...safeData } = userData;
       foundUserObj = { id: userDoc.id, ...safeData };
+
+      // Fetch Profile Data (Student or Staff)
+      if (userData.role && userData.role.includes('STUDENT')) {
+         const profileSnap = await getDoc(doc(db, 'students', userDoc.id));
+         if (profileSnap.exists()) {
+             const profileData = profileSnap.data();
+             foundUserObj = { 
+                ...foundUserObj, 
+                ...profileData,
+                className: profileData.sectionId || profileData.className // Ensure backwards compatibility for UI
+             };
+         }
+         isStudent = true;
+      } else {
+         const profileSnap = await getDoc(doc(db, 'staff', userDoc.id));
+         if (profileSnap.exists()) {
+             foundUserObj = { ...foundUserObj, ...profileSnap.data() };
+         }
+      }
     }
 
     // ── 2. Check Default staff credentials (fallback) ──────────────────────
