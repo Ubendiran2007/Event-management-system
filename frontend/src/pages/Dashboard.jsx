@@ -172,6 +172,7 @@ const Dashboard = () => {
   const {
     currentUser,
     events,
+    students,
     odRequests,
     loading
   } = useAppContext();
@@ -310,9 +311,30 @@ const Dashboard = () => {
       }
       if (currentUser.role === UserRole.FACULTY) {
         // Faculty sees events pending their approval OR events they created as organizer
-        return ev.status === EventStatus.PENDING_FACULTY || (ev.organizerId === currentUser.id || ev.organizerEmail === currentUser.email);
+        const isMyEvent = (ev.organizerId === currentUser.id || ev.organizerEmail === currentUser.email);
+        if (isMyEvent) return true;
+        
+        if (ev.status === EventStatus.PENDING_FACULTY) {
+          if (!currentUser.assignedClasses || currentUser.assignedClasses.length === 0) return false;
+          const creator = students?.find(s => s.id === ev.organizerId);
+          if (creator) {
+            const creatorClass = (creator.class || '').replace(/-/g, ' ').toUpperCase();
+            const assigned = currentUser.assignedClasses.map(c => (c || '').replace(/-/g, ' ').toUpperCase());
+            return assigned.includes(creatorClass);
+          }
+          return false;
+        }
+        return false;
       }
-      if (currentUser.role === UserRole.HOD) return ev.status === EventStatus.PENDING_HOD;
+      if (currentUser.role === UserRole.HOD) {
+        if (ev.status !== EventStatus.PENDING_HOD) return false;
+        // Event department should match HOD department
+        const eventDept = ev.department || ev.requisition?.step1?.department || '';
+        if (eventDept && currentUser.department) {
+           return eventDept.toUpperCase() === currentUser.department.toUpperCase();
+        }
+        return true;
+      }
       if (currentUser.role === UserRole.MEDIA) {
         const posterWorkflowStatus = String(ev.posterWorkflow?.status || '').toUpperCase();
         return ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus) || ev.status === 'REJECTED';
@@ -357,7 +379,7 @@ const Dashboard = () => {
     } else {
       return result.sort(sortEventsBySubmissionDesc);
     }
-  }, [currentUser, events]);
+  }, [currentUser, events, students]);
 
   const approvedEvents = useMemo(() => {
     if (!currentUser) return [];
