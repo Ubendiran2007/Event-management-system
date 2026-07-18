@@ -21,6 +21,7 @@ const router = express.Router();
 
 const STAFF_CREDENTIALS = {
   // ── CSE ──────────────────────────────────────────────────
+  'faculty.cse.seeded1': { username: 'csefaculty1', password: 'password', user: { id: 'fac_cse_mock_1', name: 'CSE Faculty 1', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
   'faculty.cse':  { username: 'faculty.cse',  password: 'password', user: { id: 'f_cse',   name: 'Dr. Arul Kumar',     email: 'ubendirankumar@gmail.com',   role: 'FACULTY', department: 'CSE', assignedClasses: ['CSE B', 'CSE D'] } },
   'hod.cse':      { username: 'hod.cse',      password: 'password', user: { id: 'h_cse',   name: 'Dr. Meena Iyer',     email: 'ubendirankumar@gmail.com',       role: 'HOD',     department: 'CSE'   } },
 
