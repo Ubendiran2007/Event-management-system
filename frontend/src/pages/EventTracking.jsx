@@ -5,7 +5,7 @@ import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
 import * as XLSX from 'xlsx';
-
+import seceHeader from '../assets/sece header.jpeg';
 const EventTracking = () => {
     const { currentUser, events, odRequests, loading } = useAppContext();
     const navigate = useNavigate();
@@ -72,6 +72,103 @@ const EventTracking = () => {
         XLSX.writeFile(wb, `${eventTitle}_Tracking_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
+    const generatePDFList = (title, dataList, isAllEvents = false) => {
+        const tdStyle = 'border:1px solid #555;padding:7px 10px;font-size:13px;';
+        const thStyle = 'border:1px solid #555;padding:8px 10px;font-size:13px;background:#d0e4f7;font-weight:bold;text-align:left;';
+        const tableStyle = 'border-collapse:collapse;width:100%;margin-top:10px;';
+
+        const rows = dataList.map((req, i) => `
+            <tr>
+                <td style='${tdStyle} text-align:center;'>${i + 1}</td>
+                <td style='${tdStyle} font-family: monospace; font-weight: 600;'>${req.rollNo || '-'}</td>
+                <td style='${tdStyle} font-weight: bold;'>${req.studentName || '-'}</td>
+                <td style='${tdStyle} text-align:center;'>${req.class || '-'}</td>
+                ${isAllEvents ? `<td style='${tdStyle}'>${req.eventTitle || '-'}</td>` : ''}
+                <td style='${tdStyle} text-align:center;'>${req.status || '-'}</td>
+                <td style='${tdStyle} font-weight:bold; text-align:center; color:${req.attendanceStatus === 'PRESENT' ? 'green' : req.attendanceStatus === 'ABSENT' ? 'red' : 'gray'}'>
+                    ${req.attendanceStatus === 'PRESENT' ? 'Present' : req.attendanceStatus === 'ABSENT' ? 'Absent' : 'Pending'}
+                </td>
+            </tr>
+        `).join('');
+
+        const tableHTML = `
+            <table style='${tableStyle}'>
+                <thead>
+                    <tr>
+                        <th style='${thStyle}'>S.No</th>
+                        <th style='${thStyle}'>Roll No</th>
+                        <th style='${thStyle}'>Name</th>
+                        <th style='${thStyle}'>Class</th>
+                        ${isAllEvents ? `<th style='${thStyle}'>Event</th>` : ''}
+                        <th style='${thStyle}'>Registration</th>
+                        <th style='${thStyle}'>Attendance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows || `<tr><td colspan="${isAllEvents ? 7 : 6}" style="${tdStyle}text-align:center;">No students found</td></tr>`}
+                </tbody>
+            </table>
+        `;
+
+        const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>${title}</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; color: #333; margin: 0; }
+                .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #1a3a6b; padding-bottom: 10px; }
+                .header img { max-width: 100%; max-height: 90px; object-fit: contain; }
+                .title { text-align: center; font-size: 18px; font-weight: bold; margin: 20px 0; color: #1a3a6b; text-transform: uppercase; text-decoration: underline; }
+                .meta { margin-bottom: 20px; font-size: 14px; display: flex; justify-content: space-between; }
+                @media print {
+                    @page { margin: 15mm; size: portrait; }
+                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <img src="${seceHeader}" alt="Header" />
+            </div>
+            <div class="title">${title}</div>
+            <div class="meta">
+                <div><strong>Total Students:</strong> ${dataList.length}</div>
+                <div><strong>Generated On:</strong> ${new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</div>
+            </div>
+            ${tableHTML}
+            <script>
+                window.onload = () => { setTimeout(() => { window.print(); }, 500); };
+            </script>
+        </body>
+        </html>
+        `;
+
+        const printWin = window.open('', '_blank');
+        if (printWin) {
+            printWin.document.open();
+            printWin.document.write(html);
+            printWin.document.close();
+        } else {
+            alert('Please allow popups to download the PDF report.');
+        }
+    };
+
+    const handleDownloadAllPDF = () => {
+        const allRequests = [];
+        eventStats.forEach(stat => {
+            stat.requests.forEach(req => {
+                allRequests.push({ ...req, eventTitle: stat.eventTitle });
+            });
+        });
+        generatePDFList('All Events - Student Tracking Report', allRequests, true);
+    };
+
+    const handleDownloadSinglePDF = (eventTitle, requests) => {
+        generatePDFList(`${eventTitle} - Student Tracking Report`, requests, false);
+    };
+
     const handlePrint = () => {
         window.print();
     };
@@ -118,6 +215,9 @@ const EventTracking = () => {
                                 <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1.5 px-4 py-2 text-sm whitespace-nowrap">
                                     <ChevronLeft size={16} /> Back
                                 </button>
+                                <button onClick={handleDownloadAllPDF} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-sm shadow-slate-200">
+                                    <FileText size={16} /> Export All (PDF)
+                                </button>
                                 <button onClick={handlePrint} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-1.5 shadow-sm shadow-slate-200">
                                     <Printer size={16} /> Print Report
                                 </button>
@@ -129,6 +229,12 @@ const EventTracking = () => {
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto px-6 py-8">
                     <div className="max-w-5xl mx-auto w-full">
+                        
+                        {/* Print Header Image (Only visible when printing via Print Report button) */}
+                        <div className="hidden print:block mb-8 border-b-2 border-[#1a3a6b] pb-4">
+                            <img src={seceHeader} alt="SECE Header" className="w-full max-h-[100px] object-contain" />
+                            <h2 className="text-center text-xl font-bold text-[#1a3a6b] mt-4 uppercase underline">Event Tracking Report</h2>
+                        </div>
                         
                         {/* Search & Stats */}
                         <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8 print:hidden">
@@ -199,6 +305,12 @@ const EventTracking = () => {
                                                             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-colors shadow-sm"
                                                         >
                                                             <Download size={14} /> Excel
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDownloadSinglePDF(stat.eventTitle, stat.requests); }}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors shadow-sm"
+                                                        >
+                                                            <FileText size={14} /> PDF
                                                         </button>
                                                     </div>
                                                 </div>
