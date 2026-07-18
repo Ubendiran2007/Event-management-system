@@ -22,6 +22,15 @@ const router = express.Router();
 const STAFF_CREDENTIALS = {
   // ── CSE ──────────────────────────────────────────────────
   'faculty.cse.seeded1': { username: 'csefaculty1', password: 'password', user: { id: 'fac_cse_mock_1', name: 'CSE Faculty 1', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded2': { username: 'csefaculty2', password: 'password', user: { id: 'fac_cse_mock_2', name: 'CSE Faculty 2', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded3': { username: 'csefaculty3', password: 'password', user: { id: 'fac_cse_mock_3', name: 'CSE Faculty 3', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded4': { username: 'csefaculty4', password: 'password', user: { id: 'fac_cse_mock_4', name: 'CSE Faculty 4', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded5': { username: 'csefaculty5', password: 'password', user: { id: 'fac_cse_mock_5', name: 'CSE Faculty 5', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded6': { username: 'csefaculty6', password: 'password', user: { id: 'fac_cse_mock_6', name: 'CSE Faculty 6', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded7': { username: 'csefaculty7', password: 'password', user: { id: 'fac_cse_mock_7', name: 'CSE Faculty 7', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded8': { username: 'csefaculty8', password: 'password', user: { id: 'fac_cse_mock_8', name: 'CSE Faculty 8', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded9': { username: 'csefaculty9', password: 'password', user: { id: 'fac_cse_mock_9', name: 'CSE Faculty 9', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
+  'faculty.cse.seeded10': { username: 'csefaculty10', password: 'password', user: { id: 'fac_cse_mock_10', name: 'CSE Faculty 10', email: 'ubendirankumar@gmail.com', role: 'FACULTY', department: 'CSE', assignedClasses: [] } },
   'faculty.cse':  { username: 'faculty.cse',  password: 'password', user: { id: 'f_cse',   name: 'Dr. Arul Kumar',     email: 'ubendirankumar@gmail.com',   role: 'FACULTY', department: 'CSE', assignedClasses: ['CSE B', 'CSE D'] } },
   'hod.cse':      { username: 'hod.cse',      password: 'password', user: { id: 'h_cse',   name: 'Dr. Meena Iyer',     email: 'ubendirankumar@gmail.com',       role: 'HOD',     department: 'CSE'   } },
 
