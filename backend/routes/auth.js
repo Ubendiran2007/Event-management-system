@@ -95,7 +95,9 @@ async function syncStaffUserToFirestore(staffUser, password) {
     email: String(staffUser.email || '').toLowerCase(),
     role: String(staffUser.role || '').toUpperCase(),
     department: staffUser.department || null,
-    assignedClasses: staffUser.assignedClasses || [],
+    assignedClasses: (current.assignedClasses !== undefined && Array.isArray(current.assignedClasses)) 
+      ? current.assignedClasses 
+      : (staffUser.assignedClasses || []),
     password: current.password || password,
     updatedAt: new Date().toISOString(),
     createdAt: current.createdAt || new Date().toISOString(),
