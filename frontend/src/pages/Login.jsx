@@ -132,7 +132,7 @@ const Login = () => {
             />
 
             <div className="space-y-2">
-              <label className="text-sm font-semibold text-slate-700">Email Address</label>
+              <label className="text-sm font-semibold text-slate-700">Email Address or Username</label>
               <input
                 type="text"
                 name="login-username"
@@ -141,7 +141,7 @@ const Login = () => {
                 onFocus={enableInputEditing}
                 onClick={enableInputEditing}
                 className="input-field"
-                placeholder="Enter your institutional email"
+                placeholder="Enter your email or username"
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
