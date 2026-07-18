@@ -20,7 +20,7 @@ const STAFF_ROLES = [
   'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA', 'IQAC_TEAM'
 ];
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? '' : 'https://event-management-system-dpzc.onrender.com');
+const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
 
 const ManageStudents = () => {
     const { currentUser, students, staffUsers, loading } = useAppContext();
@@ -129,8 +129,8 @@ const ManageStudents = () => {
         setIsProcessing(true);
         try {
             const url = editingStudent 
-                ? `/api/students/${editingStudent.id}`
-                : `/api/students`;
+                ? `${API_BASE}/api/students/${editingStudent.id}`
+                : `${API_BASE}/api/students`;
             const method = editingStudent ? 'PUT' : 'POST';
             
             const payload = { ...studentForm, className: studentForm.class.replace(/\s+/g, '-') };
@@ -159,7 +159,7 @@ const ManageStudents = () => {
         setIsProcessing(true);
         try {
             const className = deletingStudent.class.replace(/\s+/g, '-');
-            const res = await fetch(`/api/students/${deletingStudent.id}`, {
+            const res = await fetch(`${API_BASE}/api/students/${deletingStudent.id}`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ className })
@@ -180,8 +180,8 @@ const ManageStudents = () => {
         setIsProcessing(true);
         try {
             const url = editingStaff 
-                ? `/api/users/${editingStaff.id}`
-                : `/api/users`;
+                ? `${API_BASE}/api/users/${editingStaff.id}`
+                : `${API_BASE}/api/users`;
             const method = editingStaff ? 'PUT' : 'POST';
             
             const res = await fetch(url, {
@@ -207,7 +207,7 @@ const ManageStudents = () => {
         if (!deletingStaff) return;
         setIsProcessing(true);
         try {
-            const res = await fetch(`/api/users/${deletingStaff.id}`, {
+            const res = await fetch(`${API_BASE}/api/users/${deletingStaff.id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
             });
@@ -261,7 +261,7 @@ const ManageStudents = () => {
         if (bulkData.length === 0) return;
         setIsProcessing(true);
         try {
-            const res = await fetch('/api/students/bulk', {
+            const res = await fetch(`${API_BASE}/api/students/bulk`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ students: bulkData })
@@ -285,7 +285,7 @@ const ManageStudents = () => {
     const confirmResetODUsage = async () => {
         setIsProcessing(true);
         try {
-            const res = await fetch('/api/students/reset-od-usage', {
+            const res = await fetch(`${API_BASE}/api/students/reset-od-usage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
             });
@@ -305,7 +305,7 @@ const ManageStudents = () => {
         const newRole = student.role === UserRole.STUDENT_ORGANIZER ? UserRole.STUDENT_GENERAL : UserRole.STUDENT_ORGANIZER;
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
-            await fetch(`/api/students/${student.id}/role`, {
+            await fetch(`${API_BASE}/api/students/${student.id}/role`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ role: newRole, className, isApprovedOrganizer: newRole === UserRole.STUDENT_ORGANIZER }),
@@ -322,7 +322,7 @@ const ManageStudents = () => {
         setTogglingId(`${student.id}-${field}`);
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
-            await fetch(`/api/students/${student.id}/od-stats`, {
+            await fetch(`${API_BASE}/api/students/${student.id}/od-stats`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ className, [field]: value }),
@@ -571,7 +571,7 @@ const ManageStudents = () => {
                                                                         <button onClick={async () => {
                                                                             setIsProcessing(true);
                                                                             try {
-                                                                                await fetch(`/api/users/${f.id}`, {
+                                                                                await fetch(`${API_BASE}/api/users/${f.id}`, {
                                                                                     method: 'PUT',
                                                                                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                                                                                     body: JSON.stringify({ ...f, assignedClasses: (f.assignedClasses || []).filter(c => c !== cls) })
@@ -613,7 +613,7 @@ const ManageStudents = () => {
                                                                                         try {
                                                                                             const currentAssigned = fac.assignedClasses || [];
                                                                                             if (!currentAssigned.includes(cls)) {
-                                                                                                await fetch(`/api/users/${fac.id}`, {
+                                                                                                await fetch(`${API_BASE}/api/users/${fac.id}`, {
                                                                                                     method: 'PUT',
                                                                                                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                                                                                                     body: JSON.stringify({ ...fac, assignedClasses: [...currentAssigned, cls] })
