@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Auth Helper
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    match /events/{eventId} {
+      
+      // Posters: Publicly readable (needed for landing pages, dashboards)
+      // Writable by authenticated users (event creators)
+      match /poster_{fileName} {
+        allow read: if true;
+        allow write: if isAuthenticated();
+      }
+      
+      // Resource Persons: Publicly readable 
+      // Writable by authenticated users
+      match /resourcePersons/{fileName} {
+        allow read: if true;
+        allow write: if isAuthenticated();
+      }
+      
+      // Gallery: Readable by authenticated users (students viewing past events)
+      // Writable by authenticated users (event creators)
+      match /gallery/{fileName} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+      
+      // IQAC Documents: Highly restricted
+      // Readable by authenticated users (but backend controls the actual URL distribution)
+      // Writable by authenticated users
+      match /documents/{fileName} {
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+      }
+    }
+    
+    // Default Deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

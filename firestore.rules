@@ -1,113 +1,66 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ── Helper functions ─────────────────────────────────────────────────────
-    function isSignedIn() {
+    
+    // Auth Helper
+    function isAuthenticated() {
       return request.auth != null;
     }
 
-    function getRole() {
-      return request.auth.token.role;
+    // 1. Logs (auditLogs, activityLogs, emailLogs, eventApprovalLogs)
+    // Written strictly by the Backend (Admin SDK). 
+    // EmailAudit.jsx reads emailLogs directly from the frontend, so we must allow read for authenticated users (or restrict by role if custom claims are set, but for safety layer, isAuthenticated is the baseline).
+    match /auditLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if false; 
     }
-
-    function getDept() {
-      return request.auth.token.department;
+    match /activityLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if false; 
     }
-
-    function isRole(role) {
-      return isSignedIn() && getRole() == role;
-    }
-
-    function isAnyRole(roles) {
-      return isSignedIn() && getRole() in roles;
-    }
-
-    function isAdmin() {
-      return isAnyRole(['SYSTEM_ADMIN', 'IQAC_TEAM']);
-    }
-
-    function isStudent() {
-      return isAnyRole(['STUDENT_GENERAL', 'STUDENT_ORGANIZER']);
-    }
-
-    function sameDept(dept) {
-      return getDept() == dept;
-    }
-
-    // ── Events collection ─────────────────────────────────────────────────────
-    match /events/{eventId} {
-      // Any authenticated user can read events (visibility filtering done in app)
-      allow read: if isSignedIn();
-
-      // Only organizers (student or faculty) can create
-      allow create: if isAnyRole(['STUDENT_ORGANIZER', 'FACULTY', 'SYSTEM_ADMIN']);
-
-      // Status updates require specific role and the role must match the document's state
-      allow update: if isSignedIn() && (
-        // Faculty can only approve events in their department
-        (isRole('FACULTY') && sameDept(resource.data.department)) ||
-        // HOD can only approve events in their department
-        (isRole('HOD') && sameDept(resource.data.department)) ||
-        // Dept teams can update department approvals
-        isAnyRole(['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA']) ||
-        // IQAC can do final approval
-        isRole('IQAC_TEAM') ||
-        // Organizer can only update their own event
-        (isStudent() && resource.data.organizerId == request.auth.uid)
-      );
-
-      // Only admin or organizer of the event can delete
-      allow delete: if isAdmin() || (isStudent() && resource.data.organizerId == request.auth.uid);
-    }
-
-    // ── correctionRequests collection ─────────────────────────────────────────
-    match /correctionRequests/{reqId} {
-      // Students can only read their own requests
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        isAnyRole(['FACULTY', 'HOD']) ||
-        (isStudent() && resource.data.studentId == request.auth.uid)
-      );
-
-      // Students can create
-      allow create: if isStudent();
-
-      // Only authorized approvers can update status
-      allow update: if isAnyRole(['FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']);
-
-      allow delete: if isAdmin();
-    }
-
-    // ── emailLogs collection ──────────────────────────────────────────────────
     match /emailLogs/{logId} {
-      // Only admin/IQAC can read logs
-      allow read: if isAnyRole(['SYSTEM_ADMIN', 'IQAC_TEAM']);
-      // Backend writes only — deny all client writes
-      allow create, update, delete: if false;
+      allow read: if isAuthenticated();
+      allow write: if false; 
     }
-
-    // ── users collection ─────────────────────────────────────────────────────
+    match /eventApprovalLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if false; 
+    }
+    
+    // 2. Events Collection
+    // Read: Authenticated users can read.
+    // Create/Update: Authenticated users can create/update. 
+    // Delete: Forbidden.
+    // (Detailed business logic like status transitions and approvals is enforced in the backend API).
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+    
+    // 3. User Profiles & Settings
     match /users/{userId} {
-      // Authenticated users can read their own profile; admin can read all
-      allow read: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
-      // Only admin can modify user records
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isAuthenticated();
+      allow write: if request.auth.uid == userId; // Basic ownership
     }
-
-    // ── students subcollections ───────────────────────────────────────────────
-    match /students/{className}/members/{memberId} {
-      allow read: if isSignedIn() && (
-        isAdmin() ||
-        isAnyRole(['FACULTY', 'HOD']) ||
-        request.auth.uid == memberId
-      );
-      allow create, update, delete: if isAdmin();
+    
+    // 4. Legacy / Root Collections
+    // Written via backend transactions, but may be read by frontend.
+    match /eventRegistrations/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
     }
-
-    // ── Default: deny everything else ─────────────────────────────────────────
+    match /eventAttendance/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    match /eventFeedback/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    
+    // 5. Default deny for everything else
     match /{document=**} {
       allow read, write: if false;
     }

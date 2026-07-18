@@ -4,8 +4,9 @@ import {
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
   Star, AlertTriangle, Clock3,
-  XCircle, Loader2, ClipboardList, Eye, Download
+  XCircle, Loader2, ClipboardList, Eye, Download, Users, Edit3, Save, PlayCircle, Plus, GraduationCap, Share2, Upload, MessageSquare
 } from 'lucide-react';
+import { uploadFileToStorage, deleteFileFromStorage, validateFile } from '../utils/storageService';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -219,19 +220,23 @@ const EventDetailModal = ({ event, onClose }) => {
     ? (s1.eventStartDate === s1.eventEndDate ? s1.eventStartDate : `${s1.eventStartDate} to ${s1.eventEndDate}`)
     : (event?.date || 'Not specified');
   const enabledRequirementCount = Object.values(s1?.requirements || {}).filter(Boolean).length;
-  const eventPosterSrc = event?.posterDataUrl || event?.posterUrl || null;
+  const eventPosterSrc = event?.posterStorage?.downloadURL || event?.posterDataUrl || event?.posterUrl || null;
 
   const isMedia = currentUser?.role === UserRole.MEDIA;
   const isMediaUploadAllowed = isMedia && (
     ['REQUESTED', 'REWORK_REQUESTED', 'UPLOADED', 'COMPLETED'].includes(String(event.posterWorkflow?.status || '').toUpperCase()) ||
     event.status === 'REJECTED'
   );
-  const canFinalizePoster = isMediaUploadAllowed && (event.posterDataUrl || event.posterUrl || posterUploadSuccess) && String(event.posterWorkflow?.status || '').toUpperCase() !== 'COMPLETED';
+  const canFinalizePoster = isMediaUploadAllowed && (eventPosterSrc || posterUploadSuccess) && String(event.posterWorkflow?.status || '').toUpperCase() !== 'COMPLETED';
 
   const handleRemovePoster = async () => {
     setIsUploadingPoster(true);
     setPosterUploadError('');
     try {
+      if (event?.posterStorage?.storagePath) {
+        await deleteFileFromStorage(event.posterStorage.storagePath);
+      }
+
       const patchRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -245,6 +250,7 @@ const EventDetailModal = ({ event, onClose }) => {
             ...prev, 
             posterDataUrl: null, 
             posterUrl: null,
+            posterStorage: null,
             posterWorkflow: { ...(prev.posterWorkflow || {}), status: 'REQUESTED' }
           }) : null);
       }
@@ -327,8 +333,8 @@ const EventDetailModal = ({ event, onClose }) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Centralized security validation — whitelist MIME, block dangerous extensions, enforce size
-    const validationError = validateUpload(file, 'poster');
+    // Centralized security validation
+    const validationError = validateFile(file, 'IMAGE', 5 * 1024 * 1024);
     if (validationError) {
       setPosterUploadError(validationError);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -340,26 +346,18 @@ const EventDetailModal = ({ event, onClose }) => {
     setPosterUploadSuccess('');
 
     try {
-      const posterDataUrl = file.type === 'image/gif'
-        ? await new Promise((res, rej) => {
-            const reader = new FileReader();
-            reader.onload = ev => res(ev.target.result);
-            reader.onerror = () => rej(new Error('Failed to read GIF.'));
-            reader.readAsDataURL(file);
-          })
-        : await compressImageToDataUrl(file);
-
-      if (posterDataUrl.length > 10 * 1024 * 1024) {
-         setPosterUploadError('Poster is too large after processing. Please try a smaller image.');
-         setIsUploadingPoster(false);
-         return;
+      if (event?.posterStorage?.storagePath) {
+        await deleteFileFromStorage(event.posterStorage.storagePath);
       }
+
+      const metadata = await uploadFileToStorage(file, `events/${event.id}/poster_${Date.now()}.jpg`);
 
       const patchRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          posterDataUrl,
+          action: 'upload',
+          posterStorage: metadata,
           posterFileName: file.name,
           posterMimeType: file.type,
           updatedBy: currentUser.name
@@ -377,7 +375,8 @@ const EventDetailModal = ({ event, onClose }) => {
       if (setSelectedEvent) {
           setSelectedEvent(prev => prev ? ({ 
             ...prev, 
-            posterDataUrl,
+            posterDataUrl: null, // Clear legacy
+            posterStorage: metadata,
             posterWorkflow: { ...(prev.posterWorkflow || {}), status: 'UPLOADED' }
           }) : null);
       }
@@ -1838,18 +1837,18 @@ const EventDetailModal = ({ event, onClose }) => {
                     disabled={isUploadingPoster || isProcessing}
                   />
 
-                  {(event.posterDataUrl || event.posterUrl) ? (
+                  {eventPosterSrc ? (
                     <div className="flex flex-col gap-3">
                       <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 relative">
                         <img
-                          src={event.posterDataUrl || event.posterUrl}
+                          src={eventPosterSrc}
                           alt="Preview"
                           className="w-full max-h-[250px] object-contain bg-slate-100"
                         />
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <a
-                          href={event.posterDataUrl || event.posterUrl}
+                          href={eventPosterSrc}
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm"
@@ -1857,7 +1856,7 @@ const EventDetailModal = ({ event, onClose }) => {
                           <Eye size={14} /> Preview
                         </a>
                         <a
-                          href={event.posterDataUrl || event.posterUrl}
+                          href={eventPosterSrc}
                           download={`Poster_${event.title?.replace(/\s+/g, '_') || 'Event'}.jpg`}
                           className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 shadow-sm"
                         >

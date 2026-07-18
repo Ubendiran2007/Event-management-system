@@ -433,9 +433,28 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
 router.get('/login-history', requireAuth, async (req, res) => {
   try {
     const email = req.user.email.toLowerCase();
-    const q = query(collection(db, 'loginLogs'), where('email', '==', email));
+    
+    // Support legacy frontend format by querying the new auditLogs
+    const q = query(collection(db, 'auditLogs'), where('actor.email', '==', email), where('category', '==', 'AUTH'));
     const snapshot = await getDocs(q);
-    const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    let logs = snapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        // Legacy mapping
+        email: data.actor?.email,
+        timestamp: data.timestamp,
+        browser: data.userAgent ? data.userAgent.split('-')[1]?.trim() : 'Unknown',
+        os: data.userAgent ? data.userAgent.split('-')[0]?.trim() : 'Unknown',
+        ip: data.ipAddress,
+        status: data.status,
+        activity: data.action,
+        count: 1
+      };
+    });
+    
+    // Since Firebase doesn't allow orderby with equality unless indexed, we sort in memory for now
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     res.json({ success: true, logs: logs.slice(0, 10) });
   } catch (error) {
@@ -449,14 +468,46 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
     const email = req.user.email.toLowerCase();
     const limitCount = req.query.limit ? parseInt(req.query.limit) : 100;
     
-    // In order to use orderBy with where, an index is required. 
-    // If not deployed, we keep the previous fetch-all + JS sort logic but increase the slice to support full history.
-    const q = query(collection(db, 'securityLogs'), where('email', '==', email));
+    // Support legacy frontend format by querying the new activityLogs
+    const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email));
     const snapshot = await getDocs(q);
-    const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     
-    res.json({ success: true, logs: logs.slice(0, limitCount) });
+    // We also need to get auditLogs that aren't AUTH for full timeline? 
+    // Wait, old securityLogs had "email" directly on the root.
+    const auditQ = query(collection(db, 'auditLogs'), where('actor.email', '==', email));
+    const auditSnapshot = await getDocs(auditQ);
+    
+    const allLogs = [];
+    
+    snapshot.docs.forEach(d => {
+      const data = d.data();
+      allLogs.push({
+        id: d.id,
+        email: data.actor?.userId,
+        timestamp: data.timestamp,
+        activity: data.action,
+        status: data.status,
+        ip: data.ipAddress || '',
+        count: 1
+      });
+    });
+    
+    auditSnapshot.docs.forEach(d => {
+      const data = d.data();
+      allLogs.push({
+        id: d.id,
+        email: data.actor?.email,
+        timestamp: data.timestamp,
+        activity: data.action,
+        status: data.status,
+        ip: data.ipAddress || '',
+        count: 1
+      });
+    });
+    
+    allLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    res.json({ success: true, logs: allLogs.slice(0, limitCount) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });
@@ -468,13 +519,31 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
 // ==========================================
 
 router.get('/iqac-audit', requireAuth, async (req, res) => {
-  if (req.user.role !== 'IQAC_TEAM') {
+  if (req.user.role !== 'IQAC_TEAM' && req.user.role !== 'PRINCIPAL' && req.user.role !== 'HOD') {
     return res.status(403).json({ success: false, message: 'Unauthorized' });
   }
-  
+
   try {
-    const snapshot = await getDocs(collection(db, 'loginLogs'));
-    const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Return combined logins + audits
+    const snapshot = await getDocs(collection(db, 'auditLogs'));
+    const logs = snapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        userId: data.actor?.userId,
+        name: data.actor?.name,
+        role: data.actor?.role,
+        department: data.details?.department,
+        rollNo: data.details?.rollNo,
+        email: data.actor?.email,
+        timestamp: data.timestamp,
+        browser: data.userAgent ? data.userAgent.split('-')[1]?.trim() : 'Unknown',
+        os: data.userAgent ? data.userAgent.split('-')[0]?.trim() : 'Unknown',
+        ip: data.ipAddress,
+        status: data.status
+      };
+    });
+    
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     res.json({ success: true, logs });
   } catch (error) {

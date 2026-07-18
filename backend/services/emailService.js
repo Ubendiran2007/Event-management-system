@@ -1,8 +1,11 @@
-﻿const nodemailer = require('nodemailer');
+const nodemailer = require('nodemailer');
 const templates = require('./emailTemplates');
 const { db } = require('../firebase');
 const { collection, addDoc } = require('firebase/firestore');
 const net = require('net');
+const { logEmail } = require('../utils/logger');
+const crypto = require('crypto');
+require('dotenv').config();
 
 function getSenderAddress() {
   return process.env.EMAIL_FROM || process.env.EMAIL_USER;
@@ -89,24 +92,26 @@ const transporter = nodemailer.createTransport({
 })();
 
 async function logEmailAudit(mailOptions, status, errorMessage = '', smtpResponse = '') {
-  try {
-    if (!db) return;
-    await addDoc(collection(db, 'emailLogs'), {
-      recipient: Array.isArray(mailOptions.to) ? mailOptions.to.join(',') : mailOptions.to,
-      originalRecipient: mailOptions._originalTo || null,
-      testModeActive: process.env.EMAIL_TEST_MODE === 'true',
+  const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
+  const recipient = Array.isArray(mailOptions.to) ? mailOptions.to.join(',') : mailOptions.to;
+  
+  logEmail({
+    action: `SEND_${mailOptions.emailType || 'GENERAL'}_EMAIL`,
+    status: status,
+    correlationId: mailOptions.eventId || null, // Using eventId to correlate
+    requestId: crypto.randomUUID(),
+    target: {
+      entityType: 'USER_EMAIL',
+      entityId: isTestMode ? mailOptions._originalTo : recipient
+    },
+    details: {
       subject: mailOptions.subject || '',
-      status,
-      timestamp: new Date().toISOString(),
       smtpResponse,
       errorMessage,
-      emailType: mailOptions.emailType || 'GENERAL',
-      eventId: mailOptions.eventId || null,
+      testModeActive: isTestMode,
       eventTitle: mailOptions.eventTitle || null
-    });
-  } catch (err) {
-    console.error('[Email Service] Failed to log email audit:', err.message);
-  }
+    }
+  });
 }
 
 async function sendMailWithFallback(mailOptions) {

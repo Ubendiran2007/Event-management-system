@@ -15,6 +15,32 @@ const {
   deleteField
 } = require('firebase/firestore');
 const { db } = require('../firebase');
+const { getStorage, ref, listAll, deleteObject } = require('firebase/storage');
+const { getApp } = require('firebase/app');
+
+// Initialize storage for backend cleanup
+const storage = getStorage(getApp());
+
+// Helper to recursively delete a folder in Firebase Storage
+const deleteStorageFolder = async (folderPath) => {
+  try {
+    const folderRef = ref(storage, folderPath);
+    const res = await listAll(folderRef);
+    
+    // Delete all files in the current folder
+    const deletePromises = res.items.map((itemRef) => deleteObject(itemRef));
+    await Promise.all(deletePromises);
+    
+    // Recursively delete sub-folders
+    for (const prefixRef of res.prefixes) {
+      await deleteStorageFolder(prefixRef.fullPath);
+    }
+  } catch (error) {
+    if (error.code !== 'storage/object-not-found') {
+      console.error(`[deleteStorageFolder] Error deleting ${folderPath}:`, error.message);
+    }
+  }
+};
 const {
   sendEventNotificationToFaculty,
   sendEventStatusNotification,
@@ -30,6 +56,8 @@ const {
   handleEventPostponed
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
+const { logActivity } = require('../utils/logger');
+const crypto = require('crypto');
 
 const router = express.Router();
 
@@ -194,7 +222,13 @@ router.post('/', async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
 
-    const docRef = await addDoc(collection(db, 'events'), payload);
+    let docRef;
+    if (eventData.id) {
+      docRef = doc(db, 'events', eventData.id);
+      await setDoc(docRef, payload);
+    } else {
+      docRef = await addDoc(collection(db, 'events'), payload);
+    }
 
     // ── Background Notifications (centralized handler) ─────────────────
     const payloadWithId = { id: docRef.id, ...payload };
@@ -216,6 +250,21 @@ router.post('/', async (req, res) => {
         console.error('[events/create/bg] Error in email handler:', err.message);
       }
     })();
+
+    logActivity({
+      category: 'EVENT',
+      action: 'EVENT_CREATED',
+      status: 'SUCCESS',
+      correlationId: docRef.id,
+      requestId: crypto.randomUUID(),
+      actor: {
+        userId: eventData.coordinator?.studentEmail || 'UNKNOWN',
+        name: eventData.coordinator?.studentName || 'Unknown User',
+        role: eventData.role || 'STUDENT'
+      },
+      target: { entityType: 'EVENT', entityId: docRef.id },
+      details: { title: payload.title, status: payload.status }
+    });
 
     return res.status(201).json({
       success: true,
@@ -484,9 +533,8 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
     }
 
     // [MODULE 3] Atomic Write to events and eventApprovalLogs
-    const batch = writeBatch(db);
-    
-    // [LEGACY COMPATIBILITY - REMOVE LATER] Dual-write to embedded array
+    // [MODULE 7] Optmistic concurrency control using transactions
+    const logRef = doc(collection(db, 'eventApprovalLogs'));
     const legacyAction = {
       status: finalStatus,
       approvedBy,
@@ -495,20 +543,47 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
       remarks: finalStatus === 'REJECTED' ? updatePayload.rejectionReason : ''
     };
     updatePayload.eventActions = arrayUnion(legacyAction);
-    batch.update(eventRef, updatePayload);
 
-    // [NEW ARCHITECTURE] Write to normalized eventApprovalLogs collection
-    const logRef = doc(collection(db, 'eventApprovalLogs'));
-    batch.set(logRef, {
-      eventId: req.params.id,
-      action: finalStatus,
-      approvedBy,
-      role: actingRole,
-      remarks: finalStatus === 'REJECTED' ? updatePayload.rejectionReason : '',
-      timestamp: new Date().toISOString()
+    try {
+      await runTransaction(db, async (t) => {
+        const snap = await t.get(eventRef);
+        if (!snap.exists()) throw new Error('NOT_FOUND: Event not found');
+        if (snap.data().status !== prevStatus) {
+          throw new Error('CONFLICT: Event state was modified concurrently.');
+        }
+
+        t.update(eventRef, updatePayload);
+        t.set(logRef, {
+          eventId: req.params.id,
+          action: finalStatus,
+          approvedBy,
+          role: actingRole,
+          remarks: finalStatus === 'REJECTED' ? updatePayload.rejectionReason : '',
+          timestamp: new Date().toISOString()
+        });
+      });
+    } catch (txErr) {
+      if (txErr.message.includes('CONFLICT')) {
+        return res.status(409).json({ success: false, message: 'Conflict: This event was modified by someone else. Please refresh and try again.' });
+      }
+      throw txErr;
+    }
+
+    logActivity({
+      category: 'EVENT',
+      action: finalStatus === 'REJECTED' ? 'EVENT_REJECTED' : 'EVENT_APPROVED',
+      status: 'SUCCESS',
+      correlationId: req.params.id,
+      requestId: crypto.randomUUID(),
+      actor: {
+        userId: req.user?.email || actingName || actingRole,
+        name: actingName || 'Unknown Approver',
+        role: actingRole
+      },
+      target: { entityType: 'EVENT', entityId: req.params.id },
+      details: { previousStatus: prevStatus, newStatus: finalStatus }
     });
 
-    await batch.commit();
     const eventData = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
     const notificationStatus = finalStatus; // Use the potentially advanced status for notifications
 
@@ -838,51 +913,12 @@ router.post('/:id/register', async (req, res) => {
     }
 
     const eventRef = doc(db, 'events', req.params.id);
-    const eventSnap = await getDoc(eventRef);
-
-    if (!eventSnap.exists()) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
-    }
-
-    const eventData = eventSnap.data();
-
-    if (eventData.status !== 'POSTED') {
-      return res.status(400).json({ success: false, message: 'Cannot register for an event that is not approved and posted.' });
-    }
-
-    // Prevent organizers from registering for their own event
-    if (String(eventData.organizerId) === String(userId) || (eventData.organizerEmail && userEmail && eventData.organizerEmail.toLowerCase() === userEmail.toLowerCase())) {
-      return res.status(400).json({ success: false, message: 'Organizers cannot register for their own events.' });
-    }
-
-    const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
-    const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
-    
-    if (startDateStr) {
-      try {
-        const sDP = startDateStr.split('-');
-        const sTP = startTimeStr.split(':');
-        const startTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
-        
-        if (Date.now() >= startTimestamp) {
-          return res.status(400).json({ success: false, message: 'Registration is closed. This event is already ongoing or completed.' });
-        }
-      } catch (err) {
-        const today = new Date().toISOString().split('T')[0];
-        if (startDateStr < today) {
-          return res.status(400).json({ success: false, message: 'Registration is closed. This event is already ongoing or completed.' });
-        }
-      }
-    }
-
-    const registeredStudents = eventData.registeredStudents || [];
-
-    // Prevent duplicate registration
-    if (registeredStudents.some(s => s.userId === userId)) {
-      return res.status(409).json({ success: false, message: 'Already registered for this event' });
-    }
+    const registrationId = `${req.params.id}_${userId}`;
+    const registrationRef = doc(db, 'eventRegistrations', registrationId);
 
     const newEntry = {
+      eventId: req.params.id,
+      studentId: userId,
       userId,
       userName,
       userEmail: userEmail || '',
@@ -890,17 +926,84 @@ router.post('/:id/register', async (req, res) => {
       userYear: userYear || '',
       rollNo: rollNo || '',
       userClass: userClass || '',
+      status: 'REGISTERED',
       registeredAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    const updatedList = [...registeredStudents, newEntry];
-    await updateDoc(eventRef, {
-      registeredStudents: updatedList,
-      updatedAt: new Date().toISOString(),
+    await runTransaction(db, async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (!eventSnap.exists()) {
+        throw new Error('NOT_FOUND:Event not found');
+      }
+
+      const eventData = eventSnap.data();
+
+      if (eventData.status !== 'POSTED') {
+        throw new Error('BAD_REQUEST:Cannot register for an event that is not approved and posted.');
+      }
+
+      // Prevent organizers from registering for their own event
+      if (String(eventData.organizerId) === String(userId) || (eventData.organizerEmail && userEmail && eventData.organizerEmail.toLowerCase() === userEmail.toLowerCase())) {
+        throw new Error('BAD_REQUEST:Organizers cannot register for their own events.');
+      }
+
+      const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
+      const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
+      
+      if (startDateStr) {
+        try {
+          const sDP = startDateStr.split('-');
+          const sTP = startTimeStr.split(':');
+          const startTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+          
+          if (Date.now() >= startTimestamp) {
+            throw new Error('BAD_REQUEST:Registration is closed. This event is already ongoing or completed.');
+          }
+        } catch (err) {
+          const today = new Date().toISOString().split('T')[0];
+          if (startDateStr < today) {
+            throw new Error('BAD_REQUEST:Registration is closed. This event is already ongoing or completed.');
+          }
+        }
+      }
+
+      const regSnap = await transaction.get(registrationRef);
+      if (regSnap.exists()) {
+        throw new Error('CONFLICT:Already registered for this event');
+      }
+
+      // [LEGACY COMPATIBILITY - REMOVE LATER]
+      const registeredStudents = eventData.registeredStudents || [];
+      if (registeredStudents.some(s => s.userId === userId)) {
+        throw new Error('CONFLICT:Already registered for this event');
+      }
+      
+      const updatedList = [...registeredStudents, newEntry];
+      const stats = eventData.stats || {};
+      const newStats = {
+        ...stats,
+        registeredCount: (stats.registeredCount || 0) + 1
+      };
+
+      // 1. Create root collection doc
+      transaction.set(registrationRef, newEntry);
+      
+      // 2. Update events document (stats + dual-write legacy)
+      transaction.update(eventRef, {
+        registeredStudents: updatedList, // [LEGACY COMPATIBILITY - REMOVE LATER]
+        stats: newStats,
+        updatedAt: new Date().toISOString(),
+      });
     });
 
     return res.status(201).json({ success: true, message: 'Registered successfully', entry: newEntry });
   } catch (error) {
+    if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('CONFLICT')) return res.status(409).json({ success: false, message: error.message.split(':')[1] });
+    
     console.error('[events/register] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to register', error: error.message });
   }
@@ -919,29 +1022,58 @@ router.post('/:id/withdraw', async (req, res) => {
     }
 
     const eventRef = doc(db, 'events', req.params.id);
-    const eventSnap = await getDoc(eventRef);
+    const registrationId = `${req.params.id}_${userId}`;
+    const registrationRef = doc(db, 'eventRegistrations', registrationId);
 
-    if (!eventSnap.exists()) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
-    }
+    await runTransaction(db, async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (!eventSnap.exists()) {
+        throw new Error('NOT_FOUND:Event not found');
+      }
 
-    const eventData = eventSnap.data();
-    const registeredStudents = eventData.registeredStudents || [];
-    const updatedList = registeredStudents.filter(s => s.userId !== userId);
+      const regSnap = await transaction.get(registrationRef);
+      const isNewArchitectureRegistered = regSnap.exists() && regSnap.data().status === 'REGISTERED';
+      
+      const eventData = eventSnap.data();
+      const registeredStudents = eventData.registeredStudents || [];
+      const isLegacyRegistered = registeredStudents.some(s => s.userId === userId);
 
-    await updateDoc(eventRef, {
-      registeredStudents: updatedList,
-      updatedAt: new Date().toISOString(),
+      if (!isNewArchitectureRegistered && !isLegacyRegistered) {
+         // Idempotency: already withdrawn or never registered
+         return;
+      }
+
+      const updatedList = registeredStudents.filter(s => s.userId !== userId);
+      
+      const stats = eventData.stats || {};
+      const currentCount = stats.registeredCount || 0;
+      const newStats = {
+        ...stats,
+        // Only decrement if we are actually removing them from new architecture OR if legacy list was shortened
+        registeredCount: Math.max(0, currentCount - 1)
+      };
+
+      if (regSnap.exists()) {
+         transaction.update(registrationRef, { status: 'WITHDRAWN', updatedAt: new Date().toISOString() });
+      }
+
+      transaction.update(eventRef, {
+        registeredStudents: updatedList, // [LEGACY COMPATIBILITY - REMOVE LATER]
+        stats: newStats,
+        updatedAt: new Date().toISOString(),
+      });
     });
 
     return res.json({ success: true, message: 'Withdrawn successfully' });
   } catch (error) {
+    if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
+    
     console.error('[events/withdraw] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to withdraw', error: error.message });
   }
 });
 
-// â”€â”€ DELETE /api/events/:id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————
 router.delete('/:id', async (req, res) => {
   if (!checkDb(res)) return;
 
@@ -965,6 +1097,9 @@ router.delete('/:id', async (req, res) => {
 
     await Promise.all([...deleteODPromises, ...deleteCorrectionPromises]);
     await deleteDoc(eventRef);
+
+    // Clean up Firebase Storage files associated with this event
+    await deleteStorageFolder(`events/${req.params.id}`);
 
     return res.json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {
@@ -999,6 +1134,7 @@ router.patch('/:id/poster', async (req, res) => {
         posterDataUrl: null,
         posterFileName: null,
         posterMimeType: null,
+        posterStorage: null,
         updatedAt: now,
         posterStatus: 'PENDING'
       };
@@ -1010,12 +1146,14 @@ router.patch('/:id/poster', async (req, res) => {
         };
       }
     } else {
-      if (!posterDataUrl) {
-        return res.status(400).json({ success: false, message: 'Poster data URL is required' });
+      const { posterStorage } = req.body;
+      if (!posterDataUrl && !posterStorage) {
+        return res.status(400).json({ success: false, message: 'Poster data or storage metadata is required' });
       }
 
       updatePayload = {
-        posterDataUrl,
+        posterDataUrl: posterDataUrl || null,
+        posterStorage: posterStorage || null,
         posterFileName,
         posterMimeType,
         updatedAt: now,
@@ -1828,56 +1966,103 @@ router.post('/:id/attendance', requireAuth, requireRole(['STUDENT_ORGANIZER', 'F
 
     // Validate registration
     const reqRef = doc(db, 'odRequests', registrationId);
-    const reqSnap = await getDoc(reqRef);
-    if (!reqSnap.exists()) return res.status(400).json({ success: false, silentMessage: 'Registration not found' });
-    
-    const reqData = reqSnap.data();
-    if (reqData.eventId !== eventId || reqData.status !== 'APPROVED') {
-      return res.status(400).json({ success: false, silentMessage: 'Student is not an approved participant' });
-    }
 
-    const attendance = reqData.attendance || {};
-    const dateAttendance = attendance[date] || {};
-    
-    if (dateAttendance[activeSession]) {
-      return res.json({ 
-        success: false, 
-        duplicate: true, 
+    const transactionResult = await runTransaction(db, async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      const eventData = eventSnap.data();
+      
+      if (eventData.organizerId !== req.user.id) {
+        throw new Error('FORBIDDEN:Forbidden');
+      }
+
+      const config = (eventData.attendanceConfigs || {})[date];
+      if (!config) throw new Error('BAD_REQUEST:Attendance not configured for this date');
+      
+      const activeSession = config.session1Status === 'Running' ? 'S1' : config.session2Status === 'Running' ? 'S2' : null;
+      if (!activeSession) throw new Error('BAD_REQUEST:No active session');
+
+      const reqSnap = await transaction.get(reqRef);
+      if (!reqSnap.exists()) throw new Error('BAD_REQUEST:Registration not found');
+      
+      const reqData = reqSnap.data();
+      if (reqData.eventId !== eventId || reqData.status !== 'APPROVED') {
+        throw new Error('BAD_REQUEST:Student is not an approved participant');
+      }
+
+      // [MODULE 4] Normalized eventAttendance Collection
+      const studentId = reqData.studentId || reqData.userId || reqData.rollNo;
+      const attId = `${eventId}_${studentId}`;
+      const attRef = doc(db, 'eventAttendance', attId);
+      const attSnap = await transaction.get(attRef);
+      
+      let eventAttendanceData = attSnap.exists() ? attSnap.data() : {
+          eventId: eventId,
+          studentId: studentId,
+          studentName: reqData.studentName,
+          rollNo: reqData.rollNo,
+          attendance: {},
+          status: 'ATTENDED',
+          createdAt: new Date().toISOString(),
+      };
+
+      const dateAttendance = eventAttendanceData.attendance[date] || {};
+      if (dateAttendance[activeSession]) {
+        return { 
+          duplicate: true, 
+          studentName: reqData.studentName, 
+          rollNo: reqData.rollNo, 
+          sessionLabel: activeSession === 'S1' ? 'Session 1' : 'Session 2' 
+        };
+      }
+
+      let wasAlreadyPresentAtAll = false;
+      Object.values(eventAttendanceData.attendance).forEach(dateAtt => {
+         if (dateAtt.S1 || dateAtt.S2) wasAlreadyPresentAtAll = true;
+      });
+
+      dateAttendance[activeSession] = true;
+      eventAttendanceData.attendance[date] = dateAttendance;
+      eventAttendanceData.updatedAt = new Date().toISOString();
+
+      // [LEGACY COMPATIBILITY - REMOVE LATER] Dual-write to odRequests
+      const legacyAttendance = reqData.attendance || {};
+      const legacyDateAtt = legacyAttendance[date] || {};
+      legacyDateAtt[activeSession] = true;
+      legacyAttendance[date] = legacyDateAtt;
+      transaction.update(reqRef, { attendance: legacyAttendance });
+
+      // 1. Create/Update root collection doc
+      transaction.set(attRef, eventAttendanceData);
+
+      // 2. Update events stats
+      const stats = eventData.attendanceStats || { totalApproved: 0, totalPresent: 0, s1Present: 0, s2Present: 0 };
+      if (activeSession === 'S1') stats.s1Present = (stats.s1Present || 0) + 1;
+      if (activeSession === 'S2') stats.s2Present = (stats.s2Present || 0) + 1;
+      if (!wasAlreadyPresentAtAll) {
+         stats.totalPresent = (stats.totalPresent || 0) + 1;
+      }
+      
+      transaction.update(eventRef, { attendanceStats: stats });
+
+      return {
+        success: true, 
         studentName: reqData.studentName, 
         rollNo: reqData.rollNo, 
-        sessionLabel: activeSession === 'S1' ? 'Session 1' : 'Session 2'
-      });
-    }
-
-    let wasAlreadyPresentAtAll = false;
-    Object.values(attendance).forEach(dateAtt => {
-       if (dateAtt.S1 || dateAtt.S2) wasAlreadyPresentAtAll = true;
+        sessionLabel: activeSession === 'S1' ? 'Session 1' : 'Session 2',
+        sessionKey: activeSession,
+        isFirstScan: !wasAlreadyPresentAtAll
+      };
     });
 
-    dateAttendance[activeSession] = true;
-    attendance[date] = dateAttendance;
-    
-    await updateDoc(reqRef, { attendance });
-
-    // Update stats
-    const stats = eventData.attendanceStats || { totalApproved: 0, totalPresent: 0, s1Present: 0, s2Present: 0 };
-    if (activeSession === 'S1') stats.s1Present = (stats.s1Present || 0) + 1;
-    if (activeSession === 'S2') stats.s2Present = (stats.s2Present || 0) + 1;
-    if (!wasAlreadyPresentAtAll) {
-       stats.totalPresent = (stats.totalPresent || 0) + 1;
+    if (transactionResult.duplicate) {
+       return res.json({ success: false, ...transactionResult });
     }
-    
-    await updateDoc(eventRef, { attendanceStats: stats });
 
-    return res.json({ 
-      success: true, 
-      studentName: reqData.studentName, 
-      rollNo: reqData.rollNo, 
-      sessionLabel: activeSession === 'S1' ? 'Session 1' : 'Session 2',
-      sessionKey: activeSession,
-      isFirstScan: !wasAlreadyPresentAtAll
-    });
+    return res.json(transactionResult);
   } catch (err) {
+    if (err.message.includes('FORBIDDEN')) return res.status(403).json({ success: false, silentMessage: err.message.split(':')[1] });
+    if (err.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, silentMessage: err.message.split(':')[1] });
+    
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1924,8 +2109,26 @@ router.patch('/:id/attendance/correct', requireAuth, requireRole(['STUDENT_ORGAN
       changes: `Date: ${date} | ${newStatus}`
     });
     
-    await updateDoc(reqRef, { attendance, correctionLogs });
+    const studentId = reqData.studentId || reqData.userId || reqData.rollNo;
+    const attId = `${req.params.id}_${studentId}`;
+    const attRef = doc(db, 'eventAttendance', attId);
+    
+    // [MODULE 4] Atomic Write for Attendance Correction
+    const batch = writeBatch(db);
 
+    batch.update(reqRef, { attendance, correctionLogs }); // [LEGACY COMPATIBILITY - REMOVE LATER]
+    
+    batch.set(attRef, {
+       eventId: req.params.id,
+       studentId: studentId,
+       studentName: reqData.studentName,
+       rollNo: reqData.rollNo,
+       attendance: attendance,
+       status: 'ATTENDED',
+       updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    await batch.commit();
     await logAttendanceAudit(req.params.id, {
       action: 'Correction',
       date,

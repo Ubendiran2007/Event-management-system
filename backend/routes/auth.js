@@ -15,7 +15,8 @@ const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');
 const { sendEmail } = require('../services/emailService');
 const emailTemplates = require('../services/emailTemplates');
-
+const { logAudit } = require('../utils/logger');
+const crypto = require('crypto');
 
 const router = express.Router();
 
@@ -147,15 +148,19 @@ function getRequestDetails(req) {
 }
 
 async function logSecurityEvent(userObj, activity, status, reqDetails) {
-  await setDoc(doc(collection(db, 'securityLogs')), {
-    userId: userObj.id || userObj.email,
-    email: userObj.email?.toLowerCase(),
-    activity,
-    status,
-    timestamp: new Date().toISOString(),
-    browser: reqDetails.browser,
-    os: reqDetails.os,
-    ip: reqDetails.ip
+  // Deprecated: Migrating to logAudit
+  // logAudit handles this natively now, this function is preserved to avoid breaking refs until fully migrated
+  logAudit({
+    category: 'AUTH',
+    action: activity.toUpperCase().replace(/\s+/g, '_'),
+    status: status,
+    actor: {
+      userId: userObj.id || userObj.email,
+      name: userObj.name || userObj.email,
+      role: userObj.role || 'UNKNOWN'
+    },
+    ipAddress: reqDetails.ip,
+    userAgent: reqDetails.browser
   });
 }
 
@@ -231,7 +236,29 @@ async function handleLoginSuccess(userObj, reqDetails) {
     }
   }
   
-  // Log Login
+  // Log Login using Unified Logger
+  logAudit({
+    category: 'AUTH',
+    action: 'LOGIN_SUCCESS',
+    status: 'SUCCESS',
+    correlationId: crypto.randomUUID(), // New request tracking
+    actor: {
+      userId: userObj.id,
+      name: userObj.name || '',
+      role: userObj.role || '',
+      email: emailLower
+    },
+    details: {
+      department: userObj.department || '',
+      rollNo: userObj.rollNo || userObj.employeeId || '',
+      isSuspicious
+    },
+    ipAddress: reqDetails.ip,
+    userAgent: `${reqDetails.os} - ${reqDetails.browser}`
+  });
+  
+  // Keep legacy writing to `loginLogs` strictly for the frontend /login-history backward compatibility, 
+  // but we will also update frontend /login-history to query auditLogs instead later in this module.
   await setDoc(doc(collection(db, 'loginLogs')), {
     userId: userObj.id,
     name: userObj.name || '',
@@ -245,8 +272,6 @@ async function handleLoginSuccess(userObj, reqDetails) {
     ip: reqDetails.ip,
     status: 'SUCCESS'
   });
-  
-  await logSecurityEvent(userObj, 'Successful Login', 'SUCCESS', reqDetails);
   
   if (isSuspicious) {
     await logSecurityEvent(userObj, 'Suspicious Login Detected', 'WARNING', reqDetails);

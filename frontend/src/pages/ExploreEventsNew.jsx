@@ -658,7 +658,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
 <body><div class="page">
   <div class="header">
     <div class="header-poster">
-      <img src="${event.posterDataUrl || event.posterUrl || ''}" alt="Event Poster" />
+      <img src="${event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl || ''}" alt="Event Poster" />
     </div>
     <div class="header-content">
       <h1>${event.title || s1?.eventName || 'Event Report'}</h1>
@@ -849,8 +849,8 @@ const IQACSummaryModal = ({ event, onClose }) => {
     }
 
     // 4. Poster / Brochure
-    if (req.includes('brochure') || req.includes('flyer')) {
-      const pUrl = event.posterDataUrl || event.posterUrl;
+    if (event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl) {
+      const pUrl = event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl;
       if (!pUrl) return;
       if (type === 'view') {
         const win = window.open();
@@ -922,7 +922,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
           {/* Subtle background decorative pattern or poster blur */}
           <div className="absolute inset-0 opacity-10 blur-3xl pointer-events-none">
             <img 
-              src={event.posterDataUrl || event.posterUrl || defaultPoster} 
+              src={event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl || defaultPoster} 
               alt="" 
               className="w-full h-full object-cover"
             />
@@ -936,7 +936,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
             {/* Poster Thumbnail */}
             <div className="shrink-0 w-20 h-28 rounded-xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-200 hidden sm:block">
                <img 
-                src={event.posterDataUrl || event.posterUrl || defaultPoster} 
+                src={event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl || defaultPoster} 
                 alt="Event Poster" 
                 className="w-full h-full object-cover"
               />
@@ -1153,15 +1153,15 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
           {/* ── Brochure / Poster ── */}
           <SectionCard title="Event Brochure / Poster" icon={<Image size={15} />} accent="rose">
-            {event.posterDataUrl || event.posterUrl ? (
+            {(event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl) ? (
               <div className="flex flex-col items-center gap-4">
                 <img
-                  src={event.posterDataUrl || event.posterUrl}
+                  src={event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl}
                   alt="Event Poster"
                   className="max-h-72 rounded-xl border border-rose-100 shadow-md object-contain w-full"
                 />
                 <a
-                  href={event.posterDataUrl || event.posterUrl}
+                  href={event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl}
                   download={`Poster_${(event.title || 'event').replace(/\s+/g,'_')}.jpg`}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded-lg hover:bg-rose-700 transition-colors"
                 >
@@ -1694,7 +1694,7 @@ const EventCard = ({
           </div>
         )}
         <img
-          src={event.posterDataUrl || event.posterUrl || defaultPoster}
+          src={event.posterStorage?.downloadURL || event.posterDataUrl || event.posterUrl || defaultPoster}
           alt={event.title || event.requisition?.step1?.eventName || 'Event'}
           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
         />

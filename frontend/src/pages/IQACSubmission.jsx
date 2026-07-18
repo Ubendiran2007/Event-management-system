@@ -9,6 +9,7 @@ import { EventStatus } from '../types';
 import EventReportModal from '../components/EventReportModal';
 import * as XLSX from 'xlsx';
 import { validateUpload } from '../utils/fileValidation';
+import { uploadFileToStorage, deleteFileFromStorage } from '../utils/storageService';
 import AlertCard from '../components/AlertCard';
 
 const formatTime12 = (t24) => {
@@ -158,6 +159,7 @@ const IQACSubmission = () => {
   const navigate = useNavigate();
 
   const [uploads, setUploads] = useState({});
+  const [deletedStoragePaths, setDeletedStoragePaths] = useState([]);
   const [uploadErrors, setUploadErrors] = useState({});
   const [verified, setVerified] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -552,27 +554,28 @@ const IQACSubmission = () => {
     // Clear any previous error for this item
     setUploadErrors((prev) => { const next = { ...prev }; delete next[itemId]; return next; });
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setUploads((prev) => ({
-        ...prev,
-        [itemId]: {
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          dataUrl: event.target?.result || '',
-          uploadedAt: new Date().toISOString(),
-        },
-      }));
-      setSubmitError('');
-      setValidationError('');
-      e.target.value = '';
-    };
-    reader.onerror = () => {
-      setSubmitError('Unable to read uploaded file. Please try again.');
-      e.target.value = '';
-    };
-    reader.readAsDataURL(file);
+    // Free up previous object URL if any
+    if (uploads[itemId]?.previewUrl) {
+      URL.revokeObjectURL(uploads[itemId].previewUrl);
+    }
+
+    setUploads((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...(prev[itemId] || {}), // Keep previous metadata so we know if there is an old storagePath
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        file: file,
+        previewUrl: URL.createObjectURL(file),
+        uploadedAt: new Date().toISOString(),
+        // Clear out legacy base64
+        dataUrl: null,
+      },
+    }));
+    setSubmitError('');
+    setValidationError('');
+    e.target.value = '';
   };
 
   const handleFeedbackCsvUpload = (e) => {
@@ -670,23 +673,27 @@ const IQACSubmission = () => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setGallery((prev) => [...prev, {
-        id: Date.now(),
-        fileName: file.name,
-        dataUrl: event.target.result,
-        title: '',
-        caption: '',
-        dayTag: '', // For multi-day taglines
-      }]);
-    };
-    reader.readAsDataURL(file);
+    setGallery((prev) => [...prev, {
+      id: Date.now(),
+      fileName: file.name,
+      file: file,
+      previewUrl: URL.createObjectURL(file),
+      dataUrl: null, // clear legacy base64
+      title: '',
+      caption: '',
+      dayTag: '', // For multi-day taglines
+    }]);
     e.target.value = '';
   };
 
   const removeGalleryItem = (id) => {
-    setGallery((prev) => prev.filter((item) => item.id !== id));
+    setGallery((prev) => {
+      const itemToRemove = prev.find(item => item.id === id);
+      if (itemToRemove?.storage?.storagePath) {
+        setDeletedStoragePaths(old => [...old, itemToRemove.storage.storagePath]);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   const addResourcePerson = () => {
@@ -724,21 +731,35 @@ const IQACSubmission = () => {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setResourcePersons(prev => prev.map(p => {
-        if (p.id === id) {
-          return { ...p, photo: { dataUrl: event.target.result, fileName: file.name } };
+    setResourcePersons(prev => prev.map(p => {
+      if (p.id === id) {
+        if (p.photo?.previewUrl) {
+          URL.revokeObjectURL(p.photo.previewUrl);
         }
-        return p;
-      }));
-    };
-    reader.readAsDataURL(file);
+        return { 
+          ...p, 
+          photo: { 
+            ...(p.photo || {}), // Preserve old storage metadata
+            file: file, 
+            previewUrl: URL.createObjectURL(file), 
+            fileName: file.name, 
+            dataUrl: null 
+          } 
+        };
+      }
+      return p;
+    }));
     e.target.value = '';
   };
 
   const removeResourcePerson = (id) => {
-    setResourcePersons((prev) => prev.filter((item) => item.id !== id));
+    setResourcePersons((prev) => {
+      const itemToRemove = prev.find(item => item.id === id);
+      if (itemToRemove?.photo?.storage?.storagePath) {
+        setDeletedStoragePaths(old => [...old, itemToRemove.photo.storage.storagePath]);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
   const addGuestFeedback = () => {
@@ -858,12 +879,88 @@ const IQACSubmission = () => {
     setIsSubmitting(true);
 
     try {
+      // 1. Delete items explicitly removed by user
+      for (const path of deletedStoragePaths) {
+        try {
+          await deleteFileFromStorage(path);
+        } catch (e) {
+          console.warn('Failed to delete storage path', path, e);
+        }
+      }
+
+      // 2. Upload Documents
+      const finalUploads = { ...uploads };
+      for (const [itemId, uploadData] of Object.entries(uploads)) {
+        if (uploadData.file) {
+          // If overwriting an existing storage file, delete it first
+          if (uploadData.storage?.storagePath) {
+            try { await deleteFileFromStorage(uploadData.storage.storagePath); } catch (e) { console.warn('Failed to delete old document', e); }
+          }
+          const extension = uploadData.fileName.split('.').pop();
+          const storagePath = `events/${selectedEvent.id}/documents/${itemId}_${Date.now()}.${extension}`;
+          const metadata = await uploadFileToStorage(uploadData.file, storagePath);
+          finalUploads[itemId] = {
+            ...uploadData,
+            file: null, 
+            previewUrl: null, 
+            storage: metadata,
+          };
+        }
+      }
+
+      // 3. Upload Gallery
+      const finalGallery = [];
+      for (let i = 0; i < gallery.length; i++) {
+        const item = gallery[i];
+        if (item.file) {
+          if (item.storage?.storagePath) {
+             try { await deleteFileFromStorage(item.storage.storagePath); } catch (e) { console.warn('Failed to delete old gallery photo', e); }
+          }
+          const extension = item.fileName.split('.').pop();
+          const storagePath = `events/${selectedEvent.id}/gallery/photo_${Date.now()}_${i}.${extension}`;
+          const metadata = await uploadFileToStorage(item.file, storagePath);
+          finalGallery.push({
+            ...item,
+            file: null,
+            previewUrl: null,
+            storage: metadata,
+          });
+        } else {
+          finalGallery.push(item);
+        }
+      }
+
+      // 4. Upload Resource Persons
+      const finalResourcePersons = [];
+      for (let i = 0; i < resourcePersons.length; i++) {
+        const rp = resourcePersons[i];
+        if (rp.photo?.file) {
+          if (rp.photo.storage?.storagePath) {
+             try { await deleteFileFromStorage(rp.photo.storage.storagePath); } catch (e) { console.warn('Failed to delete old RP photo', e); }
+          }
+          const extension = rp.photo.fileName.split('.').pop();
+          const storagePath = `events/${selectedEvent.id}/resourcePersons/rp_${Date.now()}_${i}.${extension}`;
+          const metadata = await uploadFileToStorage(rp.photo.file, storagePath);
+          finalResourcePersons.push({
+            ...rp,
+            photo: {
+              ...rp.photo,
+              file: null,
+              previewUrl: null,
+              storage: metadata,
+            }
+          });
+        } else {
+          finalResourcePersons.push(rp);
+        }
+      }
+
       const checklist = CHECKLIST_ITEMS.map((item) => ({
         id: item.id,
         requirement: item.label,
         status: getStatus(item),
         autoGenerated: Boolean(item.autoGenerated),
-        file: uploads[item.id] || null,
+        file: finalUploads[item.id] || null,
       }));
 
       const documents = Object.fromEntries(
@@ -881,7 +978,7 @@ const IQACSubmission = () => {
           }
 
           return [item.label, {
-            ...(uploads[item.id] || {}),
+            ...(finalUploads[item.id] || {}),
             status: getStatus(item),
             verified: Boolean(verified[item.id]),
           }];
@@ -911,8 +1008,8 @@ const IQACSubmission = () => {
           mode: registrationDetails.mode,
           venue: registrationDetails.venue || '',
         },
-        resourcePersons: resourcePersons.map(({ id, ...item }) => item),
-        gallery: gallery.map(({ id, ...item }) => item),
+        resourcePersons: finalResourcePersons.map(({ id, ...item }) => item),
+        gallery: finalGallery.map(({ id, ...item }) => item),
         guestFeedbackList: guestFeedback.map(({ id, ...item }) => item),
         // Preserve manually uploaded student feedback CSV
         manualFeedbackSummary: autoFeedbackSummary?.isManualUpload
@@ -1527,11 +1624,11 @@ const IQACSubmission = () => {
 
             {gallery.length > 0 && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {gallery.map((item) => (
+                {gallery.map((item, index) => (
                   <div key={item.id} className="rounded-lg border border-slate-200 p-3">
                     <img
-                      src={item.dataUrl}
-                      alt="gallery"
+                      src={item.previewUrl || item.storage?.downloadURL || item.dataUrl}
+                      alt={`Gallery ${index}`}
                       className="w-full h-32 object-contain object-center bg-slate-100 rounded-lg mb-2 border border-slate-100"
                     />
                     <div className="space-y-2">
@@ -1966,7 +2063,7 @@ const IQACSubmission = () => {
                     <div className="relative group">
                       <div className="w-32 h-32 rounded-xl border-2 border-dashed border-slate-300 bg-white flex items-center justify-center overflow-hidden transition-all group-hover:border-cse-accent">
                         {person.photo ? (
-                          <img src={person.photo.dataUrl || person.photo.url || person.photo} className="w-full h-full object-contain object-center bg-slate-50" alt="speaker" />
+                          <img src={person.photo.previewUrl || person.photo.storage?.downloadURL || person.photo.dataUrl || person.photo.url || person.photo} className="w-full h-full object-contain object-center bg-slate-50" alt="speaker" />
                         ) : (
                           <div className="text-slate-300 flex flex-col items-center gap-1">
                             <Camera size={24} />
@@ -2173,20 +2270,21 @@ const IQACSubmission = () => {
                           <Eye size={12} /> View Poster
                         </button>
                       )}
-                      {file && file.dataUrl && (
+                      {file && (file.previewUrl || file.storage?.downloadURL || file.dataUrl) && (
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => {
                               const win = window.open();
-                              win.document.write('<iframe src="' + file.dataUrl  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                              const targetUrl = file.previewUrl || file.storage?.downloadURL || file.dataUrl;
+                              win.document.write('<iframe src="' + targetUrl  + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
                             }}
                             className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >
                             <Eye size={12} /> View
                           </button>
                           <a
-                            href={file.dataUrl}
+                            href={file.previewUrl || file.storage?.downloadURL || file.dataUrl}
                             download={file.fileName}
                             className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >

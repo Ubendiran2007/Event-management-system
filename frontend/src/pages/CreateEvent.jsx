@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 import { formatEventRef, fallbackValue } from '../utils/formatters';
 import { motion, AnimatePresence } from 'framer-motion';
+import { collection, doc } from 'firebase/firestore';
+import { db } from '../firebase';
+import { uploadFileToStorage } from '../utils/storageService';
 import Layout from '../components/Layout';
 import TimePicker from '../components/TimePicker';
 import { useAppContext } from '../context/AppContext';
@@ -734,7 +737,7 @@ const CreateEvent = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Centralized security validation — whitelist MIME, block dangerous extensions, check size
+    // Centralized security validation
     const validationError = validateUpload(file, 'poster');
     if (validationError) {
       setStepError(validationError);
@@ -742,28 +745,22 @@ const CreateEvent = () => {
       return;
     }
 
-    try {
-      setStepError('');
-      const posterDataUrl = file.type === 'image/gif'
-        ? await fileToDataUrl(file)
-        : await compressImageToDataUrl(file);
-
-      if (posterDataUrl.length > 10 * 1024 * 1024) {
-        setStepError('Poster is too large after processing. Please use a smaller image (under 5 MB recommended).');
-        return;
-      }
-
-      setForm((prev) => ({
-        ...prev,
-        posterDataUrl,
-        posterFileName: file.name,
-        posterMimeType: file.type,
-      }));
-    } catch {
-      setStepError('Unable to process poster image. Please try another file.');
-    } finally {
-      event.target.value = '';
+    // Free up previous object URL memory
+    if (form.posterPreviewUrl) {
+      URL.revokeObjectURL(form.posterPreviewUrl);
     }
+
+    setStepError('');
+    setForm((prev) => ({
+      ...prev,
+      posterFile: file,
+      posterPreviewUrl: URL.createObjectURL(file),
+      posterFileName: file.name,
+      posterMimeType: file.type,
+      // Clear out legacy base64 if user uploads a new file during edit
+      posterDataUrl: null
+    }));
+    event.target.value = '';
   };
 
 
@@ -1662,6 +1659,33 @@ const CreateEvent = () => {
     setSubmitError('');
     try {
       const payload = buildPayload();
+      
+      // Determine Event ID
+      let eventId = isResubmissionEdit ? editingEvent.id : null;
+      if (!eventId) {
+        const eventRef = doc(collection(db, 'events'));
+        eventId = eventRef.id;
+      }
+      payload.id = eventId;
+
+      // Handle Poster Upload to Firebase Storage
+      if (form.posterFile) {
+        try {
+          const metadata = await uploadFileToStorage(
+            form.posterFile, 
+            `events/${eventId}/poster_${Date.now()}.jpg`
+          );
+          payload.posterStorage = metadata;
+          // Clean up legacy field if it was replaced
+          payload.posterDataUrl = null;
+        } catch (uploadErr) {
+          throw new Error(`Poster upload failed: ${uploadErr.message}`);
+        }
+      } else if (form.posterStorage) {
+         // Keep existing storage metadata if editing and not replacing
+         payload.posterStorage = form.posterStorage;
+      }
+
       const endpoint = isResubmissionEdit
         ? `https://event-management-system-dpzc.onrender.com/api/events/${editingEvent.id}/resubmit-edit`
         : 'https://event-management-system-dpzc.onrender.com/api/events';
@@ -1751,10 +1775,10 @@ const CreateEvent = () => {
                 <label className="text-sm font-semibold text-slate-700">Event Poster</label>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-blue-700 mb-3">Event Poster (Managed by Media Team)</p>
-                  {form.posterDataUrl ? (
+                  {(form.posterPreviewUrl || form.posterStorage?.downloadURL || form.posterDataUrl) ? (
                     <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                       <div className="w-full h-60 bg-slate-100 flex items-center justify-center">
-                        <img src={form.posterDataUrl} alt="Event poster preview" className="max-w-full max-h-full object-contain" />
+                        <img src={form.posterPreviewUrl || form.posterStorage?.downloadURL || form.posterDataUrl} alt="Event poster preview" className="max-w-full max-h-full object-contain" />
                       </div>
                       <div className="px-3 py-2 bg-slate-50 border-t border-slate-200">
                         <p className="text-xs text-slate-500 truncate">{form.posterFileName || 'Poster uploaded by Media Team'}</p>
@@ -1779,13 +1803,13 @@ const CreateEvent = () => {
                     />
                     <label 
                       htmlFor="requirePosterCheckbox" 
-                      className={`text-sm font-semibold ${(isResubmissionEdit || (form.posterDataUrl && !form.requirePoster)) ? 'text-slate-400' : 'text-slate-700'}`}
+                      className={`text-sm font-semibold ${(isResubmissionEdit || ((form.posterPreviewUrl || form.posterStorage?.downloadURL || form.posterDataUrl) && !form.requirePoster)) ? 'text-slate-400' : 'text-slate-700'}`}
                     >
                       Require Poster (Send request to Media)
                     </label>
                   </div>
 
-                  {form.posterDataUrl && !form.requirePoster && !isResubmissionEdit && (
+                  {(form.posterPreviewUrl || form.posterStorage?.downloadURL || form.posterDataUrl) && !form.requirePoster && !isResubmissionEdit && (
                     <div className="text-[11px] text-amber-600 bg-amber-50 rounded-lg p-2.5 border border-amber-100 italic">
                       Remove the manually uploaded poster below to send a request to the Media Team instead.
                     </div>
@@ -1803,11 +1827,11 @@ const CreateEvent = () => {
                       disabled={!isResubmissionEdit && form.startDate && form.startTime && new Date() > new Date(`${form.startDate}T${form.startTime}`)}
                     />
                   )}
-                  {form.posterDataUrl ? (
+                  {(form.posterPreviewUrl || form.posterStorage?.downloadURL || form.posterDataUrl) ? (
                     <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
                       <div className="w-full h-60 bg-slate-100 flex items-center justify-center">
                         <img
-                          src={form.posterDataUrl}
+                          src={form.posterPreviewUrl || form.posterStorage?.downloadURL || form.posterDataUrl}
                           alt="Event poster preview"
                           className="max-w-full max-h-full object-contain"
                         />
