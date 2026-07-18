@@ -896,7 +896,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Premium Header ── */}
-        <div className="shrink-0 bg-slate-200/70 border-b border-slate-300 px-6 sm:px-8 py-6 relative overflow-hidden">
+        <div className="shrink-0 bg-slate-200/70 border-b border-slate-300 px-6 sm:px-8 py-4 relative overflow-hidden">
           {/* Subtle background decorative pattern or poster blur */}
           <div className="absolute inset-0 opacity-10 blur-3xl pointer-events-none">
             <img 
@@ -912,7 +912,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
 
           <div className="flex flex-col sm:flex-row items-start justify-between gap-6 relative z-10 pr-10 sm:pr-12">
             {/* Poster Thumbnail */}
-            <div className="shrink-0 w-24 h-32 rounded-xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-200 hidden sm:block">
+            <div className="shrink-0 w-20 h-28 rounded-xl overflow-hidden shadow-lg border-2 border-white ring-1 ring-slate-200 hidden sm:block">
                <img 
                 src={event.posterDataUrl || event.posterUrl || defaultPoster} 
                 alt="Event Poster" 
