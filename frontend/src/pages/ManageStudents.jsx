@@ -96,8 +96,27 @@ const ManageStudents = () => {
         : mergedStudents;
 
     const classMap = {};
+    
+    // Pre-populate classes so empty ones still show up
+    if (currentUser.role === UserRole.FACULTY && currentUser.assignedClasses) {
+        currentUser.assignedClasses.forEach(cls => {
+            classMap[cls] = [];
+        });
+    } else {
+        ALL_CLASSES.forEach(cls => {
+            classMap[cls] = [];
+        });
+    }
+
     accessibleStudents.forEach(student => {
-        const cls = student.class || 'Unknown Class';
+        // Normalize class name for mapping (e.g. "CSE B" -> "CSE-B")
+        let cls = student.class || 'Unknown Class';
+        if (cls !== 'Unknown Class') {
+            cls = cls.replace(/\s+/g, '-').toUpperCase();
+        }
+        
+        // If pre-populated class doesn't exist but matches a prepopulated one
+        // Note: the mapping above is simple, so we just use it directly
         if (!classMap[cls]) classMap[cls] = [];
         classMap[cls].push(student);
     });
