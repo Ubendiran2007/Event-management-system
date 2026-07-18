@@ -363,7 +363,7 @@ const SecurityProfile = () => {
 
   return (
     <Layout>
-      <div className="flex-1 flex flex-col min-h-0 overflow-y-auto relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div className="flex-1 flex flex-col min-h-0 relative">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 w-full">
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -463,10 +463,10 @@ const SecurityProfile = () => {
                 <table className="w-full text-left border-collapse table-fixed">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
-                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[20%]">Date & Time</th>
-                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[40%]">Activity</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[25%]">Date & Time</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[40%] sm:w-[30%]">Activity</th>
                       <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider w-[20%] sm:w-[15%]">Status</th>
-                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell sm:w-[25%]">IP Address</th>
+                      <th className="px-3 sm:px-6 py-3 text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell sm:w-[30%]">IP Address</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -487,8 +487,8 @@ const SecurityProfile = () => {
                             {log.status}
                           </span>
                         </td>
-                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-500 font-mono break-words break-all hidden sm:table-cell">
-                          {log.ip || '-'}
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-500 font-mono hidden sm:table-cell">
+                          {(log.ip || '-').split(',')[0].trim()}
                         </td>
                       </tr>
                     ))}
@@ -796,7 +796,7 @@ const SecurityProfile = () => {
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-xs text-slate-700">{log.browser} on {log.os}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">{log.ip}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{(log.ip || '-').split(',')[0].trim()}</p>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
