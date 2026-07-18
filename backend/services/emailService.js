@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 const templates = require('./emailTemplates');
-const { db } = require('../firebase');
-const { collection, addDoc } = require('firebase/firestore');
+
+const { collection, addDoc, db } = require('../firebaseClientWrapper');
 const net = require('net');
 const { logEmail } = require('../utils/logger');
 const crypto = require('crypto');

@@ -20,8 +20,8 @@ const normalizeRollNo = (value) =>
     .replace(/^student_/i, '')
     .toUpperCase();
 
-const { collection, getDocs, query, where } = require('firebase/firestore');
-const { db } = require('../firebase');
+const { collection, getDocs, query, where } = require('../firebaseClientWrapper');
+
 const {
   sendEventNotificationToFaculty,
   sendEventStatusNotification,

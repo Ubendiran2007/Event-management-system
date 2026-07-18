@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../firebase');
-const { collection, getDocs, doc, getDoc } = require('firebase/firestore');
+
+const { collection, getDocs, doc, getDoc, db } = require('../firebaseClientWrapper');
 
 const checkDb = (res) => {
   if (!db) {

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../firebase');
-const { collection, getDocs, doc, getDoc, addDoc, updateDoc } = require('firebase/firestore');
+
+const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db } = require('../firebaseClientWrapper');
 const { handleODStatusChange } = require('../services/emailHandler');
 const { syncStudentODCount } = require('../utils/odSync');
 

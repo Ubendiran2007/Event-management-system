@@ -1,6 +1,6 @@
 const express = require('express');
-const { collection, getDocs, query, where, doc, updateDoc } = require('firebase/firestore');
-const { db } = require('../firebase');
+const { collection, getDocs, query, where, doc, updateDoc, db } = require('../firebaseClientWrapper');
+
 
 const router = express.Router();
 

@@ -5,8 +5,8 @@ const {
   where,
   updateDoc,
   doc,
-} = require('firebase/firestore');
-const { db } = require('../firebase');
+} = require('../firebaseClientWrapper');
+
 const { sendEmail } = require('./emailService');
 const { feedbackReminderTemplate } = require('./emailTemplates');
 

@@ -7,9 +7,9 @@ const {
   query,
   setDoc,
   where,
-  deleteDoc
-} = require('firebase/firestore');
-const { db } = require('../firebase');
+  deleteDoc,
+  db
+} = require('../firebaseClientWrapper');
 const { issueToken } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');

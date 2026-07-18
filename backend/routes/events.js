@@ -12,31 +12,17 @@ const {
   runTransaction,
   writeBatch,
   arrayUnion,
-  deleteField
-} = require('firebase/firestore');
-const { db } = require('../firebase');
-const { getStorage, ref, listAll, deleteObject } = require('firebase/storage');
-const { getApp } = require('firebase/app');
-
-// Initialize storage for backend cleanup
-const storage = getStorage(getApp());
-
-// Helper to recursively delete a folder in Firebase Storage
+  deleteField,
+  db
+} = require('../firebaseClientWrapper');
+const { storageAdmin } = require('../firebaseAdmin');
+// Helper to recursively delete a folder in Firebase Storage using Admin SDK
 const deleteStorageFolder = async (folderPath) => {
   try {
-    const folderRef = ref(storage, folderPath);
-    const res = await listAll(folderRef);
-    
-    // Delete all files in the current folder
-    const deletePromises = res.items.map((itemRef) => deleteObject(itemRef));
-    await Promise.all(deletePromises);
-    
-    // Recursively delete sub-folders
-    for (const prefixRef of res.prefixes) {
-      await deleteStorageFolder(prefixRef.fullPath);
-    }
+    const bucket = storageAdmin.bucket();
+    await bucket.deleteFiles({ prefix: folderPath });
   } catch (error) {
-    if (error.code !== 'storage/object-not-found') {
+    if (error.code !== 404) {
       console.error(`[deleteStorageFolder] Error deleting ${folderPath}:`, error.message);
     }
   }

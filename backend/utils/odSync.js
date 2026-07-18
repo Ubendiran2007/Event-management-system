@@ -1,5 +1,4 @@
-const { db } = require('../firebase');
-const { collection, getDocs, doc, getDoc, updateDoc, query, where } = require('firebase/firestore');
+const { dbAdmin } = require('../firebaseAdmin');
 
 const STUDENT_CLASS_DOCS = [
   'CSE-B', 'CSE-D', 'ECE-A', 'ECE-B', 'CCE-A',
@@ -8,9 +7,9 @@ const STUDENT_CLASS_DOCS = [
 
 async function findStudentInFirestore(studentId) {
   for (const className of STUDENT_CLASS_DOCS) {
-    const studentRef = doc(db, 'students', className, 'members', studentId);
-    const studentSnap = await getDoc(studentRef);
-    if (studentSnap.exists()) {
+    const studentRef = dbAdmin.collection('students').doc(className).collection('members').doc(studentId);
+    const studentSnap = await studentRef.get();
+    if (studentSnap.exists) {
       return { className, ...studentSnap.data(), ref: studentRef };
     }
   }
@@ -36,12 +35,11 @@ async function syncStudentODCount(studentId) {
     // Only count OD requests created after the last annual reset (if one exists)
     const resetTimestamp = student.odResetTimestamp || null;
 
-    const odQuery = query(
-      collection(db, 'odRequests'),
-      where('studentId', '==', studentId),
-      where('status', '==', 'APPROVED')
-    );
-    const odSnap = await getDocs(odQuery);
+    const odQuery = dbAdmin.collection('odRequests')
+      .where('studentId', '==', studentId)
+      .where('status', '==', 'APPROVED');
+      
+    const odSnap = await odQuery.get();
 
     let postResetCount = 0;
     odSnap.forEach(odDoc => {
@@ -53,7 +51,7 @@ async function syncStudentODCount(studentId) {
     });
 
     if (student.odUsed !== postResetCount) {
-      await updateDoc(student.ref, {
+      await student.ref.update({
         odUsed: postResetCount,
         updatedAt: new Date().toISOString()
       });

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../firebase');
-const { collection, getDocs, doc, updateDoc, writeBatch, setDoc, deleteDoc } = require('firebase/firestore');
+
+const { collection, getDocs, doc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // Protect all Manage Students APIs

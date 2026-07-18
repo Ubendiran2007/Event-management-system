@@ -5,8 +5,8 @@ const {
   where,
   updateDoc,
   doc,
-} = require('firebase/firestore');
-const { db } = require('../firebase');
+} = require('../firebaseClientWrapper');
+
 const { sendEventStatusNotification } = require('./emailService');
 
 // Auto-reject applies to any event that is still pending approval

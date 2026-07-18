@@ -1,5 +1,4 @@
-const { collection, addDoc, serverTimestamp } = require('firebase/firestore');
-const { db } = require('../firebase');
+const { admin, dbAdmin } = require('../firebaseAdmin');
 
 const SENSITIVE_KEYS = ['password', 'token', 'session', 'otp', 'credential', 'secret', 'auth'];
 
@@ -28,13 +27,13 @@ const dispatchLog = async (collectionName, logEntry) => {
       ...logEntry,
       environment: process.env.NODE_ENV || 'development',
       details: redactPayload(logEntry.details),
-      timestamp: serverTimestamp(),
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
     };
     
-    // Fire and forget (do not await if we want purely non-blocking from the caller's perspective)
-    // However, since we want to catch errors locally without crashing the app, we await inside this try/catch block.
-    // The caller should NOT await this function if they want it truly asynchronous.
-    await addDoc(collection(db, collectionName), entry);
+    // Fire and forget (asynchronous)
+    dbAdmin.collection(collectionName).add(entry).catch((err) => {
+      console.error(`[Logger] Failed to write to ${collectionName}:`, err);
+    });
   } catch (error) {
     // Log failure locally but swallow it to not disrupt the main business workflow
     console.error(`[LOGGER ERROR] Failed to write to ${collectionName}:`, error.message);

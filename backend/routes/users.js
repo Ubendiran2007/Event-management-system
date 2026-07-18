@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../firebase');
-const { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, getDoc } = require('firebase/firestore');
+const { db, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, getDoc } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 

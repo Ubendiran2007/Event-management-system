@@ -1,6 +1,5 @@
 const express = require('express');
-const { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit } = require('firebase/firestore');
-const { db } = require('../firebase');
+const { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, db } = require('../firebaseClientWrapper');
 const { requireAuth } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');

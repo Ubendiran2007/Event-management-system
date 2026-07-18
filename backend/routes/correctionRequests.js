@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../firebase');
+
 const {
   collection, addDoc, getDocs, doc, updateDoc,
   getDoc, query, where,
-} = require('firebase/firestore');
+} = require('../firebaseClientWrapper');
 const { sendEmail } = require('../services/emailService');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
