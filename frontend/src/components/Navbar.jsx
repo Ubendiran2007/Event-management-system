@@ -82,6 +82,10 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     navItems.push({ id: 'registrations', label: 'Manage Registrations', icon: ClipboardList, path: '/registrations' });
   }
 
+  if (currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0) {
+    navItems.push({ id: 'tracking', label: 'Event Tracking', icon: Activity, path: '/tracking' });
+  }
+
   const isClassAdvisor = currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
   
   if (currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM || isClassAdvisor) {
@@ -96,9 +100,6 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });
 
-  if (currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0) {
-    navItems.push({ id: 'tracking', label: 'Event Tracking', icon: Activity, path: '/tracking' });
-  }
 
   const liveStudent = (students || []).find(s => s.id === currentUser.id);
   const displayData = liveStudent || currentUser;
