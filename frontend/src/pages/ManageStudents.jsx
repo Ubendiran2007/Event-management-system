@@ -105,7 +105,11 @@ const ManageStudents = () => {
         deptMap[prefix].push(cls);
     });
     const departments = Object.keys(deptMap).sort();
-    const effectiveDepartment = selectedDepartment || (departments.length === 1 ? departments[0] : null);
+    
+    // Always bypass department view if user is restricted to a specific department (e.g., HOD)
+    const effectiveDepartment = selectedDepartment || 
+        (isDeptRestricted && currentUser.department ? currentUser.department.toUpperCase() : 
+        (departments.length === 1 ? departments[0] : null));
 
     const classStudents = selectedClass && classMap[selectedClass] ? classMap[selectedClass] : [];
     const filteredClassStudents = classStudents.filter(s =>
@@ -439,13 +443,13 @@ const ManageStudents = () => {
                                 /* 2. Show Classes for Selected Department */
                                 <>
                                     <div className="flex items-center gap-4 mb-6">
-                                        {departments.length > 1 && (
+                                        {(departments.length > 1 || (!isDeptRestricted && departments.length !== 1)) && (
                                             <button onClick={() => setSelectedDepartment(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         )}
                                         <h3 className="text-xl font-bold text-slate-900">{effectiveDepartment} Department Classes</h3>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {deptMap[effectiveDepartment].map(cls => (
+                                        {(deptMap[effectiveDepartment] || []).map(cls => (
                                             <button key={cls} onClick={() => { setSelectedClass(cls); setSearchQuery(''); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
                                                 <div className="text-left">
                                                     <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{cls}</h3>
