@@ -560,8 +560,8 @@ const ManageStudents = () => {
                             </>
                         ) : activeTab === 'advisors' && isHOD ? (
                             /* ADVISORS VIEW */
-                            <div className="glass-panel rounded-2xl overflow-hidden">
-                                <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                            <div className="glass-panel rounded-2xl pb-24">
+                                <div className="p-6 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
                                     <h3 className="text-lg font-bold text-slate-800">Assign Class Advisors</h3>
                                     <p className="text-sm text-slate-500 mt-1">Map CSE classes to faculty members for monitoring event tracking and attendance.</p>
                                 </div>
@@ -569,7 +569,7 @@ const ManageStudents = () => {
                                     {ALL_CLASSES.map(cls => {
                                         const assignedFaculty = allowedStaff.filter(s => s.role === 'FACULTY' && (s.assignedClasses || []).includes(cls));
                                         return (
-                                            <div key={cls} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+                                            <div key={cls} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors last:rounded-b-2xl">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 border border-blue-100">{cls}</div>
                                                     <div>
@@ -610,7 +610,7 @@ const ManageStudents = () => {
                                                         {openDropdownId === cls && (
                                                             <>
                                                                 <div className="fixed inset-0 z-40" onClick={() => setOpenDropdownId(null)} />
-                                                                <div className="absolute right-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                                <div className="absolute right-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200" style={{ zIndex: 9999 }}>
                                                                     <div className="max-h-60 overflow-y-auto">
                                                                         {allowedStaff
                                                                             .filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === 'CSE' && !(s.assignedClasses || []).includes(cls))
