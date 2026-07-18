@@ -12,21 +12,7 @@ const EventTracking = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedEventId, setExpandedEventId] = useState(null);
 
-    // Redirect if not a faculty with assigned classes
-    if (!currentUser || currentUser.role !== UserRole.FACULTY || !currentUser.assignedClasses || currentUser.assignedClasses.length === 0) {
-        return (
-            <Layout>
-                <div className="flex-1 p-8 text-center text-slate-500 flex flex-col items-center justify-center min-h-0 relative">
-                    <Activity size={48} className="text-slate-300 mb-4" />
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">No Access</h2>
-                    <p>You must be assigned as a Class Advisor to view this page.</p>
-                    <button onClick={() => navigate('/dashboard')} className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-xl font-bold">Go Back</button>
-                </div>
-            </Layout>
-        );
-    }
-
-    const assignedClasses = currentUser.assignedClasses;
+    const assignedClasses = currentUser?.assignedClasses || [];
 
     // Filter OD Requests for APPROVED students in assigned classes
     const relevantRequests = useMemo(() => {
@@ -95,6 +81,20 @@ const EventTracking = () => {
             <Layout>
                 <div className="flex-1 flex justify-center py-20 min-h-0 relative">
                     <Loader2 className="animate-spin text-blue-600" size={36} />
+                </div>
+            </Layout>
+        );
+    }
+
+    // Redirect if not a faculty with assigned classes
+    if (!currentUser || currentUser.role !== UserRole.FACULTY || !currentUser.assignedClasses || currentUser.assignedClasses.length === 0) {
+        return (
+            <Layout>
+                <div className="flex-1 p-8 text-center text-slate-500 flex flex-col items-center justify-center min-h-0 relative">
+                    <Activity size={48} className="text-slate-300 mb-4" />
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">No Access</h2>
+                    <p>You must be assigned as a Class Advisor to view this page.</p>
+                    <button onClick={() => navigate('/dashboard')} className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-xl font-bold">Go Back</button>
                 </div>
             </Layout>
         );
