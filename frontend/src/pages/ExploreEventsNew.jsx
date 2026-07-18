@@ -732,6 +732,11 @@ const IQACSummaryModal = ({ event, onClose }) => {
       <div class="section-title">Documentation Verification</div>
       <table><thead><tr><th>IQAC Requirement Item</th><th>Documentation Status</th></tr></thead><tbody>${clRows}</tbody></table>
     </div>
+    
+    <div style="margin-top: 80px; margin-bottom: 20px; display: flex; justify-content: space-between; font-weight: bold; color: #1e293b; padding: 0 40px; font-size: 14px;">
+      <div>Event Coordinator / Faculty Incharge</div>
+      <div>HOD</div>
+    </div>
   </div>
   <div class="footer">Academic Event Report &nbsp;|&nbsp; ${event.title || 'Event'} &nbsp;|&nbsp; Department of ${event.department || 'CSE'}</div>
 </div></body></html>`;

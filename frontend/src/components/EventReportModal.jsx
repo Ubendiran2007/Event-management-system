@@ -476,6 +476,16 @@ const EventReportModal = ({
                   </div>
               )}
             </div>
+            
+            {/* Signatures */}
+            <div className="flex justify-between items-end mt-24 px-8 text-[14px] font-bold">
+              <div className="text-center">
+                <p>Event Coordinator / Faculty Incharge</p>
+              </div>
+              <div className="text-center">
+                <p>HOD</p>
+              </div>
+            </div>
           </div>
         </motion.div>
       </motion.div>
