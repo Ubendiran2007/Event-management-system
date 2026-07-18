@@ -342,7 +342,21 @@ router.post('/login', async (req, res) => {
       );
       if (matchedStaff) {
         foundStoredPassword = matchedStaff.password;
-        foundUserObj = matchedStaff.user;
+        
+        // Try to get their LIVE data from Firestore to catch any HOD assignments
+        try {
+          const liveDoc = await getDoc(doc(db, 'users', matchedStaff.user.id));
+          if (liveDoc.exists()) {
+            const liveData = liveDoc.data();
+            const { password: _pw, ...safeData } = liveData;
+            foundUserObj = { id: matchedStaff.user.id, ...safeData };
+          } else {
+            foundUserObj = matchedStaff.user;
+          }
+        } catch (e) {
+          foundUserObj = matchedStaff.user;
+        }
+
         // Optionally sync them
         syncStaffUserToFirestore(matchedStaff.user, matchedStaff.password).catch(() => {});
       }
