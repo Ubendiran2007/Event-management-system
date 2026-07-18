@@ -131,8 +131,8 @@ const EventTracking = () => {
                     <div className="max-w-5xl mx-auto w-full">
                         
                         {/* Search & Stats */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 print:hidden">
-                            <div className="md:col-span-2 relative">
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8 print:hidden">
+                            <div className="relative w-full md:flex-1">
                                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input 
                                     type="text" 
@@ -142,7 +142,7 @@ const EventTracking = () => {
                                     className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all text-sm shadow-sm"
                                 />
                             </div>
-                            <div className="glass-panel p-4 rounded-2xl flex items-center gap-4 bg-white border border-slate-200 shadow-sm">
+                            <div className="w-full md:w-auto min-w-[280px] p-4 rounded-2xl flex items-center gap-4 bg-white border border-slate-200 shadow-sm">
                                 <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
                                     <LayoutList size={24} />
                                 </div>
