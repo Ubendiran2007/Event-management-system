@@ -18,6 +18,7 @@ const odRequestsRoutes = require('./routes/odRequests');
 const correctionRequestsRoutes = require('./routes/correctionRequests');
 const securityRoutes = require('./routes/security');
 const usersRoutes = require('./routes/users');
+const analyticsRoutes = require('./routes/analytics');
 const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionService');
 const { startFeedbackReminderJob } = require('./services/feedbackReminderService');
 
@@ -75,6 +76,7 @@ app.use('/api/academic-calendar', academicCalendarRoutes);
 app.use('/api/correction-requests', correctionRequestsRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ── Start server ─────────────────────────────────────────────────────────────
 const server = http.createServer(app);

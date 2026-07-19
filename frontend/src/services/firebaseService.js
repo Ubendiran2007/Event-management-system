@@ -436,3 +436,10 @@ export const subscribeToDepartmentCalendar = (callback) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   });
 };
+
+export const subscribeToAcademicBatches = (callback) => {
+  const q = query(collection(db, 'academicBatches'));
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};
