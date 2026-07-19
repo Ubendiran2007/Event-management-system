@@ -9,11 +9,59 @@ import ApprovalPipelineChart from '../components/analytics/ApprovalPipelineChart
 import ExportPanel from '../components/analytics/ExportPanel';
 import { 
   Users, Calendar, CheckCircle, XCircle, Clock, 
-  BarChart2, BookOpen, GraduationCap, FileCheck
+  BarChart2, BookOpen, GraduationCap, FileCheck, Filter
 } from 'lucide-react';
 import { UserRole } from '../types';
 
-const ExecutiveDashboard = ({ metrics, events }) => {
+const FilterBar = ({ filters, setFilters, role }) => {
+  const handleChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  
+  return (
+    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 mb-6 items-center">
+      <div className="flex items-center text-slate-500 font-medium"><Filter size={18} className="mr-2" /> Filters:</div>
+      <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-slate-50">
+        <option value="">All Academic Years</option>
+        <option value="2023-2024">2023-2024</option>
+        <option value="2024-2025">2024-2025</option>
+      </select>
+      
+      {['IQAC_TEAM', 'PRINCIPAL', 'SYSTEM_ADMIN'].includes(role) && (
+        <select name="department" value={filters.department} onChange={handleChange} className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-slate-50">
+          <option value="">All Departments</option>
+          <option value="CSE">CSE</option>
+          <option value="IT">IT</option>
+          <option value="ECE">ECE</option>
+          <option value="EEE">EEE</option>
+          <option value="MECH">MECH</option>
+        </select>
+      )}
+
+      <select name="category" value={filters.category} onChange={handleChange} className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-slate-50">
+        <option value="">All Categories</option>
+        <option value="Symposium">Symposium</option>
+        <option value="Workshop">Workshop</option>
+        <option value="Guest Lecture">Guest Lecture</option>
+        <option value="Seminar">Seminar</option>
+        <option value="Hackathon">Hackathon</option>
+      </select>
+      <select name="status" value={filters.status} onChange={handleChange} className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm bg-slate-50">
+        <option value="">All Statuses</option>
+        <option value="COMPLETED">Completed</option>
+        <option value="APPROVED">Approved</option>
+        <option value="REJECTED">Rejected</option>
+      </select>
+      <button 
+        onClick={() => setFilters({ academicYear: '', department: '', category: '', status: '' })}
+        className="text-sm text-blue-600 hover:underline px-2"
+      >
+        Clear Filters
+      </button>
+    </div>
+  );
+};
+
+
+const ExecutiveDashboard = ({ metrics, filteredEvents, currentUser, filters }) => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -24,23 +72,23 @@ const ExecutiveDashboard = ({ metrics, events }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <EventTrendChart events={events} />
+        <EventTrendChart events={filteredEvents} />
         <CategoryPieChart data={metrics.charts.deptEvents} title="Department-wise Events" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ApprovalPipelineChart events={events} />
+        <ApprovalPipelineChart events={filteredEvents} />
         <div className="space-y-4">
           <KPICard title="Avg Attendance" value={metrics.kpis.avgAttendance} icon={Users} color="blue" />
           <KPICard title="Avg Feedback Rating" value={`${metrics.kpis.avgFeedback} / 5.0`} icon={BarChart2} color="green" />
-          <ExportPanel reportName="Institution_Report" data={metrics.kpis} />
+          <ExportPanel reportName="Institution_Report" data={[metrics.kpis]} currentUser={currentUser} filters={filters} />
         </div>
       </div>
     </div>
   );
 };
 
-const DepartmentDashboard = ({ metrics, events, department }) => {
+const DepartmentDashboard = ({ metrics, filteredEvents, department, currentUser, filters }) => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -50,7 +98,7 @@ const DepartmentDashboard = ({ metrics, events, department }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <EventTrendChart events={events.filter(e => e.department === department)} />
+        <EventTrendChart events={filteredEvents.filter(e => e.department === department)} />
         <CategoryPieChart data={metrics.charts.categoryEvents} title="Event Categories" />
       </div>
 
@@ -58,12 +106,12 @@ const DepartmentDashboard = ({ metrics, events, department }) => {
         <KPICard title="Avg Attendance" value={metrics.kpis.avgAttendance} icon={Users} color="blue" />
         <KPICard title="Avg Feedback" value={`${metrics.kpis.avgFeedback} / 5.0`} icon={BarChart2} color="green" />
       </div>
-      <ExportPanel reportName={`Department_Report_${department}`} data={metrics.kpis} />
+      <ExportPanel reportName={`Department_Report_${department}`} data={[metrics.kpis]} currentUser={currentUser} filters={filters} />
     </div>
   );
 };
 
-const ClassAdvisorDashboard = ({ metrics }) => {
+const ClassAdvisorDashboard = ({ metrics, currentUser, filters }) => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -72,12 +120,12 @@ const ClassAdvisorDashboard = ({ metrics }) => {
         <KPICard title="Participation" value={metrics.kpis.eventParticipation} icon={CheckCircle} color="green" />
         <KPICard title="Attendance Rate" value={metrics.kpis.attendancePercentage} icon={BarChart2} color="orange" />
       </div>
-      <ExportPanel reportName="Class_Advisor_Report" data={metrics.kpis} />
+      <ExportPanel reportName="Class_Advisor_Report" data={[metrics.kpis]} currentUser={currentUser} filters={filters} />
     </div>
   );
 };
 
-const OrganizerDashboard = ({ metrics }) => {
+const OrganizerDashboard = ({ metrics, currentUser, filters }) => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -86,12 +134,12 @@ const OrganizerDashboard = ({ metrics }) => {
         <KPICard title="Total Attendance" value={metrics.kpis.attendance} icon={CheckCircle} color="green" />
         <KPICard title="Avg Feedback" value={`${metrics.kpis.avgFeedback} / 5.0`} icon={BarChart2} color="orange" />
       </div>
-      <ExportPanel reportName="Organizer_Report" data={metrics.kpis} />
+      <ExportPanel reportName="Organizer_Report" data={[metrics.kpis]} currentUser={currentUser} filters={filters} />
     </div>
   );
 };
 
-const PersonalDashboard = ({ metrics }) => {
+const PersonalDashboard = ({ metrics, currentUser, filters }) => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -100,14 +148,14 @@ const PersonalDashboard = ({ metrics }) => {
         <KPICard title="Participation %" value={metrics.kpis.participationPercentage} icon={BarChart2} color="purple" />
         <KPICard title="Feedback Submitted" value={metrics.kpis.feedbackSubmitted} icon={BookOpen} color="orange" />
       </div>
-      <ExportPanel reportName="Student_Personal_Report" data={metrics.kpis} />
+      <ExportPanel reportName="Student_Personal_Report" data={[metrics.kpis]} currentUser={currentUser} filters={filters} />
     </div>
   );
 };
 
 const AnalyticsDashboard = () => {
-  const { currentUser, events } = useAppContext();
-  const { metrics } = useAnalyticsContext();
+  const { currentUser } = useAppContext();
+  const { metrics, filters, setFilters, filteredEvents } = useAnalyticsContext();
 
   if (!currentUser || !metrics) {
     return (
@@ -127,23 +175,23 @@ const AnalyticsDashboard = () => {
     case UserRole.PRINCIPAL:
     case UserRole.SYSTEM_ADMIN:
       title = "Institutional Analytics";
-      DashboardComponent = <ExecutiveDashboard metrics={metrics} events={events} />;
+      DashboardComponent = <ExecutiveDashboard metrics={metrics} filteredEvents={filteredEvents} currentUser={currentUser} filters={filters} />;
       break;
     case UserRole.HOD:
       title = "Department Analytics";
-      DashboardComponent = <DepartmentDashboard metrics={metrics} events={events} department={currentUser.department} />;
+      DashboardComponent = <DepartmentDashboard metrics={metrics} filteredEvents={filteredEvents} department={currentUser.department} currentUser={currentUser} filters={filters} />;
       break;
     case UserRole.CLASS_ADVISOR:
       title = "Class Analytics";
-      DashboardComponent = <ClassAdvisorDashboard metrics={metrics} />;
+      DashboardComponent = <ClassAdvisorDashboard metrics={metrics} currentUser={currentUser} filters={filters} />;
       break;
     case UserRole.FACULTY:
       title = "Organizer Analytics";
-      DashboardComponent = <OrganizerDashboard metrics={metrics} />;
+      DashboardComponent = <OrganizerDashboard metrics={metrics} currentUser={currentUser} filters={filters} />;
       break;
     case UserRole.STUDENT:
       title = "Personal Analytics";
-      DashboardComponent = <PersonalDashboard metrics={metrics} />;
+      DashboardComponent = <PersonalDashboard metrics={metrics} currentUser={currentUser} filters={filters} />;
       break;
     default:
       DashboardComponent = <div>No analytics available for this role.</div>;
@@ -151,11 +199,14 @@ const AnalyticsDashboard = () => {
 
   return (
     <Layout>
-      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
+      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-          <p className="text-slate-500 mt-1">Real-time insights and reports based on operational data.</p>
+          <p className="text-slate-500 mt-1 mb-6">Real-time insights and reports based on operational data.</p>
         </div>
+        
+        <FilterBar filters={filters} setFilters={setFilters} role={role} />
+
         {DashboardComponent}
       </div>
     </Layout>
