@@ -452,13 +452,15 @@ router.get('/login-history', requireAuth, async (req, res) => {
     );
     const snapshot = await getDocs(q);
     
+    const getTimestampStr = (ts) => ts?.toDate ? ts.toDate().toISOString() : ts;
+    
     let logs = snapshot.docs.map(d => {
       const data = d.data();
       return {
         id: d.id,
         // Legacy mapping
         email: data.actor?.email,
-        timestamp: data.timestamp,
+        timestamp: getTimestampStr(data.timestamp),
         browser: data.userAgent ? data.userAgent.split('-')[1]?.trim() : 'Unknown',
         os: data.userAgent ? data.userAgent.split('-')[0]?.trim() : 'Unknown',
         ip: data.ipAddress,
@@ -491,13 +493,14 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
     const auditSnapshot = await getDocs(auditQ);
     
     const allLogs = [];
+    const getTimestampStr = (ts) => ts?.toDate ? ts.toDate().toISOString() : ts;
     
     snapshot.docs.forEach(d => {
       const data = d.data();
       allLogs.push({
         id: d.id,
         email: data.actor?.userId,
-        timestamp: data.timestamp,
+        timestamp: getTimestampStr(data.timestamp),
         activity: data.action,
         status: data.status,
         ip: data.ipAddress || '',
@@ -510,7 +513,7 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
       allLogs.push({
         id: d.id,
         email: data.actor?.email,
-        timestamp: data.timestamp,
+        timestamp: getTimestampStr(data.timestamp),
         activity: data.action,
         status: data.status,
         ip: data.ipAddress || '',
