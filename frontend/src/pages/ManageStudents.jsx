@@ -79,6 +79,7 @@ const ManageStudents = () => {
     const [academicBatches, setAcademicBatches] = useState([]);
     const [selectedBatch, setSelectedBatch] = useState('');
     const [filterBatch, setFilterBatch] = useState('');
+    const [filterStatus, setFilterStatus] = useState('ACTIVE');
 
     useEffect(() => {
         const loadBatches = async () => {
@@ -176,7 +177,10 @@ const ManageStudents = () => {
                               formatRollNo(s.rollNo, s.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
                               (s.email || '').toLowerCase().includes(searchQuery.toLowerCase());
         const matchesBatch = filterBatch ? (s.academicBatch === filterBatch) : true;
-        return matchesSearch && matchesBatch;
+        // Assume default status is ACTIVE if undefined (for old records)
+        const sStatus = s.studentStatus || 'ACTIVE';
+        const matchesStatus = filterStatus === 'ALL' ? true : (sStatus === filterStatus);
+        return matchesSearch && matchesBatch && matchesStatus;
     });
 
     // --- Staff Logic ---
@@ -656,6 +660,16 @@ const ManageStudents = () => {
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
                                         <div className="relative flex-1 max-w-md ml-auto flex gap-3">
+                                            <select
+                                                value={filterStatus}
+                                                onChange={(e) => setFilterStatus(e.target.value)}
+                                                className="w-1/3 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
+                                            >
+                                                <option value="ALL">All Status</option>
+                                                <option value="ACTIVE">Active</option>
+                                                <option value="GRADUATED">Graduated</option>
+                                                <option value="INACTIVE">Inactive</option>
+                                            </select>
                                             {academicBatches.length > 0 && (
                                                 <select
                                                     value={filterBatch}
@@ -664,7 +678,7 @@ const ManageStudents = () => {
                                                 >
                                                     <option value="">All Batches</option>
                                                     {academicBatches.map(b => (
-                                                        <option key={b.id} value={b.id}>{b.name || b.id}</option>
+                                                        <option key={b.id} value={b.name}>{b.name}</option>
                                                     ))}
                                                 </select>
                                             )}
@@ -702,6 +716,13 @@ const ManageStudents = () => {
                                                         )}
                                                         <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${student.role === UserRole.STUDENT_ORGANIZER ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                                             {student.role === UserRole.STUDENT_ORGANIZER ? <><ShieldCheck size={12}/> Organizer</> : 'General'}
+                                                        </span>
+                                                        <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase ${
+                                                            (student.studentStatus || 'ACTIVE') === 'ACTIVE' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                                            student.studentStatus === 'GRADUATED' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                                                            'bg-slate-50 text-slate-600 border border-slate-100'
+                                                        }`}>
+                                                            {student.studentStatus || 'ACTIVE'}
                                                         </span>
                                                         <button onClick={() => handleToggleOrganizer(student)} disabled={togglingId === student.id} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
                                                             {student.role === UserRole.STUDENT_ORGANIZER ? <UserX size={16} /> : <UserCheck size={16} />}

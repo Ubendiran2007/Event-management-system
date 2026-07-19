@@ -392,3 +392,47 @@ export const subscribeToStudents = (callback) => {
     unsubscribers.forEach(unsub => unsub());
   };
 };
+
+// ==========================================
+// ACADEMIC CALENDAR LISTENERS
+// ==========================================
+
+export const subscribeToAcademicYears = (callback) => {
+  return onSnapshot(collection(db, 'academicYears'), (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};
+
+export const subscribeToSemesters = (callback) => {
+  return onSnapshot(collection(db, 'semesters'), (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};
+
+export const subscribeToHolidays = (callback) => {
+  return onSnapshot(collection(db, 'holidays'), (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};
+
+export const subscribeToExams = (callback) => {
+  return onSnapshot(collection(db, 'exams'), (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};
+
+export const subscribeToWorkingDays = (callback) => {
+  return onSnapshot(doc(db, 'settings', 'workingDays'), (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data());
+    } else {
+      callback({}); // Return empty if not configured
+    }
+  });
+};
+
+export const subscribeToDepartmentCalendar = (callback) => {
+  return onSnapshot(collection(db, 'departmentCalendar'), (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};

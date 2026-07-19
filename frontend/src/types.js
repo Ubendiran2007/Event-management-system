@@ -25,6 +25,12 @@ export const Status = {
   GRADUATED: 'GRADUATED'
 };
 
+export const StudentStatus = {
+  ACTIVE: 'ACTIVE',
+  GRADUATED: 'GRADUATED',
+  INACTIVE: 'INACTIVE'
+};
+
 export const EventStatus = {
   PENDING_CLASS_ADVISOR: 'PENDING_CLASS_ADVISOR',
   PENDING_HOD: 'PENDING_HOD',

@@ -29,6 +29,7 @@ import { uploadFileToStorage } from '../utils/storageService';
 import Layout from '../components/Layout';
 import TimePicker from '../components/TimePicker';
 import { useAppContext } from '../context/AppContext';
+import { useCalendarContext } from '../context/CalendarContext';
 import { EventStatus, UserRole } from '../types';
 import { validateUpload } from '../utils/fileValidation';
 
@@ -206,11 +207,14 @@ const RequirementToggle = ({ label, checked, onToggle }) => (
 );
 
 const CreateEvent = () => {
-  const { currentUser, events } = useAppContext();
-  const navigate = useNavigate();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { createEvent, currentUser, events } = useAppContext();
+  const { getOverlappingHolidays, getOverlappingExams, checkWorkingDays, getActiveSemester } = useCalendarContext();
+
+  // If editing a rejected event for resubmission
+  const isResubmissionEdit = location.state?.editMode === true;
   const editingEvent = location.state?.editingEvent || null;
-  const isResubmissionEdit = Boolean(editingEvent?.id && editingEvent?.status === EventStatus.REJECTED);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -1967,6 +1971,9 @@ const CreateEvent = () => {
                 onBlur={(e) => validateField('startDate', e.target.value)}
               />
               <FieldMsg errKey="startDate" hint="Must be today or a future date" />
+              {form.startDate && !getActiveSemester(form.startDate) && (
+                <p className="text-xs text-amber-600 font-bold mt-1">Warning: Date is outside any active semester.</p>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -1982,6 +1989,37 @@ const CreateEvent = () => {
               />
               <FieldMsg errKey="endDate" hint="Must be on or after start date" />
             </div>
+
+            {/* Overlap Warnings */}
+            {form.startDate && form.endDate && form.startDate <= form.endDate && (
+              <div className="md:col-span-2 space-y-2">
+                {(() => {
+                  const oHolidays = getOverlappingHolidays(form.startDate, form.endDate);
+                  const oExams = getOverlappingExams(form.startDate, form.endDate);
+                  const nWorking = checkWorkingDays(form.startDate, form.endDate);
+                  
+                  const warnings = [];
+                  if (oHolidays.length > 0) warnings.push(`Overlaps with holiday(s): ${oHolidays.map(h => h.name).join(', ')}`);
+                  if (oExams.length > 0) warnings.push(`Overlaps with exam(s): ${oExams.map(e => e.name).join(', ')}`);
+                  if (nWorking.length > 0) warnings.push(`Includes non-working days: ${nWorking.join(', ')}`);
+
+                  if (warnings.length === 0) return null;
+
+                  return (
+                    <div className="bg-amber-50 text-amber-800 p-3 rounded-lg border border-amber-200 text-sm font-medium space-y-1">
+                      <div className="flex items-center gap-2 text-amber-700 mb-2">
+                        <CalendarDays size={16} />
+                        <strong>Calendar Notice</strong>
+                      </div>
+                      <ul className="list-disc pl-5 space-y-1">
+                        {warnings.map((w, idx) => <li key={idx}>{w}</li>)}
+                      </ul>
+                      <p className="text-xs mt-2 text-amber-700/80">These warnings are for your information and do not block submission.</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             <div className="space-y-1">
               <Lbl>Number of Days</Lbl>

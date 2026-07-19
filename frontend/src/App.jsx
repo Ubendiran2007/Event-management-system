@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { CalendarProvider } from './context/CalendarContext';
 import './App.css';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -10,6 +11,8 @@ const CreateEvent = lazy(() => import('./pages/CreateEvent'));
 const ExploreEvents = lazy(() => import('./pages/ExploreEventsNew'));
 const IQACSubmission = lazy(() => import('./pages/IQACSubmission'));
 const ManageStudents = lazy(() => import('./pages/ManageStudents'));
+const AcademicBatches = lazy(() => import('./pages/AcademicBatches'));
+const AcademicCalendar = lazy(() => import('./pages/AcademicCalendar'));
 const ODCorrection = lazy(() => import('./pages/ODCorrection'));
 const SecurityProfile = lazy(() => import('./pages/SecurityProfile'));
 const EventTracking = lazy(() => import('./pages/EventTracking'));
@@ -33,6 +36,8 @@ const RoleRoutes = () => (
     <Route path="explore" element={<ExploreEvents />} />
     <Route path="iqac" element={<IQACSubmission />} />
     <Route path="manage-students" element={<ManageStudents />} />
+    <Route path="academic-batches" element={<AcademicBatches />} />
+    <Route path="academic-calendar" element={<AcademicCalendar />} />
     <Route path="od-correction" element={<ODCorrection />} />
     <Route path="security" element={<SecurityProfile />} />
     
@@ -68,22 +73,24 @@ export default function App() {
   return (
     <BrowserRouter>
       <AppProvider>
-        <NotificationProvider>
-          <Suspense fallback={<LoadingFallback />}>
-            <Routes>
-              <Route path="/" element={<Login />} />
-              <Route path="/login" element={<Login />} />
-              
-              {/* Generate nested routes for every role path */}
-              {ROLE_PATHS.map((rolePath) => (
-                <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
-              ))}
-              
-              {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
-              <Route path="*" element={<FallbackRoute />} />
-            </Routes>
-          </Suspense>
-        </NotificationProvider>
+        <CalendarProvider>
+          <NotificationProvider>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                <Route path="/" element={<Login />} />
+                <Route path="/login" element={<Login />} />
+                
+                {/* Generate nested routes for every role path */}
+                {ROLE_PATHS.map((rolePath) => (
+                  <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
+                ))}
+                
+                {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
+                <Route path="*" element={<FallbackRoute />} />
+              </Routes>
+            </Suspense>
+          </NotificationProvider>
+        </CalendarProvider>
       </AppProvider>
     </BrowserRouter>
   );
