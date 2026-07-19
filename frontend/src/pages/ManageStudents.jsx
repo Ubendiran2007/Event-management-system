@@ -12,7 +12,16 @@ import { formatRollNo, formatStudentNameWithRoll } from '../utils/formatters';
 import * as XLSX from 'xlsx';
 
 const ALL_CLASSES = [
-  'CSE-A', 'CSE-B', 'CSE-C', 'CSE-D'
+  'CSE-A', 'CSE-B', 'CSE-C', 'CSE-D',
+  'ECE-A', 'ECE-B', 'ECE-C',
+  'CCE-A', 'CCE-B',
+  'CSBS-A', 'CSBS-B',
+  'MECH-A', 'MECH-B',
+  'CYBER-A',
+  'EEE-A', 'EEE-B',
+  'AIML-A', 'AIML-B',
+  'AIDS-A', 'AIDS-B',
+  'IT-A', 'IT-B', 'IT-C'
 ];
 
 const STAFF_ROLES = [
