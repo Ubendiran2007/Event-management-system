@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import { useAppContext } from './AppContext';
 import { useCalendarContext } from './CalendarContext';
 import { EventStatus } from '../types';
@@ -17,17 +17,33 @@ export const AnalyticsProvider = ({ children }) => {
   const { currentUser, events, students, staffUsers, odRequests } = useAppContext();
   const { academicYears, semesters, holidays, exams, departmentCalendar } = useCalendarContext();
 
+  const [filters, setFilters] = useState({
+    academicYear: '',
+    department: '',
+    category: '',
+    status: ''
+  });
+
   const metrics = useMemo(() => {
     if (!currentUser) return null;
 
     const role = currentUser.role;
-    const department = currentUser.department;
+    const userDepartment = currentUser.department;
+
+    // Apply global filters to events
+    const filteredEvents = events.filter(e => {
+       if (filters.academicYear && e.academicYear !== filters.academicYear) return false;
+       if (filters.department && e.department !== filters.department) return false;
+       if (filters.category && e.eventType !== filters.category) return false;
+       if (filters.status && e.status !== filters.status) return false;
+       return true;
+    });
 
     // Common Computations
-    const approvedEvents = events.filter(e => e.status === EventStatus.APPROVED);
-    const completedEvents = events.filter(e => e.status === EventStatus.COMPLETED);
-    const pendingEvents = events.filter(e => [EventStatus.PENDING_FACULTY, EventStatus.PENDING_HOD, EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL].includes(e.status));
-    const rejectedEvents = events.filter(e => e.status === EventStatus.REJECTED);
+    const approvedEvents = filteredEvents.filter(e => e.status === EventStatus.APPROVED);
+    const completedEvents = filteredEvents.filter(e => e.status === EventStatus.COMPLETED);
+    const pendingEvents = filteredEvents.filter(e => [EventStatus.PENDING_FACULTY, EventStatus.PENDING_HOD, EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL].includes(e.status));
+    const rejectedEvents = filteredEvents.filter(e => e.status === EventStatus.REJECTED);
 
     const calcAttendanceAndFeedback = (filteredRequests) => {
       const withAttendance = filteredRequests.filter(r => r.attendanceStatus && r.attendanceStatus !== 'NOT_ATTENDED');
@@ -58,7 +74,7 @@ export const AnalyticsProvider = ({ children }) => {
       const stats = calcAttendanceAndFeedback(odRequests);
       
       data.kpis = {
-        totalEvents: events.length,
+        totalEvents: filteredEvents.length,
         approvedEvents: approvedEvents.length,
         pendingEvents: pendingEvents.length,
         completedEvents: completedEvents.length,
@@ -70,7 +86,7 @@ export const AnalyticsProvider = ({ children }) => {
 
       // Charts data
       const deptCounts = {};
-      events.forEach(e => {
+      filteredEvents.forEach(e => {
         if(e.department) {
            deptCounts[e.department] = (deptCounts[e.department] || 0) + 1;
         }
@@ -78,7 +94,7 @@ export const AnalyticsProvider = ({ children }) => {
       data.charts.deptEvents = Object.keys(deptCounts).map(d => ({ name: d, count: deptCounts[d] }));
 
       const catCounts = {};
-      events.forEach(e => {
+      filteredEvents.forEach(e => {
         if(e.eventType) {
            catCounts[e.eventType] = (catCounts[e.eventType] || 0) + 1;
         }
@@ -86,8 +102,8 @@ export const AnalyticsProvider = ({ children }) => {
       data.charts.categoryEvents = Object.keys(catCounts).map(c => ({ name: c, count: catCounts[c] }));
 
     } else if (role === 'HOD') {
-      const deptEvents = events.filter(e => e.department === department);
-      const deptRequests = odRequests.filter(r => r.department === department);
+      const deptEvents = filteredEvents.filter(e => e.department === userDepartment);
+      const deptRequests = odRequests.filter(r => r.department === userDepartment);
       const stats = calcAttendanceAndFeedback(deptRequests);
 
       data.kpis = {
@@ -108,7 +124,7 @@ export const AnalyticsProvider = ({ children }) => {
 
     } else if (role === 'CLASS_ADVISOR') {
       // Find assigned class students
-      const myStudents = students.filter(s => s.classAdvisorEmail === currentUser.email || (s.department === department && s.section === currentUser.section && s.academicBatch === currentUser.academicBatch));
+      const myStudents = students.filter(s => s.classAdvisorEmail === currentUser.email || (s.department === userDepartment && s.section === currentUser.section && s.academicBatch === currentUser.academicBatch));
       const myStudentRolls = myStudents.map(s => s.rollNo);
       const myRequests = odRequests.filter(r => myStudentRolls.includes(r.rollNo));
       const stats = calcAttendanceAndFeedback(myRequests);
@@ -131,7 +147,7 @@ export const AnalyticsProvider = ({ children }) => {
            feedbackSubmitted: stats.feedbackCount
          };
       } else {
-         const myOrganizedEvents = events.filter(e => e.organizerEmail === currentUser.email);
+         const myOrganizedEvents = filteredEvents.filter(e => e.organizerEmail === currentUser.email);
          const eventIds = myOrganizedEvents.map(e => e.id);
          const myRequests = odRequests.filter(r => eventIds.includes(r.eventId));
          const stats = calcAttendanceAndFeedback(myRequests);
@@ -146,10 +162,10 @@ export const AnalyticsProvider = ({ children }) => {
     }
 
     return data;
-  }, [events, students, staffUsers, odRequests, currentUser, academicYears, semesters, holidays, exams, departmentCalendar]);
+  }, [events, students, staffUsers, odRequests, currentUser, academicYears, semesters, holidays, exams, departmentCalendar, filters]);
 
   return (
-    <AnalyticsContext.Provider value={{ metrics }}>
+    <AnalyticsContext.Provider value={{ metrics, filters, setFilters, filteredEvents }}>
       {children}
     </AnalyticsContext.Provider>
   );
