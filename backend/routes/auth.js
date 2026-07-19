@@ -403,7 +403,11 @@ router.post('/login', async (req, res) => {
           if (liveDoc.exists()) {
             const liveData = liveDoc.data();
             const { password: _pw, ...safeData } = liveData;
-            foundUserObj = { id: matchedStaff.user.id, ...safeData };
+            foundUserObj = { 
+               ...matchedStaff.user, // fallback for any missing critical fields
+               ...safeData,
+               role: safeData.role || matchedStaff.user.role // ensure role is never lost
+            };
           } else {
             foundUserObj = matchedStaff.user;
           }
