@@ -69,6 +69,22 @@ async function safeSend(label, recipient, sendFn) {
 }
 
 /**
+ * Centralized helper to execute any notification function in the background
+ * without blocking the HTTP response, while trapping both synchronous and
+ * asynchronous exceptions.
+ *
+ * @param {string} label - A human-readable identifier for logging
+ * @param {Function} notifyFn - A function that returns a Promise
+ */
+function executeBackgroundNotification(label, notifyFn) {
+  Promise.resolve()
+    .then(() => notifyFn())
+    .catch(err => {
+      console.error(`[BACKGROUND_EMAIL_FAIL] ${label}`, err);
+    });
+}
+
+/**
  * Fetch all emails for a given Firestore role.
  * @param {string} role
  * @returns {Promise<string[]>}
@@ -642,4 +658,5 @@ module.exports = {
   handleEventPostponed,
   isValidEmail,
   getEmailsByRole,
+  executeBackgroundNotification,
 };

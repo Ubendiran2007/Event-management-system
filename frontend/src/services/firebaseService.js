@@ -93,14 +93,17 @@ const ALL_CLASSES = [
 // Fetch all students from all classes: students/{className}/members/{studentId}
 export const fetchStudents = async () => {
   try {
-    const allStudents = [];
-    for (const className of ALL_CLASSES) {
+    const fetchPromises = ALL_CLASSES.map(async (className) => {
       const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
+      const classStudents = [];
       membersSnapshot.docs.forEach(doc => {
-        allStudents.push({ id: doc.id, ...doc.data(), class: className });
+        classStudents.push({ id: doc.id, ...doc.data(), class: className });
       });
-    }
-    return allStudents;
+      return classStudents;
+    });
+    
+    const results = await Promise.all(fetchPromises);
+    return results.flat();
   } catch (error) {
     console.error('Error fetching students:', error);
     return [];
@@ -142,14 +145,19 @@ export const getStudentById = async (studentId, className = null) => {
       // Otherwise, search through all classes
       const classesSnapshot = await getDocs(collection(db, 'students'));
       
-      for (const classDoc of classesSnapshot.docs) {
+      const searchPromises = classesSnapshot.docs.map(async (classDoc) => {
         const className = classDoc.id;
         const docRef = doc(db, 'students', className, 'members', studentId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           return { id: docSnap.id, ...docSnap.data(), class: className };
         }
-      }
+        return null;
+      });
+      
+      const results = await Promise.all(searchPromises);
+      const found = results.find(res => res !== null);
+      if (found) return found;
     }
     return null;
   } catch (error) {
@@ -173,19 +181,25 @@ export const updateStudentRole = async (studentId, role, className, isApprovedOr
 export const authenticateStudent = async (username, password) => {
   try {
     console.log('Authenticating student:', username);
-    for (const className of ALL_CLASSES) {
+    const authPromises = ALL_CLASSES.map(async (className) => {
       const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
-      console.log(`Checking ${membersSnapshot.docs.length} students in class ${className}`);
       for (const memberDoc of membersSnapshot.docs) {
         const student = memberDoc.data();
         if (
           student.username?.toLowerCase() === username.toLowerCase() &&
           student.password?.toUpperCase() === password.toUpperCase()
         ) {
-          console.log('Student authenticated successfully:', student.name);
           return { id: memberDoc.id, ...student, className };
         }
       }
+      return null;
+    });
+    
+    const results = await Promise.all(authPromises);
+    const found = results.find(res => res !== null);
+    if (found) {
+      console.log('Student authenticated successfully:', found.name);
+      return found;
     }
     console.log('No matching student found');
     return null;
@@ -352,20 +366,23 @@ export const subscribeToEvents = (callback) => {
 
 export const subscribeToStudents = (callback) => {
   const unsubscribers = [];
-  let pendingFetch = false;
+  const classDataCache = new Map();
+  let pendingCallback = false;
 
-  // Subscribe to all class member subcollections so any change triggers a refresh
   ALL_CLASSES.forEach(className => {
+    classDataCache.set(className, []);
+    
     const membersCollection = collection(db, 'students', className, 'members');
-    const unsubscribe = onSnapshot(membersCollection, () => {
-      // Debounce: if multiple classes fire at once, only run one fetch
-      if (pendingFetch) return;
-      pendingFetch = true;
+    const unsubscribe = onSnapshot(membersCollection, (snapshot) => {
+      const classStudents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), class: className }));
+      classDataCache.set(className, classStudents);
+      
+      if (pendingCallback) return;
+      pendingCallback = true;
       setTimeout(() => {
-        fetchStudents().then(allStudents => {
-          callback(allStudents);
-          pendingFetch = false;
-        });
+        const allStudents = Array.from(classDataCache.values()).flat();
+        callback(allStudents);
+        pendingCallback = false;
       }, 100);
     });
     unsubscribers.push(unsubscribe);

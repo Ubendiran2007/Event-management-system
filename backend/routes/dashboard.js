@@ -146,14 +146,18 @@ router.get('/students', async (req, res) => {
 
     const allStudents = [];
 
-    for (const cls of classesToFetch) {
-      const snapshot = await getDocs(collection(db, 'students', cls, 'members'));
+    const snapshots = await Promise.all(
+      classesToFetch.map(cls => getDocs(collection(db, 'students', cls, 'members')))
+    );
+
+    snapshots.forEach((snapshot, idx) => {
+      const cls = classesToFetch[idx];
       snapshot.docs.forEach((d) => {
         // Never expose stored passwords
         const { password: _pw, ...safeData } = d.data();
         allStudents.push({ id: d.id, class: cls, ...safeData });
       });
-    }
+    });
 
     return res.json({ success: true, count: allStudents.length, students: allStudents });
   } catch (error) {

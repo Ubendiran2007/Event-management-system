@@ -208,7 +208,7 @@ router.post('/', async (req, res) => {
     const facultyNameStr = facultyUsers.map(f => f.name || f.email).join(', ') || 'Your Faculty Advisor';
 
     if (dbEmail) {
-      await safeMail({
+      safeMail({
         to: dbEmail,
         subject: `OD Correction Request Submitted — Pending Faculty Verification`,
         html: buildEmailHtml({
@@ -238,7 +238,7 @@ router.post('/', async (req, res) => {
 
     // ── Email: Faculty notification ───────────────────────────────────────────
     for (const faculty of facultyUsers) {
-      await safeMail({
+      safeMail({
         to: faculty.email,
         subject: `OD Correction Verification Required — ${studentName} (${dbRollNo})`,
         html: buildEmailHtml({
@@ -429,7 +429,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
           }
         }
 
-        await safeMail({
+        safeMail({
           to: studentEmail,
           subject: isCompleted
             ? `✅ OD Correction Approved — Your OD Count Has Been Updated`
@@ -471,7 +471,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
       if (nextStatus === 'PENDING_HOD') {
         const hodUsers = await getUsersByRole('HOD', data.department);
         for (const hod of hodUsers) {
-          await safeMail({
+          safeMail({
             to: hod.email,
             subject: `OD Correction Requires HOD Review — ${data.studentName} (${data.rollNo})`,
             html: buildEmailHtml({
@@ -503,7 +503,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
         const targets = iqacUsers.length > 0 ? iqacUsers : [{ email: 'iqac@sece.ac.in' }];
         const facultyDec = data.facultyDecision || {};
         for (const iqac of targets) {
-          await safeMail({
+          safeMail({
             to: iqac.email,
             subject: `OD Correction Awaiting IQAC Approval — ${data.studentName} (${data.rollNo})`,
             html: buildEmailHtml({
@@ -537,7 +537,7 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
       // — REJECTED: Notify Student —————————————————————————————————————————
       const stageLabel = { FACULTY: 'Faculty Advisor', HOD: 'Head of Department', IQAC_TEAM: 'IQAC' }[role] || role;
       if (studentEmail) {
-        await safeMail({
+        safeMail({
           to: studentEmail,
           subject: `OD Correction Request Rejected by ${stageLabel}`,
           html: buildEmailHtml({

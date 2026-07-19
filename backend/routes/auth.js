@@ -8,6 +8,7 @@ const {
   setDoc,
   where,
   deleteDoc,
+  limit,
   db
 } = require('../firebaseClientWrapper');
 const { issueToken } = require('../middleware/auth');
@@ -350,7 +351,8 @@ router.post('/login', async (req, res) => {
     // ── 1. Check the top-level "users" collection (Module 2 Architecture) ──
     const usersQuery = query(
       collection(db, 'users'),
-      where('email', '==', email.toLowerCase())
+      where('email', '==', email.toLowerCase()),
+      limit(1)
     );
     const usersSnapshot = await getDocs(usersQuery);
 
@@ -430,8 +432,8 @@ router.post('/login', async (req, res) => {
 
       const searchPromises = classes.map(async (className) => {
         const lowerEmail = email.toLowerCase();
-        const membersQuery = query(collection(db, 'students', className, 'members'), where('username', '==', lowerEmail));
-        const emailQuery = query(collection(db, 'students', className, 'members'), where('email', '==', lowerEmail));
+        const membersQuery = query(collection(db, 'students', className, 'members'), where('username', '==', lowerEmail), limit(1));
+        const emailQuery = query(collection(db, 'students', className, 'members'), where('email', '==', lowerEmail), limit(1));
         
         const [membersSnapshot, emailSnapshot] = await Promise.all([
           getDocs(membersQuery),

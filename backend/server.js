@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 require('dotenv').config();
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -17,9 +20,32 @@ const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionSer
 const { startFeedbackReminderJob } = require('./services/feedbackReminderService');
 
 const app = express();
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
 const PORT = process.env.PORT || 5001;
 
+// ── Rate Limiting ───────────────────────────────────────────────────────────
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { success: false, message: 'Too many authentication attempts, please try again later.' }
+});
+
 // ── Middleware ──────────────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+}));
+app.use(compression());
+app.use(globalLimiter);
+
 app.use(cors({ 
   origin: [
     process.env.CLIENT_ORIGIN, 
@@ -27,18 +53,21 @@ app.use(cors({
     'http://localhost:5174'
   ].filter(Boolean) 
 }));
-// 50 MB limit — needed for base64 posters and PDF attachments (OD letters)
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
 // ── Routes ──────────────────────────────────────────────────────────────────
+// 50 MB limit — needed for base64 posters and PDF attachments (OD letters)
+app.use('/api/events', express.json({ limit: '50mb' }), express.urlencoded({ extended: true, limit: '50mb' }), eventsRoutes);
+app.use('/api/od-requests', express.json({ limit: '50mb' }), express.urlencoded({ extended: true, limit: '50mb' }), odRequestsRoutes);
+
+// Global 2 MB limit for all other routes
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+
+app.use('/api/login', authLimiter);
 app.use('/api', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/events', eventsRoutes);
 app.use('/api/explore', exploreRoutes);
 app.use('/api/iqac', iqacRoutes);
 app.use('/api/students', studentsRoutes);
-app.use('/api/od-requests', odRequestsRoutes);
 app.use('/api/correction-requests', correctionRequestsRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/users', usersRoutes);

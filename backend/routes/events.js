@@ -9,6 +9,7 @@ const {
   deleteDoc,
   query,
   where,
+  limit,
   runTransaction,
   writeBatch,
   arrayUnion,
@@ -39,7 +40,8 @@ const {
   handleIQACExtensionRequest,
   handleIQACExtensionDecision,
   handleEventCancelled,
-  handleEventPostponed
+  handleEventPostponed,
+  executeBackgroundNotification
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
@@ -101,11 +103,11 @@ async function getFacultyEmailByName(facultyName) {
   }
 
   try {
-    // Try to find the faculty in the "coordinators" collection
     const coordinatorsSnapshot = await getDocs(
       query(
         collection(db, 'coordinators'),
-        where('name', '==', facultyName)
+        where('name', '==', facultyName),
+        limit(1)
       )
     );
 
@@ -114,12 +116,12 @@ async function getFacultyEmailByName(facultyName) {
       return coordinatorData.email || null;
     }
 
-    // Fallback: Check "users" collection with faculty role
     const usersSnapshot = await getDocs(
       query(
         collection(db, 'users'),
         where('name', '==', facultyName),
-        where('role', '==', 'FACULTY')
+        where('role', '==', 'FACULTY'),
+        limit(1)
       )
     );
 
@@ -218,24 +220,20 @@ router.post('/', async (req, res) => {
 
     // ── Background Notifications (centralized handler) ─────────────────
     const payloadWithId = { id: docRef.id, ...payload };
-    await (async () => {
-      try {
-        // Resolve faculty email if student-created event
-        if (payload.status === 'PENDING_FACULTY') {
-          let facultyEmail = payload.coordinator?.facultyEmail ||
-                             payload.coordinator?.faculty_email ||
-                             payload.facultyEmail || null;
-          if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
-          if (!facultyEmail && payload.coordinator?.facultyName) {
-            facultyEmail = await getFacultyEmailByName(String(payload.coordinator.facultyName).trim());
-          }
-          payloadWithId.coordinator = { ...payloadWithId.coordinator, facultyEmail };
+    executeBackgroundNotification('events/create', async () => {
+      // Resolve faculty email if student-created event
+      if (payload.status === 'PENDING_FACULTY') {
+        let facultyEmail = payload.coordinator?.facultyEmail ||
+                           payload.coordinator?.faculty_email ||
+                           payload.facultyEmail || null;
+        if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
+        if (!facultyEmail && payload.coordinator?.facultyName) {
+          facultyEmail = await getFacultyEmailByName(String(payload.coordinator.facultyName).trim());
         }
-        await handleEventStatusChange(payloadWithId, null, payload.status);
-      } catch (err) {
-        console.error('[events/create/bg] Error in email handler:', err.message);
+        payloadWithId.coordinator = { ...payloadWithId.coordinator, facultyEmail };
       }
-    })();
+      await handleEventStatusChange(payloadWithId, null, payload.status);
+    });
 
     logActivity({
       category: 'EVENT',
@@ -589,19 +587,15 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
     }
 
     // ── Background Notifications (centralized handler) ──────────────────────
-    await (async () => {
-      try {
-        if (finalStatus === 'CANCELLED') {
-          await handleEventCancelled(eventData);
-        } else if (finalStatus === 'POSTPONED') {
-          await handleEventPostponed(eventData);
-        } else {
-          await handleEventStatusChange(eventData, prevStatus, notificationStatus);
-        }
-      } catch (err) {
-        console.error('[events/status/bg] Email handler error:', err.message);
+    executeBackgroundNotification('events/status', async () => {
+      if (finalStatus === 'CANCELLED') {
+        await handleEventCancelled(eventData);
+      } else if (finalStatus === 'POSTPONED') {
+        await handleEventPostponed(eventData);
+      } else {
+        await handleEventStatusChange(eventData, prevStatus, notificationStatus);
       }
-    })();
+    });
 
 
     return res.json({
@@ -699,15 +693,11 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
 
       await updateDoc(eventRef, updatePayload);
 
-      await (async () => {
+      executeBackgroundNotification('events/dept-approval/reject', async () => {
         if (eventData.organizerEmail) {
-          try {
-            await sendEventStatusNotification(eventData.organizerEmail, { id: req.params.id, ...eventData, ...updatePayload }, 'REJECTED');
-          } catch (e) {
-            console.error('[events/dept-approval/bg] Error sending rejection email:', e.message);
-          }
+          await sendEventStatusNotification(eventData.organizerEmail, { id: req.params.id, ...eventData, ...updatePayload }, 'REJECTED');
         }
-      })();
+      });
 
       return res.json({
         success: true,
@@ -731,24 +721,16 @@ router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_
       updatePayload.status = 'PENDING_IQAC';
       await updateDoc(eventRef, updatePayload);
 
-      await (async () => {
-        try {
-          await handleEventStatusChange({ id: req.params.id, lastApprovedDept: department, ...eventData, ...updatePayload }, 'PENDING_DEPARTMENTS', 'PENDING_IQAC');
-        } catch (e) {
-          console.error('[events/dept-approval/bg] Error starting IQAC notifications:', e.message);
-        }
-      })();
+      executeBackgroundNotification('events/dept-approval/iqac', async () => {
+        await handleEventStatusChange({ id: req.params.id, lastApprovedDept: department, ...eventData, ...updatePayload }, 'PENDING_DEPARTMENTS', 'PENDING_IQAC');
+      });
     } else {
       await updateDoc(eventRef, updatePayload);
  
-      await (async () => {
-        try {
-          // Pass a pseudo-status 'DEPARTMENT_APPROVED' so the handler emails the organizer about this intermediate step
-          await handleEventStatusChange({ id: req.params.id, lastApprovedDept: department, ...eventData, ...updatePayload }, eventData.status, 'DEPARTMENT_APPROVED');
-        } catch (e) {
-          console.error('[events/dept-approval/bg] Error starting intermediate notifications:', e.message);
-        }
-      })();
+      executeBackgroundNotification('events/dept-approval/intermediate', async () => {
+        // Pass a pseudo-status 'DEPARTMENT_APPROVED' so the handler emails the organizer about this intermediate step
+        await handleEventStatusChange({ id: req.params.id, lastApprovedDept: department, ...eventData, ...updatePayload }, eventData.status, 'DEPARTMENT_APPROVED');
+      });
     }
 
     return res.json({
@@ -857,23 +839,19 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     await updateDoc(eventRef, updatePayload);
 
     // After resubmitting, notify the faculty in the background
-    await (async () => {
-      try {
-        const payloadWithId = { id: req.params.id, ...updatePayload };
-        let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
-        if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
+    executeBackgroundNotification('events/resubmit-edit', async () => {
+      const payloadWithId = { id: req.params.id, ...updatePayload };
+      let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
+      if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
 
-        if (!facultyEmail && updatePayload.coordinator?.facultyName) {
-          facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
-        }
-
-        if (facultyEmail) {
-          await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
-        }
-      } catch (emailError) {
-        console.error('[events/resubmit-edit/bg] Error sending email:', emailError.message);
+      if (!facultyEmail && updatePayload.coordinator?.facultyName) {
+        facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
       }
-    })();
+
+      if (facultyEmail) {
+        await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
+      }
+    });
 
     return res.json({
       success: true,
@@ -1169,11 +1147,9 @@ router.patch('/:id/poster', async (req, res) => {
     // Send notification if this was a requested media poster upload
     if (isMediaUpload && eventData.organizerEmail) {
       const refreshedData = { id: req.params.id, ...eventData, ...updatePayload };
-      try {
+      executeBackgroundNotification('events/poster', async () => {
         await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
-      } catch (emailErr) {
-        console.error('[events/poster] Error sending email to organizer:', emailErr);
-      }
+      });
     }
 
     return res.json({
@@ -1221,11 +1197,9 @@ router.patch('/:id/poster-workflow', async (req, res) => {
 
     // Trigger emails for specific steps in the workflow
     if ((updates.status === 'SENT_TO_ORGANIZER' || updates.status === 'COMPLETED') && eventData.organizerEmail) {
-      try {
+      executeBackgroundNotification('events/poster-workflow', async () => {
         await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
-      } catch (workflowErr) {
-        console.error('[events/poster-workflow] Error sending email to organizer:', workflowErr);
-      }
+      });
     }
 
     return res.json({
@@ -1410,7 +1384,7 @@ router.patch('/:id/request-iqac-extension', async (req, res) => {
     const updatePayload = { iqacExtensionRequest, updatedAt: new Date().toISOString() };
     await updateDoc(eventRef, updatePayload);
 
-    await (async () => {
+    (async () => {
       try {
         const hodEmails = await getOfficialEmailsByRole('HOD');
         if (hodEmails.length > 0) {
@@ -1454,15 +1428,11 @@ router.patch('/:id/approve-iqac-extension', async (req, res) => {
     };
     await updateDoc(eventRef, updatePayload);
 
-    await (async () => {
-      try {
-        if (eventData.organizerEmail) {
-          await sendIQACExtensionStatusEmail(eventData.organizerEmail, { id: req.params.id, ...eventData }, true);
-        }
-      } catch (err) {
-        console.error('[events/approve-iqac-extension/bg] background err:', err.message);
+    executeBackgroundNotification('events/approve-iqac-extension', async () => {
+      if (eventData.organizerEmail) {
+        await sendIQACExtensionStatusEmail(eventData.organizerEmail, { id: req.params.id, ...eventData }, true);
       }
-    })();
+    });
 
     return res.json({ success: true, message: 'IQAC extension approved successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1492,15 +1462,11 @@ router.patch('/:id/reject-iqac-extension', async (req, res) => {
     };
     await updateDoc(eventRef, updatePayload);
 
-    await (async () => {
-      try {
-        if (eventData.organizerEmail) {
-          await sendIQACExtensionStatusEmail(eventData.organizerEmail, { id: req.params.id, ...eventData }, false);
-        }
-      } catch (err) {
-        console.error('[events/reject-iqac-extension/bg] background err:', err.message);
+    executeBackgroundNotification('events/reject-iqac-extension', async () => {
+      if (eventData.organizerEmail) {
+        await sendIQACExtensionStatusEmail(eventData.organizerEmail, { id: req.params.id, ...eventData }, false);
       }
-    })();
+    });
 
     return res.json({ success: true, message: 'IQAC extension rejected successfully' });
   } catch (error) {
@@ -1618,13 +1584,9 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
 
     // Notifications
     const { handleEventStatusChange } = require('../services/emailHandler');
-    await (async () => {
-      try {
-        await handleEventStatusChange({ id: req.params.id, ...eventData, ...updatePayload }, eventData.status, newStatus);
-      } catch (err) {
-        console.error('[events/cancel/bg] Email handler error:', err.message);
-      }
-    })();
+    executeBackgroundNotification('events/cancel', async () => {
+      await handleEventStatusChange({ id: req.params.id, ...eventData, ...updatePayload }, eventData.status, newStatus);
+    });
 
     return res.json({ success: true, message: 'Event cancelled successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
   } catch (error) {
@@ -1729,13 +1691,9 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
 
     // Notifications
     const { handleEventStatusChange } = require('../services/emailHandler');
-    await (async () => {
-      try {
-        await handleEventStatusChange({ id: req.params.id, ...eventData, ...firestoreUpdate }, eventData.status, newStatus);
-      } catch (err) {
-        console.error('[events/postpone/bg] Email handler error:', err.message);
-      }
-    })();
+    executeBackgroundNotification('events/postpone', async () => {
+      await handleEventStatusChange({ id: req.params.id, ...eventData, ...firestoreUpdate }, eventData.status, newStatus);
+    });
 
     return res.json({ success: true, message: 'Event postponed successfully', event: { id: req.params.id, ...eventData, ...firestoreUpdate } });
   } catch (error) {

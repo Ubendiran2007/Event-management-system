@@ -52,14 +52,14 @@ async function findUserByIdentifier(identifier) {
   const idUpper = identifier.trim().toUpperCase();
   
   // 1. Check users collection
-  const usersQueryEmail = query(collection(db, 'users'), where('email', '==', idLower));
+  const usersQueryEmail = query(collection(db, 'users'), where('email', '==', idLower), limit(1));
   const usersSnapEmail = await getDocs(usersQueryEmail);
   if (!usersSnapEmail.empty) {
     const docSnap = usersSnapEmail.docs[0];
     return { userObj: { id: docSnap.id, ...docSnap.data(), password: undefined }, storedPassword: docSnap.data().password, type: 'user', ref: doc(db, 'users', docSnap.id) };
   }
   
-  const usersQueryId = query(collection(db, 'users'), where('employeeId', '==', idUpper));
+  const usersQueryId = query(collection(db, 'users'), where('employeeId', '==', idUpper), limit(1));
   const usersSnapId = await getDocs(usersQueryId);
   if (!usersSnapId.empty) {
     const docSnap = usersSnapId.docs[0];
@@ -68,23 +68,34 @@ async function findUserByIdentifier(identifier) {
   
   // 2. Check students
   const classes = ['CSE-B', 'CSE-D', 'ECE-A', 'ECE-B', 'CCE-A', 'CSBS-A', 'MECH-A', 'CYBER-A', 'EEE-A', 'AIML-A', 'AIDS-A'];
-  for (const className of classes) {
-    const memQueryEmail = query(collection(db, 'students', className, 'members'), where('email', '==', idLower));
-    const memSnapEmail = await getDocs(memQueryEmail);
+  const searchPromises = classes.map(async (className) => {
+    const memQueryEmail = query(collection(db, 'students', className, 'members'), where('email', '==', idLower), limit(1));
+    const memQueryRoll = query(collection(db, 'students', className, 'members'), where('rollNo', '==', idUpper), limit(1));
+    
+    const [memSnapEmail, memSnapRoll] = await Promise.all([
+      getDocs(memQueryEmail),
+      getDocs(memQueryRoll)
+    ]);
+    
     if (!memSnapEmail.empty) {
       const docSnap = memSnapEmail.docs[0];
       const data = docSnap.data();
       return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
     }
     
-    const memQueryRoll = query(collection(db, 'students', className, 'members'), where('rollNo', '==', idUpper));
-    const memSnapRoll = await getDocs(memQueryRoll);
     if (!memSnapRoll.empty) {
       const docSnap = memSnapRoll.docs[0];
       const data = docSnap.data();
       return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
     }
-  }
+    
+    return null;
+  });
+  
+  const results = await Promise.all(searchPromises);
+  const found = results.find(res => res !== null);
+  if (found) return found;
+
   return null;
 }
 
@@ -434,7 +445,13 @@ router.get('/login-history', requireAuth, async (req, res) => {
     const email = req.user.email.toLowerCase();
     
     // Support legacy frontend format by querying the new auditLogs
-    const q = query(collection(db, 'auditLogs'), where('actor.email', '==', email), where('category', '==', 'AUTH'));
+    const q = query(
+      collection(db, 'auditLogs'), 
+      where('actor.email', '==', email), 
+      where('category', '==', 'AUTH'),
+      orderBy('timestamp', 'desc'),
+      limit(10)
+    );
     const snapshot = await getDocs(q);
     
     let logs = snapshot.docs.map(d => {
@@ -468,12 +485,12 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
     const limitCount = req.query.limit ? parseInt(req.query.limit) : 100;
     
     // Support legacy frontend format by querying the new activityLogs
-    const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email));
+    const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email), orderBy('timestamp', 'desc'), limit(limitCount));
     const snapshot = await getDocs(q);
     
     // We also need to get auditLogs that aren't AUTH for full timeline? 
     // Wait, old securityLogs had "email" directly on the root.
-    const auditQ = query(collection(db, 'auditLogs'), where('actor.email', '==', email));
+    const auditQ = query(collection(db, 'auditLogs'), where('actor.email', '==', email), orderBy('timestamp', 'desc'), limit(limitCount));
     const auditSnapshot = await getDocs(auditQ);
     
     const allLogs = [];

@@ -37,14 +37,22 @@ const resolveClassSection = (studentRecord, payloadClass = '') => {
 };
 
 const findStudentInFirestore = async (studentId) => {
-  for (const className of STUDENT_CLASS_DOCS) {
-    const studentRef = doc(db, 'students', className, 'members', studentId);
-    const studentSnap = await getDoc(studentRef);
-    if (studentSnap.exists()) {
-      return { className, ...studentSnap.data() };
+  const promises = STUDENT_CLASS_DOCS.map(async (className) => {
+    try {
+      const studentRef = doc(db, 'students', className, 'members', studentId);
+      const studentSnap = await getDoc(studentRef);
+      if (studentSnap.exists()) {
+        return { className, ...studentSnap.data() };
+      }
+      return null;
+    } catch (err) {
+      console.error(`[findStudentInFirestore] Error fetching from ${className}:`, err.message);
+      return null;
     }
-  }
-  return null;
+  });
+
+  const results = await Promise.all(promises);
+  return results.find(res => res !== null) || null;
 };
 
 const checkDb = (res) => {
@@ -327,7 +335,7 @@ router.patch('/:id/status', async (req, res) => {
       }
     }
 
-    await (async () => {
+    (async () => {
       try {
         if (current.email && (status === 'APPROVED' || status === 'REJECTED')) {
           await handleODStatusChange({ id, ...current }, status, req.body.odLetterBase64);

@@ -890,7 +890,7 @@ const IQACSubmission = () => {
 
       // 2. Upload Documents
       const finalUploads = { ...uploads };
-      for (const [itemId, uploadData] of Object.entries(uploads)) {
+      const docUploadPromises = Object.entries(uploads).map(async ([itemId, uploadData]) => {
         if (uploadData.file) {
           // If overwriting an existing storage file, delete it first
           if (uploadData.storage?.storagePath) {
@@ -906,12 +906,12 @@ const IQACSubmission = () => {
             storage: metadata,
           };
         }
-      }
+      });
+      await Promise.all(docUploadPromises);
 
       // 3. Upload Gallery
-      const finalGallery = [];
-      for (let i = 0; i < gallery.length; i++) {
-        const item = gallery[i];
+      const finalGallery = new Array(gallery.length);
+      const galleryUploadPromises = gallery.map(async (item, i) => {
         if (item.file) {
           if (item.storage?.storagePath) {
              try { await deleteFileFromStorage(item.storage.storagePath); } catch (e) { console.warn('Failed to delete old gallery photo', e); }
@@ -919,21 +919,21 @@ const IQACSubmission = () => {
           const extension = item.fileName.split('.').pop();
           const storagePath = `events/${selectedEvent.id}/gallery/photo_${Date.now()}_${i}.${extension}`;
           const metadata = await uploadFileToStorage(item.file, storagePath);
-          finalGallery.push({
+          finalGallery[i] = {
             ...item,
             file: null,
             previewUrl: null,
             storage: metadata,
-          });
+          };
         } else {
-          finalGallery.push(item);
+          finalGallery[i] = item;
         }
-      }
+      });
+      await Promise.all(galleryUploadPromises);
 
       // 4. Upload Resource Persons
-      const finalResourcePersons = [];
-      for (let i = 0; i < resourcePersons.length; i++) {
-        const rp = resourcePersons[i];
+      const finalResourcePersons = new Array(resourcePersons.length);
+      const rpUploadPromises = resourcePersons.map(async (rp, i) => {
         if (rp.photo?.file) {
           if (rp.photo.storage?.storagePath) {
              try { await deleteFileFromStorage(rp.photo.storage.storagePath); } catch (e) { console.warn('Failed to delete old RP photo', e); }
@@ -941,7 +941,7 @@ const IQACSubmission = () => {
           const extension = rp.photo.fileName.split('.').pop();
           const storagePath = `events/${selectedEvent.id}/resourcePersons/rp_${Date.now()}_${i}.${extension}`;
           const metadata = await uploadFileToStorage(rp.photo.file, storagePath);
-          finalResourcePersons.push({
+          finalResourcePersons[i] = {
             ...rp,
             photo: {
               ...rp.photo,
@@ -949,11 +949,12 @@ const IQACSubmission = () => {
               previewUrl: null,
               storage: metadata,
             }
-          });
+          };
         } else {
-          finalResourcePersons.push(rp);
+          finalResourcePersons[i] = rp;
         }
-      }
+      });
+      await Promise.all(rpUploadPromises);
 
       const checklist = CHECKLIST_ITEMS.map((item) => ({
         id: item.id,

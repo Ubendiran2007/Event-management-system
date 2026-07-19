@@ -6,14 +6,22 @@ const STUDENT_CLASS_DOCS = [
 ];
 
 async function findStudentInFirestore(studentId) {
-  for (const className of STUDENT_CLASS_DOCS) {
-    const studentRef = dbAdmin.collection('students').doc(className).collection('members').doc(studentId);
-    const studentSnap = await studentRef.get();
-    if (studentSnap.exists) {
-      return { className, ...studentSnap.data(), ref: studentRef };
+  const promises = STUDENT_CLASS_DOCS.map(async (className) => {
+    try {
+      const studentRef = dbAdmin.collection('students').doc(className).collection('members').doc(studentId);
+      const studentSnap = await studentRef.get();
+      if (studentSnap.exists) {
+        return { className, ...studentSnap.data(), ref: studentRef };
+      }
+      return null;
+    } catch (err) {
+      console.error(`[odSync/findStudentInFirestore] Error fetching from ${className}:`, err.message);
+      return null;
     }
-  }
-  return null;
+  });
+
+  const results = await Promise.all(promises);
+  return results.find(res => res !== null) || null;
 }
 
 /**

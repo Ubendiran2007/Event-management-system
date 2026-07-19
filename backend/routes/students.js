@@ -45,16 +45,19 @@ router.get('/', async (req, res) => {
     }
 
     const classesToFetch = classFilter ? [classFilter] : CLASSES;
-    const allStudents = [];
-
-    for (const className of classesToFetch) {
+    const fetchPromises = classesToFetch.map(async (className) => {
       const snapshot = await getDocs(collection(db, 'students', className, 'members'));
+      const classStudents = [];
       snapshot.docs.forEach(d => {
         const data = d.data();
         delete data.password; // never expose passwords
-        allStudents.push({ id: d.id, ...data, class: className });
+        classStudents.push({ id: d.id, ...data, class: className });
       });
-    }
+      return classStudents;
+    });
+
+    const results = await Promise.all(fetchPromises);
+    const allStudents = results.flat();
 
     res.json({ success: true, students: allStudents, total: allStudents.length });
   } catch (err) {

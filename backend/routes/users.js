@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, getDoc } = require('../firebaseClientWrapper');
+const { db, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, getDoc, limit } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 
@@ -45,7 +45,7 @@ router.post('/', async (req, res) => {
 
   try {
     // Check if user already exists
-    const usersQuery = query(collection(db, 'users'), where('email', '==', email.toLowerCase()));
+    const usersQuery = query(collection(db, 'users'), where('email', '==', email.toLowerCase()), limit(1));
     const snapshot = await getDocs(usersQuery);
     if (!snapshot.empty) {
       return res.status(400).json({ success: false, message: 'User with this email already exists' });

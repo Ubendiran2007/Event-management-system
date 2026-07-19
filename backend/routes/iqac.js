@@ -220,13 +220,11 @@ router.post('/:eventId', async (req, res) => {
     try {
       // First clear existing gallery subcollection
       const existingGallery = await getDocs(collection(db, 'events', eventId, 'gallery'));
-      for (const d of existingGallery.docs) {
-        await deleteDoc(d.ref);
-      }
+      await Promise.all(existingGallery.docs.map(d => deleteDoc(d.ref)));
       // Write new items
-      for (const item of (gallery || [])) {
+      await Promise.all((gallery || []).map(item => {
         const photoId = item.id || `gallery_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-        await setDoc(doc(db, 'events', eventId, 'gallery', photoId), {
+        return setDoc(doc(db, 'events', eventId, 'gallery', photoId), {
           id:          photoId,
           url:         item.dataUrl || '',
           fileName:    item.fileName  || '',
@@ -236,7 +234,7 @@ router.post('/:eventId', async (req, res) => {
           coordinates: item.coordinates || '',
           timestamp:   new Date().toISOString(),
         });
-      }
+      }));
     } catch (galleryErr) {
       console.warn('[iqac] Failed to save gallery subcollection:', galleryErr.message);
       // Non-fatal — main submission continues
@@ -293,8 +291,11 @@ router.post('/:eventId', async (req, res) => {
 
     // Update odRequest documents with attendanceStatus so frontend knows if student attended
     if (studentAttendanceList && studentAttendanceList.length > 0) {
-      for (const att of studentAttendanceList) {
-        if (att.requestId && typeof att.requestId === 'string') {
+      const BATCH_SIZE = 50;
+      const validAttendances = studentAttendanceList.filter(att => att.requestId && typeof att.requestId === 'string');
+      for (let i = 0; i < validAttendances.length; i += BATCH_SIZE) {
+        const batch = validAttendances.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (att) => {
           try {
             await updateDoc(doc(db, 'odRequests', att.requestId), {
               attendanceStatus: att.attendanceStatus
@@ -302,7 +303,7 @@ router.post('/:eventId', async (req, res) => {
           } catch(e) {
             console.error('Failed to update odRequest attendance:', e);
           }
-        }
+        }));
       }
     }
 
