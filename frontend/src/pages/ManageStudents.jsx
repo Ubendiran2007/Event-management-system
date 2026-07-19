@@ -10,6 +10,7 @@ import Layout from '../components/Layout';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { formatRollNo, formatStudentNameWithRoll } from '../utils/formatters';
 import * as XLSX from 'xlsx';
+import { fetchAcademicBatches } from '../services/firebaseService';
 
 const ALL_CLASSES = [
   'CSE-A', 'CSE-B', 'CSE-C', 'CSE-D',
@@ -72,8 +73,20 @@ const ManageStudents = () => {
     const [validRecords, setValidRecords] = useState([]);
     const [invalidRecords, setInvalidRecords] = useState([]); // { row, reason, data }
     const [importSummary, setImportSummary] = useState(null); // { imported, dbDuplicates, fileDuplicates, invalid, failed }
-    const [showBulkModal, setShowBulkModal] = useState(false);
     const [bulkError, setBulkError] = useState('');
+    
+    // Academic Batch State
+    const [academicBatches, setAcademicBatches] = useState([]);
+    const [selectedBatch, setSelectedBatch] = useState('');
+    const [filterBatch, setFilterBatch] = useState('');
+
+    useEffect(() => {
+        const loadBatches = async () => {
+            const batches = await fetchAcademicBatches();
+            setAcademicBatches(batches);
+        };
+        loadBatches();
+    }, []);
     const fileInputRef = useRef(null);
 
     // Security Check
@@ -158,11 +171,13 @@ const ManageStudents = () => {
         (departments.length === 1 ? departments[0] : null));
 
     const classStudents = selectedClass && classMap[selectedClass] ? classMap[selectedClass] : [];
-    const filteredClassStudents = classStudents.filter(s =>
-        (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        formatRollNo(s.rollNo, s.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.email && s.email.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    const filteredClassStudents = classStudents.filter(s => {
+        const matchesSearch = (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              formatRollNo(s.rollNo, s.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              (s.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesBatch = filterBatch ? (s.academicBatch === filterBatch) : true;
+        return matchesSearch && matchesBatch;
+    });
 
     // --- Staff Logic ---
     const allowedStaff = (staffUsers || []);
@@ -349,7 +364,7 @@ const ManageStudents = () => {
                         fileIdentifiers.add(idUpper);
                         fileEmails.add(emailLower);
                         
-                        valid.push({ name, rollNo, email, department, className, section, phone, odLimit: row.ODLimit || 7 });
+                        valid.push({ name, rollNo, email, department, className, section, phone, odLimit: row.ODLimit || 7, academicBatch: selectedBatch });
                     } else {
                         const name = row.Name || row.name || '';
                         const staffId = String(row.StaffId || row.staffid || row['Staff ID'] || '').trim();
@@ -640,9 +655,23 @@ const ManageStudents = () => {
                                     <div className="flex items-center gap-4 mb-6">
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
-                                        <div className="relative flex-1 max-w-md ml-auto">
-                                            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                                            <input type="text" placeholder="Search students..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
+                                        <div className="relative flex-1 max-w-md ml-auto flex gap-3">
+                                            {academicBatches.length > 0 && (
+                                                <select
+                                                    value={filterBatch}
+                                                    onChange={(e) => setFilterBatch(e.target.value)}
+                                                    className="w-1/3 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
+                                                >
+                                                    <option value="">All Batches</option>
+                                                    {academicBatches.map(b => (
+                                                        <option key={b.id} value={b.id}>{b.name || b.id}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                            <div className="relative flex-1">
+                                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input type="text" placeholder="Search students..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
+                                            </div>
                                         </div>
                                     </div>
                                     
@@ -877,16 +906,35 @@ const ManageStudents = () => {
                             {/* STEP: UPLOAD */}
                             {importStep === 'upload' && (
                                 <div>
-                                    <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50 relative group hover:border-cse-accent/50 transition-colors">
-                                        <FileSpreadsheet size={32} className="mx-auto text-slate-400 group-hover:text-cse-accent mb-3" />
+                                    {importType === 'students' && (
+                                        <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Academic Batch *</label>
+                                            {academicBatches.length === 0 ? (
+                                                <p className="text-sm text-red-600 font-medium">No Academic Batches available. Please create an Academic Batch first.</p>
+                                            ) : (
+                                                <select
+                                                    value={selectedBatch}
+                                                    onChange={(e) => setSelectedBatch(e.target.value)}
+                                                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-cse-accent/50 focus:border-cse-accent transition-all bg-white"
+                                                >
+                                                    <option value="" disabled>-- Select Academic Batch --</option>
+                                                    {academicBatches.map(b => (
+                                                        <option key={b.id} value={b.id}>{b.name || b.id}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
+                                    )}
+                                    <div className={`border-2 border-dashed border-slate-200 rounded-xl p-8 text-center relative transition-colors ${importType === 'students' && !selectedBatch ? 'bg-slate-100 opacity-60 cursor-not-allowed' : 'bg-slate-50 group hover:border-cse-accent/50'}`}>
+                                        <FileSpreadsheet size={32} className={`mx-auto mb-3 ${importType === 'students' && !selectedBatch ? 'text-slate-300' : 'text-slate-400 group-hover:text-cse-accent'}`} />
                                         <p className="font-bold text-slate-700 mb-1">Upload Excel (.xlsx) or CSV file</p>
                                         <p className="text-xs text-slate-500 mb-4">
                                             {importType === 'students' 
                                                 ? 'Required columns: Name, RollNo, Email, Department, Year, Semester, Section.' 
                                                 : 'Required columns: Name, StaffId, Email, Department, Role.'}
                                         </p>
-                                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} ref={fileInputRef} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                        <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600">Select File</button>
+                                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} ref={fileInputRef} className={`absolute inset-0 w-full h-full opacity-0 ${importType === 'students' && !selectedBatch ? 'cursor-not-allowed hidden' : 'cursor-pointer'}`} disabled={importType === 'students' && !selectedBatch} />
+                                        <button disabled={importType === 'students' && !selectedBatch} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 disabled:text-slate-400">Select File</button>
                                     </div>
                                     {bulkError && <p className="mt-4 text-sm text-red-600 font-medium bg-red-50 p-3 rounded-lg">{bulkError}</p>}
                                 </div>

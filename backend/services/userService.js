@@ -31,8 +31,18 @@ const buildStaffData = async ({ name, email, role, department, password, assigne
  * @param {Object} payload 
  * @returns {{studentId: string, studentData: Object}}
  */
-const buildStudentData = ({ name, rollNo, email, department, className, section, phone, odLimit, password }) => {
+const buildStudentData = ({ name, rollNo, email, department, className, section, phone, odLimit, password, academicBatch }) => {
   const studentId = `student_${rollNo}`;
+  
+  let admissionYear = null;
+  let graduationYear = null;
+  if (academicBatch) {
+    const parts = academicBatch.split('-');
+    if (parts.length === 2) {
+      admissionYear = parseInt(parts[0], 10) || null;
+      graduationYear = parseInt(parts[1], 10) || null;
+    }
+  }
   
   const studentData = {
     name,
@@ -49,7 +59,8 @@ const buildStudentData = ({ name, rollNo, email, department, className, section,
     odLimit: odLimit !== undefined ? Number(odLimit) : 7,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    odResetTimestamp: new Date().toISOString()
+    odResetTimestamp: new Date().toISOString(),
+    ...(academicBatch && { academicBatch, admissionYear, graduationYear })
   };
 
   return { studentId, studentData };
