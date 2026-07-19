@@ -404,7 +404,7 @@ const ODCorrection = () => {
                                       <td className="py-3 sm:py-4 px-3 sm:px-6 w-[55%] sm:w-[35%]">
                                          <div className="flex items-center gap-2 sm:gap-4">
                                             <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm sm:text-lg shrink-0 border border-blue-100">
-                                               {req.studentName.charAt(0)}
+                                               {(req.studentName || '?').charAt(0)}
                                             </div>
                                             <div className="min-w-0">
                                                <h4 className="font-bold text-slate-900 text-xs sm:text-sm truncate">

@@ -139,7 +139,7 @@ const ManageStudents = () => {
 
     const classStudents = selectedClass && classMap[selectedClass] ? classMap[selectedClass] : [];
     const filteredClassStudents = classStudents.filter(s =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         formatRollNo(s.rollNo, s.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
         (s.email && s.email.toLowerCase().includes(searchQuery.toLowerCase()))
     );
@@ -148,9 +148,9 @@ const ManageStudents = () => {
     const allowedStaff = (staffUsers || []);
 
     const filteredStaff = allowedStaff.filter(s => 
-        s.name.toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
-        s.email.toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
-        s.role.toLowerCase().includes(staffSearchQuery.toLowerCase())
+        (s.name || '').toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
+        (s.email || '').toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
+        (s.role || '').toLowerCase().includes(staffSearchQuery.toLowerCase())
     );
 
     // --- API Handlers ---
@@ -507,7 +507,7 @@ const ManageStudents = () => {
                                             {filteredClassStudents.map(student => (
                                                 <div key={student.id} className="px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
                                                     <div className="flex items-center gap-4 min-w-0">
-                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0 border border-slate-200">{student.name.charAt(0)}</div>
+                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0 border border-slate-200">{(student.name || '?').charAt(0)}</div>
                                                         <div className="flex-1 min-w-0">
                                                             <p className="font-bold text-slate-900 text-sm truncate">{formatStudentNameWithRoll(student.name, student.rollNo, student.id)}</p>
                                                             <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{student.email} · {student.department || 'No Dept'} {student.section && `· Sec: ${student.section}`}</p>
@@ -561,14 +561,14 @@ const ManageStudents = () => {
                                         {filteredStaff.map(staff => (
                                             <div key={staff.id} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">{staff.name.charAt(0)}</div>
+                                                    <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">{(staff.name || '?').charAt(0)}</div>
                                                     <div>
                                                         <p className="font-bold text-slate-900 text-sm">{staff.name}</p>
                                                         <p className="text-xs text-slate-500 mt-0.5">{staff.email}</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-4">
-                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">{staff.role.replace('_', ' ')}</span>
+                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">{(staff.role || 'Unknown').replace('_', ' ')}</span>
                                                     {staff.department && <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">{staff.department}</span>}
                                                     <button onClick={() => { setEditingStaff(staff); setStaffForm(staff); setShowStaffModal(true); }} className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Edit size={16}/></button>
                                                     <button onClick={() => setDeletingStaff(staff)} className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"><Trash2 size={16}/></button>
