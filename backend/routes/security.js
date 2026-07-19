@@ -486,11 +486,15 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
     
     // Fetch from activityLogs without orderBy to avoid index requirement
     const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email));
-    const snapshot = await getDocs(q);
     
     // Fetch from auditLogs without orderBy to avoid index requirement
     const auditQ = query(collection(db, 'auditLogs'), where('actor.email', '==', email));
-    const auditSnapshot = await getDocs(auditQ);
+    
+    // Run both queries in parallel to halve the network wait time
+    const [snapshot, auditSnapshot] = await Promise.all([
+      getDocs(q),
+      getDocs(auditQ)
+    ]);
     
     const allLogs = [];
     const getTimestampStr = (ts) => ts?.toDate ? ts.toDate().toISOString() : ts;
