@@ -41,6 +41,14 @@ const RoleRoutes = () => (
   </Routes>
 );
 
+const ProtectedRoute = ({ children }) => {
+  const { currentUser } = useAppContext();
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
 const FallbackRoute = () => {
   const { currentUser } = useAppContext();
   if (currentUser) {
@@ -50,19 +58,25 @@ const FallbackRoute = () => {
   return <Navigate to="/login" replace />;
 };
 
+const LoadingFallback = () => (
+  <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+    <div className="text-slate-500 font-medium">Loading...</div>
+  </div>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
       <AppProvider>
         <NotificationProvider>
-          <Suspense fallback={null}>
+          <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/" element={<Login />} />
               <Route path="/login" element={<Login />} />
               
               {/* Generate nested routes for every role path */}
               {ROLE_PATHS.map((rolePath) => (
-                <Route key={rolePath} path={`/${rolePath}/*`} element={<RoleRoutes />} />
+                <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
               ))}
               
               {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
