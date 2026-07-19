@@ -237,7 +237,7 @@ const EventDetailModal = ({ event, onClose }) => {
         await deleteFileFromStorage(event.posterStorage.storagePath);
       }
 
-      const patchRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster`, {
+      const patchRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove', updatedBy: currentUser.name })
@@ -273,7 +273,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setCancelError(null);
     try {
-      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/cancel`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/cancel`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -308,7 +308,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setPostponeError(null);
     try {
-      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/postpone`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/postpone`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -352,7 +352,7 @@ const EventDetailModal = ({ event, onClose }) => {
 
       const metadata = await uploadFileToStorage(file, `events/${event.id}/poster_${Date.now()}.jpg`);
 
-      const patchRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster`, {
+      const patchRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -394,7 +394,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setPosterUploadError('');
     try {
-      const wfRes = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/poster-workflow`, {
+      const wfRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster-workflow`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -426,7 +426,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsRequestingExtension(true);
     setApprovalError('');
     try {
-      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/request-iqac-extension`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/request-iqac-extension`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

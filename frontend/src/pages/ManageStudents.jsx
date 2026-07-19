@@ -20,7 +20,7 @@ const STAFF_ROLES = [
   'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA', 'IQAC_TEAM'
 ];
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
 
 const ManageStudents = () => {
     const { currentUser, students, staffUsers, loading } = useAppContext();

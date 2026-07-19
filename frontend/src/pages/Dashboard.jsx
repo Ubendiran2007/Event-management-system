@@ -82,7 +82,7 @@ const IQACExtensionApprovalWidget = ({ events, hodName }) => {
     }
     setProcessingId(eventId);
     try {
-      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${eventId}/approve-iqac-extension`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/approve-iqac-extension`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endDate, approvedBy: hodName }),
@@ -217,7 +217,7 @@ const Dashboard = () => {
     if (window.confirm("WARNING: This will reset the OD used count to ZERO for ALL students across the entire institution. This action is typically only done at the start of a new semester.\n\nAre you absolutely sure you want to proceed?")) {
       setIsResettingAllOD(true);
       try {
-        const response = await fetch('https://event-management-system-dpzc.onrender.com/api/students/reset-od-usage', {
+        const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/students/reset-od-usage', {
           method: 'POST'
         });
         const data = await response.json();
@@ -468,7 +468,7 @@ const Dashboard = () => {
 
     try {
       const [odReq, eventReq] = await Promise.all([
-        fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests`, {
+        fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -482,7 +482,7 @@ const Dashboard = () => {
             registrationType: 'PARTICIPANT'
           }),
         }),
-        fetch(`https://event-management-system-dpzc.onrender.com/api/events/${eventId}/register`, {
+        fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newEntry),
@@ -656,7 +656,7 @@ const Dashboard = () => {
       }
 
       console.log(`[Approval] Sending ${approve ? 'approval' : 'rejection'} for ${odId}...`);
-      const response = await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${odId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${odId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -686,13 +686,13 @@ const Dashboard = () => {
     setWithdrawingOD(prev => ({ ...prev, [odId]: true }));
     try {
       // 1. Mark OD request as withdrawn
-      await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${odId}/withdraw`, {
+      await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${odId}/withdraw`, {
         method: 'PATCH',
       });
 
       // 2. Remove student from event's registration list
       if (req.eventId && currentUser?.id) {
-        await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${req.eventId}/withdraw`, {
+        await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${req.eventId}/withdraw`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentUser.id }),
@@ -724,7 +724,7 @@ const Dashboard = () => {
             console.error(`[Bulk Approval] PDF generation failed for ${req.studentName}:`, pdfErr);
           }
 
-          return fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${req.id}/status`, {
+          return fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${req.id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

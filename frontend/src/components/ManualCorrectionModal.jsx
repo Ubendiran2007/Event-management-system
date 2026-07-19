@@ -77,7 +77,7 @@ const ManualCorrectionModal = ({ event, odRequests = [], targetDate, onClose, on
     setIsSubmitting(true);
     try {
       const newStatus = computeStatus();
-      const res = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${event.id}/attendance/correct`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/attendance/correct`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
         body: JSON.stringify({

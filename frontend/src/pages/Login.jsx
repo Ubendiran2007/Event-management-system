@@ -50,7 +50,7 @@ const Login = () => {
 
     try {
       // Authenticate against the backend API (Firestore)
-      const response = await fetch('https://event-management-system-dpzc.onrender.com/api/login', {
+      const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: username.trim(), password }),

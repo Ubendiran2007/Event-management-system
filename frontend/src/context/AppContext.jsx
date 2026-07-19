@@ -185,7 +185,7 @@ export const AppProvider = ({ children }) => {
         body.rejectedByDept = String(currentUser?.department || 'N/A');
       }
 
-      const response = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${eventId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -210,7 +210,7 @@ export const AppProvider = ({ children }) => {
 
   const handleDepartmentApproval = async (eventId, department, status = 'APPROVED', reason = '') => {
     try {
-      const response = await fetch(`https://event-management-system-dpzc.onrender.com/api/events/${eventId}/department-approval`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/department-approval`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -269,7 +269,7 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
-      const response = await fetch(`https://event-management-system-dpzc.onrender.com/api/od-requests/${requestId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${requestId}/status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',

@@ -8,7 +8,7 @@
  *   - 401 responses (expired/invalid token) are handled globally
  */
 
-const API_BASE = 'https://event-management-system-dpzc.onrender.com';
+const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '';
 
 function getToken() {
   return localStorage.getItem('sessionToken') || '';

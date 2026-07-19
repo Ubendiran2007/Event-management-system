@@ -56,7 +56,7 @@ const SecurityProfile = () => {
   useEffect(() => {
     if (activeTab === 'attendanceAudit' && attendanceAuditEventId) {
       setFetchingAuditLogs(true);
-      fetch(`https://event-management-system-dpzc.onrender.com/api/events/${attendanceAuditEventId}/attendance-audit`, {
+      fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${attendanceAuditEventId}/attendance-audit`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
       })
       .then(res => res.json())
@@ -178,8 +178,8 @@ const SecurityProfile = () => {
       const headers = { 'Authorization': `Bearer ${token}` };
       
       const [loginRes, timelineRes] = await Promise.all([
-        fetch('https://event-management-system-dpzc.onrender.com/api/security/login-history', { headers }),
-        fetch('https://event-management-system-dpzc.onrender.com/api/security/activity-timeline', { headers })
+        fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/login-history', { headers }),
+        fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/activity-timeline', { headers })
       ]);
       
       const loginData = await loginRes.json();
@@ -189,7 +189,7 @@ const SecurityProfile = () => {
       if (timelineData.success) setSecurityTimeline(timelineData.logs);
 
       if (currentUser.role === 'IQAC_TEAM') {
-        const iqacRes = await fetch('https://event-management-system-dpzc.onrender.com/api/security/iqac-audit', { headers });
+        const iqacRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/iqac-audit', { headers });
         const iqacData = await iqacRes.json();
         if (iqacData.success) setIqacLogs(iqacData.logs);
       }
@@ -205,7 +205,7 @@ const SecurityProfile = () => {
   useEffect(() => {
     if (activeTab === 'iqac' && currentUser?.role === 'IQAC_TEAM') {
       const token = localStorage.getItem('sessionToken');
-      fetch('https://event-management-system-dpzc.onrender.com/api/security/iqac-audit', {
+      fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/iqac-audit', {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -222,7 +222,7 @@ const SecurityProfile = () => {
     setAlert(null);
     setLoading(true);
     try {
-      const res = await fetch('https://event-management-system-dpzc.onrender.com/api/security/change-password/request', {
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/change-password/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -254,7 +254,7 @@ const SecurityProfile = () => {
     
     setLoading(true);
     try {
-      const res = await fetch('https://event-management-system-dpzc.onrender.com/api/security/verify-otp', {
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/verify-otp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,7 +297,7 @@ const SecurityProfile = () => {
     
     setLoading(true);
     try {
-      const res = await fetch('https://event-management-system-dpzc.onrender.com/api/security/change-password/verify', {
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/change-password/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
