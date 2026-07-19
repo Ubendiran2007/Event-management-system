@@ -448,9 +448,7 @@ router.get('/login-history', requireAuth, async (req, res) => {
     const q = query(
       collection(db, 'auditLogs'), 
       where('actor.email', '==', email), 
-      where('category', '==', 'AUTH'),
-      orderBy('timestamp', 'desc'),
-      limit(10)
+      where('category', '==', 'AUTH')
     );
     const snapshot = await getDocs(q);
     
@@ -470,7 +468,7 @@ router.get('/login-history', requireAuth, async (req, res) => {
       };
     });
     
-    // Since Firebase doesn't allow orderby with equality unless indexed, we sort in memory for now
+    // Since Firebase doesn't allow orderby with equality unless indexed, we sort in memory
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     res.json({ success: true, logs: logs.slice(0, 10) });
   } catch (error) {
@@ -484,13 +482,12 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
     const email = req.user.email.toLowerCase();
     const limitCount = req.query.limit ? parseInt(req.query.limit) : 100;
     
-    // Support legacy frontend format by querying the new activityLogs
-    const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email), orderBy('timestamp', 'desc'), limit(limitCount));
+    // Fetch from activityLogs without orderBy to avoid index requirement
+    const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email));
     const snapshot = await getDocs(q);
     
-    // We also need to get auditLogs that aren't AUTH for full timeline? 
-    // Wait, old securityLogs had "email" directly on the root.
-    const auditQ = query(collection(db, 'auditLogs'), where('actor.email', '==', email), orderBy('timestamp', 'desc'), limit(limitCount));
+    // Fetch from auditLogs without orderBy to avoid index requirement
+    const auditQ = query(collection(db, 'auditLogs'), where('actor.email', '==', email));
     const auditSnapshot = await getDocs(auditQ);
     
     const allLogs = [];
