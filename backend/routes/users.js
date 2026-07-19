@@ -4,6 +4,8 @@ const { db, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where
 const { requireAuth, requireRole } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 
+const { buildStaffData } = require('../services/userService');
+
 // Protect all Manage Users APIs
 router.use(requireAuth);
 router.use(requireRole(['IQAC_TEAM', 'HOD'])); // IQAC and HOD can manage staff
@@ -51,24 +53,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'User with this email already exists' });
     }
 
-    // Hash password before saving
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const { userId, userData } = await buildStaffData({ name, email, role, department, password, assignedClasses });
 
-    const userId = `staff_${Date.now()}`;
     const userRef = doc(db, 'users', userId);
-    
-    const userData = {
-      name,
-      email: email.toLowerCase(),
-      role: role.toUpperCase(),
-      department: department || null,
-      assignedClasses: assignedClasses || [],
-      password: hashedPassword,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
     await setDoc(userRef, userData);
     
     const responseData = { ...userData };
@@ -126,6 +113,134 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true, message: 'Staff member deleted successfully' });
   } catch (err) {
     console.error('Error deleting user:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+// POST /api/users/bulk - add multiple staff members
+router.post('/bulk', async (req, res) => {
+  if (checkDb(res)) return;
+  const { users: newUsers } = req.body;
+
+  if (!Array.isArray(newUsers) || newUsers.length === 0) {
+    return res.status(400).json({ success: false, message: 'An array of users is required' });
+  }
+
+  try {
+    const actorEmail = req.user?.email || 'SYSTEM';
+
+    // Step 1: Pre-fetch existing emails and document IDs to prevent race-condition duplicates
+    const snapshot = await getDocs(collection(db, 'users'));
+    const existingEmails = new Set();
+    const existingIds = new Set();
+    
+    snapshot.docs.forEach(d => {
+      existingIds.add(d.id);
+      const data = d.data();
+      if (data.email) existingEmails.add(data.email.toLowerCase());
+    });
+
+    const validToImport = [];
+    const dbDuplicates = [];
+
+    // Step 2: Separate duplicates from valid records
+    for (const user of newUsers) {
+      const { staffId, email } = user;
+      const docId = staffId ? `staff_${staffId}` : null;
+      
+      if ((docId && existingIds.has(docId)) || (email && existingEmails.has(email.toLowerCase()))) {
+        dbDuplicates.push(user);
+      } else {
+        validToImport.push(user);
+      }
+    }
+
+    if (validToImport.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No new users to import', 
+        importedCount: 0, 
+        dbDuplicatesCount: dbDuplicates.length 
+      });
+    }
+
+    // Step 3: Batch import with abort-on-failure
+    const { writeBatch } = require('../firebaseClientWrapper');
+    let batch = writeBatch(db);
+    let countInBatch = 0;
+    let totalImported = 0;
+    
+    const addedUsers = [];
+
+    for (let i = 0; i < validToImport.length; i++) {
+      const user = validToImport[i];
+      const { userId, userData } = await buildStaffData(user);
+      
+      const userRef = doc(db, 'users', userId);
+      batch.set(userRef, userData);
+      addedUsers.push({ id: userId, ...userData });
+      
+      countInBatch++;
+      totalImported++;
+
+      if (countInBatch === 490 || i === validToImport.length - 1) {
+        try {
+          await batch.commit();
+          batch = writeBatch(db); // reset for next batch
+          countInBatch = 0;
+        } catch (batchErr) {
+          console.error('Batch commit failed:', batchErr);
+          // ABORT on failure!
+          
+          // Log activity for what succeeded so far
+          if (totalImported - countInBatch > 0) {
+            const { logActivity } = require('../utils/logger');
+            logActivity({
+              category: 'USER_MANAGEMENT',
+              action: 'Bulk Import Staff (Partial Failure)',
+              status: 'WARNING',
+              actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
+              details: { 
+                imported: totalImported - countInBatch,
+                failed: validToImport.length - (totalImported - countInBatch),
+                dbDuplicates: dbDuplicates.length
+              }
+            });
+          }
+
+          return res.status(500).json({
+            success: false,
+            message: 'A database write batch failed. Import aborted.',
+            importedCount: totalImported - countInBatch,
+            failedCount: validToImport.length - (totalImported - countInBatch),
+            dbDuplicatesCount: dbDuplicates.length
+          });
+        }
+      }
+    }
+
+    // Log Activity for full success
+    const { logActivity } = require('../utils/logger');
+    logActivity({
+      category: 'USER_MANAGEMENT',
+      action: 'Bulk Import Staff',
+      status: 'SUCCESS',
+      actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
+      details: { 
+        imported: totalImported,
+        dbDuplicates: dbDuplicates.length
+      }
+    });
+
+    res.json({ 
+      success: true, 
+      message: `Successfully added ${totalImported} staff members`, 
+      importedCount: totalImported, 
+      dbDuplicatesCount: dbDuplicates.length,
+      users: addedUsers.map(u => { const { password, ...rest } = u; return rest; }) 
+    });
+
+  } catch (err) {
+    console.error('Error bulk adding users:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

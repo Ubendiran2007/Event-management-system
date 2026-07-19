@@ -67,6 +67,8 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/students — add a single student
+const { buildStudentData } = require('../services/userService');
+
 router.post('/', async (req, res) => {
   if (checkDb(res)) return;
   const { name, rollNo, email, department, className, section, phone, odLimit, password } = req.body;
@@ -79,27 +81,9 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const studentId = `student_${rollNo}`;
+    const { studentId, studentData } = buildStudentData(req.body);
     const studentRef = doc(db, 'students', className, 'members', studentId);
     
-    const studentData = {
-      name,
-      rollNo,
-      email,
-      username: email,
-      class: className,
-      section: section || className,
-      department: department || '',
-      phone: phone || '',
-      role: 'STUDENT_GENERAL',
-      password: password || rollNo,
-      odUsed: 0,
-      odLimit: odLimit !== undefined ? Number(odLimit) : 7,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      odResetTimestamp: new Date().toISOString()
-    };
-
     await setDoc(studentRef, studentData);
     res.json({ success: true, message: 'Student added successfully', student: { id: studentId, ...studentData } });
   } catch (err) {
@@ -118,50 +102,118 @@ router.post('/bulk', async (req, res) => {
   }
 
   try {
-    let batch = writeBatch(db);
-    let count = 0;
-    const addedStudents = [];
+    const actorEmail = req.user?.email || 'SYSTEM';
+
+    // Pre-fetch all students to detect database duplicates
+    const existingEmails = new Set();
+    const existingRollNos = new Set();
+    
+    // We must fetch from all class collections.
+    for (const className of CLASSES) {
+      const snap = await getDocs(collection(db, 'students', className, 'members'));
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.rollNo) existingRollNos.add(data.rollNo.toUpperCase());
+        if (data.email) existingEmails.add(data.email.toLowerCase());
+      });
+    }
+
+    const validToImport = [];
+    const dbDuplicates = [];
 
     for (const student of students) {
-      const { name, rollNo, email, department, className, section, phone, odLimit, password } = student;
-      if (!name || !rollNo || !email || !className || !section || !department || !phone || !CLASSES.includes(className)) continue;
+      const { rollNo, email, className } = student;
+      if (!CLASSES.includes(className)) continue; // skip invalid classes silently
 
-      const studentId = `student_${rollNo}`;
-      const studentRef = doc(db, 'students', className, 'members', studentId);
+      const isDup = (rollNo && existingRollNos.has(rollNo.toUpperCase())) || 
+                    (email && existingEmails.has(email.toLowerCase()));
       
-      const studentData = {
-        name,
-        rollNo,
-        email,
-        username: email,
-        class: className,
-        section: section || className,
-        department: department || '',
-        phone: phone || '',
-        role: 'STUDENT_GENERAL',
-        password: password || rollNo,
-        odUsed: 0,
-        odLimit: odLimit !== undefined ? Number(odLimit) : 7,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        odResetTimestamp: new Date().toISOString()
-      };
-
-      batch.set(studentRef, studentData);
-      addedStudents.push({ id: studentId, ...studentData });
-      count++;
-
-      if (count % 490 === 0) {
-        await batch.commit();
-        batch = writeBatch(db);
+      if (isDup) {
+        dbDuplicates.push(student);
+      } else {
+        validToImport.push(student);
       }
     }
 
-    if (count % 490 !== 0) {
-      await batch.commit();
+    if (validToImport.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No new students to import', 
+        importedCount: 0, 
+        dbDuplicatesCount: dbDuplicates.length 
+      });
     }
 
-    res.json({ success: true, message: `Successfully added ${count} students`, addedCount: count, students: addedStudents });
+    let batch = writeBatch(db);
+    let countInBatch = 0;
+    let totalImported = 0;
+    
+    const addedStudents = [];
+
+    for (let i = 0; i < validToImport.length; i++) {
+      const student = validToImport[i];
+      const { studentId, studentData } = buildStudentData(student);
+      
+      const studentRef = doc(db, 'students', student.className, 'members', studentId);
+      batch.set(studentRef, studentData);
+      addedStudents.push({ id: studentId, ...studentData });
+      
+      countInBatch++;
+      totalImported++;
+
+      if (countInBatch === 490 || i === validToImport.length - 1) {
+        try {
+          await batch.commit();
+          batch = writeBatch(db);
+          countInBatch = 0;
+        } catch (batchErr) {
+          console.error('Batch commit failed:', batchErr);
+          
+          if (totalImported - countInBatch > 0) {
+            const { logActivity } = require('../utils/logger');
+            logActivity({
+              category: 'USER_MANAGEMENT',
+              action: 'Bulk Import Students (Partial Failure)',
+              status: 'WARNING',
+              actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
+              details: { 
+                imported: totalImported - countInBatch,
+                failed: validToImport.length - (totalImported - countInBatch),
+                dbDuplicates: dbDuplicates.length
+              }
+            });
+          }
+
+          return res.status(500).json({
+            success: false,
+            message: 'A database write batch failed. Import aborted.',
+            importedCount: totalImported - countInBatch,
+            failedCount: validToImport.length - (totalImported - countInBatch),
+            dbDuplicatesCount: dbDuplicates.length
+          });
+        }
+      }
+    }
+
+    const { logActivity } = require('../utils/logger');
+    logActivity({
+      category: 'USER_MANAGEMENT',
+      action: 'Bulk Import Students',
+      status: 'SUCCESS',
+      actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
+      details: { 
+        imported: totalImported,
+        dbDuplicates: dbDuplicates.length
+      }
+    });
+
+    res.json({ 
+      success: true, 
+      message: `Successfully added ${totalImported} students`, 
+      importedCount: totalImported, 
+      dbDuplicatesCount: dbDuplicates.length,
+      students: addedStudents 
+    });
   } catch (err) {
     console.error('Error bulk adding students:', err);
     res.status(500).json({ success: false, message: err.message });

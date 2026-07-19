@@ -17,11 +17,16 @@ const ALL_CLASSES = [
   'CCE-A', 'CCE-B',
   'CSBS-A', 'CSBS-B',
   'MECH-A', 'MECH-B',
+  'MECH-C', 'CIVIL-A', 'CIVIL-B',
   'CYBER-A',
   'EEE-A', 'EEE-B',
   'AIML-A', 'AIML-B',
   'AIDS-A', 'AIDS-B',
   'IT-A', 'IT-B', 'IT-C'
+];
+
+const DEPARTMENTS = [
+  'CSE', 'ECE', 'CCE', 'CSBS', 'MECH', 'CIVIL', 'CYBER', 'EEE', 'AIML', 'AIDS', 'IT'
 ];
 
 const STAFF_ROLES = [
@@ -61,7 +66,13 @@ const ManageStudents = () => {
     const [staffForm, setStaffForm] = useState({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] });
     
     // Bulk Import State
-    const [bulkData, setBulkData] = useState([]);
+    const [importStep, setImportStep] = useState('upload'); // 'upload' | 'report' | 'preview' | 'importing' | 'summary'
+    const [importType, setImportType] = useState('students'); // 'students' | 'staff'
+    const [bulkValidationReport, setBulkValidationReport] = useState({ total: 0, valid: 0, invalid: 0, fileDuplicates: 0 });
+    const [validRecords, setValidRecords] = useState([]);
+    const [invalidRecords, setInvalidRecords] = useState([]); // { row, reason, data }
+    const [importSummary, setImportSummary] = useState(null); // { imported, dbDuplicates, fileDuplicates, invalid, failed }
+    const [showBulkModal, setShowBulkModal] = useState(false);
     const [bulkError, setBulkError] = useState('');
     const fileInputRef = useRef(null);
 
@@ -274,21 +285,118 @@ const ManageStudents = () => {
                 const ws = wb.Sheets[wsname];
                 const data = XLSX.utils.sheet_to_json(ws);
                 
-                const formatted = data.map(row => ({
-                    name: row.Name || row.name || '',
-                    rollNo: String(row.RollNo || row.rollno || row.Roll_No || ''),
-                    email: row.Email || row.email || '',
-                    className: String(row.Class || row.class || '').replace(/\s+/g, '-'),
-                    section: String(row.Section || row.section || ''),
-                    department: String(row.Department || row.department || ''),
-                    phone: String(row.Phone || row.phone || ''),
-                    password: String(row.Password || row.password || ''),
-                    odLimit: row.ODLimit || row.odLimit || row['OD Limit'] || 7
-                })).filter(s => s.name && s.rollNo && s.email && s.className && s.section && s.department && s.phone);
+                const valid = [];
+                const invalid = [];
+                let fileDups = 0;
                 
-                if (formatted.length === 0) throw new Error('No valid students found. Check column headers.');
-                setBulkData(formatted);
+                const fileIdentifiers = new Set();
+                const fileEmails = new Set();
+                
+                const dbIdentifiers = new Set();
+                const dbEmails = new Set();
+                
+                if (importType === 'students') {
+                    (students || []).forEach(s => {
+                        if (s.rollNo) dbIdentifiers.add(String(s.rollNo).toUpperCase());
+                        if (s.email) dbEmails.add(String(s.email).toLowerCase());
+                    });
+                } else {
+                    (staffUsers || []).forEach(s => {
+                        if (s.id && String(s.id).startsWith('staff_')) {
+                            dbIdentifiers.add(String(s.id).replace('staff_', '').toUpperCase());
+                        }
+                        if (s.email) dbEmails.add(String(s.email).toLowerCase());
+                    });
+                }
+                
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                const validDepts = DEPARTMENTS;
+
+                data.forEach((row, idx) => {
+                    const rowNum = idx + 2; 
+                    
+                    if (importType === 'students') {
+                        const name = row.Name || row.name || '';
+                        const rollNo = String(row.RollNo || row.rollno || row['Roll Number'] || row.Roll_No || '').trim();
+                        const email = String(row.Email || row.email || '').trim();
+                        const department = String(row.Department || row.department || '').trim().toUpperCase();
+                        const year = parseInt(row.Year || row.year);
+                        const semester = parseInt(row.Semester || row.semester);
+                        const section = String(row.Section || row.section || '').trim().toUpperCase();
+                        const phone = String(row.Phone || row.phone || '').trim();
+                        const className = String(row.Class || row.class || `${department}-${section}`).replace(/\s+/g, '-');
+                        
+                        if (!name || !rollNo || !email || !department || !year || !semester || !section) {
+                            return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
+                        }
+                        if (year < 1 || year > 4) return invalid.push({ row: rowNum, reason: 'Year must be 1-4', data: row });
+                        if (semester < 1 || semester > 8) return invalid.push({ row: rowNum, reason: 'Semester must be 1-8', data: row });
+                        if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
+                        if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
+                        
+                        const idUpper = rollNo.toUpperCase();
+                        const emailLower = email.toLowerCase();
+                        
+                        if (fileIdentifiers.has(idUpper) || fileEmails.has(emailLower)) {
+                            fileDups++;
+                            return invalid.push({ row: rowNum, reason: 'Duplicate in uploaded file', data: row });
+                        }
+                        
+                        if (dbIdentifiers.has(idUpper) || dbEmails.has(emailLower)) {
+                            return invalid.push({ row: rowNum, reason: 'Already exists in database', data: row });
+                        }
+                        
+                        fileIdentifiers.add(idUpper);
+                        fileEmails.add(emailLower);
+                        
+                        valid.push({ name, rollNo, email, department, className, section, phone, odLimit: row.ODLimit || 7 });
+                    } else {
+                        const name = row.Name || row.name || '';
+                        const staffId = String(row.StaffId || row.staffid || row['Staff ID'] || '').trim();
+                        const email = String(row.Email || row.email || '').trim();
+                        const department = String(row.Department || row.department || '').trim().toUpperCase();
+                        const role = String(row.Role || row.role || '').trim().toUpperCase();
+                        const password = String(row.Password || row.password || staffId);
+                        
+                        if (!name || !staffId || !email || !department || !role) {
+                            return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
+                        }
+                        if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
+                        if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
+                        if (!STAFF_ROLES.includes(role)) return invalid.push({ row: rowNum, reason: `Role must be one of: ${STAFF_ROLES.join(', ')}`, data: row });
+                        
+                        const idUpper = staffId.toUpperCase();
+                        const emailLower = email.toLowerCase();
+                        
+                        if (fileIdentifiers.has(idUpper) || fileEmails.has(emailLower)) {
+                            fileDups++;
+                            return invalid.push({ row: rowNum, reason: 'Duplicate in uploaded file', data: row });
+                        }
+                        
+                        if (dbIdentifiers.has(idUpper) || dbEmails.has(emailLower)) {
+                            return invalid.push({ row: rowNum, reason: 'Already exists in database', data: row });
+                        }
+                        
+                        fileIdentifiers.add(idUpper);
+                        fileEmails.add(emailLower);
+                        
+                        valid.push({ name, staffId, email, department, role, password, assignedClasses: [] });
+                    }
+                });
+                
+                if (data.length === 0) throw new Error('File is empty.');
+                
+                setValidRecords(valid);
+                setInvalidRecords(invalid);
+                setBulkValidationReport({
+                    total: data.length,
+                    valid: valid.length,
+                    invalid: invalid.length,
+                    fileDuplicates: fileDups
+                });
                 setBulkError('');
+                setImportStep('report');
+                
             } catch (err) {
                 setBulkError('Failed to parse file: ' + err.message);
             }
@@ -297,24 +405,46 @@ const ManageStudents = () => {
     };
 
     const handleBulkSubmit = async () => {
-        if (bulkData.length === 0) return;
+        if (validRecords.length === 0) return;
+        setImportStep('importing');
         setIsProcessing(true);
         try {
-            const res = await fetch(`${API_BASE}/api/students/bulk`, {
+            const endpoint = importType === 'students' ? `${API_BASE}/api/students/bulk` : `${API_BASE}/api/users/bulk`;
+            const payloadKey = importType === 'students' ? 'students' : 'users';
+            
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
-                body: JSON.stringify({ students: bulkData })
+                body: JSON.stringify({ [payloadKey]: validRecords })
             });
             const data = await res.json();
-            if (!data.success) throw new Error(data.message);
             
-            setShowBulkModal(false);
-            setBulkData([]);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-            alert(`Successfully added ${data.addedCount} students!`);
+            if (res.status === 500 && data.importedCount !== undefined) {
+                setImportSummary({
+                    imported: data.importedCount,
+                    dbDuplicates: data.dbDuplicatesCount || 0,
+                    fileDuplicates: bulkValidationReport.fileDuplicates,
+                    invalid: invalidRecords.length,
+                    failed: data.failedCount
+                });
+                setImportStep('summary');
+            } else if (data.success) {
+                setImportSummary({
+                    imported: data.importedCount,
+                    dbDuplicates: data.dbDuplicatesCount || 0,
+                    fileDuplicates: bulkValidationReport.fileDuplicates,
+                    invalid: invalidRecords.length,
+                    failed: 0
+                });
+                setImportStep('summary');
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            } else {
+                throw new Error(data.message);
+            }
         } catch (err) {
             console.error(err);
             alert('Bulk import failed: ' + err.message);
+            setImportStep('report');
         } finally {
             setIsProcessing(false);
         }
@@ -393,7 +523,7 @@ const ManageStudents = () => {
                                         <button onClick={() => { setEditingStudent(null); setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '' }); setShowStudentModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
                                             <Plus size={16} /> Add Student
                                         </button>
-                                        <button onClick={() => { setBulkData([]); setBulkError(''); setShowBulkModal(true); }} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-2">
+                                        <button onClick={() => { setImportType('students'); setImportStep('upload'); setBulkValidationReport({ total: 0, valid: 0, invalid: 0, fileDuplicates: 0 }); setValidRecords([]); setInvalidRecords([]); setImportSummary(null); setShowBulkModal(true); }} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-2">
                                             <Upload size={16} /> Bulk Import
                                         </button>
                                         <button onClick={handleResetODUsage} className="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold text-sm hover:bg-rose-100 transition-all flex items-center gap-2">
@@ -405,9 +535,14 @@ const ManageStudents = () => {
                                     <ChevronLeft size={16} /> Back
                                 </button>
                                 {isIQAC && activeTab === 'staff' && (
-                                    <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] }); setShowStaffModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
-                                        <Plus size={16} /> Add Staff
-                                    </button>
+                                    <>
+                                        <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] }); setShowStaffModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
+                                            <Plus size={16} /> Add Staff
+                                        </button>
+                                        <button onClick={() => { setImportType('staff'); setImportStep('upload'); setBulkValidationReport({ total: 0, valid: 0, invalid: 0, fileDuplicates: 0 }); setValidRecords([]); setInvalidRecords([]); setImportSummary(null); setShowBulkModal(true); }} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-2">
+                                            <Upload size={16} /> Bulk Import
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -730,48 +865,202 @@ const ManageStudents = () => {
             {/* Bulk Import Modal */}
             {showBulkModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-scale-in">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-lg text-slate-800">Bulk Import Students</h3>
+                    <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl animate-scale-in flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                            <h3 className="font-bold text-lg text-slate-800">
+                                {importType === 'students' ? 'Bulk Import Students' : 'Bulk Import Staff'}
+                            </h3>
                             <button onClick={() => setShowBulkModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
                         </div>
-                        <div className="p-6">
-                            <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50 relative group hover:border-cse-accent/50 transition-colors">
-                                <FileSpreadsheet size={32} className="mx-auto text-slate-400 group-hover:text-cse-accent mb-3" />
-                                <p className="font-bold text-slate-700 mb-1">Upload Excel (.xlsx) or CSV file</p>
-                                <p className="text-xs text-slate-500 mb-4">Required columns: Name, RollNo, Email, Class, Section, Department, Phone.</p>
-                                <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} ref={fileInputRef} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600">Select File</button>
-                            </div>
-                            {bulkError && <p className="mt-4 text-sm text-red-600 font-medium bg-red-50 p-3 rounded-lg">{bulkError}</p>}
-                            {bulkData.length > 0 && (
-                                <div className="mt-6">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h4 className="font-bold text-slate-800">Preview ({bulkData.length} students found)</h4>
+                        
+                        <div className="p-6 overflow-y-auto flex-1">
+                            {/* STEP: UPLOAD */}
+                            {importStep === 'upload' && (
+                                <div>
+                                    <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50 relative group hover:border-cse-accent/50 transition-colors">
+                                        <FileSpreadsheet size={32} className="mx-auto text-slate-400 group-hover:text-cse-accent mb-3" />
+                                        <p className="font-bold text-slate-700 mb-1">Upload Excel (.xlsx) or CSV file</p>
+                                        <p className="text-xs text-slate-500 mb-4">
+                                            {importType === 'students' 
+                                                ? 'Required columns: Name, RollNo, Email, Department, Year, Semester, Section.' 
+                                                : 'Required columns: Name, StaffId, Email, Department, Role.'}
+                                        </p>
+                                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} ref={fileInputRef} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                        <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600">Select File</button>
                                     </div>
-                                    <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
+                                    {bulkError && <p className="mt-4 text-sm text-red-600 font-medium bg-red-50 p-3 rounded-lg">{bulkError}</p>}
+                                </div>
+                            )}
+
+                            {/* STEP: REPORT */}
+                            {importStep === 'report' && (
+                                <div>
+                                    <div className="grid grid-cols-4 gap-4 mb-6">
+                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 text-center">
+                                            <div className="text-2xl font-bold text-slate-800">{bulkValidationReport.total}</div>
+                                            <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mt-1">Total Rows</div>
+                                        </div>
+                                        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 text-center">
+                                            <div className="text-2xl font-bold text-emerald-600">{bulkValidationReport.valid}</div>
+                                            <div className="text-xs font-medium text-emerald-600/80 uppercase tracking-wider mt-1">Valid</div>
+                                        </div>
+                                        <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 text-center">
+                                            <div className="text-2xl font-bold text-amber-600">{bulkValidationReport.fileDuplicates}</div>
+                                            <div className="text-xs font-medium text-amber-600/80 uppercase tracking-wider mt-1">File Duplicates</div>
+                                        </div>
+                                        <div className="bg-rose-50 rounded-xl p-4 border border-rose-100 text-center">
+                                            <div className="text-2xl font-bold text-rose-600">{bulkValidationReport.invalid - bulkValidationReport.fileDuplicates}</div>
+                                            <div className="text-xs font-medium text-rose-600/80 uppercase tracking-wider mt-1">Invalid Format</div>
+                                        </div>
+                                    </div>
+
+                                    {invalidRecords.length > 0 && (
+                                        <div className="mb-6">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <h4 className="font-bold text-slate-800 text-sm">Failed Records ({invalidRecords.length})</h4>
+                                                <button onClick={() => {
+                                                    let csvContent = "data:text/csv;charset=utf-8,";
+                                                    const allKeys = new Set(['Row_Number', 'Error_Reason']);
+                                                    invalidRecords.forEach(r => Object.keys(r.data).forEach(k => allKeys.add(k)));
+                                                    const headers = Array.from(allKeys);
+                                                    csvContent += headers.join(",") + "\n";
+                                                    invalidRecords.forEach(r => {
+                                                        const row = headers.map(h => {
+                                                            if (h === 'Row_Number') return r.row;
+                                                            if (h === 'Error_Reason') return `"${r.reason}"`;
+                                                            let val = r.data[h] || '';
+                                                            return `"${String(val).replace(/"/g, '""')}"`;
+                                                        });
+                                                        csvContent += row.join(",") + "\n";
+                                                    });
+                                                    const encodedUri = encodeURI(csvContent);
+                                                    const link = document.createElement("a");
+                                                    link.setAttribute("href", encodedUri);
+                                                    link.setAttribute("download", "import_errors.csv");
+                                                    document.body.appendChild(link);
+                                                    link.click();
+                                                    document.body.removeChild(link);
+                                                }} className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg flex items-center gap-1"><Upload size={14} /> Download Error CSV</button>
+                                            </div>
+                                            <div className="max-h-48 overflow-y-auto border border-rose-100 rounded-xl bg-rose-50/30">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-rose-100/50 text-rose-800 sticky top-0">
+                                                        <tr><th className="px-3 py-2 font-bold w-16">Row</th><th className="px-3 py-2 font-bold">Reason</th><th className="px-3 py-2 font-bold">Name / ID</th></tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-rose-100/50">
+                                                        {invalidRecords.slice(0, 100).map((r, i) => (
+                                                            <tr key={i}>
+                                                                <td className="px-3 py-2 text-slate-500">{r.row}</td>
+                                                                <td className="px-3 py-2 font-medium text-rose-600">{r.reason}</td>
+                                                                <td className="px-3 py-2 text-slate-600">{r.data.Name || r.data.name || 'N/A'} / {r.data.RollNo || r.data.StaffId || 'N/A'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+                                        <button onClick={() => { setImportStep('upload'); if(fileInputRef.current) fileInputRef.current.value=''; }} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+                                        <button onClick={() => setImportStep('preview')} disabled={validRecords.length === 0} className="px-6 py-2 bg-cse-accent text-white rounded-lg font-bold flex items-center gap-2 hover:bg-cse-accent/90 disabled:opacity-50">
+                                            Preview {validRecords.length} Valid Records <ChevronRight size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* STEP: PREVIEW */}
+                            {importStep === 'preview' && (
+                                <div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="font-bold text-slate-800">Preview ({validRecords.length} ready to import)</h4>
+                                    </div>
+                                    <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-xl">
                                         <table className="w-full text-sm text-left">
                                             <thead className="bg-slate-50 text-slate-500 sticky top-0">
-                                                <tr><th className="px-4 py-2 font-semibold">Name</th><th className="px-4 py-2 font-semibold">Roll No</th><th className="px-4 py-2 font-semibold">Class</th><th className="px-4 py-2 font-semibold">Section</th></tr>
+                                                <tr>
+                                                    <th className="px-4 py-2 font-semibold">Name</th>
+                                                    <th className="px-4 py-2 font-semibold">{importType === 'students' ? 'Roll No' : 'Staff ID'}</th>
+                                                    <th className="px-4 py-2 font-semibold">Department</th>
+                                                    {importType === 'students' && <th className="px-4 py-2 font-semibold">Class</th>}
+                                                    {importType === 'staff' && <th className="px-4 py-2 font-semibold">Role</th>}
+                                                </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {bulkData.slice(0, 50).map((s, i) => (
+                                                {validRecords.slice(0, 100).map((s, i) => (
                                                     <tr key={i}>
                                                         <td className="px-4 py-2 font-medium">{s.name}</td>
-                                                        <td className="px-4 py-2">{s.rollNo}</td>
-                                                        <td className="px-4 py-2">{s.className}</td>
-                                                        <td className="px-4 py-2">{s.section}</td>
+                                                        <td className="px-4 py-2">{importType === 'students' ? s.rollNo : s.staffId}</td>
+                                                        <td className="px-4 py-2">{s.department}</td>
+                                                        {importType === 'students' && <td className="px-4 py-2">{s.className}</td>}
+                                                        {importType === 'staff' && <td className="px-4 py-2">{s.role}</td>}
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
-                                        {bulkData.length > 50 && <div className="p-3 text-center text-xs text-slate-500 bg-slate-50 border-t border-slate-100">Showing first 50 entries...</div>}
+                                        {validRecords.length > 100 && <div className="p-3 text-center text-xs text-slate-500 bg-slate-50 border-t border-slate-100">Showing first 100 entries...</div>}
                                     </div>
-                                    <div className="mt-6 flex justify-end gap-3">
-                                        <button onClick={() => { setBulkData([]); if(fileInputRef.current) fileInputRef.current.value=''; }} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Clear</button>
-                                        <button onClick={handleBulkSubmit} disabled={isProcessing} className="px-6 py-2 bg-cse-accent text-white rounded-lg font-bold flex items-center gap-2 hover:bg-cse-accent/90 disabled:opacity-50">
-                                            {isProcessing ? <Loader2 className="animate-spin" /> : <Upload size={16} />} Import All
+                                    <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-100">
+                                        <button onClick={() => setImportStep('report')} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1"><ChevronLeft size={16}/> Back</button>
+                                        <button onClick={handleBulkSubmit} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-700">
+                                            Import {validRecords.length} Records
                                         </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* STEP: IMPORTING */}
+                            {importStep === 'importing' && (
+                                <div className="text-center py-12">
+                                    <Loader2 size={48} className="mx-auto text-cse-accent animate-spin mb-4" />
+                                    <h4 className="font-bold text-xl text-slate-800 mb-2">Importing Records...</h4>
+                                    <p className="text-slate-500">Please wait while the records are being written to the database.</p>
+                                </div>
+                            )}
+
+                            {/* STEP: SUMMARY */}
+                            {importStep === 'summary' && importSummary && (
+                                <div>
+                                    <div className="text-center mb-8">
+                                        {importSummary.failed > 0 ? (
+                                            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4"><ShieldCheck size={32} /></div>
+                                        ) : (
+                                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4"><UserCheck size={32} /></div>
+                                        )}
+                                        <h3 className="font-bold text-2xl text-slate-800">Import Complete</h3>
+                                        {importSummary.failed > 0 && <p className="text-amber-600 font-medium mt-1">Import partially completed due to a batch failure.</p>}
+                                    </div>
+                                    
+                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-6 mb-6">
+                                        <ul className="space-y-3">
+                                            <li className="flex justify-between items-center pb-3 border-b border-slate-200">
+                                                <span className="font-medium text-slate-600">Successfully Imported</span>
+                                                <span className="font-bold text-lg text-emerald-600">{importSummary.imported}</span>
+                                            </li>
+                                            <li className="flex justify-between items-center pb-3 border-b border-slate-200">
+                                                <span className="font-medium text-slate-600">Database Duplicates (Skipped)</span>
+                                                <span className="font-bold text-slate-800">{importSummary.dbDuplicates}</span>
+                                            </li>
+                                            <li className="flex justify-between items-center pb-3 border-b border-slate-200">
+                                                <span className="font-medium text-slate-600">File Duplicates (Skipped)</span>
+                                                <span className="font-bold text-slate-800">{importSummary.fileDuplicates}</span>
+                                            </li>
+                                            <li className="flex justify-between items-center pb-3 border-b border-slate-200">
+                                                <span className="font-medium text-slate-600">Invalid Format (Skipped)</span>
+                                                <span className="font-bold text-slate-800">{importSummary.invalid - importSummary.fileDuplicates}</span>
+                                            </li>
+                                            {importSummary.failed > 0 && (
+                                                <li className="flex justify-between items-center">
+                                                    <span className="font-medium text-rose-600">Failed (Not Imported)</span>
+                                                    <span className="font-bold text-lg text-rose-600">{importSummary.failed}</span>
+                                                </li>
+                                            )}
+                                        </ul>
+                                    </div>
+                                    
+                                    <div className="flex justify-center">
+                                        <button onClick={() => setShowBulkModal(false)} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700">Done</button>
                                     </div>
                                 </div>
                             )}
