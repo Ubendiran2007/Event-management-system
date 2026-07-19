@@ -1,4 +1,4 @@
-import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap, BarChart2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import seceLogo from '../assets/sece logo.jpeg';
@@ -108,6 +108,8 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   }
 
   navItems.push({ id: 'academic-calendar', label: 'Academic Calendar', icon: CalendarDays, path: '/academic-calendar' });
+
+  navItems.push({ id: 'analytics', label: 'Analytics', icon: BarChart2, path: '/analytics' });
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });
 
