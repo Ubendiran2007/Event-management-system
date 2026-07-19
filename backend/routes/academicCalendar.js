@@ -3,7 +3,7 @@ const router = express.Router();
 
 const { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where, db, writeBatch, deleteDoc } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { logActivity } = require('../utils/logger');
+const { logActivity, logAudit } = require('../utils/logger');
 
 const checkDb = (res) => {
   if (!db) {
@@ -15,19 +15,24 @@ const checkDb = (res) => {
 
 // Helper to log calendar activities
 const logCalendarAction = (action, user, target, details, status = 'SUCCESS') => {
-  logActivity({
+  const actor = {
+    userId: user.id || user.email,
+    name: user.name || user.email,
+    role: user.role,
+    department: user.department || 'IQAC'
+  };
+
+  const payload = {
     category: 'ACADEMIC_CALENDAR',
     action,
     status,
-    actor: {
-      userId: user.id || user.email,
-      name: user.name || user.email,
-      role: user.role,
-      department: user.department || 'IQAC'
-    },
+    actor,
     target,
     details
-  });
+  };
+
+  logActivity(payload);
+  logAudit(payload); // Mirror to security logs
 };
 
 // ==========================================

@@ -80,46 +80,77 @@ export const CalendarProvider = ({ children }) => {
   };
 
   const getOverlappingHolidays = (startDate, endDate) => {
+    const ay = getActiveAcademicYear();
+    if (!ay) return [];
+
     const start = new Date(startDate);
     const end = new Date(endDate);
     start.setHours(0,0,0,0);
     end.setHours(23,59,59,999);
+    
+    const ayStart = new Date(ay.startDate);
+    const ayEnd = new Date(ay.endDate);
+    ayStart.setHours(0,0,0,0);
+    ayEnd.setHours(23,59,59,999);
 
     return holidays.filter(h => {
       const hDate = new Date(h.date);
-      return hDate >= start && hDate <= end;
+      // Only warn if holiday is within active AY and falls within query range
+      return hDate >= ayStart && hDate <= ayEnd && hDate >= start && hDate <= end;
     });
   };
 
   const getOverlappingExams = (startDate, endDate) => {
+    const ay = getActiveAcademicYear();
+    if (!ay) return [];
+
     const start = new Date(startDate);
     const end = new Date(endDate);
     start.setHours(0,0,0,0);
     end.setHours(23,59,59,999);
+
+    const ayStart = new Date(ay.startDate);
+    const ayEnd = new Date(ay.endDate);
+    ayStart.setHours(0,0,0,0);
+    ayEnd.setHours(23,59,59,999);
 
     return exams.filter(exam => {
       const eStart = new Date(exam.startDate);
       const eEnd = new Date(exam.endDate);
       eStart.setHours(0,0,0,0);
       eEnd.setHours(23,59,59,999);
+      
+      // Check if exam is within active AY bounds
+      if (eEnd < ayStart || eStart > ayEnd) return false;
+      
       return eStart <= end && eEnd >= start;
     });
   };
 
   const checkWorkingDays = (startDate, endDate) => {
+    const ay = getActiveAcademicYear();
+    if (!ay) return [];
+
     const start = new Date(startDate);
     const end = new Date(endDate);
     start.setHours(0,0,0,0);
     end.setHours(23,59,59,999);
+
+    const ayStart = new Date(ay.startDate);
+    const ayEnd = new Date(ay.endDate);
+    ayStart.setHours(0,0,0,0);
+    ayEnd.setHours(23,59,59,999);
 
     const nonWorking = [];
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     let curr = new Date(start);
     while (curr <= end) {
-      const dayName = days[curr.getDay()];
-      if (workingDays[dayName] === false) {
-        nonWorking.push(new Date(curr).toISOString().split('T')[0]);
+      if (curr >= ayStart && curr <= ayEnd) {
+        const dayName = days[curr.getDay()];
+        if (workingDays[dayName] === false) {
+          nonWorking.push(new Date(curr).toISOString().split('T')[0]);
+        }
       }
       curr.setDate(curr.getDate() + 1);
     }
