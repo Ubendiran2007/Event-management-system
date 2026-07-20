@@ -86,8 +86,9 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const { studentId, studentData } = buildStudentData(req.body);
-    const studentRef = doc(db, 'students', className, 'members', studentId);
+    const { studentId, studentData } = await buildStudentData(req.body);
+
+    const studentRef = doc(db, 'students', req.body.className, 'members', studentId);
     
     await setDoc(studentRef, studentData);
     res.json({ success: true, message: 'Student added successfully', student: { id: studentId, ...studentData } });
@@ -157,7 +158,7 @@ router.post('/bulk', async (req, res) => {
 
     for (let i = 0; i < validToImport.length; i++) {
       const student = validToImport[i];
-      const { studentId, studentData } = buildStudentData(student);
+      const { studentId, studentData } = await buildStudentData(student);
       
       const studentRef = doc(db, 'students', student.className, 'members', studentId);
       batch.set(studentRef, studentData);

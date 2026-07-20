@@ -27,12 +27,15 @@ const buildStaffData = async ({ name, email, role, department, password, assigne
 
 /**
  * Builds the student data object.
- * Note: The existing system stores student passwords as plain text, defaulting to rollNo.
+ * Securely hashes passwords using bcrypt.
  * @param {Object} payload 
- * @returns {{studentId: string, studentData: Object}}
+ * @returns {Promise<{studentId: string, studentData: Object}>}
  */
-const buildStudentData = ({ name, rollNo, email, department, className, section, phone, odLimit, password, academicBatch }) => {
+const buildStudentData = async ({ name, rollNo, email, department, className, section, phone, odLimit, password, academicBatch }) => {
   const studentId = `student_${rollNo}`;
+  
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(password || rollNo, salt);
   
   let admissionYear = null;
   let graduationYear = null;
@@ -55,7 +58,7 @@ const buildStudentData = ({ name, rollNo, email, department, className, section,
     phone: phone || '',
     role: 'STUDENT_GENERAL',
     studentStatus: 'ACTIVE',
-    password: password || rollNo,
+    password: hashedPassword,
     odUsed: 0,
     odLimit: odLimit !== undefined ? Number(odLimit) : 7,
     createdAt: new Date().toISOString(),
