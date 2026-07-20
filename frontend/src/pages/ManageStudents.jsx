@@ -47,6 +47,8 @@ const ManageStudents = () => {
     const [selectedBatchView, setSelectedBatchView] = useState(null); // e.g. '2024-28'
     const [selectedDepartment, setSelectedDepartment] = useState(null); // e.g. 'CSE'
     const [selectedClass, setSelectedClass] = useState(null); // e.g. 'CSE-B'
+    const [staffCategory, setStaffCategory] = useState(null); // 'FACULTY' | 'INCHARGE'
+    const [staffDepartment, setStaffDepartment] = useState(null); // e.g. 'CSE'
     const [searchQuery, setSearchQuery] = useState('');
     const [staffSearchQuery, setStaffSearchQuery] = useState('');
     const [togglingId, setTogglingId] = useState(null);
@@ -207,7 +209,25 @@ const ManageStudents = () => {
     // --- Staff Logic ---
     const allowedStaff = (staffUsers || []);
 
-    const filteredStaff = allowedStaff.filter(s => 
+    const facultyStaff = allowedStaff.filter(s => ['FACULTY', 'HOD'].includes(s.role));
+    const inchargeStaff = allowedStaff.filter(s => !['FACULTY', 'HOD'].includes(s.role));
+
+    const staffDeptMap = {};
+    facultyStaff.forEach(s => {
+        const dept = s.department || 'Unknown';
+        if (!staffDeptMap[dept]) staffDeptMap[dept] = [];
+        staffDeptMap[dept].push(s);
+    });
+    const staffDepartments = Object.keys(staffDeptMap).sort();
+
+    let currentStaffList = allowedStaff; // Default fallback if no category is somehow selected, though we handle UI below
+    if (staffCategory === 'FACULTY') {
+        currentStaffList = staffDepartment ? (staffDeptMap[staffDepartment] || []) : facultyStaff; // If no dept, we shouldn't show list, but just in case
+    } else if (staffCategory === 'INCHARGE') {
+        currentStaffList = inchargeStaff;
+    }
+
+    const filteredStaff = currentStaffList.filter(s => 
         (s.name || '').toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
         (s.email || '').toLowerCase().includes(staffSearchQuery.toLowerCase()) ||
         (s.role || '').toLowerCase().includes(staffSearchQuery.toLowerCase())
@@ -808,36 +828,91 @@ const ManageStudents = () => {
                             )
                         ) : activeTab === 'staff' ? (
                             /* STAFF VIEW */
-                            <>
-                                <div className="relative mb-6 max-w-md">
-                                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                                    <input type="text" placeholder="Search staff..." value={staffSearchQuery} onChange={e => setStaffSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
-                                </div>
-                                <div className="glass-panel rounded-2xl overflow-hidden">
-                                    <div className="divide-y divide-slate-100">
-                                        {filteredStaff.map(staff => (
-                                            <div key={staff.id} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">{(staff.name || '?').charAt(0)}</div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-900 text-sm">{staff.name}</p>
-                                                        <p className="text-xs text-slate-500 mt-0.5">{staff.email}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">{(staff.role || 'Unknown').replace('_', ' ')}</span>
-                                                    {staff.department && <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">{staff.department}</span>}
-                                                    <button onClick={() => { setEditingStaff(staff); setStaffForm(staff); setShowStaffModal(true); }} className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Edit size={16}/></button>
-                                                    <button onClick={() => setDeletingStaff(staff)} className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"><Trash2 size={16}/></button>
+                            !staffCategory ? (
+                                /* Level 0: Categories */
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <button onClick={() => { setStaffCategory('FACULTY'); setStaffDepartment(null); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
+                                            <div className="text-left flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><Users size={24} /></div>
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">Faculty</h3>
+                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{facultyStaff.length}</span> members</p>
                                                 </div>
                                             </div>
+                                            <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
+                                        </button>
+                                        <button onClick={() => { setStaffCategory('INCHARGE'); setStaffDepartment(null); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
+                                            <div className="text-left flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center"><ShieldCheck size={24} /></div>
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">Incharges</h3>
+                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{inchargeStaff.length}</span> members</p>
+                                                </div>
+                                            </div>
+                                            <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (staffCategory === 'FACULTY' && !staffDepartment) ? (
+                                /* Level 1: Departments for Faculty */
+                                <>
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <button onClick={() => setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
+                                        <h3 className="text-xl font-bold text-slate-900">Faculty Departments</h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {staffDepartments.map(dept => (
+                                            <button key={dept} onClick={() => setStaffDepartment(dept)} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
+                                                <div className="text-left">
+                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{dept}</h3>
+                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{staffDeptMap[dept].length}</span> faculty</p>
+                                                </div>
+                                                <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
+                                            </button>
                                         ))}
-                                        {filteredStaff.length === 0 && (
-                                            <div className="p-8 text-center text-slate-500">No staff users found.</div>
+                                        {staffDepartments.length === 0 && (
+                                            <div className="p-8 text-center text-slate-500 col-span-3">No departments found for faculty.</div>
                                         )}
                                     </div>
-                                </div>
-                            </>
+                                </>
+                            ) : (
+                                /* Level 2: Staff List (Faculty in Dept OR Incharges) */
+                                <>
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <button onClick={() => staffCategory === 'FACULTY' ? setStaffDepartment(null) : setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
+                                        <h3 className="text-xl font-bold text-slate-900">{staffCategory === 'FACULTY' ? `${staffDepartment} Faculty` : 'Incharges'}</h3>
+                                        <div className="relative flex-1 max-w-md ml-auto">
+                                            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                            <input type="text" placeholder="Search staff..." value={staffSearchQuery} onChange={e => setStaffSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
+                                        </div>
+                                    </div>
+                                    <div className="glass-panel rounded-2xl overflow-hidden">
+                                        <div className="divide-y divide-slate-100">
+                                            {filteredStaff.map(staff => (
+                                                <div key={staff.id} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">{(staff.name || '?').charAt(0)}</div>
+                                                        <div>
+                                                            <p className="font-bold text-slate-900 text-sm">{staff.name}</p>
+                                                            <p className="text-xs text-slate-500 mt-0.5">{staff.email}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${staff.role === 'HOD' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>{(staff.role || 'Unknown').replace('_', ' ')}</span>
+                                                        {staff.department && <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">{staff.department}</span>}
+                                                        <button onClick={() => { setEditingStaff(staff); setStaffForm(staff); setShowStaffModal(true); }} className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Edit size={16}/></button>
+                                                        <button onClick={() => setDeletingStaff(staff)} className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"><Trash2 size={16}/></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {filteredStaff.length === 0 && (
+                                                <div className="p-8 text-center text-slate-500">No staff users found.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )
                         ) : activeTab === 'advisors' && isHOD ? (
                             /* ADVISORS VIEW */
                             <div className="glass-panel rounded-2xl pb-24">
