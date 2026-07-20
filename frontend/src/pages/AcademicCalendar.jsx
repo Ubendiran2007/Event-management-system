@@ -566,3 +566,5 @@ const HODManagementTab = () => {
     </div>
   );
 };
+
+export default AcademicCalendar;
