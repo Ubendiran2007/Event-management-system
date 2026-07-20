@@ -594,12 +594,14 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="animate-spin mx-auto text-cse-accent mb-4" size={40} />
-          <p className="text-slate-500">Loading data from Firebase...</p>
+      <Layout>
+        <div className="flex-1 flex items-center justify-center min-h-[50vh]">
+          <div className="text-center">
+            <Loader2 className="animate-spin mx-auto text-indigo-600 mb-4" size={40} />
+            <p className="text-slate-500 font-medium">Loading Dashboard Data...</p>
+          </div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
