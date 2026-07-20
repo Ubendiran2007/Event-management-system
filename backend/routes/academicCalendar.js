@@ -441,6 +441,7 @@ router.post('/department-events/import', requireAuth, requireRole(['HOD']), asyn
         title: record.title,
         type: record.type,
         date: record.date,
+        endDate: record.endDate || null,
         description: record.description || '',
         department,
         createdAt: new Date().toISOString()
@@ -459,6 +460,41 @@ router.post('/department-events/import', requireAuth, requireRole(['HOD']), asyn
     res.json({ success: true, data: { imported: importedIds.length, duplicates, invalid } });
   } catch (error) {
     console.error('Error importing department events:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Add Single Department Event
+router.post('/department-events', requireAuth, requireRole(['HOD']), async (req, res) => {
+  if (checkDb(res)) return;
+  try {
+    const { title, type, date, endDate, description } = req.body;
+    
+    if (!title || !date || !type) {
+      return res.status(400).json({ success: false, message: 'Title, Date, and Type are required.' });
+    }
+
+    const department = req.user.department;
+    if (!department) return res.status(403).json({ success: false, message: 'User has no department assigned.' });
+
+    const eventData = {
+      title,
+      type,
+      date,
+      endDate: endDate || null,
+      description: description || '',
+      department,
+      createdAt: new Date().toISOString()
+    };
+    
+    const docRef = doc(collection(db, 'departmentCalendar'));
+    await setDoc(docRef, eventData);
+    
+    logCalendarAction('ADD_DEPT_EVENT', req.user, 'Added Event', { title, date });
+    
+    res.json({ success: true, message: 'Event added successfully.', data: { id: docRef.id, ...eventData } });
+  } catch (error) {
+    console.error('Error adding department event:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });

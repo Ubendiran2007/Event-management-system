@@ -56,7 +56,7 @@ const AcademicCalendar = () => {
       if (dateStr >= e.startDate && dateStr <= e.endDate) dayEvents.push({ type: 'exam', title: e.name, color: 'bg-orange-100 text-orange-800 border-orange-200' });
     });
     departmentCalendar.forEach(d => {
-      if (d.date === dateStr) dayEvents.push({ type: 'dept', title: `[${d.department}] ${d.title}`, color: 'bg-purple-100 text-purple-800 border-purple-200' });
+      if (dateStr >= d.date && dateStr <= (d.endDate || d.date)) dayEvents.push({ type: 'dept', title: `[${d.department}] ${d.title}`, color: 'bg-purple-100 text-purple-800 border-purple-200' });
     });
     approvedEvents.forEach(e => {
       if (dateStr >= e.startDate && dateStr <= (e.endDate || e.startDate)) dayEvents.push({ type: 'event', title: e.title || e.eventName, color: 'bg-blue-100 text-blue-800 border-blue-200' });
@@ -449,6 +449,8 @@ const HODManagementTab = () => {
   const { currentUser } = useAppContext();
   const [fileData, setFileData] = useState(null);
   const [loadingAction, setLoadingAction] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: '', date: '', endDate: '', type: 'event' });
 
   const token = localStorage.getItem('sessionToken');
   const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
@@ -511,6 +513,29 @@ const HODManagementTab = () => {
     } catch (err) { }
   };
 
+  const handleAddEvent = async (e) => {
+    e.preventDefault();
+    setLoadingAction(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/academic-calendar/department-events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(newEvent)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowAddModal(false);
+        setNewEvent({ title: '', date: '', endDate: '', type: 'event' });
+      } else {
+        alert(data.message || 'Failed to add event');
+      }
+    } catch (err) {
+      alert('Network error');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
   return (
     <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200">
       <div className="flex justify-between items-end border-b pb-4 mb-6">
@@ -526,7 +551,7 @@ const HODManagementTab = () => {
         <div className="lg:col-span-1 space-y-4">
           <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
               <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
-              <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Title</strong>, <strong>Date</strong> (YYYY-MM-DD), and <strong>Type</strong>.</p>
+              <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Title</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>EndDate</strong> (Optional), and <strong>Type</strong>.</p>
               
               <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
                 <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
@@ -537,6 +562,7 @@ const HODManagementTab = () => {
                     <tr>
                       <th className="px-3 py-2 font-semibold border-r border-slate-200">Title</th>
                       <th className="px-3 py-2 font-semibold border-r border-slate-200">Date</th>
+                      <th className="px-3 py-2 font-semibold border-r border-slate-200">EndDate</th>
                       <th className="px-3 py-2 font-semibold">Type</th>
                     </tr>
                   </thead>
@@ -544,11 +570,13 @@ const HODManagementTab = () => {
                     <tr className="border-b border-slate-100">
                       <td className="px-3 py-2 border-r border-slate-100">Project Review 1</td>
                       <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-15</td>
+                      <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-17</td>
                       <td className="px-3 py-2 text-indigo-600 font-medium">exam</td>
                     </tr>
                     <tr>
                       <td className="px-3 py-2 border-r border-slate-100">Guest Lecture on AI</td>
                       <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-20</td>
+                      <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]"></td>
                       <td className="px-3 py-2 text-indigo-600 font-medium">event</td>
                     </tr>
                   </tbody>
@@ -572,7 +600,15 @@ const HODManagementTab = () => {
 
         {/* Existing Records Section */}
         <div className="lg:col-span-2">
-          <h3 className="font-bold text-slate-800 mb-4">Current Department Activities</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800">Current Department Activities</h3>
+            <button 
+              onClick={() => setShowAddModal(true)} 
+              className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors"
+            >
+              <Plus size={16} /> Add Event
+            </button>
+          </div>
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -589,7 +625,7 @@ const HODManagementTab = () => {
                 ) : myDeptEvents.map(d => (
                   <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
                     <td className="py-3 px-4">{d.title}</td>
-                    <td className="py-3 px-4 text-slate-500">{d.date}</td>
+                    <td className="py-3 px-4 text-slate-500">{d.date} {d.endDate && d.endDate !== d.date ? ` to ${d.endDate}` : ''}</td>
                     <td className="py-3 px-4"><span className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs">{d.type}</span></td>
                     <td className="py-3 px-4 text-right">
                       <button onClick={() => handleDelete(d.id)} className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50"><Trash2 size={16}/></button>
@@ -601,6 +637,49 @@ const HODManagementTab = () => {
           </div>
         </div>
       </div>
+
+      {/* Add Event Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-800">Add Department Event</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">&times;</button>
+            </div>
+            <form onSubmit={handleAddEvent} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Event Title *</label>
+                <input required type="text" value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} className="w-full border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border" placeholder="e.g. Guest Lecture on AI" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Start Date *</label>
+                  <input required type="date" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} className="w-full border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">End Date (Optional)</label>
+                  <input type="date" value={newEvent.endDate} min={newEvent.date} onChange={e => setNewEvent({...newEvent, endDate: e.target.value})} className="w-full border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Event Type *</label>
+                <select required value={newEvent.type} onChange={e => setNewEvent({...newEvent, type: e.target.value})} className="w-full border-slate-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border bg-white">
+                  <option value="event">Event</option>
+                  <option value="exam">Exam</option>
+                  <option value="holiday">Holiday</option>
+                  <option value="dept">Department Activity</option>
+                </select>
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">Cancel</button>
+                <button type="submit" disabled={loadingAction} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                  {loadingAction ? 'Adding...' : 'Add Event'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
