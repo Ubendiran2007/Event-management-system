@@ -525,10 +525,37 @@ const HODManagementTab = () => {
         {/* Import Section */}
         <div className="lg:col-span-1 space-y-4">
           <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
-            <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Title</strong>, <strong>Date</strong> (YYYY-MM-DD), and <strong>Type</strong>.</p>
-            
-            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
+              <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Title</strong>, <strong>Date</strong> (YYYY-MM-DD), and <strong>Type</strong>.</p>
+              
+              <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
+                  Example Format
+                </div>
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold border-r border-slate-200">Title</th>
+                      <th className="px-3 py-2 font-semibold border-r border-slate-200">Date</th>
+                      <th className="px-3 py-2 font-semibold">Type</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-600">
+                    <tr className="border-b border-slate-100">
+                      <td className="px-3 py-2 border-r border-slate-100">Project Review 1</td>
+                      <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-15</td>
+                      <td className="px-3 py-2 text-indigo-600 font-medium">exam</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 border-r border-slate-100">Guest Lecture on AI</td>
+                      <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-20</td>
+                      <td className="px-3 py-2 text-indigo-600 font-medium">event</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
             
             {fileData && (
               <div className="mt-6 space-y-4">
