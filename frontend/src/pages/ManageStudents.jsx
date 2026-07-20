@@ -708,7 +708,20 @@ const ManageStudents = () => {
                                 <>
                                     <div className="flex items-center gap-4 mb-6">
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
-                                        <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
+                                        <div className="flex flex-col">
+                                            <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
+                                            {(() => {
+                                                const advisors = (staffUsers || []).filter(s => s.role === 'FACULTY' && (s.assignedClasses || []).includes(selectedClass));
+                                                if (advisors.length > 0) {
+                                                    return (
+                                                        <p className="text-sm font-semibold text-cse-accent flex items-center gap-1.5 mt-0.5">
+                                                            <UserCheck size={14} /> Class Advisor: {advisors.map(a => a.name).join(', ')}
+                                                        </p>
+                                                    );
+                                                }
+                                                return <p className="text-sm font-medium text-slate-500 mt-0.5 flex items-center gap-1.5"><UserX size={14} /> No Class Advisor Assigned</p>;
+                                            })()}
+                                        </div>
                                         <div className="relative flex-1 max-w-md ml-auto flex gap-3">
                                             <select
                                                 value={filterStatus}
