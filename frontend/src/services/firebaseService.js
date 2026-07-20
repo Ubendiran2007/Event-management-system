@@ -395,8 +395,11 @@ export const subscribeToStudents = (currentUser, callback) => {
   let isMounted = true;
   const fetchStudents = async () => {
     try {
+      const token = localStorage.getItem('sessionToken');
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
-      const res = await fetch(`${API_BASE}/api/students`);
+      const res = await fetch(`${API_BASE}/api/students`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (res.ok) {
         const data = await res.json();
         if (isMounted) {
@@ -414,6 +417,31 @@ export const subscribeToStudents = (currentUser, callback) => {
   };
   fetchStudents();
   const interval = setInterval(fetchStudents, 15000);
+  return () => {
+    isMounted = false;
+    clearInterval(interval);
+  };
+};
+
+export const subscribeToUsers = (callback) => {
+  let isMounted = true;
+  const fetchUsers = async () => {
+    try {
+      const token = localStorage.getItem('sessionToken');
+      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+      const res = await fetch(`${API_BASE}/api/users`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (isMounted) callback(data.users || []);
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  };
+  fetchUsers();
+  const interval = setInterval(fetchUsers, 15000);
   return () => {
     isMounted = false;
     clearInterval(interval);
