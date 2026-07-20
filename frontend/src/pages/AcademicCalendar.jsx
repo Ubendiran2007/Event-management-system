@@ -511,7 +511,31 @@ const IQACManagementTab = () => {
                   <Input label="Name (e.g. Model Exam 1)" type="text" field="name" />
                   <Input label="Start Date" type="date" field="startDate" />
                   <Input label="End Date" type="date" field="endDate" />
-                  <Input label="Department (or ALL)" type="text" field="department" />
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase">Department (or ALL)</label>
+                    <select 
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" 
+                      value={form.department || ''} 
+                      onChange={e => setForm({...form, department: e.target.value})} 
+                      required
+                    >
+                      <option value="">Select...</option>
+                      <option value="ALL">ALL</option>
+                      <option value="CSE">CSE</option>
+                      <option value="ECE">ECE</option>
+                      <option value="IT">IT</option>
+                      <option value="AIDS">AIDS</option>
+                      <option value="AIML">AIML</option>
+                      <option value="CCE">CCE</option>
+                      <option value="CSBS">CSBS</option>
+                      <option value="MECH">MECH</option>
+                      <option value="CIVIL">CIVIL</option>
+                      <option value="MTR">MTR</option>
+                      <option value="BME">BME</option>
+                      <option value="CYBER">CYBER</option>
+                      <option value="EEE">EEE</option>
+                    </select>
+                  </div>
                   <button disabled={loadingAction} onClick={() => handleApi('exams', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
                     Add Exam
                   </button>
