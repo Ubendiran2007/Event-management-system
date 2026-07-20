@@ -98,14 +98,6 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     });
   }
   
-  if (currentUser.role === UserRole.IQAC_TEAM) {
-    navItems.push({
-      id: 'academic-batches',
-      label: 'Academic Batches',
-      icon: GraduationCap,
-      path: '/academic-batches'
-    });
-  }
 
   navItems.push({ id: 'academic-calendar', label: 'Academic Calendar', icon: CalendarDays, path: '/academic-calendar' });
 

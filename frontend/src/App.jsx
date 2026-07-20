@@ -12,7 +12,7 @@ const CreateEvent = lazy(() => import('./pages/CreateEvent'));
 const ExploreEvents = lazy(() => import('./pages/ExploreEventsNew'));
 const IQACSubmission = lazy(() => import('./pages/IQACSubmission'));
 const ManageStudents = lazy(() => import('./pages/ManageStudents'));
-const AcademicBatches = lazy(() => import('./pages/AcademicBatches'));
+
 const AcademicCalendar = lazy(() => import('./pages/AcademicCalendar'));
 const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'));
 const ODCorrection = lazy(() => import('./pages/ODCorrection'));
@@ -38,7 +38,7 @@ const RoleRoutes = () => (
     <Route path="explore" element={<ExploreEvents />} />
     <Route path="iqac" element={<IQACSubmission />} />
     <Route path="manage-students" element={<ManageStudents />} />
-    <Route path="academic-batches" element={<AcademicBatches />} />
+
     <Route path="academic-calendar" element={<AcademicCalendar />} />
     <Route path="analytics" element={<AnalyticsDashboard />} />
     <Route path="od-correction" element={<ODCorrection />} />

@@ -44,6 +44,7 @@ const ManageStudents = () => {
     // Tabs & View State
     const [openDropdownId, setOpenDropdownId] = useState(null);
     const [activeTab, setActiveTab] = useState('students'); // 'students' | 'staff'
+    const [viewBatchName, setViewBatchName] = useState(null);
     const [selectedDepartment, setSelectedDepartment] = useState(null); // e.g. 'CSE'
     const [selectedClass, setSelectedClass] = useState(null); // e.g. 'CSE-B'
     const [searchQuery, setSearchQuery] = useState('');
@@ -74,6 +75,10 @@ const ManageStudents = () => {
     const [invalidRecords, setInvalidRecords] = useState([]); // { row, reason, data }
     const [importSummary, setImportSummary] = useState(null); // { imported, dbDuplicates, fileDuplicates, invalid, failed }
     const [bulkError, setBulkError] = useState('');
+    
+    // Batch Management States
+    const [showBatchModal, setShowBatchModal] = useState(false);
+    const [batchForm, setBatchForm] = useState({ name: '', admissionYear: '', graduationYear: '' });
     
     // Academic Batch State
     const [academicBatches, setAcademicBatches] = useState([]);
@@ -912,6 +917,29 @@ const ManageStudents = () => {
                 </div>
             )}
 
+            {/* Batch Modal */}
+            {showBatchModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-scale-in">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-lg text-slate-800">Add Academic Batch</h3>
+                            <button onClick={() => setShowBatchModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleSaveBatch} className="p-6 space-y-4">
+                            <div><label className="block text-xs font-bold text-slate-500 mb-1">Batch Name * (e.g. 2024-2028)</label><input required value={batchForm.name} onChange={e=>setBatchForm({...batchForm, name: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-xs font-bold text-slate-500 mb-1">Admission Year *</label><input required type="number" value={batchForm.admissionYear} onChange={e=>setBatchForm({...batchForm, admissionYear: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 mb-1">Graduation Year *</label><input required type="number" value={batchForm.graduationYear} onChange={e=>setBatchForm({...batchForm, graduationYear: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                            </div>
+                            <div className="pt-4 flex justify-end gap-3">
+                                <button type="button" onClick={() => setShowBatchModal(false)} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+                                <button type="submit" disabled={isProcessing} className="px-6 py-2 bg-cse-accent text-white rounded-lg font-bold hover:bg-cse-accent/90 disabled:opacity-50">{isProcessing ? <Loader2 className="animate-spin" /> : 'Save'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* Bulk Import Modal */}
             {showBulkModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -940,7 +968,7 @@ const ManageStudents = () => {
                                                 >
                                                     <option value="" disabled>-- Select Academic Batch --</option>
                                                     {academicBatches.map(b => (
-                                                        <option key={b.id} value={b.id}>{b.name || b.id}</option>
+                                                        <option key={b.id} value={b.name}>{b.name || b.id}</option>
                                                     ))}
                                                 </select>
                                             )}
