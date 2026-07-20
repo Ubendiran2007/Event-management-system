@@ -258,7 +258,8 @@ router.post('/holidays/import', requireAuth, requireRole(['IQAC_TEAM']), async (
     const { records } = req.body;
     if (!records || !Array.isArray(records)) return res.status(400).json({ success: false, message: 'Invalid records payload.' });
 
-    const batch = writeBatch(db);
+    let batch = writeBatch(db);
+    let count = 0;
     const importedIds = [];
     let duplicates = 0;
     let invalid = 0;
@@ -293,10 +294,20 @@ router.post('/holidays/import', requireAuth, requireRole(['IQAC_TEAM']), async (
       const docRef = doc(collection(db, 'holidays'));
       batch.set(docRef, holidayData);
       importedIds.push(docRef.id);
+      count++;
+      
+      if (count === 500) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
     }
 
-    if (importedIds.length > 0) {
+    if (count > 0) {
       await batch.commit();
+    }
+    
+    if (importedIds.length > 0) {
       logCalendarAction('IMPORT_HOLIDAYS', req.user, 'Bulk Import Holidays', { importedCount: importedIds.length, duplicates, invalid });
     }
 
@@ -469,10 +480,20 @@ router.post('/department-events/import', requireAuth, requireRole(['HOD']), asyn
     const department = req.user.department;
     if (!department) return res.status(403).json({ success: false, message: 'User has no department assigned.' });
 
-    const batch = writeBatch(db);
+    let batch = writeBatch(db);
+    let count = 0;
     const importedIds = [];
     let duplicates = 0;
     let invalid = 0;
+    
+    // Optimized: Fetch all existing department events once to build a duplicate checking set
+    const qEvents = query(collection(db, 'departmentCalendar'), where('department', '==', department));
+    const existingEventsSnap = await getDocs(qEvents);
+    const existingEventKeys = new Set();
+    existingEventsSnap.docs.forEach(doc => {
+      const data = doc.data();
+      existingEventKeys.add(`${data.title}_${data.date}`);
+    });
     
     for (const record of records) {
       if (!record.title || !record.date || !record.type) {
@@ -480,18 +501,13 @@ router.post('/department-events/import', requireAuth, requireRole(['HOD']), asyn
         continue;
       }
       
-      // Duplicate check logic
-      const q = query(collection(db, 'departmentCalendar'), 
-        where('title', '==', record.title),
-        where('date', '==', record.date),
-        where('department', '==', department)
-      );
-      const snap = await getDocs(q);
-      
-      if (!snap.empty) {
+      const eventKey = `${record.title}_${record.date}`;
+      if (existingEventKeys.has(eventKey)) {
         duplicates++;
         continue;
       }
+      
+      existingEventKeys.add(eventKey); // Prevent duplicates within payload
 
       const eventData = {
         title: record.title,
@@ -506,10 +522,20 @@ router.post('/department-events/import', requireAuth, requireRole(['HOD']), asyn
       const docRef = doc(collection(db, 'departmentCalendar'));
       batch.set(docRef, eventData);
       importedIds.push(docRef.id);
+      count++;
+      
+      if (count === 500) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
     }
 
     if (importedIds.length > 0) {
-      await batch.commit();
       logCalendarAction('IMPORT_DEPT_EVENTS', req.user, 'Bulk Import', { importedCount: importedIds.length, duplicates, invalid });
     }
 
