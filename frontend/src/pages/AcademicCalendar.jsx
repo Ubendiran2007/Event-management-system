@@ -1,10 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Trash2, CheckCircle, Download } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Trash2, CheckCircle, Download, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { useCalendarContext } from '../context/CalendarContext';
 import * as XLSX from 'xlsx';
 
 const AcademicCalendar = () => {
+  const navigate = useNavigate();
   const { currentUser, events: allEvents } = useAppContext();
   const {
     academicYears, semesters, holidays, exams, workingDays, departmentCalendar, loading
@@ -72,9 +75,10 @@ const AcademicCalendar = () => {
     return semesters.some(sem => sem.status === 'ACTIVE' && dateStr >= sem.startDate && dateStr <= sem.endDate);
   };
 
-  if (loading) return <div className="p-8 text-center text-slate-500 font-medium">Loading Academic Calendar...</div>;
+  if (loading) return <Layout><div className="p-8 text-center text-slate-500 font-medium">Loading Academic Calendar...</div></Layout>;
 
   return (
+    <Layout>
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
@@ -85,7 +89,8 @@ const AcademicCalendar = () => {
           <p className="text-slate-500 mt-1">Unified institutional and departmental scheduling.</p>
         </div>
         
-        <div className="flex flex-wrap gap-2 bg-slate-100 p-1 rounded-lg">
+        <div className="flex items-center gap-4">
+          <div className="flex flex-wrap gap-2 bg-slate-100 p-1 rounded-lg">
           <button onClick={() => setActiveTab('calendar')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${activeTab === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-slate-600 hover:bg-slate-200'}`}>
             Calendar View
           </button>
@@ -99,6 +104,11 @@ const AcademicCalendar = () => {
               Dept Calendar (HOD)
             </button>
           )}
+          </div>
+          <button onClick={() => navigate(-1)} className="px-4 py-2 border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-600 font-semibold transition-colors flex items-center gap-2 text-sm bg-white shadow-sm">
+            <ArrowLeft size={16} />
+            Back
+          </button>
         </div>
       </div>
 
@@ -159,6 +169,7 @@ const AcademicCalendar = () => {
       {activeTab === 'manage_hod' && isHOD && <HODManagementTab />}
 
     </div>
+    </Layout>
   );
 };
 
