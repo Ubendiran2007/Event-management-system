@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Trash2, CheckCircle, Download, ArrowLeft } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Trash2, CheckCircle, Download, ArrowLeft, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
@@ -211,6 +211,50 @@ const IQACManagementTab = () => {
       <input type={type} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form[field] || ''} onChange={e => setForm({...form, [field]: e.target.value})} required={required} />
     </div>
   );
+
+  const CustomSelect = ({ label, field, options, required = true }) => {
+    const [isOpen, setIsOpen] = React.useState(false);
+    const ref = React.useRef(null);
+    React.useEffect(() => {
+      const handleClickOutside = (event) => {
+        if (ref.current && !ref.current.contains(event.target)) setIsOpen(false);
+      };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [ref]);
+
+    return (
+      <div className="space-y-1 relative" ref={ref}>
+        <label className="text-xs font-bold text-slate-700 uppercase">{label}</label>
+        <div 
+          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm flex justify-between items-center cursor-pointer"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <span>{form[field] || 'Select...'}</span>
+          <ChevronDown size={16} className="text-slate-400" />
+        </div>
+        {isOpen && (
+          <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <div 
+              className="px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer text-slate-500"
+              onClick={() => { setForm({...form, [field]: ''}); setIsOpen(false); }}
+            >
+              Select...
+            </div>
+            {options.map(opt => (
+              <div 
+                key={opt.value}
+                className={`px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer ${form[field] === opt.value ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'}`}
+                onClick={() => { setForm({...form, [field]: opt.value}); setIsOpen(false); }}
+              >
+                {opt.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleFileUpload = (e, mappingFn) => {
     const file = e.target.files[0];
@@ -511,31 +555,26 @@ const IQACManagementTab = () => {
                   <Input label="Name (e.g. Model Exam 1)" type="text" field="name" />
                   <Input label="Start Date" type="date" field="startDate" />
                   <Input label="End Date" type="date" field="endDate" />
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700 uppercase">Department (or ALL)</label>
-                    <select 
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" 
-                      value={form.department || ''} 
-                      onChange={e => setForm({...form, department: e.target.value})} 
-                      required
-                    >
-                      <option value="">Select...</option>
-                      <option value="ALL">ALL</option>
-                      <option value="CSE">CSE</option>
-                      <option value="ECE">ECE</option>
-                      <option value="IT">IT</option>
-                      <option value="AIDS">AIDS</option>
-                      <option value="AIML">AIML</option>
-                      <option value="CCE">CCE</option>
-                      <option value="CSBS">CSBS</option>
-                      <option value="MECH">MECH</option>
-                      <option value="CIVIL">CIVIL</option>
-                      <option value="MTR">MTR</option>
-                      <option value="BME">BME</option>
-                      <option value="CYBER">CYBER</option>
-                      <option value="EEE">EEE</option>
-                    </select>
-                  </div>
+                  <CustomSelect 
+                    label="Department (or ALL)" 
+                    field="department" 
+                    options={[
+                      { value: 'ALL', label: 'ALL' },
+                      { value: 'CSE', label: 'CSE' },
+                      { value: 'ECE', label: 'ECE' },
+                      { value: 'IT', label: 'IT' },
+                      { value: 'AIDS', label: 'AIDS' },
+                      { value: 'AIML', label: 'AIML' },
+                      { value: 'CCE', label: 'CCE' },
+                      { value: 'CSBS', label: 'CSBS' },
+                      { value: 'MECH', label: 'MECH' },
+                      { value: 'CIVIL', label: 'CIVIL' },
+                      { value: 'MTR', label: 'MTR' },
+                      { value: 'BME', label: 'BME' },
+                      { value: 'CYBER', label: 'CYBER' },
+                      { value: 'EEE', label: 'EEE' }
+                    ]}
+                  />
                   <button disabled={loadingAction} onClick={() => handleApi('exams', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
                     Add Exam
                   </button>
