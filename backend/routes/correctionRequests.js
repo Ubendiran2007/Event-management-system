@@ -3,9 +3,10 @@ const router = express.Router();
 
 const {
   collection, addDoc, getDocs, doc, updateDoc,
-  getDoc, query, where,
+  getDoc, query, where, collectionGroup,
 } = require('../firebaseClientWrapper');
 const { sendEmail } = require('../services/emailService');
+const { getAllSectionDocs } = require('../utils/studentHelper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 
@@ -166,17 +167,24 @@ router.post('/', async (req, res) => {
     let dbOdUsed = Number(currentOdUsed) || 0;
     let dbOdLimit = Number(currentOdLimit) || 0;
     let dbEmail = '';
-    
-    if (className) {
-      const studentQuery = query(collection(db, 'students', className, 'members'), where('rollNo', '==', dbRollNo));
-      const studentSnap = await getDocs(studentQuery);
-      if (!studentSnap.empty) {
-        const studentData = studentSnap.docs[0].data();
+    let studentDocSnap = null;
+    if (studentId) {
+      const sectionDocs = await getAllSectionDocs();
+      for (const secDoc of sectionDocs) {
+        const arr = secDoc.data.students || [];
+        const found = arr.find(s => s.rollNo === dbRollNo || s.id === studentId);
+        if (found) {
+          studentDocSnap = { data: () => found };
+          break;
+        }
+      }
+    }
+    if (studentDocSnap) {
+        const studentData = studentDocSnap.data();
         dbRollNo = studentData.rollNo || dbRollNo;
         dbOdUsed = studentData.odUsed !== undefined ? Number(studentData.odUsed) : dbOdUsed;
         dbOdLimit = studentData.odLimit !== undefined ? Number(studentData.odLimit) : dbOdLimit;
         dbEmail = studentData.email || '';
-      }
     }
 
     const newRequest = {
@@ -361,19 +369,31 @@ router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), 
           const actualApproved = odSnap.size;
           const newOffset = data.requestedCount - actualApproved;
 
-          if (data.className) {
-            const studentQuery = query(collection(db, 'students', data.className, 'members'), where('rollNo', '==', data.rollNo));
-            const studentSnap = await getDocs(studentQuery);
-            
-            if (!studentSnap.empty) {
-              await updateDoc(studentSnap.docs[0].ref, {
-                odUsed:  data.requestedCount,
-                odLimit: data.requestedLimit,
-                odCorrectionOffset: newOffset,
-                odResetTimestamp: now
-              });
-              updatedUsers = true;
+          let targetSecDoc = null;
+          let targetArr = null;
+          let studentIdx = -1;
+          
+          const sectionDocs = await getAllSectionDocs();
+          for (const secDoc of sectionDocs) {
+            const arr = secDoc.data.students || [];
+            const idx = arr.findIndex(s => s.rollNo === data.rollNo || s.id === data.studentId);
+            if (idx !== -1) {
+              targetSecDoc = secDoc;
+              targetArr = arr;
+              studentIdx = idx;
+              break;
             }
+          }
+          
+          if (targetSecDoc) {
+              targetArr[studentIdx].odUsed = data.requestedCount;
+              targetArr[studentIdx].odLimit = data.requestedLimit;
+              targetArr[studentIdx].odCorrectionOffset = newOffset;
+              targetArr[studentIdx].odResetTimestamp = now;
+              targetArr[studentIdx].updatedAt = now;
+              
+              await updateDoc(targetSecDoc.ref, { students: targetArr });
+              updatedUsers = true;
           }
 
           const usersQuery = query(collection(db, 'users'), where('rollNo', '==', data.rollNo));

@@ -20,7 +20,8 @@ const normalizeRollNo = (value) =>
     .replace(/^student_/i, '')
     .toUpperCase();
 
-const { collection, getDocs, query, where } = require('../firebaseClientWrapper');
+const { collection, getDocs, query, where, db } = require('../firebaseClientWrapper');
+const { getAllStaffDocs } = require('../utils/staffHelper');
 
 const {
   sendEventNotificationToFaculty,
@@ -90,12 +91,25 @@ function executeBackgroundNotification(label, notifyFn) {
  * @returns {Promise<string[]>}
  */
 async function getEmailsByRole(role, dept = null) {
-  if (!role || !db) return [];
+  if (!role) return [];
   try {
-    let q = query(collection(db, 'users'), where('role', '==', role));
-    if (dept) q = query(q, where('department', '==', dept));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data().email).filter(isValidEmail);
+    const staffDocs = await getAllStaffDocs();
+    const emails = [];
+    
+    staffDocs.forEach(sDoc => {
+      const arr = sDoc.data.staffs || [];
+      arr.forEach(s => {
+        if (s.role === role) {
+          if (!dept || s.department === dept) {
+            if (isValidEmail(s.email)) {
+              emails.push(s.email);
+            }
+          }
+        }
+      });
+    });
+    
+    return emails;
   } catch (err) {
     console.warn('[EMAIL_HANDLER] Failed to fetch emails for role ' + role + (dept ? ' and dept ' + dept : '') + ': ' + err.message);
     return [];

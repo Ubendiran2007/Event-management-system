@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, collectionGroup, getDocs, doc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
+const { collection, getDocs, doc, getDoc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { buildStudentData } = require('../services/userService');
 
 // Protect all Manage Students APIs
 router.use(requireAuth);
@@ -16,53 +17,34 @@ const checkDb = (res) => {
   return false;
 };
 
-const CLASSES = [
-  'CSE-B', 'CSE-D', 
-  'ECE-A', 'ECE-B', 
-  'CCE-A', 
-  'CSBS-A', 
-  'MECH-A', 
-  'CYBER-A', 
-  'EEE-A', 
-  'AIML-A', 
-  'AIDS-A'
-];
 const VALID_ROLES = ['STUDENT_ORGANIZER', 'STUDENT_GENERAL'];
+const { getAllSectionDocs } = require('../utils/studentHelper');
 
-// GET /api/students — fetch all students from all classes
-// Optional query param: ?class=CSE-B to filter by a single class
+
+
+// GET /api/students — fetch all students
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
   try {
-    const { class: classFilter } = req.query;
-
-    // Validate class filter if provided
-    if (classFilter && !CLASSES.includes(classFilter)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid class. Must be one of: ${CLASSES.join(', ')}`,
-      });
-    }
+    const { batch, department, section, class: classFilter } = req.query;
 
     let allStudents = [];
+    const sectionDocs = await getAllSectionDocs();
     
-    if (classFilter) {
-      const snapshot = await getDocs(collection(db, 'students', classFilter, 'members'));
-      snapshot.docs.forEach(d => {
-        const data = d.data();
-        delete data.password;
-        allStudents.push({ id: d.id, ...data, class: classFilter });
+    sectionDocs.forEach(secDoc => {
+      const studentsArray = secDoc.data.students || [];
+      studentsArray.forEach(data => {
+        // Create a copy without password
+        const { password, ...safeData } = data;
+        
+        if (batch && safeData.academicBatch !== batch) return;
+        if (department && safeData.department !== department) return;
+        if (section && safeData.section !== section) return;
+        if (classFilter && safeData.class !== classFilter) return;
+        
+        allStudents.push(safeData);
       });
-    } else {
-      const membersGroup = collectionGroup(db, 'members');
-      const snapshot = await getDocs(membersGroup);
-      snapshot.docs.forEach(d => {
-        const data = d.data();
-        delete data.password;
-        const className = d.ref.parent.parent.id;
-        allStudents.push({ id: d.id, ...data, class: className });
-      });
-    }
+    });
 
     res.json({ success: true, students: allStudents, total: allStudents.length });
   } catch (err) {
@@ -72,26 +54,38 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/students — add a single student
-const { buildStudentData } = require('../services/userService');
-
 router.post('/', async (req, res) => {
   if (checkDb(res)) return;
-  const { name, rollNo, email, department, className, section, phone, odLimit, password } = req.body;
+  const { name, rollNo, email, department, className, section, phone, odLimit, password, academicBatch } = req.body;
 
-  if (!name || !rollNo || !email || !className || !section || !department || !phone) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
-  }
-  if (!CLASSES.includes(className)) {
-    return res.status(400).json({ success: false, message: `className must be one of: ${CLASSES.join(', ')}` });
+  if (!name || !rollNo || !email || !department || !phone || !academicBatch || (!className && !section)) {
+    return res.status(400).json({ success: false, message: 'Missing required fields including academicBatch, department, and section/class' });
   }
 
   try {
     const { studentId, studentData } = await buildStudentData(req.body);
+    studentData.id = studentId;
 
-    const studentRef = doc(db, 'students', req.body.className, 'members', studentId);
+    const actualSection = section || className;
+    const actualDept = department.toUpperCase();
+    const studentRef = doc(db, 'students', academicBatch, actualDept, actualSection.toUpperCase());
     
-    await setDoc(studentRef, studentData);
-    res.json({ success: true, message: 'Student added successfully', student: { id: studentId, ...studentData } });
+    const snap = await getDoc(studentRef);
+    if (!snap.exists()) {
+      await setDoc(studentRef, { 
+        batch: academicBatch, 
+        department: actualDept, 
+        section: actualSection.toUpperCase(), 
+        students: [studentData] 
+      });
+    } else {
+      const data = snap.data();
+      const students = data.students || [];
+      students.push(studentData);
+      await updateDoc(studentRef, { students });
+    }
+    
+    res.json({ success: true, message: 'Student added successfully', student: studentData });
   } catch (err) {
     console.error('Error adding student:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -114,22 +108,23 @@ router.post('/bulk', async (req, res) => {
     const existingEmails = new Set();
     const existingRollNos = new Set();
     
-    // We must fetch from all class collections.
-    // Optimized: Use collectionGroup to fetch all members efficiently in one query
-    const membersGroup = collectionGroup(db, 'members');
-    const snap = await getDocs(membersGroup);
-    snap.docs.forEach(d => {
-      const data = d.data();
-      if (data.rollNo) existingRollNos.add(data.rollNo.toUpperCase());
-      if (data.email) existingEmails.add(data.email.toLowerCase());
+    const sectionDocs = await getAllSectionDocs();
+    sectionDocs.forEach(secDoc => {
+      const arr = secDoc.data.students || [];
+      arr.forEach(s => {
+        if (s.rollNo) existingRollNos.add(s.rollNo.toUpperCase());
+        if (s.email) existingEmails.add(s.email.toLowerCase());
+      });
     });
 
     const validToImport = [];
     const dbDuplicates = [];
 
     for (const student of students) {
-      const { rollNo, email, className } = student;
-      if (!CLASSES.includes(className)) continue; // skip invalid classes silently
+      const { rollNo, email, academicBatch, department } = student;
+      const actualSection = student.section || student.className;
+      
+      if (!academicBatch || !department || !actualSection) continue;
 
       const isDup = (rollNo && existingRollNos.has(rollNo.toUpperCase())) || 
                     (email && existingEmails.has(email.toLowerCase()));
@@ -150,56 +145,45 @@ router.post('/bulk', async (req, res) => {
       });
     }
 
-    let batch = writeBatch(db);
-    let countInBatch = 0;
-    let totalImported = 0;
-    
+    // Group valid imports by section doc path
+    const importsByPath = {};
     const addedStudents = [];
 
     for (let i = 0; i < validToImport.length; i++) {
       const student = validToImport[i];
       const { studentId, studentData } = await buildStudentData(student);
+      studentData.id = studentId;
       
-      const studentRef = doc(db, 'students', student.className, 'members', studentId);
-      batch.set(studentRef, studentData);
-      addedStudents.push({ id: studentId, ...studentData });
+      const actualSection = student.section || student.className;
+      const actualDept = student.department.toUpperCase();
+      const path = `students/${student.academicBatch}/${actualDept}/${actualSection.toUpperCase()}`;
       
-      countInBatch++;
-      totalImported++;
+      if (!importsByPath[path]) importsByPath[path] = { batch: student.academicBatch, dept: actualDept, sec: actualSection.toUpperCase(), students: [] };
+      importsByPath[path].students.push(studentData);
+      addedStudents.push(studentData);
+    }
 
-      if (countInBatch === 490 || i === validToImport.length - 1) {
-        try {
-          await batch.commit();
-          batch = writeBatch(db);
-          countInBatch = 0;
-        } catch (batchErr) {
-          console.error('Batch commit failed:', batchErr);
-          
-          if (totalImported - countInBatch > 0) {
-            const { logActivity } = require('../utils/logger');
-            logActivity({
-              category: 'USER_MANAGEMENT',
-              action: 'Bulk Import Students (Partial Failure)',
-              status: 'WARNING',
-              actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
-              details: { 
-                imported: totalImported - countInBatch,
-                failed: validToImport.length - (totalImported - countInBatch),
-                dbDuplicates: dbDuplicates.length
-              }
-            });
-          }
-
-          return res.status(500).json({
-            success: false,
-            message: 'A database write batch failed. Import aborted.',
-            importedCount: totalImported - countInBatch,
-            failedCount: validToImport.length - (totalImported - countInBatch),
-            dbDuplicatesCount: dbDuplicates.length
-          });
-        }
+    let writeBatchFirebase = writeBatch(db);
+    
+    for (const path of Object.keys(importsByPath)) {
+      const group = importsByPath[path];
+      const ref = doc(db, path.split('/')[0], path.split('/')[1], path.split('/')[2], path.split('/')[3]);
+      const snap = await getDoc(ref);
+      
+      if (snap.exists()) {
+        const existingArr = snap.data().students || [];
+        writeBatchFirebase.update(ref, { students: [...existingArr, ...group.students] });
+      } else {
+        writeBatchFirebase.set(ref, {
+          batch: group.batch,
+          department: group.dept,
+          section: group.sec,
+          students: group.students
+        });
       }
     }
+    
+    await writeBatchFirebase.commit();
 
     const { logActivity } = require('../utils/logger');
     logActivity({
@@ -208,15 +192,15 @@ router.post('/bulk', async (req, res) => {
       status: 'SUCCESS',
       actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
       details: { 
-        imported: totalImported,
+        imported: addedStudents.length,
         dbDuplicates: dbDuplicates.length
       }
     });
 
     res.json({ 
       success: true, 
-      message: `Successfully added ${totalImported} students`, 
-      importedCount: totalImported, 
+      message: `Successfully added ${addedStudents.length} students`, 
+      importedCount: addedStudents.length, 
       dbDuplicatesCount: dbDuplicates.length,
       students: addedStudents 
     });
@@ -230,19 +214,53 @@ router.post('/bulk', async (req, res) => {
 router.put('/:id', async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
-  const { className, ...updateData } = req.body;
-
-  if (!className || !CLASSES.includes(className)) {
-    return res.status(400).json({ success: false, message: 'Valid className is required' });
-  }
+  const updateData = req.body;
+  delete updateData.className; 
 
   try {
-    const studentRef = doc(db, 'students', className, 'members', id);
-    // Don't allow changing core ID fields directly or setting empty class
+    const sectionDocs = await getAllSectionDocs();
+    let targetDoc = null;
+    let studentIndex = -1;
+    let studentsArray = [];
+
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      const idx = arr.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        targetDoc = secDoc;
+        studentIndex = idx;
+        studentsArray = arr;
+        break;
+      }
+    }
+
+    if (!targetDoc) {
+      return res.status(404).json({ success: false, message: 'Student not found in any class' });
+    }
+
+    // Check for email/rollNo uniqueness against ALL students except this one
+    if (updateData.email || updateData.rollNo) {
+      let conflict = false;
+      for (const secDoc of sectionDocs) {
+        const arr = secDoc.data.students || [];
+        for (const s of arr) {
+          if (s.id !== id) {
+            if (updateData.email && s.email.toLowerCase() === updateData.email.toLowerCase()) conflict = true;
+            if (updateData.rollNo && s.rollNo.toUpperCase() === updateData.rollNo.toUpperCase()) conflict = true;
+          }
+        }
+      }
+      if (conflict) {
+         return res.status(400).json({ success: false, message: 'Email or Roll Number already exists in another student record' });
+      }
+    }
+
     delete updateData.id;
     updateData.updatedAt = new Date().toISOString();
+    
+    studentsArray[studentIndex] = { ...studentsArray[studentIndex], ...updateData };
 
-    await updateDoc(studentRef, updateData);
+    await updateDoc(targetDoc.ref, { students: studentsArray });
     res.json({ success: true, message: 'Student updated successfully' });
   } catch (err) {
     console.error('Error updating student:', err);
@@ -254,17 +272,28 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
-  const { className } = req.body; // or req.query
-
-  const targetClass = className || req.query.className;
-
-  if (!targetClass || !CLASSES.includes(targetClass)) {
-    return res.status(400).json({ success: false, message: 'Valid className is required' });
-  }
 
   try {
-    const studentRef = doc(db, 'students', targetClass, 'members', id);
-    await deleteDoc(studentRef);
+    const sectionDocs = await getAllSectionDocs();
+    let targetDoc = null;
+    let studentsArray = [];
+
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      const idx = arr.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        targetDoc = secDoc;
+        studentsArray = arr;
+        studentsArray.splice(idx, 1);
+        break;
+      }
+    }
+
+    if (!targetDoc) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    await updateDoc(targetDoc.ref, { students: studentsArray });
     res.json({ success: true, message: 'Student deleted successfully' });
   } catch (err) {
     console.error('Error deleting student:', err);
@@ -272,37 +301,42 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/students/:id/role — update a student's role (make or revoke organizer)
-// Body: { role: "STUDENT_ORGANIZER" | "STUDENT_GENERAL", className: "CSE-B" | "CSE-D", isApprovedOrganizer: boolean }
-router.patch('/:id/role', async (req, res) => {
+// PUT /api/students/:id/role — change student role
+router.put('/:id/role', async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
-  const { role, className, isApprovedOrganizer } = req.body;
+  const { role, isApprovedOrganizer } = req.body;
 
-  if (!role || !className) {
-    return res.status(400).json({ success: false, message: 'role and className are required' });
-  }
   if (!VALID_ROLES.includes(role)) {
-    return res.status(400).json({
-      success: false,
-      message: `role must be one of: ${VALID_ROLES.join(', ')}`,
-    });
-  }
-  if (!CLASSES.includes(className)) {
-    return res.status(400).json({
-      success: false,
-      message: `className must be one of: ${CLASSES.join(', ')}`,
-    });
+    return res.status(400).json({ success: false, message: 'Invalid role' });
   }
 
   try {
-    const studentRef = doc(db, 'students', className, 'members', id);
-    await updateDoc(studentRef, {
-      role,
-      isApprovedOrganizer: Boolean(isApprovedOrganizer),
-      updatedAt: new Date().toISOString(),
-    });
+    const sectionDocs = await getAllSectionDocs();
+    let targetDoc = null;
+    let studentIndex = -1;
+    let studentsArray = [];
 
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      const idx = arr.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        targetDoc = secDoc;
+        studentIndex = idx;
+        studentsArray = arr;
+        break;
+      }
+    }
+
+    if (!targetDoc) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    studentsArray[studentIndex].role = role;
+    studentsArray[studentIndex].isApprovedOrganizer = Boolean(isApprovedOrganizer);
+    studentsArray[studentIndex].updatedAt = new Date().toISOString();
+
+    await updateDoc(targetDoc.ref, { students: studentsArray });
     res.json({ success: true, message: 'Student role updated successfully', studentId: id, role });
   } catch (err) {
     console.error('Error updating student role:', err);
@@ -310,78 +344,58 @@ router.patch('/:id/role', async (req, res) => {
   }
 });
 
-// POST /api/students/reset-od-usage — IQAC resets OD count for all students at start of semester
+// POST /api/students/reset-od-usage — IQAC resets OD count for all students
 router.post('/reset-od-usage', async (req, res) => {
   if (checkDb(res)) return;
 
   try {
-    // Record the exact moment of reset. odSync will only count OD requests
-    // created AFTER this timestamp, so historical approvals are excluded.
     const resetTimestamp = new Date().toISOString();
-
     let totalReset = 0;
     let batch = writeBatch(db);
     let batchCount = 0;
 
-    for (const className of CLASSES) {
-      const snapshot = await getDocs(collection(db, 'students', className, 'members'));
-      for (const studentDoc of snapshot.docs) {
-        const studentRef = doc(db, 'students', className, 'members', studentDoc.id);
-
-        batch.update(studentRef, {
-          odUsed: 0,                         // Reset stored count to zero
-          odLimit: 7,                        // Restore annual maximum limit
-          odResetTimestamp: resetTimestamp,  // Mark the reset moment
-          updatedAt: resetTimestamp
-        });
-        totalReset++;
+    const sectionDocs = await getAllSectionDocs();
+    
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      let changed = false;
+      for (let i = 0; i < arr.length; i++) {
+         arr[i].odUsed = 0;
+         arr[i].odLimit = 7;
+         arr[i].odResetTimestamp = resetTimestamp;
+         arr[i].updatedAt = resetTimestamp;
+         changed = true;
+         totalReset++;
+      }
+      
+      if (changed) {
+        batch.update(secDoc.ref, { students: arr });
         batchCount++;
-
-        // Firestore batches support up to 500 operations — commit at 490 to be safe
         if (batchCount >= 490) {
-          await batch.commit();
-          batch = writeBatch(db);
-          batchCount = 0;
+           await batch.commit();
+           batch = writeBatch(db);
+           batchCount = 0;
         }
       }
     }
-
+    
     if (batchCount > 0) {
       await batch.commit();
     }
 
-    console.log(`[IQAC] OD usage reset for ${totalReset} students at ${resetTimestamp}.`);
-    res.json({
-      success: true,
-      message: `Successfully reset OD usage for ${totalReset} students.`,
-      count: totalReset,
-      resetTimestamp
+    const { logActivity } = require('../utils/logger');
+    logActivity({
+      category: 'OD_MANAGEMENT',
+      action: 'Global OD Reset',
+      status: 'SUCCESS',
+      actor: { userId: req.user?.id, email: req.user?.email, role: req.user?.role },
+      details: { studentsReset: totalReset }
     });
-  } catch (err) {
-    console.error('Error resetting OD usage:', err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
 
-// PATCH /api/students/:id/od-stats — IQAC updates a student's OD usage or limit
-router.patch('/:id/od-stats', async (req, res) => {
-  if (checkDb(res)) return;
-  const { id } = req.params;
-  const { className, odUsed, odLimit } = req.body;
-  
-  if (!className) return res.status(400).json({ success: false, message: 'Class name is required' });
-  
-  try {
-    const studentRef = doc(db, 'students', className, 'members', id);
-    const updates = { updatedAt: new Date().toISOString() };
-    if (odUsed !== undefined) updates.odUsed = Number(odUsed);
-    if (odLimit !== undefined) updates.odLimit = Number(odLimit);
-    
-    await updateDoc(studentRef, updates);
-    res.json({ success: true, message: 'OD stats updated successfully' });
-  } catch (err) {
-    console.error('Error updating OD stats:', err);
-    res.status(500).json({ success: false, message: err.message });
+    res.json({ success: true, message: `Successfully reset OD limit for ${totalReset} students.`, totalReset });
+  } catch (error) {
+    console.error('Error resetting OD limits:', error);
+    res.status(500).json({ success: false, message: 'Failed to reset OD limits.' });
   }
 });
 

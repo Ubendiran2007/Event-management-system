@@ -1,5 +1,8 @@
 const express = require('express');
-const { collection, collectionGroup, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, db } = require('../firebaseClientWrapper');
+const { collection, collectionGroup, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, db, updateDoc } = require('../firebaseClientWrapper');
+const { CLASSES } = require('../utils/constants');
+const { getAllSectionDocs } = require('../utils/studentHelper');
+const { getAllStaffDocs } = require('../utils/staffHelper');
 const { requireAuth } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');
@@ -51,43 +54,42 @@ async function findUserByIdentifier(identifier) {
   const idLower = identifier.trim().toLowerCase();
   const idUpper = identifier.trim().toUpperCase();
   
-  // 1. Check users collection
-  const usersQueryEmail = query(collection(db, 'users'), where('email', '==', idLower), limit(1));
-  const usersSnapEmail = await getDocs(usersQueryEmail);
-  if (!usersSnapEmail.empty) {
-    const docSnap = usersSnapEmail.docs[0];
-    return { userObj: { id: docSnap.id, ...docSnap.data(), password: undefined }, storedPassword: docSnap.data().password, type: 'user', ref: doc(db, 'users', docSnap.id) };
-  }
-  
-  const usersQueryId = query(collection(db, 'users'), where('employeeId', '==', idUpper), limit(1));
-  const usersSnapId = await getDocs(usersQueryId);
-  if (!usersSnapId.empty) {
-    const docSnap = usersSnapId.docs[0];
-    return { userObj: { id: docSnap.id, ...docSnap.data(), password: undefined }, storedPassword: docSnap.data().password, type: 'user', ref: doc(db, 'users', docSnap.id) };
+  // 1. Check staffs collection
+  const staffDocs = await getAllStaffDocs();
+  for (const sDoc of staffDocs) {
+    const arr = sDoc.data.staffs || [];
+    for (const data of arr) {
+      if (
+        (data.email && data.email.toLowerCase() === idLower) ||
+        (data.employeeId && data.employeeId.toUpperCase() === idUpper)
+      ) {
+        return { 
+          userObj: { id: data.id, ...data, password: undefined }, 
+          storedPassword: data.password, 
+          type: 'staff', 
+          ref: sDoc.ref 
+        };
+      }
+    }
   }
   
   // 2. Check students
-  const membersGroup = collectionGroup(db, 'members');
-  const memQueryEmail = query(membersGroup, where('email', '==', idLower), limit(1));
-  const memQueryRoll = query(membersGroup, where('rollNo', '==', idUpper), limit(1));
-  
-  const [memSnapEmail, memSnapRoll] = await Promise.all([
-    getDocs(memQueryEmail),
-    getDocs(memQueryRoll)
-  ]);
-  
-  if (!memSnapEmail.empty) {
-    const docSnap = memSnapEmail.docs[0];
-    const data = docSnap.data();
-    const className = docSnap.ref.parent.parent.id;
-    return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
-  }
-  
-  if (!memSnapRoll.empty) {
-    const docSnap = memSnapRoll.docs[0];
-    const data = docSnap.data();
-    const className = docSnap.ref.parent.parent.id;
-    return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
+  const sectionDocs = await getAllSectionDocs();
+  for (const secDoc of sectionDocs) {
+    const arr = secDoc.data.students || [];
+    for (const data of arr) {
+      if (
+        (data.email && data.email.toLowerCase() === idLower) ||
+        (data.rollNo && data.rollNo.toUpperCase() === idUpper)
+      ) {
+        return { 
+          userObj: { id: data.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, 
+          storedPassword: data.password, 
+          type: 'student', 
+          ref: secDoc.ref 
+        };
+      }
+    }
   }
 
   return null;
@@ -96,21 +98,37 @@ async function findUserByIdentifier(identifier) {
 async function findAuthenticatedUser(user) {
   if (!user || !user.id) return null;
   
-  // 1. Try to find the exact user by ID in the 'users' collection first (for staff)
-  const userDocRef = doc(db, 'users', user.id);
-  const userDocSnap = await getDoc(userDocRef);
-  if (userDocSnap.exists()) {
-    const data = userDocSnap.data();
-    return { 
-      userObj: { id: userDocSnap.id, ...data, password: undefined }, 
-      storedPassword: data.password, 
-      type: 'user', 
-      ref: userDocRef 
-    };
+  // 1. Check staffs collection
+  const staffDocs = await getAllStaffDocs();
+  for (const sDoc of staffDocs) {
+    const arr = sDoc.data.staffs || [];
+    const data = arr.find(s => s.id === user.id);
+    if (data) {
+      return { 
+        userObj: { id: data.id, ...data, password: undefined }, 
+        storedPassword: data.password, 
+        type: 'staff', 
+        ref: sDoc.ref 
+      };
+    }
   }
   
-  // 2. For students, their email is unique, so fallback to findUserByIdentifier
-  return await findUserByIdentifier(user.email);
+  // 2. Fallback: Search all students by ID
+  const sectionDocs = await getAllSectionDocs();
+  for (const secDoc of sectionDocs) {
+    const arr = secDoc.data.students || [];
+    const data = arr.find(s => s.id === user.id);
+    if (data) {
+      return { 
+        userObj: { id: data.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL' }, 
+        storedPassword: data.password, 
+        type: 'student', 
+        ref: secDoc.ref 
+      };
+    }
+  }
+
+  return null;
 }
 
 async function hashPassword(plain) {
@@ -412,7 +430,33 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
     }
     
     const hashed = await hashPassword(newPassword);
-    await setDoc(found.ref, { password: hashed, updatedAt: new Date().toISOString() }, { merge: true });
+    
+    if (found.type === 'student') {
+      const snap = await getDoc(found.ref);
+      if (snap.exists()) {
+        const arr = snap.data().students || [];
+        const idx = arr.findIndex(s => s.id === found.userObj.id);
+        if (idx !== -1) {
+          arr[idx].password = hashed;
+          arr[idx].updatedAt = new Date().toISOString();
+          await updateDoc(found.ref, { students: arr });
+        }
+      }
+    } else if (found.type === 'staff') {
+      const snap = await getDoc(found.ref);
+      if (snap.exists()) {
+        const arr = snap.data().staffs || [];
+        const idx = arr.findIndex(s => s.id === found.userObj.id);
+        if (idx !== -1) {
+          arr[idx].password = hashed;
+          arr[idx].updatedAt = new Date().toISOString();
+          await updateDoc(found.ref, { staffs: arr });
+        }
+      }
+    } else {
+      await setDoc(found.ref, { password: hashed, updatedAt: new Date().toISOString() }, { merge: true });
+    }
+    
     await deleteDoc(otpRef);
     
     logSecurityEvent(found.userObj, 'Password Changed', 'SUCCESS', reqDetails).catch(err => console.error(err));

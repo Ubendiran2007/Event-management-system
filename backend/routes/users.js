@@ -5,10 +5,16 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 
 const { buildStaffData } = require('../services/userService');
+const { getAllStaffDocs } = require('../utils/staffHelper');
 
 // Protect all Manage Users APIs
 router.use(requireAuth);
 router.use(requireRole(['IQAC_TEAM', 'HOD'])); // IQAC and HOD can manage staff
+
+const INCHARGE_ROLES = [
+  'HR', 'TRANSPORT_MANAGER', 'WARDEN', 'IQAC_TEAM', 
+  'ICTS', 'AUDIO_VISUAL', 'MEDIA_MANAGER', 'PRINCIPAL'
+];
 
 const checkDb = (res) => {
   if (!db) {
@@ -22,12 +28,14 @@ const checkDb = (res) => {
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
   try {
-    const snapshot = await getDocs(collection(db, 'users'));
+    const allStaffDocs = await getAllStaffDocs();
     const allUsers = [];
-    snapshot.docs.forEach(d => {
-      const data = d.data();
-      delete data.password; // never expose passwords
-      allUsers.push({ id: d.id, ...data });
+    allStaffDocs.forEach(staffDoc => {
+      const arr = staffDoc.data.staffs || [];
+      arr.forEach(staff => {
+        const { password, ...safeData } = staff;
+        allUsers.push({ id: staff.id, ...safeData });
+      });
     });
     res.json({ success: true, users: allUsers, total: allUsers.length });
   } catch (err) {
@@ -46,17 +54,35 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const allStaffDocs = await getAllStaffDocs();
+    
     // Check if user already exists
-    const usersQuery = query(collection(db, 'users'), where('email', '==', email.toLowerCase()), limit(1));
-    const snapshot = await getDocs(usersQuery);
-    if (!snapshot.empty) {
+    let existingUser = false;
+    for (const sDoc of allStaffDocs) {
+      const arr = sDoc.data.staffs || [];
+      if (arr.some(s => s.email?.toLowerCase() === email.toLowerCase())) {
+        existingUser = true;
+        break;
+      }
+    }
+    if (existingUser) {
       return res.status(400).json({ success: false, message: 'User with this email already exists' });
     }
 
     const { userId, userData } = await buildStaffData({ name, email, role, department, password, assignedClasses });
 
-    const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, userData);
+    const category = INCHARGE_ROLES.includes(role.toUpperCase()) ? 'Incharges' : (department || 'Unknown').toUpperCase();
+    
+    const categoryDoc = allStaffDocs.find(d => d.category === category);
+    
+    if (categoryDoc) {
+      const arr = categoryDoc.data.staffs || [];
+      arr.push(userData);
+      await updateDoc(categoryDoc.ref, { staffs: arr });
+    } else {
+      const newRef = doc(db, 'staffs', category);
+      await setDoc(newRef, { category, staffs: [userData] });
+    }
     
     const responseData = { ...userData };
     delete responseData.password;
@@ -75,13 +101,29 @@ router.put('/:id', async (req, res) => {
   const { name, email, role, department, password, assignedClasses } = req.body;
 
   try {
-    const userRef = doc(db, 'users', id);
-    const userSnap = await getDoc(userRef);
+    const allStaffDocs = await getAllStaffDocs();
     
-    if (!userSnap.exists()) {
+    let targetDoc = null;
+    let targetArr = null;
+    let staffIdx = -1;
+    
+    for (const sDoc of allStaffDocs) {
+      const arr = sDoc.data.staffs || [];
+      const idx = arr.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        targetDoc = sDoc;
+        targetArr = arr;
+        staffIdx = idx;
+        break;
+      }
+    }
+    
+    if (!targetDoc) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const currentStaff = targetArr[staffIdx];
+    
     const updates = { updatedAt: new Date().toISOString() };
     if (name !== undefined) updates.name = name;
     if (email !== undefined) updates.email = email.toLowerCase();
@@ -93,8 +135,32 @@ router.put('/:id', async (req, res) => {
       const salt = await bcrypt.genSalt(10);
       updates.password = await bcrypt.hash(password, salt);
     }
+    
+    const updatedStaff = { ...currentStaff, ...updates };
+    
+    const oldCategory = targetDoc.category;
+    const newCategory = INCHARGE_ROLES.includes(updatedStaff.role) ? 'Incharges' : (updatedStaff.department || 'Unknown').toUpperCase();
+    
+    if (oldCategory === newCategory) {
+      targetArr[staffIdx] = updatedStaff;
+      await updateDoc(targetDoc.ref, { staffs: targetArr });
+    } else {
+      // Remove from old category
+      targetArr.splice(staffIdx, 1);
+      await updateDoc(targetDoc.ref, { staffs: targetArr });
+      
+      // Add to new category
+      const newCategoryDoc = allStaffDocs.find(d => d.category === newCategory);
+      if (newCategoryDoc) {
+        const newArr = newCategoryDoc.data.staffs || [];
+        newArr.push(updatedStaff);
+        await updateDoc(newCategoryDoc.ref, { staffs: newArr });
+      } else {
+        const newRef = doc(db, 'staffs', newCategory);
+        await setDoc(newRef, { category: newCategory, staffs: [updatedStaff] });
+      }
+    }
 
-    await updateDoc(userRef, updates);
     res.json({ success: true, message: 'Staff member updated successfully' });
   } catch (err) {
     console.error('Error updating user:', err);
@@ -108,14 +174,37 @@ router.delete('/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const userRef = doc(db, 'users', id);
-    await deleteDoc(userRef);
+    const allStaffDocs = await getAllStaffDocs();
+    
+    let targetDoc = null;
+    let targetArr = null;
+    let staffIdx = -1;
+    
+    for (const sDoc of allStaffDocs) {
+      const arr = sDoc.data.staffs || [];
+      const idx = arr.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        targetDoc = sDoc;
+        targetArr = arr;
+        staffIdx = idx;
+        break;
+      }
+    }
+    
+    if (!targetDoc) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    targetArr.splice(staffIdx, 1);
+    await updateDoc(targetDoc.ref, { staffs: targetArr });
+    
     res.json({ success: true, message: 'Staff member deleted successfully' });
   } catch (err) {
     console.error('Error deleting user:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 // POST /api/users/bulk - add multiple staff members
 router.post('/bulk', async (req, res) => {
   if (checkDb(res)) return;
@@ -128,24 +217,25 @@ router.post('/bulk', async (req, res) => {
   try {
     const actorEmail = req.user?.email || 'SYSTEM';
 
-    // Step 1: Pre-fetch existing emails and document IDs to prevent race-condition duplicates
-    const snapshot = await getDocs(collection(db, 'users'));
+    // Pre-fetch all staffs
+    const allStaffDocs = await getAllStaffDocs();
     const existingEmails = new Set();
     const existingIds = new Set();
     
-    snapshot.docs.forEach(d => {
-      existingIds.add(d.id);
-      const data = d.data();
-      if (data.email) existingEmails.add(data.email.toLowerCase());
+    allStaffDocs.forEach(sDoc => {
+      const arr = sDoc.data.staffs || [];
+      arr.forEach(s => {
+        if (s.id) existingIds.add(s.id);
+        if (s.email) existingEmails.add(s.email.toLowerCase());
+      });
     });
 
     const validToImport = [];
     const dbDuplicates = [];
 
-    // Step 2: Separate duplicates from valid records
     for (const user of newUsers) {
       const { staffId, email } = user;
-      const docId = staffId ? `staff_${staffId}` : null;
+      const docId = staffId ? \`staff_\${staffId}\` : null;
       
       if ((docId && existingIds.has(docId)) || (email && existingEmails.has(email.toLowerCase()))) {
         dbDuplicates.push(user);
@@ -163,58 +253,37 @@ router.post('/bulk', async (req, res) => {
       });
     }
 
-    // Step 3: Batch import with abort-on-failure
-    const { writeBatch } = require('../firebaseClientWrapper');
-    let batch = writeBatch(db);
-    let countInBatch = 0;
     let totalImported = 0;
-    
     const addedUsers = [];
+    
+    // Group new users by category to write them correctly
+    const categoryMap = {};
 
     for (let i = 0; i < validToImport.length; i++) {
       const user = validToImport[i];
       const { userId, userData } = await buildStaffData(user);
       
-      const userRef = doc(db, 'users', userId);
-      batch.set(userRef, userData);
-      addedUsers.push({ id: userId, ...userData });
+      const category = INCHARGE_ROLES.includes(userData.role.toUpperCase()) ? 'Incharges' : (userData.department || 'Unknown').toUpperCase();
       
-      countInBatch++;
+      if (!categoryMap[category]) {
+        categoryMap[category] = [];
+      }
+      categoryMap[category].push(userData);
+      
+      addedUsers.push({ id: userId, ...userData });
       totalImported++;
+    }
 
-      if (countInBatch === 490 || i === validToImport.length - 1) {
-        try {
-          await batch.commit();
-          batch = writeBatch(db); // reset for next batch
-          countInBatch = 0;
-        } catch (batchErr) {
-          console.error('Batch commit failed:', batchErr);
-          // ABORT on failure!
-          
-          // Log activity for what succeeded so far
-          if (totalImported - countInBatch > 0) {
-            const { logActivity } = require('../utils/logger');
-            logActivity({
-              category: 'USER_MANAGEMENT',
-              action: 'Bulk Import Staff (Partial Failure)',
-              status: 'WARNING',
-              actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
-              details: { 
-                imported: totalImported - countInBatch,
-                failed: validToImport.length - (totalImported - countInBatch),
-                dbDuplicates: dbDuplicates.length
-              }
-            });
-          }
-
-          return res.status(500).json({
-            success: false,
-            message: 'A database write batch failed. Import aborted.',
-            importedCount: totalImported - countInBatch,
-            failedCount: validToImport.length - (totalImported - countInBatch),
-            dbDuplicatesCount: dbDuplicates.length
-          });
-        }
+    // Write to DB
+    for (const category of Object.keys(categoryMap)) {
+      const categoryDoc = allStaffDocs.find(d => d.category === category);
+      if (categoryDoc) {
+        const arr = categoryDoc.data.staffs || [];
+        const newArr = arr.concat(categoryMap[category]);
+        await updateDoc(categoryDoc.ref, { staffs: newArr });
+      } else {
+        const newRef = doc(db, 'staffs', category);
+        await setDoc(newRef, { category, staffs: categoryMap[category] });
       }
     }
 
@@ -233,7 +302,7 @@ router.post('/bulk', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: `Successfully added ${totalImported} staff members`, 
+      message: \`Successfully added \${totalImported} staff members\`, 
       importedCount: totalImported, 
       dbDuplicatesCount: dbDuplicates.length,
       users: addedUsers.map(u => { const { password, ...rest } = u; return rest; }) 

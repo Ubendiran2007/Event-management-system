@@ -1,6 +1,7 @@
 const express = require('express');
-const { collection, getDocs, query, where, doc, updateDoc, db } = require('../firebaseClientWrapper');
-
+const { collection, getDocs, query, where, doc, updateDoc, collectionGroup, db } = require('../firebaseClientWrapper');
+const { CLASSES } = require('../utils/constants');
+const { getAllSectionDocs } = require('../utils/studentHelper');
 
 const router = express.Router();
 
@@ -142,20 +143,20 @@ router.get('/students', async (req, res) => {
 
   try {
     const { class: className } = req.query;
-    const classesToFetch = className ? [className] : ['CSE-B', 'CSE-D'];
 
     const allStudents = [];
-
-    const snapshots = await Promise.all(
-      classesToFetch.map(cls => getDocs(collection(db, 'students', cls, 'members')))
-    );
-
-    snapshots.forEach((snapshot, idx) => {
-      const cls = classesToFetch[idx];
-      snapshot.docs.forEach((d) => {
-        // Never expose stored passwords
-        const { password: _pw, ...safeData } = d.data();
-        allStudents.push({ id: d.id, class: cls, ...safeData });
+    
+    const sectionDocs = await getAllSectionDocs();
+    sectionDocs.forEach(secDoc => {
+      const students = secDoc.data.students || [];
+      students.forEach((s) => {
+        const { password: _pw, ...safeData } = s;
+        
+        // If a class filter is provided, ensure it matches
+        if (className && safeData.class !== className && safeData.section !== className) {
+          return;
+        }
+        allStudents.push({ id: s.id, ...safeData });
       });
     });
 
@@ -220,23 +221,22 @@ router.get('/', async (req, res) => {
   if (!checkDb(res)) return;
 
   try {
-    const classes = ['CSE-B', 'CSE-D'];
-
-    // Fetch events and OD requests in parallel; students class-by-class
-    const [eventsSnap, odSnap, ...studentSnaps] = await Promise.all([
+    // Fetch events, OD requests in parallel
+    const [eventsSnap, odSnap] = await Promise.all([
       getDocs(collection(db, 'events')),
-      getDocs(collection(db, 'odRequests')),
-      ...classes.map((cls) => getDocs(collection(db, 'students', cls, 'members'))),
+      getDocs(collection(db, 'odRequests'))
     ]);
 
     const events = snapshotToArray(eventsSnap);
     const odRequests = snapshotToArray(odSnap);
 
     const students = [];
-    studentSnaps.forEach((snap, idx) => {
-      snap.docs.forEach((d) => {
-        const { password: _pw, ...safeData } = d.data();
-        students.push({ id: d.id, class: classes[idx], ...safeData });
+    const sectionDocs = await getAllSectionDocs();
+    sectionDocs.forEach(secDoc => {
+      const arr = secDoc.data.students || [];
+      arr.forEach((s) => {
+        const { password: _pw, ...safeData } = s;
+        students.push({ id: s.id, ...safeData });
       });
     });
 

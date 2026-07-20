@@ -1,27 +1,26 @@
 const { dbAdmin } = require('../firebaseAdmin');
-
-const STUDENT_CLASS_DOCS = [
-  'CSE-B', 'CSE-D', 'ECE-A', 'ECE-B', 'CCE-A',
-  'CSBS-A', 'MECH-A', 'CYBER-A', 'EEE-A', 'AIML-A', 'AIDS-A'
-];
+const { getAllSectionDocs } = require('./studentHelper');
 
 async function findStudentInFirestore(studentId) {
-  const promises = STUDENT_CLASS_DOCS.map(async (className) => {
-    try {
-      const studentRef = dbAdmin.collection('students').doc(className).collection('members').doc(studentId);
-      const studentSnap = await studentRef.get();
-      if (studentSnap.exists) {
-        return { className, ...studentSnap.data(), ref: studentRef };
+  try {
+    const sectionDocs = await getAllSectionDocs();
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      const idx = arr.findIndex(s => s.id === studentId);
+      if (idx !== -1) {
+        return { 
+           studentData: arr[idx], 
+           ref: secDoc.ref, 
+           index: idx,
+           allStudents: arr
+        };
       }
-      return null;
-    } catch (err) {
-      console.error(`[odSync/findStudentInFirestore] Error fetching from ${className}:`, err.message);
-      return null;
     }
-  });
-
-  const results = await Promise.all(promises);
-  return results.find(res => res !== null) || null;
+    return null;
+  } catch (err) {
+    console.error(`[odSync/findStudentInFirestore] Error fetching student:`, err.message);
+    return null;
+  }
 }
 
 /**
@@ -41,7 +40,7 @@ async function syncStudentODCount(studentId) {
     if (!student) return null;
 
     // Only count OD requests created after the last annual reset (if one exists)
-    const resetTimestamp = student.odResetTimestamp || null;
+    const resetTimestamp = student.studentData.odResetTimestamp || null;
 
     const odQuery = dbAdmin.collection('odRequests')
       .where('studentId', '==', studentId)
@@ -58,13 +57,15 @@ async function syncStudentODCount(studentId) {
       }
     });
 
-    if (student.odUsed !== postResetCount) {
+    if (student.studentData.odUsed !== postResetCount) {
+      student.allStudents[student.index].odUsed = postResetCount;
+      student.allStudents[student.index].updatedAt = new Date().toISOString();
+      
       await student.ref.update({
-        odUsed: postResetCount,
-        updatedAt: new Date().toISOString()
+        students: student.allStudents
       });
       console.log(
-        `[OD Sync] Updated odUsed for ${studentId}: ${student.odUsed ?? 'N/A'} → ${postResetCount}` +
+        `[OD Sync] Updated odUsed for ${studentId}: ${student.studentData.odUsed ?? 'N/A'} → ${postResetCount}` +
         (resetTimestamp ? ` (counting only post-reset ODs after ${resetTimestamp})` : '')
       );
     }

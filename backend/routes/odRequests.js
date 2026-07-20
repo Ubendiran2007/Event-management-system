@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db } = require('../firebaseClientWrapper');
+const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db, collectionGroup, query, where, limit } = require('../firebaseClientWrapper');
+const { getAllSectionDocs } = require('../utils/studentHelper');
 const { handleODStatusChange } = require('../services/emailHandler');
 const { syncStudentODCount } = require('../utils/odSync');
-
-const STUDENT_CLASS_DOCS = ['CSE-B', 'CSE-D'];
 
 const normalizeRollNo = (value) =>
   String(value || '')
@@ -37,22 +36,20 @@ const resolveClassSection = (studentRecord, payloadClass = '') => {
 };
 
 const findStudentInFirestore = async (studentId) => {
-  const promises = STUDENT_CLASS_DOCS.map(async (className) => {
-    try {
-      const studentRef = doc(db, 'students', className, 'members', studentId);
-      const studentSnap = await getDoc(studentRef);
-      if (studentSnap.exists()) {
-        return { className, ...studentSnap.data() };
+  try {
+    const sectionDocs = await getAllSectionDocs();
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      const data = arr.find(s => s.id === studentId);
+      if (data) {
+        return { className: data.class || data.section, ref: secDoc.ref, studentIndex: arr.findIndex(s => s.id === studentId), ...data };
       }
-      return null;
-    } catch (err) {
-      console.error(`[findStudentInFirestore] Error fetching from ${className}:`, err.message);
-      return null;
     }
-  });
-
-  const results = await Promise.all(promises);
-  return results.find(res => res !== null) || null;
+    return null;
+  } catch (err) {
+    console.error(`[findStudentInFirestore] Error fetching student ${studentId}:`, err.message);
+    return null;
+  }
 };
 
 const checkDb = (res) => {

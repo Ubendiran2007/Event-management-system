@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where, db } = require('../firebaseClientWrapper');
+const { collection, getDocs, doc, setDoc, deleteDoc, db, collectionGroup, writeBatch, query, where, getDoc, updateDoc } = require('../firebaseClientWrapper');
+const { getAllSectionDocs } = require('../utils/studentHelper');
+const { CLASSES } = require('../utils/constants');
 
 const checkDb = (res) => {
   if (!db) {
@@ -11,20 +13,7 @@ const checkDb = (res) => {
   return false;
 };
 
-// Use the same CLASSES array as students.js to ensure we cover all students
-const CLASSES = [
-  'CSE-A', 'CSE-B', 'CSE-C', 'CSE-D',
-  'ECE-A', 'ECE-B', 'ECE-C',
-  'CCE-A', 'CCE-B',
-  'CSBS-A', 'CSBS-B',
-  'MECH-A', 'MECH-B', 'MECH-C',
-  'CIVIL-A', 'CIVIL-B',
-  'IT-A', 'IT-B', 'IT-C',
-  'AIDS-A', 'AIDS-B',
-  'AIML-A', 'AIML-B',
-  'MTR-A', 'BME-A',
-  'CYBER-A', 'EEE-A'
-];
+
 
 // GET /api/academic-batches - Fetch all academic batches
 router.get('/', async (req, res) => {
@@ -137,41 +126,45 @@ router.post('/:id/graduate', async (req, res) => {
     
     // 1. Query all students across all classes where academicBatch == batchData.name
     // To validate that the batch contains students before allowing graduation.
-    let studentsToUpdate = [];
-    for (const className of CLASSES) {
-      const classRef = collection(db, 'students', className, 'members');
-      const q = query(classRef, where('academicBatch', '==', batchData.name));
-      const snap = await getDocs(q);
+    let graduatedCount = 0;
+    const batch = writeBatch(db);
+    const sectionDocs = await getAllSectionDocs();
+    
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      let changed = false;
       
-      snap.docs.forEach(doc => {
-        if (doc.data().studentStatus !== 'GRADUATED') {
-          studentsToUpdate.push(doc.ref);
+      for (const student of arr) {
+        if (student.academicBatch === batchData.name) {
+          student.studentStatus = 'GRADUATED';
+          student.role = 'ALUMNI';
+          student.updatedAt = new Date().toISOString();
+          graduatedCount++;
+          changed = true;
         }
-      });
+      }
+      
+      if (changed) {
+        batch.update(secDoc.ref, { students: arr });
+      }
     }
 
-    if (studentsToUpdate.length === 0) {
+    if (graduatedCount === 0) {
       return res.status(400).json({ success: false, message: 'Cannot graduate batch: No active students found in this batch.' });
     }
     
     // 2. Mark batch as graduated
-    await updateDoc(batchRef, {
+    batch.update(batchRef, {
       status: 'GRADUATED',
       updatedAt: new Date().toISOString()
     });
 
-    // 3. Update students
-    const updatePromises = studentsToUpdate.map(ref => 
-      updateDoc(ref, { 
-        studentStatus: 'GRADUATED', 
-        updatedAt: new Date().toISOString() 
-      })
-    );
-    await Promise.all(updatePromises);
+    // 3. Commit the batch
+    await batch.commit();
     
     res.json({ 
       success: true, 
-      message: `Successfully graduated batch. Updated ${studentsToUpdate.length} students.` 
+      message: `Successfully graduated batch. Updated ${graduatedCount} students.` 
     });
   } catch (error) {
     console.error('Error graduating academic batch:', error);

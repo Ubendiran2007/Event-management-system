@@ -52,7 +52,7 @@ const buildStudentData = async ({ name, rollNo, email, department, className, se
     rollNo,
     email,
     username: email,
-    class: className,
+    class: className || section,
     section: section || className,
     department: department || '',
     phone: phone || '',
@@ -64,7 +64,9 @@ const buildStudentData = async ({ name, rollNo, email, department, className, se
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     odResetTimestamp: new Date().toISOString(),
-    ...(academicBatch && { academicBatch, admissionYear, graduationYear })
+    academicBatch,
+    admissionYear,
+    graduationYear
   };
 
   return { studentId, studentData };
