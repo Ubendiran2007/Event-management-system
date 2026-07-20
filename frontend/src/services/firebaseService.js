@@ -384,6 +384,15 @@ export const subscribeToStudents = (callback) => {
         callback(allStudents);
         pendingCallback = false;
       }, 100);
+    }, (error) => {
+      console.error(`Error subscribing to ${className} students:`, error);
+      if (pendingCallback) return;
+      pendingCallback = true;
+      setTimeout(() => {
+        const allStudents = Array.from(classDataCache.values()).flat();
+        callback(allStudents);
+        pendingCallback = false;
+      }, 100);
     });
     unsubscribers.push(unsubscribe);
   });

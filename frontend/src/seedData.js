@@ -34,21 +34,15 @@ export const seedUsers = async () => {
 
 // Seed CSE-B students to Firestore
 export const seedStudents = async (forceUpdate = false) => {
-  const studentsCollection = collection(db, 'students');
-  
   try {
-    // Check if students already exist
-    const existingStudents = await getDocs(studentsCollection);
-    if (!existingStudents.empty && !forceUpdate) {
-      console.log('Students already seeded. Skipping...');
-      return { success: true, message: `Students already exist (${existingStudents.size} records)` };
-    }
-
-    // Add/Update each student to Firestore
     let count = 0;
     for (const student of STUDENTS) {
-      await setDoc(doc(db, 'students', student.id), {
+      // Normalize class name for Firestore path (e.g. "CSE B" -> "CSE-B")
+      const className = (student.class || 'Unknown-Class').replace(/\s+/g, '-').toUpperCase();
+      
+      await setDoc(doc(db, 'students', className, 'members', student.id), {
         ...student,
+        class: className, // Ensure class matches the normalized path
         createdAt: new Date().toISOString(),
       }, { merge: true }); // merge: true allows updating existing docs
       count++;
