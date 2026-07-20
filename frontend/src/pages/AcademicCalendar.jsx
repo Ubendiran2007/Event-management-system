@@ -182,7 +182,8 @@ const IQACManagementTab = () => {
 
   const [form, setForm] = useState({});
   const [loadingAction, setLoadingAction] = useState(false);
-  const [holidayFileData, setHolidayFileData] = useState(null);
+  const [importData, setImportData] = useState(null);
+  
   const token = localStorage.getItem('sessionToken');
   const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
 
@@ -211,7 +212,7 @@ const IQACManagementTab = () => {
     </div>
   );
 
-  const handleHolidayFileUpload = (e) => {
+  const handleFileUpload = (e, mappingFn) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
@@ -221,31 +222,26 @@ const IQACManagementTab = () => {
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws);
-      
-      const mapped = data.map(row => ({
-        name: row.Name || row.name || row.Title || row.title,
-        date: row.Date || row.date,
-        type: row.Type || row.type || 'College Holiday'
-      })).filter(row => row.name && row.date);
-      
-      setHolidayFileData(mapped);
+      const mapped = data.map(mappingFn).filter(row => row !== null);
+      setImportData(mapped);
     };
     reader.readAsBinaryString(file);
+    e.target.value = ''; // Reset input
   };
 
-  const handleHolidayImport = async () => {
-    if (!holidayFileData || holidayFileData.length === 0) return;
+  const handleBulkImport = async (endpoint) => {
+    if (!importData || importData.length === 0) return;
     setLoadingAction(true);
     try {
-      const res = await fetch(`${API_BASE}/api/academic-calendar/holidays/import`, {
+      const res = await fetch(`${API_BASE}/api/academic-calendar/${endpoint}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ records: holidayFileData })
+        body: JSON.stringify({ records: importData })
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Successfully imported ${data.data.imported} records. (Skipped ${data.data.duplicates} duplicates, ${data.data.invalid} invalid)`);
-        setHolidayFileData(null);
+        alert(`Successfully imported ${data.data.imported} records. (Skipped ${data.data.duplicates || 0} duplicates, ${data.data.invalid || 0} invalid)`);
+        setImportData(null);
       } else {
         alert(data.message || 'Import failed');
       }
@@ -256,69 +252,130 @@ const IQACManagementTab = () => {
     }
   };
 
+  // Import Section Component
+  const ImportSection = ({ title, columnsInfo, exampleData, endpoint, mappingFn }) => (
+    <div className="lg:col-span-1 space-y-4">
+      <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl h-full">
+        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
+        <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: {columnsInfo}</p>
+        
+        <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
+            Example Format
+          </div>
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+              <tr>
+                {Object.keys(exampleData[0]).map((key, i) => <th key={i} className="px-3 py-2 font-semibold border-r border-slate-200 last:border-0">{key}</th>)}
+              </tr>
+            </thead>
+            <tbody className="text-slate-600">
+              {exampleData.map((row, rIdx) => (
+                <tr key={rIdx} className="border-b border-slate-100 last:border-0">
+                  {Object.values(row).map((val, cIdx) => <td key={cIdx} className="px-3 py-2 border-r border-slate-100 font-mono text-[10px] last:border-0">{val}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, mappingFn)} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+        
+        {importData && (
+          <div className="mt-6 space-y-4">
+            <div className="bg-white p-3 rounded border border-slate-200 text-sm font-medium">
+              Found {importData.length} valid rows to import.
+            </div>
+            <button onClick={() => handleBulkImport(endpoint)} disabled={loadingAction} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors">
+              {loadingAction ? 'Importing...' : 'Confirm Import'}
+            </button>
+            <button onClick={() => setImportData(null)} className="w-full py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-sm hover:bg-slate-200 transition-colors">
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col md:flex-row gap-6">
-      {/* Sidebar */}
-      <div className="w-full md:w-64 shrink-0 bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-2 h-max">
-        {[
-          { id: 'years', label: 'Academic Years' },
-          { id: 'semesters', label: 'Semesters' },
-          { id: 'holidays', label: 'College Holidays' },
-          { id: 'exams', label: 'Examination Schedules' },
-          { id: 'workingDays', label: 'Working Days' }
-        ].map(t => (
-          <button key={t.id} onClick={() => { setSubTab(t.id); setForm({}); }} className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-bold transition-colors ${subTab === t.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
-            {t.label}
-          </button>
-        ))}
+    <div className="flex flex-col gap-6">
+      {/* Header & Filter */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-slate-200 rounded-xl p-4 shadow-sm gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Institution Setup</h2>
+          <p className="text-slate-500 text-sm mt-1">Configure global academic settings and calendars.</p>
+        </div>
+        <select 
+          value={subTab} 
+          onChange={(e) => { setSubTab(e.target.value); setForm({}); setImportData(null); }} 
+          className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-700 bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-auto min-w-[200px]"
+        >
+          <option value="years">Academic Years</option>
+          <option value="semesters">Semesters</option>
+          <option value="holidays">College Holidays</option>
+          <option value="exams">Examination Schedules</option>
+          <option value="workingDays">Working Days</option>
+        </select>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
         
         {/* ACADEMIC YEARS */}
         {subTab === 'years' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Academic Years</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <Input label="Name (e.g. 2026-2027)" type="text" field="name" />
-              <Input label="Start Date" type="date" field="startDate" />
-              <Input label="End Date" type="date" field="endDate" />
-              <button disabled={loadingAction} onClick={() => handleApi('academic-years', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors h-[38px]">
-                Create Year
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-slate-200 text-sm font-bold text-slate-600">
-                    <th className="py-3 px-4">Name</th>
-                    <th className="py-3 px-4">Start</th>
-                    <th className="py-3 px-4">End</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {academicYears.map(ay => (
-                    <tr key={ay.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors text-sm font-medium">
-                      <td className="py-3 px-4">{ay.name}</td>
-                      <td className="py-3 px-4 text-slate-500">{ay.startDate}</td>
-                      <td className="py-3 px-4 text-slate-500">{ay.endDate}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${ay.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>{ay.status}</span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {ay.status !== 'ACTIVE' && (
-                          <button onClick={() => handleApi(`academic-years/${ay.id}/activate`, 'PUT')} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold px-2 py-1 rounded bg-indigo-50 transition-colors">
-                            Activate
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <ImportSection 
+                title="Academic Years"
+                columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong> (YYYY-MM-DD)</>}
+                exampleData={[{ Name: '2026-2027', StartDate: '2026-06-01', EndDate: '2027-05-31' }]}
+                endpoint="academic-years"
+                mappingFn={row => row.Name || row.name ? { name: row.Name || row.name, startDate: row.StartDate || row.startDate, endDate: row.EndDate || row.endDate } : null}
+              />
+              <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <Input label="Name (e.g. 2026-2027)" type="text" field="name" />
+                  <Input label="Start Date" type="date" field="startDate" />
+                  <Input label="End Date" type="date" field="endDate" />
+                  <button disabled={loadingAction} onClick={() => handleApi('academic-years', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors h-[38px]">
+                    Create Year
+                  </button>
+                </div>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-sm font-bold text-slate-600">
+                        <th className="py-3 px-4">Name</th>
+                        <th className="py-3 px-4">Start</th>
+                        <th className="py-3 px-4">End</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {academicYears.map(ay => (
+                        <tr key={ay.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors text-sm font-medium">
+                          <td className="py-3 px-4">{ay.name}</td>
+                          <td className="py-3 px-4 text-slate-500">{ay.startDate}</td>
+                          <td className="py-3 px-4 text-slate-500">{ay.endDate}</td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${ay.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>{ay.status}</span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {ay.status !== 'ACTIVE' && (
+                              <button onClick={() => handleApi(`academic-years/${ay.id}/activate`, 'PUT')} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold px-2 py-1 rounded bg-indigo-50 transition-colors">
+                                Activate
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -327,44 +384,55 @@ const IQACManagementTab = () => {
         {subTab === 'semesters' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Semesters</h2>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <Input label="Name" type="text" field="name" />
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase">Academic Year</label>
-                <select className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form.academicYear || ''} onChange={e => setForm({...form, academicYear: e.target.value})}>
-                  <option value="">Select...</option>
-                  {academicYears.map(ay => <option key={ay.id} value={ay.name}>{ay.name}</option>)}
-                </select>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <ImportSection 
+                title="Semesters"
+                columnsInfo={<><strong>Name</strong>, <strong>AcademicYear</strong>, <strong>StartDate</strong>, <strong>EndDate</strong></>}
+                exampleData={[{ Name: 'Odd Sem', AcademicYear: '2026-2027', StartDate: '2026-06-01', EndDate: '2026-12-15' }]}
+                endpoint="semesters"
+                mappingFn={row => row.Name || row.name ? { name: row.Name || row.name, academicYear: row.AcademicYear || row.academicYear, startDate: row.StartDate || row.startDate, endDate: row.EndDate || row.endDate } : null}
+              />
+              <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <Input label="Name" type="text" field="name" />
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase">Academic Year</label>
+                    <select className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form.academicYear || ''} onChange={e => setForm({...form, academicYear: e.target.value})}>
+                      <option value="">Select...</option>
+                      {academicYears.map(ay => <option key={ay.id} value={ay.name}>{ay.name}</option>)}
+                    </select>
+                  </div>
+                  <Input label="Start Date" type="date" field="startDate" />
+                  <Input label="End Date" type="date" field="endDate" />
+                  <button disabled={loadingAction} onClick={() => handleApi('semesters', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
+                    Add
+                  </button>
+                </div>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-sm font-bold text-slate-600">
+                        <th className="py-3 px-4">Semester</th>
+                        <th className="py-3 px-4">Academic Year</th>
+                        <th className="py-3 px-4">Dates</th>
+                        <th className="py-3 px-4 text-right">Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {semesters.map(s => (
+                        <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
+                          <td className="py-3 px-4">{s.name}</td>
+                          <td className="py-3 px-4">{s.academicYear}</td>
+                          <td className="py-3 px-4 text-slate-500">{s.startDate} to {s.endDate}</td>
+                          <td className="py-3 px-4 text-right">
+                            <button onClick={() => handleApi(`semesters/${s.id}`, 'DELETE')} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <Input label="Start Date" type="date" field="startDate" />
-              <Input label="End Date" type="date" field="endDate" />
-              <button disabled={loadingAction} onClick={() => handleApi('semesters', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
-                Add
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-slate-200 text-sm font-bold text-slate-600">
-                    <th className="py-3 px-4">Semester</th>
-                    <th className="py-3 px-4">Academic Year</th>
-                    <th className="py-3 px-4">Dates</th>
-                    <th className="py-3 px-4 text-right">Delete</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {semesters.map(s => (
-                    <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
-                      <td className="py-3 px-4">{s.name}</td>
-                      <td className="py-3 px-4">{s.academicYear}</td>
-                      <td className="py-3 px-4 text-slate-500">{s.startDate} to {s.endDate}</td>
-                      <td className="py-3 px-4 text-right">
-                        <button onClick={() => handleApi(`semesters/${s.id}`, 'DELETE')} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
         )}
@@ -373,51 +441,14 @@ const IQACManagementTab = () => {
         {subTab === 'holidays' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">College Holidays</h2>
-            
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Import Section */}
-              <div className="lg:col-span-1 space-y-4">
-                <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl h-full">
-                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
-                  <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Name</strong>, <strong>Date</strong> (YYYY-MM-DD), and <strong>Type</strong>.</p>
-                  
-                  <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                    <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
-                      Example Format
-                    </div>
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                        <tr>
-                          <th className="px-3 py-2 font-semibold border-r border-slate-200">Name</th>
-                          <th className="px-3 py-2 font-semibold border-r border-slate-200">Date</th>
-                          <th className="px-3 py-2 font-semibold">Type</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-slate-600">
-                        <tr className="border-b border-slate-100">
-                          <td className="px-3 py-2 border-r border-slate-100">Diwali</td>
-                          <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-11-04</td>
-                          <td className="px-3 py-2 text-indigo-600 font-medium">Festival Holiday</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <input type="file" accept=".xlsx, .xls, .csv" onChange={handleHolidayFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                  
-                  {holidayFileData && (
-                    <div className="mt-6 space-y-4">
-                      <div className="bg-white p-3 rounded border border-slate-200 text-sm font-medium">
-                        Found {holidayFileData.length} valid rows to import.
-                      </div>
-                      <button onClick={handleHolidayImport} disabled={loadingAction} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors">
-                        {loadingAction ? 'Importing...' : 'Confirm Import'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
+              <ImportSection 
+                title="Holidays"
+                columnsInfo={<><strong>Name</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>Type</strong></>}
+                exampleData={[{ Name: 'Diwali', Date: '2026-11-04', Type: 'Festival Holiday' }]}
+                endpoint="holidays"
+                mappingFn={row => (row.Name || row.name) ? { name: row.Name || row.name, date: row.Date || row.date, type: row.Type || row.type || 'College Holiday' } : null}
+              />
               <div className="lg:col-span-2 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <Input label="Name" type="text" field="name" />
@@ -471,38 +502,49 @@ const IQACManagementTab = () => {
         {subTab === 'exams' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Examination Schedules</h2>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <Input label="Name (e.g. Model Exam 1)" type="text" field="name" />
-              <Input label="Start Date" type="date" field="startDate" />
-              <Input label="End Date" type="date" field="endDate" />
-              <Input label="Department (or ALL)" type="text" field="department" />
-              <button disabled={loadingAction} onClick={() => handleApi('exams', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
-                Add Exam
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-slate-200 text-sm font-bold text-slate-600">
-                    <th className="py-3 px-4">Exam Name</th>
-                    <th className="py-3 px-4">Dept</th>
-                    <th className="py-3 px-4">Dates</th>
-                    <th className="py-3 px-4 text-right">Delete</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {exams.map(e => (
-                    <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
-                      <td className="py-3 px-4">{e.name}</td>
-                      <td className="py-3 px-4">{e.department}</td>
-                      <td className="py-3 px-4">{e.startDate} to {e.endDate}</td>
-                      <td className="py-3 px-4 text-right">
-                        <button onClick={() => handleApi(`exams/${e.id}`, 'DELETE')} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <ImportSection 
+                title="Exams"
+                columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong>, <strong>Department</strong>, <strong>Semester</strong> (Optional)</>}
+                exampleData={[{ Name: 'Model Exam', StartDate: '2026-10-10', EndDate: '2026-10-15', Department: 'CSE', Semester: 'Odd Sem' }]}
+                endpoint="exams"
+                mappingFn={row => (row.Name || row.name) ? { name: row.Name || row.name, startDate: row.StartDate || row.startDate, endDate: row.EndDate || row.endDate, department: row.Department || row.department, semester: row.Semester || row.semester } : null}
+              />
+              <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <Input label="Name (e.g. Model Exam 1)" type="text" field="name" />
+                  <Input label="Start Date" type="date" field="startDate" />
+                  <Input label="End Date" type="date" field="endDate" />
+                  <Input label="Department (or ALL)" type="text" field="department" />
+                  <button disabled={loadingAction} onClick={() => handleApi('exams', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
+                    Add Exam
+                  </button>
+                </div>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-sm font-bold text-slate-600">
+                        <th className="py-3 px-4">Exam Name</th>
+                        <th className="py-3 px-4">Dept</th>
+                        <th className="py-3 px-4">Dates</th>
+                        <th className="py-3 px-4 text-right">Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exams.map(e => (
+                        <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
+                          <td className="py-3 px-4">{e.name}</td>
+                          <td className="py-3 px-4">{e.department}</td>
+                          <td className="py-3 px-4">{e.startDate} to {e.endDate}</td>
+                          <td className="py-3 px-4 text-right">
+                            <button onClick={() => handleApi(`exams/${e.id}`, 'DELETE')} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -511,25 +553,36 @@ const IQACManagementTab = () => {
         {subTab === 'workingDays' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Global Working Days</h2>
-            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-6">
-              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
-                const isWorking = workingDays[day] !== false; // Default true if undefined
-                return (
-                  <label key={day} className="flex items-center gap-3 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-5 h-5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
-                      checked={isWorking}
-                      onChange={(e) => {
-                        handleApi('working-days', 'POST', { ...workingDays, [day]: e.target.checked });
-                      }}
-                    />
-                    <span className="font-bold text-sm text-slate-700">{day}</span>
-                  </label>
-                );
-              })}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <ImportSection 
+                title="Working Days"
+                columnsInfo={<><strong>Day</strong> (e.g. Monday), <strong>IsWorking</strong> (TRUE/FALSE)</>}
+                exampleData={[{ Day: 'Monday', IsWorking: 'TRUE' }, { Day: 'Sunday', IsWorking: 'FALSE' }]}
+                endpoint="working-days"
+                mappingFn={row => (row.Day || row.day) ? { day: row.Day || row.day, isWorking: row.IsWorking || row.isWorking } : null}
+              />
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-6">
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
+                    const isWorking = workingDays[day] !== false; // Default true if undefined
+                    return (
+                      <label key={day} className="flex items-center gap-3 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="w-5 h-5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
+                          checked={isWorking}
+                          onChange={(e) => {
+                            handleApi('working-days', 'POST', { ...workingDays, [day]: e.target.checked });
+                          }}
+                        />
+                        <span className="font-bold text-sm text-slate-700">{day}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-500">Changes to working days are instantly saved globally.</p>
+              </div>
             </div>
-            <p className="text-xs text-slate-500">Changes to working days are instantly saved globally.</p>
           </div>
         )}
       </div>

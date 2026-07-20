@@ -146,6 +146,73 @@ router.put('/academic-years/:id/activate', requireAuth, requireRole(['IQAC_TEAM'
   }
 });
 
+// Excel Import for Academic Years
+router.post('/academic-years/import', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+  if (checkDb(res)) return;
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ success: false, message: 'Invalid records payload.' });
+
+    let batch = writeBatch(db);
+    let count = 0;
+    const importedIds = [];
+    let duplicates = 0;
+    let invalid = 0;
+    
+    const existingSnap = await getDocs(collection(db, 'academicYears'));
+    const existingIds = new Set();
+    existingSnap.docs.forEach(doc => existingIds.add(doc.id));
+    
+    for (const record of records) {
+      if (!record.name || !record.startDate || !record.endDate) {
+        invalid++;
+        continue;
+      }
+      
+      const id = `ay_${record.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      if (existingIds.has(id)) {
+        duplicates++;
+        continue;
+      }
+
+      existingIds.add(id);
+
+      const ayData = {
+        name: record.name,
+        startDate: record.startDate,
+        endDate: record.endDate,
+        status: record.status || 'ARCHIVED',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      const docRef = doc(db, 'academicYears', id);
+      batch.set(docRef, ayData);
+      importedIds.push(id);
+      count++;
+      
+      if (count === 500) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+    
+    if (importedIds.length > 0) {
+      logCalendarAction('IMPORT_ACADEMIC_YEARS', req.user, 'Bulk Import Academic Years', { importedCount: importedIds.length, duplicates, invalid });
+    }
+
+    res.json({ success: true, data: { imported: importedIds.length, duplicates, invalid } });
+  } catch (error) {
+    console.error('Error importing academic years:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ==========================================
 // SEMESTERS (IQAC Only)
 // ==========================================
@@ -218,6 +285,74 @@ router.delete('/semesters/:id', requireAuth, requireRole(['IQAC_TEAM']), async (
     res.json({ success: true, message: 'Semester deleted.' });
   } catch (error) {
     console.error('Error deleting semester:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Excel Import for Semesters
+router.post('/semesters/import', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+  if (checkDb(res)) return;
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ success: false, message: 'Invalid records payload.' });
+
+    let batch = writeBatch(db);
+    let count = 0;
+    const importedIds = [];
+    let duplicates = 0;
+    let invalid = 0;
+    
+    // Simplistic duplicate check based on exact name and academic year
+    const existingSnap = await getDocs(collection(db, 'semesters'));
+    const existingKeys = new Set();
+    existingSnap.docs.forEach(doc => existingKeys.add(`${doc.data().name}_${doc.data().academicYear}`));
+    
+    for (const record of records) {
+      if (!record.name || !record.academicYear || !record.startDate || !record.endDate) {
+        invalid++;
+        continue;
+      }
+      
+      const key = `${record.name}_${record.academicYear}`;
+      if (existingKeys.has(key)) {
+        duplicates++;
+        continue;
+      }
+
+      existingKeys.add(key);
+
+      const semData = {
+        name: record.name,
+        academicYear: record.academicYear,
+        startDate: record.startDate,
+        endDate: record.endDate,
+        status: record.status || 'ACTIVE',
+        createdAt: new Date().toISOString()
+      };
+      
+      const docRef = doc(collection(db, 'semesters'));
+      batch.set(docRef, semData);
+      importedIds.push(docRef.id);
+      count++;
+      
+      if (count === 500) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+    
+    if (importedIds.length > 0) {
+      logCalendarAction('IMPORT_SEMESTERS', req.user, 'Bulk Import Semesters', { importedCount: importedIds.length, duplicates, invalid });
+    }
+
+    res.json({ success: true, data: { imported: importedIds.length, duplicates, invalid } });
+  } catch (error) {
+    console.error('Error importing semesters:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
@@ -390,6 +525,73 @@ router.delete('/exams/:id', requireAuth, requireRole(['IQAC_TEAM']), async (req,
   }
 });
 
+// Excel Import for Exams
+router.post('/exams/import', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+  if (checkDb(res)) return;
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ success: false, message: 'Invalid records payload.' });
+
+    let batch = writeBatch(db);
+    let count = 0;
+    const importedIds = [];
+    let duplicates = 0;
+    let invalid = 0;
+    
+    const existingSnap = await getDocs(collection(db, 'exams'));
+    const existingKeys = new Set();
+    existingSnap.docs.forEach(doc => existingKeys.add(`${doc.data().name}_${doc.data().department}`));
+    
+    for (const record of records) {
+      if (!record.name || !record.startDate || !record.endDate || !record.department) {
+        invalid++;
+        continue;
+      }
+      
+      const key = `${record.name}_${record.department}`;
+      if (existingKeys.has(key)) {
+        duplicates++;
+        continue;
+      }
+
+      existingKeys.add(key);
+
+      const examData = {
+        name: record.name,
+        startDate: record.startDate,
+        endDate: record.endDate,
+        department: record.department,
+        semester: record.semester || '',
+        createdAt: new Date().toISOString()
+      };
+      
+      const docRef = doc(collection(db, 'exams'));
+      batch.set(docRef, examData);
+      importedIds.push(docRef.id);
+      count++;
+      
+      if (count === 500) {
+        await batch.commit();
+        batch = writeBatch(db);
+        count = 0;
+      }
+    }
+
+    if (count > 0) {
+      await batch.commit();
+    }
+    
+    if (importedIds.length > 0) {
+      logCalendarAction('IMPORT_EXAMS', req.user, 'Bulk Import Exams', { importedCount: importedIds.length, duplicates, invalid });
+    }
+
+    res.json({ success: true, data: { imported: importedIds.length, duplicates, invalid } });
+  } catch (error) {
+    console.error('Error importing exams:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // ==========================================
 // WORKING DAYS (IQAC Only)
 // ==========================================
@@ -402,6 +604,48 @@ router.post('/working-days', requireAuth, requireRole(['IQAC_TEAM']), async (req
     logCalendarAction('UPDATE_WORKING_DAYS', req.user, 'Global Configuration', workingDays);
     res.json({ success: true, data: workingDays });
   } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Excel Import for Working Days
+router.post('/working-days/import', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+  if (checkDb(res)) return;
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ success: false, message: 'Invalid records payload.' });
+
+    // Fetch existing working days config
+    let workingDays = {};
+    const snap = await getDoc(doc(db, 'settings', 'workingDays'));
+    if (snap.exists()) {
+      workingDays = snap.data();
+    }
+    
+    let updated = 0;
+    
+    for (const record of records) {
+      if (record.day && record.isWorking !== undefined) {
+        // Standardize day name
+        const dayMap = {
+          'monday': 'Monday', 'tuesday': 'Tuesday', 'wednesday': 'Wednesday', 
+          'thursday': 'Thursday', 'friday': 'Friday', 'saturday': 'Saturday', 'sunday': 'Sunday'
+        };
+        const dayKey = dayMap[String(record.day).toLowerCase()];
+        
+        if (dayKey) {
+          workingDays[dayKey] = Boolean(record.isWorking === 'true' || record.isWorking === true || record.isWorking === 1 || record.isWorking === '1');
+          updated++;
+        }
+      }
+    }
+
+    await setDoc(doc(db, 'settings', 'workingDays'), workingDays);
+    logCalendarAction('UPDATE_WORKING_DAYS', req.user, 'Imported Config', workingDays);
+    
+    res.json({ success: true, data: { imported: updated, workingDays } });
+  } catch (error) {
+    console.error('Error importing working days:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
