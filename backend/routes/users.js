@@ -235,7 +235,7 @@ router.post('/bulk', async (req, res) => {
 
     for (const user of newUsers) {
       const { staffId, email } = user;
-      const docId = staffId ? \`staff_\${staffId}\` : null;
+      const docId = staffId ? `staff_${staffId}` : null;
       
       if ((docId && existingIds.has(docId)) || (email && existingEmails.has(email.toLowerCase()))) {
         dbDuplicates.push(user);
@@ -302,7 +302,7 @@ router.post('/bulk', async (req, res) => {
 
     res.json({ 
       success: true, 
-      message: \`Successfully added \${totalImported} staff members\`, 
+      message: `Successfully added ${totalImported} staff members`, 
       importedCount: totalImported, 
       dbDuplicatesCount: dbDuplicates.length,
       users: addedUsers.map(u => { const { password, ...rest } = u; return rest; }) 
