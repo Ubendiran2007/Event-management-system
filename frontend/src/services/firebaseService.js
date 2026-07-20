@@ -217,27 +217,7 @@ export const fetchUsers = async () => {
   }
 };
 
-export const subscribeToUsers = (callback) => {
-  let isMounted = true;
-  const fetchUsers = async () => {
-    try {
-      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
-      const res = await fetch(`${API_BASE}/api/users`);
-      if (res.ok) {
-        const data = await res.json();
-        if (isMounted) callback(data.users || []);
-      }
-    } catch (err) {
-      console.error('Error fetching users:', err);
-    }
-  };
-  fetchUsers();
-  const interval = setInterval(fetchUsers, 15000);
-  return () => {
-    isMounted = false;
-    clearInterval(interval);
-  };
-};
+
 
 // ==================== EVENTS ====================
 export const fetchEvents = async () => {
