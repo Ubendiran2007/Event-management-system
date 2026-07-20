@@ -344,20 +344,37 @@ export const getODRequestById = async (requestId) => {
 };
 
 // ==================== REAL-TIME LISTENERS ====================
-export const subscribeToODRequests = (callback) => {
-  const odCollection = collection(db, 'odRequests');
-  return onSnapshot(odCollection, (snapshot) => {
+export const subscribeToODRequests = (currentUser, callback) => {
+  if (!currentUser) return () => {};
+  
+  let q;
+  if (currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER') {
+    q = query(collection(db, 'odRequests'), where('studentId', '==', currentUser.id));
+  } else {
+    // For now, faculty and global roles still subscribe to all to do client-side filtering.
+    // Optimization here would require a 'department' field on odRequests.
+    q = collection(db, 'odRequests');
+  }
+  
+  return onSnapshot(q, (snapshot) => {
     const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(requests);
   });
 };
 
-export const subscribeToEvents = (callback) => {
+export const subscribeToEvents = (currentUser, callback) => {
+  if (!currentUser) return () => {};
+  
   const eventsCollection = collection(db, 'events');
-  // includeMetadataChanges: true lets us see hasPendingWrites so we can filter
-  // out ghost documents that only exist in the local SDK cache but were never
-  // confirmed by the Firestore server.
-  return onSnapshot(eventsCollection, { includeMetadataChanges: true }, (snapshot) => {
+  let q = eventsCollection;
+  
+  // Example of strict filtering if they only need their department
+  // If role is HOD or FACULTY, they usually only look at their department.
+  // Note: HODs might need to see other departments if they are part of multi-department workflows,
+  // but this query cuts down reads if they mostly stay in their lane.
+  // For safety, we can just fetch all and let AppContext filter until complex OR queries are added.
+  
+  return onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
     const events = snapshot.docs
       .filter(doc => !doc.metadata.hasPendingWrites)
       .map(doc => ({ ...doc.data(), id: doc.id }));
@@ -365,7 +382,26 @@ export const subscribeToEvents = (callback) => {
   });
 };
 
-export const subscribeToStudents = (callback) => {
+export const subscribeToStudents = (currentUser, callback) => {
+  if (!currentUser) return () => {};
+  
+  const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
+
+  // If student, only subscribe to their specific class and document!
+  if (isStudent && currentUser.class) {
+    const className = String(currentUser.class).replace(/\s+/g, '-');
+    const studentDocRef = doc(db, 'students', className, 'members', currentUser.id);
+    
+    return onSnapshot(studentDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback([{ id: docSnap.id, ...docSnap.data(), class: className }]);
+      } else {
+        callback([]);
+      }
+    });
+  }
+
+  // If not student (e.g., admin), unfortunately we still need to load all classes to run the app
   const unsubscribers = [];
   const classDataCache = new Map();
   let pendingCallback = false;

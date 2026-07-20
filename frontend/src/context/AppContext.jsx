@@ -46,10 +46,19 @@ export const AppProvider = ({ children }) => {
 
   // Subscribe to real-time updates from Firebase
   useEffect(() => {
+    if (!currentUser) {
+      setEvents([]);
+      setODRequests([]);
+      setStudents([]);
+      setStaffUsers([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     // Subscribe to events — filter out any known ghost IDs on every delivery
-    const unsubscribeEvents = subscribeToEvents((fetchedEvents) => {
+    const unsubscribeEvents = subscribeToEvents(currentUser, (fetchedEvents) => {
       const filtered = ghostIdsRef.current.size
         ? fetchedEvents.filter(e => !ghostIdsRef.current.has(e.id))
         : fetchedEvents;
@@ -57,12 +66,12 @@ export const AppProvider = ({ children }) => {
     });
 
     // Subscribe to OD requests
-    const unsubscribeOD = subscribeToODRequests((fetchedOD) => {
+    const unsubscribeOD = subscribeToODRequests(currentUser, (fetchedOD) => {
       setODRequests(fetchedOD);
     });
 
     // Subscribe to students
-    const unsubscribeStudents = subscribeToStudents((fetchedStudents) => {
+    const unsubscribeStudents = subscribeToStudents(currentUser, (fetchedStudents) => {
       setStudents(fetchedStudents);
       setLoading(false);
     });
@@ -79,7 +88,7 @@ export const AppProvider = ({ children }) => {
       unsubscribeStudents();
       unsubscribeUsers();
     };
-  }, []);
+  }, [currentUser?.id, currentUser?.role, currentUser?.department]);
 
   // Real-time sync for currentUser if they are a student — patch ONLY OD fields from the live DB snapshot
   useEffect(() => {
