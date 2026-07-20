@@ -199,7 +199,7 @@ const AnalyticsDashboard = () => {
 
   return (
     <Layout>
-      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-4">
+      <div className="p-6 md:p-8 w-full mx-auto space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
           <p className="text-slate-500 mt-1 mb-6">Real-time insights and reports based on operational data.</p>
