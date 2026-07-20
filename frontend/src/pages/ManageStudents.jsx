@@ -586,9 +586,6 @@ const ManageStudents = () => {
                                         <button onClick={() => { setImportType('students'); setImportStep('upload'); setBulkValidationReport({ total: 0, valid: 0, invalid: 0, fileDuplicates: 0 }); setValidRecords([]); setInvalidRecords([]); setImportSummary(null); setShowBulkModal(true); }} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-2">
                                             <Upload size={16} /> Bulk Import
                                         </button>
-                                        <button onClick={handleResetODUsage} className="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold text-sm hover:bg-rose-100 transition-all flex items-center gap-2">
-                                            <UserX size={16} /> Reset ODs
-                                        </button>
                                     </>
                                 )}
                                 <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap ml-2">
@@ -726,7 +723,7 @@ const ManageStudents = () => {
                             ) : (
                                 /* 3. Show Students for Selected Class */
                                 <>
-                                    <div className="flex items-center gap-4 mb-6">
+                                    <div className="sticky top-0 z-10 bg-[#f8fafc] -mt-6 -mx-6 px-6 pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4 shadow-sm">
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <div className="flex flex-col">
                                             <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
@@ -879,7 +876,7 @@ const ManageStudents = () => {
                             ) : (
                                 /* Level 2: Staff List (Faculty in Dept OR Incharges) */
                                 <>
-                                    <div className="flex items-center gap-4 mb-6">
+                                    <div className="sticky top-0 z-10 bg-[#f8fafc] -mt-6 -mx-6 px-6 pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4 shadow-sm">
                                         <button onClick={() => staffCategory === 'FACULTY' ? setStaffDepartment(null) : setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <h3 className="text-xl font-bold text-slate-900">{staffCategory === 'FACULTY' ? `${staffDepartment} Faculty` : 'Incharges'}</h3>
                                         <div className="relative flex-1 max-w-md ml-auto">
