@@ -7,7 +7,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harivignesh.s2024cse@sece.ac.in",
     "phone": "6385397558",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs072",
@@ -17,7 +18,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harinath.s2024cse@sece.ac.in",
     "phone": "6380204316",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs073",
@@ -27,7 +29,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harini.c2024cse@sece.ac.in",
     "phone": "6374780346",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs074",
@@ -37,7 +40,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harini.ch2024cse@sece.ac.in",
     "phone": "7845992874",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs075",
@@ -47,7 +51,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harini.k2024cse@sece.ac.in",
     "phone": "9360006314",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs076",
@@ -57,7 +62,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "hariprasath.m2024cse@sece.ac.in",
     "phone": "8903800978",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs077",
@@ -67,7 +73,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "haripriyan.a2024cse@sece.ac.in",
     "phone": "9787586293",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs078",
@@ -77,7 +84,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harisbalajee.pl2024cse@sece.ac.in",
     "phone": "8056840300",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs079",
@@ -87,7 +95,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harish.g2024cse@sece.ac.in",
     "phone": "8270153291",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs080",
@@ -97,7 +106,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harishkumar.v2024cse@sece.ac.in",
     "phone": "7871506061",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs081",
@@ -107,7 +117,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harish.s2024cse@sece.ac.in",
     "phone": "7200999142",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs082",
@@ -117,7 +128,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "haritha.e2024cse@sece.ac.in",
     "phone": "6383299358",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs083",
@@ -127,7 +139,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harshad.r2024cse@sece.ac.in",
     "phone": "9344149075",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs084",
@@ -137,7 +150,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harshini.a2024cse@sece.ac.in",
     "phone": "9361159306",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs085",
@@ -147,7 +161,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "harshitha.mp2024cse@sece.ac.in",
     "phone": "8147751941",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs086",
@@ -157,7 +172,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "heranyaa.tp2024cse@sece.ac.in",
     "phone": "9080426042",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs087",
@@ -167,7 +183,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "ilamsaravanbalaji.pa2024cse@sece.ac.in",
     "phone": "9976556157",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs088",
@@ -177,7 +194,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jagathratchagan.m2024cse@sece.ac.in",
     "phone": "7373569816",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs089",
@@ -187,7 +205,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jaianish.j2024cse@sece.ac.in",
     "phone": "9384163113",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs090",
@@ -197,7 +216,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jaisurya.s2024cse@sece.ac.in",
     "phone": "8438395880",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs091",
@@ -207,7 +227,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jashwanth.j2024cse@sece.ac.in",
     "phone": "9597747827",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs092",
@@ -217,7 +238,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jayprakashsah.2024cse@sece.ac.in",
     "phone": "+977 9807118559",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs093",
@@ -227,7 +249,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jayasuriya.s2024cse@sece.ac.in",
     "phone": "7010092013",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs094",
@@ -237,7 +260,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jayatheerthan.p2024cse@sece.ac.in",
     "phone": "9445950863",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs095",
@@ -247,7 +271,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jeffjeromejabez.2024cse@sece.ac.in",
     "phone": "9677766029",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs096",
@@ -257,7 +282,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jenitha.m2024cse@sece.ac.in",
     "phone": "9952351501",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs097",
@@ -267,7 +293,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "joshuarubert.r2024cse@sece.ac.in",
     "phone": "7904887598",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs098",
@@ -277,7 +304,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "jumaanahbasheeth.2024cse@sece.ac.in",
     "phone": "8122613484",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs101",
@@ -287,7 +315,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kanhaiyapatel.2024cse@sece.ac.in",
     "phone": "9807197759",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs102",
@@ -297,7 +326,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kanishkrishna.jp2024cse@sece.ac.in",
     "phone": "8300536155",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs103",
@@ -307,7 +337,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kanish.mr2024cse@sece.ac.in",
     "phone": "8072940995",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs104",
@@ -317,7 +348,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kanishka.s2024cse@sece.ac.in",
     "phone": "9865294439",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs105",
@@ -327,7 +359,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kanwalkishore.2024cse@sece.ac.in",
     "phone": "9786000328",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs106",
@@ -337,7 +370,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "karthika.a2024cse@sece.ac.in",
     "phone": "8610177519",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs107",
@@ -347,7 +381,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "karunesh.ar2024cse@sece.ac.in",
     "phone": "9092493686",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs108",
@@ -357,7 +392,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kathiravan.sp2024cse@sece.ac.in",
     "phone": "7397061794",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs109",
@@ -367,7 +403,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kathirvel.s2024cse@sece.ac.in",
     "phone": "7034960895",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs110",
@@ -377,7 +414,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kavinkumar.c2024cse@sece.ac.in",
     "phone": "9043788701",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs111",
@@ -387,7 +425,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kavinprakash.t2024cse@sece.ac.in",
     "phone": "6369178158",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs112",
@@ -397,7 +436,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kavipriya.p2024cse@sece.ac.in",
     "phone": "9751703424",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs113",
@@ -407,7 +447,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kavya.k2024cse@sece.ac.in",
     "phone": "8925255715",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs114",
@@ -417,7 +458,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kavyasri.d2024cse@sece.ac.in",
     "phone": "9150389455",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs115",
@@ -427,7 +469,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "keerthiaanand.ks2024cse@sece.ac.in",
     "phone": "6374785775",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs116",
@@ -437,7 +480,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "khaviyasree.m2024cse@sece.ac.in",
     "phone": "6380115521",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs117",
@@ -447,7 +491,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kirithmalini.ds2024cse@sece.ac.in",
     "phone": "9345511622",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs118",
@@ -457,7 +502,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kirithika.sk2024cse@sece.ac.in",
     "phone": "7871353534",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs119",
@@ -467,7 +513,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "kowsalya.v2024cse@sece.ac.in",
     "phone": "7604849738",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs120",
@@ -477,7 +524,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "krishnavarun.k2024cse@sece.ac.in",
     "phone": "6382295854",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs121",
@@ -487,7 +535,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "krishnan.a2024cse@sece.ac.in",
     "phone": "6382341799",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs122",
@@ -497,7 +546,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "lavanya.r2024cse@sece.ac.in",
     "phone": "6379341807",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs123",
@@ -507,7 +557,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "logaprabhu.s2024cse@sece.ac.in",
     "phone": "6369950669",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs124",
@@ -517,7 +568,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "logavarshhni.s2024cse@sece.ac.in",
     "phone": "7904145797",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs125",
@@ -527,7 +579,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "madhanika.m2024cse@sece.ac.in",
     "phone": "9677504149",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs126",
@@ -537,7 +590,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "madhumitha.y2024cse@sece.ac.in",
     "phone": "8148218169",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs127",
@@ -547,7 +601,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "madhusree.m2024cse@sece.ac.in",
     "phone": "9659013590",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs128",
@@ -557,7 +612,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "manasadevichapagain.2024cse@sece.ac.in",
     "phone": "9786887779",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs129",
@@ -567,7 +623,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "manishbasnet.2024cse@sece.ac.in",
     "phone": "7300449730",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs130",
@@ -577,7 +634,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "manishprakkash.ms2024cse@sece.ac.in",
     "phone": "8778984328",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs131",
@@ -587,7 +645,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "manoj.v2024cse@sece.ac.in",
     "phone": "8925149206",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs132",
@@ -597,7 +656,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "manojkumar.s2024cse@sece.ac.in",
     "phone": "9345703845",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs133",
@@ -607,7 +667,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mansuransari.2024cse@sece.ac.in",
     "phone": "9779706385264",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs134",
@@ -617,7 +678,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mathiyazhini.s2024cse@sece.ac.in",
     "phone": "6385771320",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs135",
@@ -627,7 +689,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mathumitha.s2024cse@sece.ac.in",
     "phone": "9791257212",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs136",
@@ -637,7 +700,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mekala.s2024cse@sece.ac.in",
     "phone": "6379121322",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs137",
@@ -647,7 +711,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "sujay.s2024lcse@sece.ac.in",
     "phone": "9750922123",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs138",
@@ -657,7 +722,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mohamedasif.s2024cse@sece.ac.in",
     "phone": "8778971677",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs139",
@@ -667,7 +733,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mohammedsuhail.m2024cse@sece.ac.in",
     "phone": "9442914394",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs140",
@@ -677,7 +744,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "mohankaarthick.c2024cse@sece.ac.in",
     "phone": "7904303533",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs301",
@@ -687,7 +755,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "abdhulkareem.l2024lcse@sece.ac.in",
     "phone": "9344660105",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs315",
@@ -697,7 +766,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "naveen.n2024lcse@sece.ac.in",
     "phone": "9344494275",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_24cs317",
@@ -707,7 +777,8 @@ export const STUDENTS = [
     "section": "CSE B",
     "email": "sujay.s2024lcse@sece.ac.in",
     "phone": "7418995747",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_secetcs073",
@@ -716,7 +787,8 @@ export const STUDENTS = [
     "class": "CSE",
     "section": "CSE B",
     "phone": "9952667716",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_secetcs183",
@@ -725,7 +797,8 @@ export const STUDENTS = [
     "class": "CSE",
     "section": "CSE B",
     "phone": "9629026910",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   },
   {
     "id": "student_secetcs127",
@@ -734,6 +807,7 @@ export const STUDENTS = [
     "class": "CSE",
     "section": "CSE B",
     "phone": "9655242293",
-    "role": "STUDENT_GENERAL"
+    "role": "STUDENT_GENERAL",
+    "academicBatch": "2024-28"
   }
 ];

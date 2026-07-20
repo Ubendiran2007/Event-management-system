@@ -3,6 +3,37 @@ import { db } from './firebase';
 import { MOCK_USERS, MOCK_EVENTS } from './mockData';
 import { STUDENTS } from './studentData';
 
+// Seed academic batches
+export const seedAcademicBatches = async () => {
+  const batchesCollection = collection(db, 'academicBatches');
+  
+  try {
+    const existingBatches = await getDocs(batchesCollection);
+    if (!existingBatches.empty) {
+      console.log('Academic batches already seeded. Skipping...');
+      return { success: true, message: 'Academic batches already exist' };
+    }
+
+    const batches = [
+      { id: 'batch_2024_28', name: '2024-28', status: 'ACTIVE' }
+    ];
+
+    for (const batch of batches) {
+      await setDoc(doc(db, 'academicBatches', batch.id), {
+        ...batch,
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`Batch ${batch.name} seeded successfully`);
+    }
+
+    console.log('All academic batches seeded successfully!');
+    return { success: true, message: 'Academic batches seeded successfully' };
+  } catch (error) {
+    console.error('Error seeding academic batches:', error);
+    return { success: false, message: error.message };
+  }
+};
+
 // Seed users to Firestore
 export const seedUsers = async () => {
   const usersCollection = collection(db, 'users');
@@ -84,15 +115,16 @@ export const seedEvents = async () => {
   }
 };
 
-// Seed all data
 export const seedAllData = async () => {
   console.log('Starting data seeding...');
   
+  const batchesResult = await seedAcademicBatches();
   const usersResult = await seedUsers();
   const studentsResult = await seedStudents();
   const eventsResult = await seedEvents();
   
   return {
+    batches: batchesResult,
     users: usersResult,
     students: studentsResult,
     events: eventsResult,

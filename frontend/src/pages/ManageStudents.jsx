@@ -44,7 +44,7 @@ const ManageStudents = () => {
     // Tabs & View State
     const [openDropdownId, setOpenDropdownId] = useState(null);
     const [activeTab, setActiveTab] = useState('students'); // 'students' | 'staff'
-    const [viewBatchName, setViewBatchName] = useState(null);
+    const [selectedBatchView, setSelectedBatchView] = useState(null); // e.g. '2024-28'
     const [selectedDepartment, setSelectedDepartment] = useState(null); // e.g. 'CSE'
     const [selectedClass, setSelectedClass] = useState(null); // e.g. 'CSE-B'
     const [searchQuery, setSearchQuery] = useState('');
@@ -147,7 +147,23 @@ const ManageStudents = () => {
         });
     }
 
+    const batchMap = {};
     accessibleStudents.forEach(student => {
+        const batch = student.academicBatch || 'Unassigned';
+        if (!batchMap[batch]) batchMap[batch] = [];
+        batchMap[batch].push(student);
+    });
+    
+    // Sort batches, maybe putting 'Unassigned' at the end
+    const batchesPresent = Object.keys(batchMap).sort((a, b) => {
+        if (a === 'Unassigned') return 1;
+        if (b === 'Unassigned') return -1;
+        return a.localeCompare(b);
+    });
+
+    const studentsInBatch = selectedBatchView ? (batchMap[selectedBatchView] || []) : accessibleStudents;
+
+    studentsInBatch.forEach(student => {
         // Normalize class name for mapping (e.g. "CSE B" -> "CSE-B")
         let cls = student.class || 'Unknown Class';
         if (cls !== 'Unknown Class') {
@@ -612,9 +628,38 @@ const ManageStudents = () => {
                             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cse-accent" size={36} /></div>
                         ) : activeTab === 'students' ? (
                             /* STUDENTS VIEW */
-                            !effectiveDepartment ? (
+                            !selectedBatchView ? (
+                                /* 0. Show Batches */
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                                        <div className="glass-panel p-4 rounded-2xl flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><Building2 size={20} /></div>
+                                            <div><p className="text-2xl font-bold text-slate-900">{batchesPresent.length}</p><p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Batches</p></div>
+                                        </div>
+                                        <div className="glass-panel p-4 rounded-2xl flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center"><Users size={20} /></div>
+                                            <div><p className="text-2xl font-bold text-slate-900">{accessibleStudents.length}</p><p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Students</p></div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {batchesPresent.map(batch => (
+                                            <button key={batch} onClick={() => { setSelectedBatchView(batch); setSelectedDepartment(null); setSelectedClass(null); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
+                                                <div className="text-left">
+                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{batch !== 'Unassigned' ? `${batch} Batch` : 'Unassigned'}</h3>
+                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{batchMap[batch]?.length || 0}</span> students</p>
+                                                </div>
+                                                <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : !effectiveDepartment ? (
                                 /* 1. Show Departments */
                                 <>
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <button onClick={() => setSelectedBatchView(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
+                                        <h3 className="text-xl font-bold text-slate-900">{selectedBatchView !== 'Unassigned' ? `${selectedBatchView} Batch` : 'Unassigned'} Departments</h3>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                         <div className="glass-panel p-4 rounded-2xl flex items-center gap-4">
                                             <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Building2 size={20} /></div>
@@ -622,7 +667,7 @@ const ManageStudents = () => {
                                         </div>
                                         <div className="glass-panel p-4 rounded-2xl flex items-center gap-4">
                                             <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center"><Users size={20} /></div>
-                                            <div><p className="text-2xl font-bold text-slate-900">{accessibleStudents.length}</p><p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Students</p></div>
+                                            <div><p className="text-2xl font-bold text-slate-900">{studentsInBatch.length}</p><p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Batch Students</p></div>
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -644,7 +689,7 @@ const ManageStudents = () => {
                                         {(departments.length > 1 || (!isDeptRestricted && departments.length !== 1)) && (
                                             <button onClick={() => setSelectedDepartment(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         )}
-                                        <h3 className="text-xl font-bold text-slate-900">{effectiveDepartment} Department Classes</h3>
+                                        <h3 className="text-xl font-bold text-slate-900">{effectiveDepartment} Department Classes - {selectedBatchView !== 'Unassigned' ? `${selectedBatchView} Batch` : 'Unassigned'}</h3>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {(deptMap[effectiveDepartment] || []).map(cls => (
