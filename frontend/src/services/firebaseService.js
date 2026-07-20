@@ -91,16 +91,14 @@ const ALL_CLASSES = [
   'AIDS-A'
 ];
 
-// Fetch all students from all classes using collectionGroup
+// Fetch all students
 export const fetchStudents = async () => {
   try {
-    const membersGroup = collectionGroup(db, 'members');
-    const membersSnapshot = await getDocs(membersGroup);
-    return membersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      class: doc.ref.parent.parent.id
-    }));
+    const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+    const res = await fetch(`${API_BASE}/api/students`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.students || [];
   } catch (error) {
     console.error('Error fetching students:', error);
     return [];
@@ -131,44 +129,13 @@ export const fetchClasses = async () => {
 
 export const getStudentById = async (studentId, className = null) => {
   try {
-    // If className is provided, use it directly
-    if (className) {
-      const docRef = doc(db, 'students', className, 'members', studentId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() };
-      }
-    } else {
-      // Otherwise, use collectionGroup query to find the specific student
-      // Note: Assumes studentId is exactly the document ID
-      // To query by document ID in a collection group, we can use fieldpath documentId() if necessary,
-      // but in JS SDK we can just query the collection group if 'id' was a field, or fetch all if not indexed by id.
-      // However, we can't easily query by __name__ without knowing the path. Let's query if 'rollNo' or similar is unique,
-      // or we can just find them by getting the doc if we knew the path. 
-      // Since studentId is doc.id, we can just do a query on a unique field if possible, or fallback to fetching all members.
-      // Assuming 'rollNo' or 'email' is known? No, we only have studentId.
-      // To avoid fetching all, we can query by documentId (v9):
-      // import { documentId } from 'firebase/firestore'; 
-      // query(collectionGroup(db, 'members'), where(documentId(), '==', ...)) -> documentId in collectionGroup requires full path, so that won't work.
-      // Since we only have studentId and it's the doc id, we can just map over ALL_CLASSES using Promise.all which runs in parallel!
-      const searchPromises = ALL_CLASSES.map(async (cls) => {
-        const docRef = doc(db, 'students', cls, 'members', studentId);
-        try {
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            return { id: docSnap.id, ...docSnap.data(), class: cls };
-          }
-        } catch(e) {}
-        return null;
-      });
-      
-      const results = await Promise.all(searchPromises);
-      const found = results.find(res => res !== null);
-      if (found) return found;
-    }
-    return null;
+    const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+    const res = await fetch(`${API_BASE}/api/students`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.students || []).find(s => s.id === studentId) || null;
   } catch (error) {
-    console.error('Error fetching student:', error);
+    console.error('Error getting student:', error);
     return null;
   }
 };
@@ -251,11 +218,25 @@ export const fetchUsers = async () => {
 };
 
 export const subscribeToUsers = (callback) => {
-  const usersCollection = collection(db, 'users');
-  return onSnapshot(usersCollection, (snapshot) => {
-    const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    callback(users);
-  });
+  let isMounted = true;
+  const fetchUsers = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+      const res = await fetch(`${API_BASE}/api/users`);
+      if (res.ok) {
+        const data = await res.json();
+        if (isMounted) callback(data.users || []);
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  };
+  fetchUsers();
+  const interval = setInterval(fetchUsers, 15000);
+  return () => {
+    isMounted = false;
+    clearInterval(interval);
+  };
 };
 
 // ==================== EVENTS ====================
@@ -411,36 +392,32 @@ export const subscribeToEvents = (currentUser, callback) => {
 };
 
 export const subscribeToStudents = (currentUser, callback) => {
-  if (!currentUser) return () => {};
-  
-  const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
-
-  // If student, only subscribe to their specific class and document!
-  if (isStudent && currentUser.class) {
-    const className = String(currentUser.class).replace(/\s+/g, '-');
-    const studentDocRef = doc(db, 'students', className, 'members', currentUser.id);
-    
-    return onSnapshot(studentDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        callback([{ id: docSnap.id, ...docSnap.data(), class: className }]);
-      } else {
-        callback([]);
+  let isMounted = true;
+  const fetchStudents = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+      const res = await fetch(`${API_BASE}/api/students`);
+      if (res.ok) {
+        const data = await res.json();
+        if (isMounted) {
+          if (currentUser?.role === 'STUDENT_GENERAL' || currentUser?.role === 'STUDENT_ORGANIZER') {
+            const myStudent = data.students.find(s => s.id === currentUser.id);
+            callback(myStudent ? [myStudent] : []);
+          } else {
+            callback(data.students || []);
+          }
+        }
       }
-    });
-  }
-
-  // If not student (e.g., admin), use a single collectionGroup listener instead of 11 separate ones
-  const membersGroup = collectionGroup(db, 'members');
-  return onSnapshot(membersGroup, (snapshot) => {
-    const allStudents = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      class: doc.ref.parent.parent.id
-    }));
-    callback(allStudents);
-  }, (error) => {
-    console.error('Error subscribing to students collectionGroup:', error);
-  });
+    } catch (err) {
+      console.error('Error fetching students:', err);
+    }
+  };
+  fetchStudents();
+  const interval = setInterval(fetchStudents, 15000);
+  return () => {
+    isMounted = false;
+    clearInterval(interval);
+  };
 };
 
 // ==========================================
