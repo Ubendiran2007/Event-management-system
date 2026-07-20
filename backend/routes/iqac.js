@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, getDocs, doc, getDoc, updateDoc, setDoc, deleteDoc, query, where, db } = require('../firebaseClientWrapper');
+const { collection, getDocs, doc, getDoc, updateDoc, setDoc, deleteDoc, query, where, db, writeBatch } = require('../firebaseClientWrapper');
 
 const checkDb = (res) => {
   if (!db) {
@@ -291,19 +291,21 @@ router.post('/:eventId', async (req, res) => {
 
     // Update odRequest documents with attendanceStatus so frontend knows if student attended
     if (studentAttendanceList && studentAttendanceList.length > 0) {
-      const BATCH_SIZE = 50;
+      const BATCH_SIZE = 500;
       const validAttendances = studentAttendanceList.filter(att => att.requestId && typeof att.requestId === 'string');
       for (let i = 0; i < validAttendances.length; i += BATCH_SIZE) {
-        const batch = validAttendances.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async (att) => {
-          try {
-            await updateDoc(doc(db, 'odRequests', att.requestId), {
-              attendanceStatus: att.attendanceStatus
-            });
-          } catch(e) {
-            console.error('Failed to update odRequest attendance:', e);
-          }
-        }));
+        const batchArr = validAttendances.slice(i, i + BATCH_SIZE);
+        const wBatch = writeBatch(db);
+        batchArr.forEach(att => {
+          wBatch.update(doc(db, 'odRequests', att.requestId), {
+            attendanceStatus: att.attendanceStatus
+          });
+        });
+        try {
+          await wBatch.commit();
+        } catch(e) {
+          console.error('Failed to commit odRequest attendance batch:', e);
+        }
       }
     }
 

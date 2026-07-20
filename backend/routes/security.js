@@ -1,5 +1,5 @@
 const express = require('express');
-const { collection, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, db } = require('../firebaseClientWrapper');
+const { collection, collectionGroup, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, db } = require('../firebaseClientWrapper');
 const { requireAuth } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');
@@ -67,34 +67,28 @@ async function findUserByIdentifier(identifier) {
   }
   
   // 2. Check students
-  const classes = ['CSE-B', 'CSE-D', 'ECE-A', 'ECE-B', 'CCE-A', 'CSBS-A', 'MECH-A', 'CYBER-A', 'EEE-A', 'AIML-A', 'AIDS-A'];
-  const searchPromises = classes.map(async (className) => {
-    const memQueryEmail = query(collection(db, 'students', className, 'members'), where('email', '==', idLower), limit(1));
-    const memQueryRoll = query(collection(db, 'students', className, 'members'), where('rollNo', '==', idUpper), limit(1));
-    
-    const [memSnapEmail, memSnapRoll] = await Promise.all([
-      getDocs(memQueryEmail),
-      getDocs(memQueryRoll)
-    ]);
-    
-    if (!memSnapEmail.empty) {
-      const docSnap = memSnapEmail.docs[0];
-      const data = docSnap.data();
-      return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
-    }
-    
-    if (!memSnapRoll.empty) {
-      const docSnap = memSnapRoll.docs[0];
-      const data = docSnap.data();
-      return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
-    }
-    
-    return null;
-  });
+  const membersGroup = collectionGroup(db, 'members');
+  const memQueryEmail = query(membersGroup, where('email', '==', idLower), limit(1));
+  const memQueryRoll = query(membersGroup, where('rollNo', '==', idUpper), limit(1));
   
-  const results = await Promise.all(searchPromises);
-  const found = results.find(res => res !== null);
-  if (found) return found;
+  const [memSnapEmail, memSnapRoll] = await Promise.all([
+    getDocs(memQueryEmail),
+    getDocs(memQueryRoll)
+  ]);
+  
+  if (!memSnapEmail.empty) {
+    const docSnap = memSnapEmail.docs[0];
+    const data = docSnap.data();
+    const className = docSnap.ref.parent.parent.id;
+    return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
+  }
+  
+  if (!memSnapRoll.empty) {
+    const docSnap = memSnapRoll.docs[0];
+    const data = docSnap.data();
+    const className = docSnap.ref.parent.parent.id;
+    return { userObj: { id: docSnap.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL', department: data.department || 'CSE' }, storedPassword: data.password, type: 'student', ref: doc(db, 'students', className, 'members', docSnap.id) };
+  }
 
   return null;
 }

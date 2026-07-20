@@ -41,6 +41,10 @@ function collection(dbRef, col, ...rest) {
   return ref;
 }
 
+function collectionGroup(dbRef, col) {
+  return dbAdmin.collectionGroup(col);
+}
+
 const wrapSnapshot = (snap) => {
   if (!snap) return snap;
   // If it's a QuerySnapshot (has docs array)
@@ -141,6 +145,7 @@ module.exports = {
   db,
   doc,
   collection,
+  collectionGroup,
   getDoc,
   getDocs,
   addDoc,

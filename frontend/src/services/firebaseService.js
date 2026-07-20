@@ -10,6 +10,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -90,20 +91,16 @@ const ALL_CLASSES = [
   'AIDS-A'
 ];
 
-// Fetch all students from all classes: students/{className}/members/{studentId}
+// Fetch all students from all classes using collectionGroup
 export const fetchStudents = async () => {
   try {
-    const fetchPromises = ALL_CLASSES.map(async (className) => {
-      const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
-      const classStudents = [];
-      membersSnapshot.docs.forEach(doc => {
-        classStudents.push({ id: doc.id, ...doc.data(), class: className });
-      });
-      return classStudents;
-    });
-    
-    const results = await Promise.all(fetchPromises);
-    return results.flat();
+    const membersGroup = collectionGroup(db, 'members');
+    const membersSnapshot = await getDocs(membersGroup);
+    return membersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      class: doc.ref.parent.parent.id
+    }));
   } catch (error) {
     console.error('Error fetching students:', error);
     return [];
@@ -142,16 +139,26 @@ export const getStudentById = async (studentId, className = null) => {
         return { id: docSnap.id, ...docSnap.data() };
       }
     } else {
-      // Otherwise, search through all classes
-      const classesSnapshot = await getDocs(collection(db, 'students'));
-      
-      const searchPromises = classesSnapshot.docs.map(async (classDoc) => {
-        const className = classDoc.id;
-        const docRef = doc(db, 'students', className, 'members', studentId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          return { id: docSnap.id, ...docSnap.data(), class: className };
-        }
+      // Otherwise, use collectionGroup query to find the specific student
+      // Note: Assumes studentId is exactly the document ID
+      // To query by document ID in a collection group, we can use fieldpath documentId() if necessary,
+      // but in JS SDK we can just query the collection group if 'id' was a field, or fetch all if not indexed by id.
+      // However, we can't easily query by __name__ without knowing the path. Let's query if 'rollNo' or similar is unique,
+      // or we can just find them by getting the doc if we knew the path. 
+      // Since studentId is doc.id, we can just do a query on a unique field if possible, or fallback to fetching all members.
+      // Assuming 'rollNo' or 'email' is known? No, we only have studentId.
+      // To avoid fetching all, we can query by documentId (v9):
+      // import { documentId } from 'firebase/firestore'; 
+      // query(collectionGroup(db, 'members'), where(documentId(), '==', ...)) -> documentId in collectionGroup requires full path, so that won't work.
+      // Since we only have studentId and it's the doc id, we can just map over ALL_CLASSES using Promise.all which runs in parallel!
+      const searchPromises = ALL_CLASSES.map(async (cls) => {
+        const docRef = doc(db, 'students', cls, 'members', studentId);
+        try {
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            return { id: docSnap.id, ...docSnap.data(), class: cls };
+          }
+        } catch(e) {}
         return null;
       });
       
@@ -181,7 +188,28 @@ export const updateStudentRole = async (studentId, role, className, isApprovedOr
 export const authenticateStudent = async (username, password) => {
   try {
     console.log('Authenticating student:', username);
+    // Optimized: using collectionGroup query for the specific username instead of reading all students
+    const membersGroup = collectionGroup(db, 'members');
+    const q = query(membersGroup, where('username', '==', username), limit(1));
+    const snapshot = await getDocs(q);
+    
+    // If no exact match (perhaps due to case), we fall back to parallel class-level queries 
+    // to preserve existing case-insensitive behavior if the query doesn't catch it
+    if (!snapshot.empty) {
+      for (const memberDoc of snapshot.docs) {
+        const student = memberDoc.data();
+        if (student.password?.toUpperCase() === password.toUpperCase()) {
+          const className = memberDoc.ref.parent.parent.id;
+          console.log('Student authenticated successfully via collectionGroup:', student.name);
+          return { id: memberDoc.id, ...student, className };
+        }
+      }
+    }
+
+    // Fallback: Case-insensitive search across all classes in parallel if precise query fails
     const authPromises = ALL_CLASSES.map(async (className) => {
+      // We still do a query to avoid fetching everyone if we can, but we can't do lowercase easily in Firestore.
+      // So we fetch the class, but in parallel.
       const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
       for (const memberDoc of membersSnapshot.docs) {
         const student = memberDoc.data();
@@ -198,7 +226,7 @@ export const authenticateStudent = async (username, password) => {
     const results = await Promise.all(authPromises);
     const found = results.find(res => res !== null);
     if (found) {
-      console.log('Student authenticated successfully:', found.name);
+      console.log('Student authenticated successfully (fallback):', found.name);
       return found;
     }
     console.log('No matching student found');
@@ -401,42 +429,18 @@ export const subscribeToStudents = (currentUser, callback) => {
     });
   }
 
-  // If not student (e.g., admin), unfortunately we still need to load all classes to run the app
-  const unsubscribers = [];
-  const classDataCache = new Map();
-  let pendingCallback = false;
-
-  ALL_CLASSES.forEach(className => {
-    classDataCache.set(className, []);
-    
-    const membersCollection = collection(db, 'students', className, 'members');
-    const unsubscribe = onSnapshot(membersCollection, (snapshot) => {
-      const classStudents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), class: className }));
-      classDataCache.set(className, classStudents);
-      
-      if (pendingCallback) return;
-      pendingCallback = true;
-      setTimeout(() => {
-        const allStudents = Array.from(classDataCache.values()).flat();
-        callback(allStudents);
-        pendingCallback = false;
-      }, 100);
-    }, (error) => {
-      console.error(`Error subscribing to ${className} students:`, error);
-      if (pendingCallback) return;
-      pendingCallback = true;
-      setTimeout(() => {
-        const allStudents = Array.from(classDataCache.values()).flat();
-        callback(allStudents);
-        pendingCallback = false;
-      }, 100);
-    });
-    unsubscribers.push(unsubscribe);
+  // If not student (e.g., admin), use a single collectionGroup listener instead of 11 separate ones
+  const membersGroup = collectionGroup(db, 'members');
+  return onSnapshot(membersGroup, (snapshot) => {
+    const allStudents = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      class: doc.ref.parent.parent.id
+    }));
+    callback(allStudents);
+  }, (error) => {
+    console.error('Error subscribing to students collectionGroup:', error);
   });
-
-  return () => {
-    unsubscribers.forEach(unsub => unsub());
-  };
 };
 
 // ==========================================

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, getDocs, doc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
+const { collection, collectionGroup, getDocs, doc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 // Protect all Manage Students APIs
@@ -44,20 +44,25 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const classesToFetch = classFilter ? [classFilter] : CLASSES;
-    const fetchPromises = classesToFetch.map(async (className) => {
-      const snapshot = await getDocs(collection(db, 'students', className, 'members'));
-      const classStudents = [];
+    let allStudents = [];
+    
+    if (classFilter) {
+      const snapshot = await getDocs(collection(db, 'students', classFilter, 'members'));
       snapshot.docs.forEach(d => {
         const data = d.data();
-        delete data.password; // never expose passwords
-        classStudents.push({ id: d.id, ...data, class: className });
+        delete data.password;
+        allStudents.push({ id: d.id, ...data, class: classFilter });
       });
-      return classStudents;
-    });
-
-    const results = await Promise.all(fetchPromises);
-    const allStudents = results.flat();
+    } else {
+      const membersGroup = collectionGroup(db, 'members');
+      const snapshot = await getDocs(membersGroup);
+      snapshot.docs.forEach(d => {
+        const data = d.data();
+        delete data.password;
+        const className = d.ref.parent.parent.id;
+        allStudents.push({ id: d.id, ...data, class: className });
+      });
+    }
 
     res.json({ success: true, students: allStudents, total: allStudents.length });
   } catch (err) {
@@ -109,14 +114,14 @@ router.post('/bulk', async (req, res) => {
     const existingRollNos = new Set();
     
     // We must fetch from all class collections.
-    for (const className of CLASSES) {
-      const snap = await getDocs(collection(db, 'students', className, 'members'));
-      snap.docs.forEach(d => {
-        const data = d.data();
-        if (data.rollNo) existingRollNos.add(data.rollNo.toUpperCase());
-        if (data.email) existingEmails.add(data.email.toLowerCase());
-      });
-    }
+    // Optimized: Use collectionGroup to fetch all members efficiently in one query
+    const membersGroup = collectionGroup(db, 'members');
+    const snap = await getDocs(membersGroup);
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.rollNo) existingRollNos.add(data.rollNo.toUpperCase());
+      if (data.email) existingEmails.add(data.email.toLowerCase());
+    });
 
     const validToImport = [];
     const dbDuplicates = [];

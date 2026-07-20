@@ -263,19 +263,25 @@ router.post('/holidays/import', requireAuth, requireRole(['IQAC_TEAM']), async (
     let duplicates = 0;
     let invalid = 0;
     
+    // Optimized: Fetch all existing holidays once to build a duplicate checking set
+    const existingHolidaysSnap = await getDocs(collection(db, 'holidays'));
+    const existingDates = new Set();
+    existingHolidaysSnap.docs.forEach(doc => {
+      existingDates.add(doc.data().date);
+    });
+    
     for (const record of records) {
       if (!record.name || !record.date || !record.type) {
         invalid++;
         continue;
       }
       
-      const q = query(collection(db, 'holidays'), where('date', '==', record.date));
-      const snap = await getDocs(q);
-      
-      if (!snap.empty) {
+      if (existingDates.has(record.date)) {
         duplicates++;
         continue;
       }
+
+      existingDates.add(record.date); // Prevent duplicates within the import payload itself
 
       const holidayData = {
         name: record.name,

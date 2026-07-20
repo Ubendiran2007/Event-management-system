@@ -580,15 +580,27 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
     if (finalStatus === 'CANCELLED') {
       const odQuery = query(collection(db, 'odRequests'), where('eventId', '==', req.params.id));
       const odSnap = await getDocs(odQuery);
-      const updateODPromises = odSnap.docs.map(d => {
-        return updateDoc(d.ref, {
-          odStatus: 'CANCELLED',
-          status: 'OD_CANCELLED',
-          updatedAt: new Date().toISOString(),
-          reason: 'Event Cancelled'
-        });
-      });
-      await Promise.all(updateODPromises);
+      if (!odSnap.empty) {
+        let odBatch = writeBatch(db);
+        let count = 0;
+        for (const d of odSnap.docs) {
+          odBatch.update(d.ref, {
+            odStatus: 'CANCELLED',
+            status: 'OD_CANCELLED',
+            updatedAt: new Date().toISOString(),
+            reason: 'Event Cancelled'
+          });
+          count++;
+          if (count === 500) {
+            await odBatch.commit();
+            odBatch = writeBatch(db);
+            count = 0;
+          }
+        }
+        if (count > 0) {
+          await odBatch.commit();
+        }
+      }
     }
 
     // ── Background Notifications (centralized handler) ──────────────────────

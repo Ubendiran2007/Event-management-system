@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -422,40 +423,25 @@ router.post('/login', async (req, res) => {
 
     // ── 3. Fall back to students/{className}/members structure ─────────────
     if (!foundUserObj) {
-      const classes = [
-        'CSE-B', 'CSE-D', 
-        'ECE-A', 'ECE-B', 
-        'CCE-A', 
-        'CSBS-A', 
-        'MECH-A', 
-        'CYBER-A', 
-        'EEE-A', 
-        'AIML-A', 
-        'AIDS-A'
-      ];
 
-      const searchPromises = classes.map(async (className) => {
-        const lowerEmail = email.toLowerCase();
-        const membersQuery = query(collection(db, 'students', className, 'members'), where('username', '==', lowerEmail), limit(1));
-        const emailQuery = query(collection(db, 'students', className, 'members'), where('email', '==', lowerEmail), limit(1));
-        
-        const [membersSnapshot, emailSnapshot] = await Promise.all([
-          getDocs(membersQuery),
-          getDocs(emailQuery)
-        ]);
+      const lowerEmail = email.toLowerCase();
+      const membersGroup = collectionGroup(db, 'members');
+      
+      const membersQuery = query(membersGroup, where('username', '==', lowerEmail), limit(1));
+      const emailQuery = query(membersGroup, where('email', '==', lowerEmail), limit(1));
+      
+      const [membersSnapshot, emailSnapshot] = await Promise.all([
+        getDocs(membersQuery),
+        getDocs(emailQuery)
+      ]);
 
-        if (!membersSnapshot.empty) {
-          return { memberDoc: membersSnapshot.docs[0], className };
-        }
-        if (!emailSnapshot.empty) {
-          return { memberDoc: emailSnapshot.docs[0], className };
-        }
-        
-        return null;
-      });
+      let foundResult = null;
 
-      const results = await Promise.all(searchPromises);
-      const foundResult = results.find(res => res !== null);
+      if (!membersSnapshot.empty) {
+        foundResult = { memberDoc: membersSnapshot.docs[0], className: membersSnapshot.docs[0].ref.parent.parent.id };
+      } else if (!emailSnapshot.empty) {
+        foundResult = { memberDoc: emailSnapshot.docs[0], className: emailSnapshot.docs[0].ref.parent.parent.id };
+      }
 
       if (foundResult) {
         const { memberDoc, className } = foundResult;

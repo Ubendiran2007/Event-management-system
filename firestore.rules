@@ -57,7 +57,14 @@ service cloud.firestore {
     }
     match /eventFeedback/{docId} {
       allow read: if isAuthenticated();
+      allow read: if isAuthenticated();
       allow write: if false;
+    }
+    
+    // Allow collectionGroup queries for 'members' across all classes
+    // Secured: Only authenticated users (admins, faculty, logged-in students) can read it.
+    match /{path=**}/members/{memberId} {
+      allow read: if isAuthenticated();
     }
     
     // 5. Default deny for everything else
