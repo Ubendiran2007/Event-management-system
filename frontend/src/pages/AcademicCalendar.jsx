@@ -56,7 +56,7 @@ const AcademicCalendar = () => {
       if (d.date === dateStr) dayEvents.push({ type: 'dept', title: `[${d.department}] ${d.title}`, color: 'bg-purple-100 text-purple-800 border-purple-200' });
     });
     approvedEvents.forEach(e => {
-      if (dateStr >= e.startDate && dateStr <= (e.endDate || e.startDate)) dayEvents.push({ type: 'event', title: e.eventName, color: 'bg-blue-100 text-blue-800 border-blue-200' });
+      if (dateStr >= e.startDate && dateStr <= (e.endDate || e.startDate)) dayEvents.push({ type: 'event', title: e.title || e.eventName, color: 'bg-blue-100 text-blue-800 border-blue-200' });
     });
 
     return dayEvents;
