@@ -560,7 +560,7 @@ const ManageStudents = () => {
                             <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
                                 {isIQAC && activeTab === 'students' && (
                                     <>
-                                        <button onClick={() => { setEditingStudent(null); setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '' }); setShowStudentModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
+                                        <button onClick={() => { setEditingStudent(null); setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '', academicBatch: '' }); setShowStudentModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
                                             <Plus size={16} /> Add Student
                                         </button>
                                         <button onClick={() => { setImportType('students'); setImportStep('upload'); setBulkValidationReport({ total: 0, valid: 0, invalid: 0, fileDuplicates: 0 }); setValidRecords([]); setInvalidRecords([]); setImportSummary(null); setShowBulkModal(true); }} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-2">
@@ -947,10 +947,18 @@ const ManageStudents = () => {
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Email *</label><input required type="email" value={studentForm.email} onChange={e=>setStudentForm({...studentForm, email: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Phone *</label><input required value={studentForm.phone} onChange={e=>setStudentForm({...studentForm, phone: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                             </div>
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-4 gap-4">
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Class *</label><input required placeholder="e.g. CSE-B" value={studentForm.class} onChange={e=>setStudentForm({...studentForm, class: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Section *</label><input required value={studentForm.section} onChange={e=>setStudentForm({...studentForm, section: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Department *</label><input required value={studentForm.department} onChange={e=>setStudentForm({...studentForm, department: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 mb-1">Batch *</label>
+                                    <select required value={studentForm.academicBatch} onChange={e=>setStudentForm({...studentForm, academicBatch: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent">
+                                        <option value="" disabled>Select</option>
+                                        {academicBatches.map(b => (
+                                            <option key={b.id} value={b.name}>{b.name || b.id}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                             
                             <div className="pt-4 flex justify-end gap-3 sticky bottom-0 bg-white">
