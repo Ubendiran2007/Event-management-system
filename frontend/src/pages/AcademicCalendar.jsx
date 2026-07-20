@@ -79,7 +79,7 @@ const AcademicCalendar = () => {
 
   return (
     <Layout>
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 h-full flex flex-col">
+    <div className="w-full mx-auto p-4 sm:p-6 lg:p-8 h-full flex flex-col">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 sm:mb-8 gap-4 shrink-0">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
