@@ -24,20 +24,21 @@ export const AnalyticsProvider = ({ children }) => {
     status: ''
   });
 
-  const metrics = useMemo(() => {
-    if (!currentUser) return null;
-
-    const role = currentUser.role;
-    const userDepartment = currentUser.department;
-
-    // Apply global filters to events
-    const filteredEvents = events.filter(e => {
+  const filteredEvents = useMemo(() => {
+    return events.filter(e => {
        if (filters.academicYear && e.academicYear !== filters.academicYear) return false;
        if (filters.department && e.department !== filters.department) return false;
        if (filters.category && e.eventType !== filters.category) return false;
        if (filters.status && e.status !== filters.status) return false;
        return true;
     });
+  }, [events, filters]);
+
+  const metrics = useMemo(() => {
+    if (!currentUser) return null;
+
+    const role = currentUser.role;
+    const userDepartment = currentUser.department;
 
     // Common Computations
     const approvedEvents = filteredEvents.filter(e => e.status === EventStatus.APPROVED);
@@ -162,7 +163,7 @@ export const AnalyticsProvider = ({ children }) => {
     }
 
     return data;
-  }, [events, students, staffUsers, odRequests, currentUser, academicYears, semesters, holidays, exams, departmentCalendar, filters]);
+  }, [filteredEvents, students, staffUsers, odRequests, currentUser, academicYears, semesters, holidays, exams, departmentCalendar]);
 
   return (
     <AnalyticsContext.Provider value={{ metrics, filters, setFilters, filteredEvents }}>
