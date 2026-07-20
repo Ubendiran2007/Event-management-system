@@ -301,15 +301,11 @@ const IQACManagementTab = () => {
   return (
     <div className="flex flex-col gap-6">
       {/* Header & Filter */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white border border-slate-200 rounded-xl p-4 shadow-sm gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Institution Setup</h2>
-          <p className="text-slate-500 text-sm mt-1">Configure global academic settings and calendars.</p>
-        </div>
+      <div className="flex justify-end mb-2">
         <select 
           value={subTab} 
           onChange={(e) => { setSubTab(e.target.value); setForm({}); setImportData(null); }} 
-          className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-700 bg-slate-50 focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-auto min-w-[200px]"
+          className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none min-w-[250px] shadow-sm"
         >
           <option value="years">Academic Years</option>
           <option value="semesters">Semesters</option>
