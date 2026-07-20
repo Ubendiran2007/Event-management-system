@@ -72,31 +72,35 @@ const LoadingFallback = () => (
   </div>
 );
 
+import ErrorBoundary from './components/ErrorBoundary';
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppProvider>
-        <CalendarProvider>
-          <AnalyticsProvider>
-            <NotificationProvider>
-              <Suspense fallback={<LoadingFallback />}>
-                <Routes>
-                  <Route path="/" element={<Login />} />
-                  <Route path="/login" element={<Login />} />
-                  
-                  {/* Generate nested routes for every role path */}
-                  {ROLE_PATHS.map((rolePath) => (
-                    <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
-                  ))}
-                  
-                  {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
-                  <Route path="*" element={<FallbackRoute />} />
-                </Routes>
-              </Suspense>
-            </NotificationProvider>
-          </AnalyticsProvider>
-        </CalendarProvider>
-      </AppProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppProvider>
+          <CalendarProvider>
+            <AnalyticsProvider>
+              <NotificationProvider>
+                <Suspense fallback={<LoadingFallback />}>
+                  <Routes>
+                    <Route path="/" element={<Login />} />
+                    <Route path="/login" element={<Login />} />
+                    
+                    {/* Generate nested routes for every role path */}
+                    {ROLE_PATHS.map((rolePath) => (
+                      <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
+                    ))}
+                    
+                    {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
+                    <Route path="*" element={<FallbackRoute />} />
+                  </Routes>
+                </Suspense>
+              </NotificationProvider>
+            </AnalyticsProvider>
+          </CalendarProvider>
+        </AppProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
