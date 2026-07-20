@@ -410,9 +410,17 @@ export const subscribeToStudents = (currentUser, callback) => {
             callback(data.students || []);
           }
         }
+      } else {
+        if (res.status === 401) {
+          localStorage.removeItem('sessionToken');
+          localStorage.removeItem('currentUser');
+          window.location.href = '/login';
+        }
+        if (isMounted) callback([]);
       }
     } catch (err) {
       console.error('Error fetching students:', err);
+      if (isMounted) callback([]);
     }
   };
   fetchStudents();
@@ -436,9 +444,17 @@ export const subscribeToUsers = (callback) => {
       if (res.ok) {
         const data = await res.json();
         if (isMounted) callback(data.users || []);
+      } else {
+        if (res.status === 401) {
+          localStorage.removeItem('sessionToken');
+          localStorage.removeItem('currentUser');
+          window.location.href = '/login';
+        }
+        if (isMounted) callback([]);
       }
     } catch (err) {
       console.error('Error fetching users:', err);
+      if (isMounted) callback([]);
     }
   };
   fetchUsers();
