@@ -723,7 +723,7 @@ const ManageStudents = () => {
                             ) : (
                                 /* 3. Show Students for Selected Class */
                                 <>
-                                    <div className="sticky top-0 z-10 bg-[#f8fafc] -mx-6 px-6 pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4 shadow-sm">
+                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <div className="flex flex-col">
                                             <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
@@ -876,7 +876,7 @@ const ManageStudents = () => {
                             ) : (
                                 /* Level 2: Staff List (Faculty in Dept OR Incharges) */
                                 <>
-                                    <div className="sticky top-0 z-10 bg-[#f8fafc] -mx-6 px-6 pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4 shadow-sm">
+                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
                                         <button onClick={() => staffCategory === 'FACULTY' ? setStaffDepartment(null) : setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <h3 className="text-xl font-bold text-slate-900">{staffCategory === 'FACULTY' ? `${staffDepartment} Faculty` : 'Incharges'}</h3>
                                         <div className="relative flex-1 max-w-md ml-auto">
