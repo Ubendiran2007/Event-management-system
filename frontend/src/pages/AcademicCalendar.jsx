@@ -612,16 +612,8 @@ const IQACManagementTab = () => {
         {subTab === 'workingDays' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Global Working Days</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <ImportSection 
-                title="Working Days"
-                columnsInfo={<><strong>Day</strong> (e.g. Monday), <strong>IsWorking</strong> (TRUE/FALSE)</>}
-                exampleData={[{ Day: 'Monday', IsWorking: 'TRUE' }, { Day: 'Sunday', IsWorking: 'FALSE' }]}
-                endpoint="working-days"
-                mappingFn={row => (row.Day || row.day) ? { day: row.Day || row.day, isWorking: row.IsWorking || row.isWorking } : null}
-              />
-              <div className="lg:col-span-2 space-y-6">
-                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="space-y-6">
+              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-6">
                   {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
                     const isWorking = workingDays[day] !== false; // Default true if undefined
                     return (
@@ -640,7 +632,6 @@ const IQACManagementTab = () => {
                   })}
                 </div>
                 <p className="text-xs text-slate-500">Changes to working days are instantly saved globally.</p>
-              </div>
             </div>
           </div>
         )}
