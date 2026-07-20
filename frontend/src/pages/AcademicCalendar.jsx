@@ -79,8 +79,8 @@ const AcademicCalendar = () => {
 
   return (
     <Layout>
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 h-full flex flex-col">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 sm:mb-8 gap-4 shrink-0">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
             <CalendarIcon className="text-indigo-600" size={32} />
@@ -113,8 +113,8 @@ const AcademicCalendar = () => {
       </div>
 
       {activeTab === 'calendar' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center bg-slate-50 gap-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex-1 flex flex-col min-h-0">
+          <div className="p-4 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center bg-slate-50 gap-4 shrink-0">
             <div className="flex items-center gap-4">
               <button onClick={prevMonth} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><ChevronLeft size={20}/></button>
               <h2 className="text-xl font-bold text-slate-800 w-48 text-center">
@@ -130,7 +130,7 @@ const AcademicCalendar = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+          <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50 shrink-0">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
               <div key={day} className="p-3 text-center text-xs sm:text-sm font-bold text-slate-500 border-r border-slate-200 last:border-0 uppercase tracking-wider">
                 {day}
@@ -138,7 +138,7 @@ const AcademicCalendar = () => {
             ))}
           </div>
           
-          <div className="grid grid-cols-7 auto-rows-[80px] sm:auto-rows-[120px]">
+          <div className="grid grid-cols-7 flex-1" style={{ gridTemplateRows: `repeat(${calendarCells.length / 7}, minmax(0, 1fr))` }}>
             {calendarCells.map((date, idx) => {
               const dayEvents = getDayEvents(date);
               const isSem = checkIsSemester(date);
