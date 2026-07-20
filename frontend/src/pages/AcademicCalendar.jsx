@@ -182,6 +182,7 @@ const IQACManagementTab = () => {
 
   const [form, setForm] = useState({});
   const [loadingAction, setLoadingAction] = useState(false);
+  const [holidayFileData, setHolidayFileData] = useState(null);
   const token = localStorage.getItem('sessionToken');
   const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
 
@@ -209,6 +210,51 @@ const IQACManagementTab = () => {
       <input type={type} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form[field] || ''} onChange={e => setForm({...form, [field]: e.target.value})} required={required} />
     </div>
   );
+
+  const handleHolidayFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      const mapped = data.map(row => ({
+        name: row.Name || row.name || row.Title || row.title,
+        date: row.Date || row.date,
+        type: row.Type || row.type || 'College Holiday'
+      })).filter(row => row.name && row.date);
+      
+      setHolidayFileData(mapped);
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleHolidayImport = async () => {
+    if (!holidayFileData || holidayFileData.length === 0) return;
+    setLoadingAction(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/academic-calendar/holidays/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ records: holidayFileData })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Successfully imported ${data.data.imported} records. (Skipped ${data.data.duplicates} duplicates, ${data.data.invalid} invalid)`);
+        setHolidayFileData(null);
+      } else {
+        alert(data.message || 'Import failed');
+      }
+    } catch (err) {
+      alert('Network error');
+    } finally {
+      setLoadingAction(false);
+    }
+  };
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
@@ -327,46 +373,96 @@ const IQACManagementTab = () => {
         {subTab === 'holidays' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">College Holidays</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <Input label="Name" type="text" field="name" />
-              <Input label="Date" type="date" field="date" />
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 uppercase">Type</label>
-                <select className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form.type || ''} onChange={e => setForm({...form, type: e.target.value})}>
-                  <option value="">Select...</option>
-                  <option value="National Holiday">National Holiday</option>
-                  <option value="College Holiday">College Holiday</option>
-                  <option value="Festival Holiday">Festival Holiday</option>
-                  <option value="Local Holiday">Local Holiday</option>
-                </select>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Import Section */}
+              <div className="lg:col-span-1 space-y-4">
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl h-full">
+                  <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
+                  <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Name</strong>, <strong>Date</strong> (YYYY-MM-DD), and <strong>Type</strong>.</p>
+                  
+                  <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                    <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
+                      Example Format
+                    </div>
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold border-r border-slate-200">Name</th>
+                          <th className="px-3 py-2 font-semibold border-r border-slate-200">Date</th>
+                          <th className="px-3 py-2 font-semibold">Type</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-slate-600">
+                        <tr className="border-b border-slate-100">
+                          <td className="px-3 py-2 border-r border-slate-100">Diwali</td>
+                          <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-11-04</td>
+                          <td className="px-3 py-2 text-indigo-600 font-medium">Festival Holiday</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <input type="file" accept=".xlsx, .xls, .csv" onChange={handleHolidayFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                  
+                  {holidayFileData && (
+                    <div className="mt-6 space-y-4">
+                      <div className="bg-white p-3 rounded border border-slate-200 text-sm font-medium">
+                        Found {holidayFileData.length} valid rows to import.
+                      </div>
+                      <button onClick={handleHolidayImport} disabled={loadingAction} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors">
+                        {loadingAction ? 'Importing...' : 'Confirm Import'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <button disabled={loadingAction} onClick={() => handleApi('holidays', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
-                Add Holiday
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b-2 border-slate-200 text-sm font-bold text-slate-600">
-                    <th className="py-3 px-4">Name</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Type</th>
-                    <th className="py-3 px-4 text-right">Delete</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {holidays.map(h => (
-                    <tr key={h.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
-                      <td className="py-3 px-4">{h.name}</td>
-                      <td className="py-3 px-4">{h.date}</td>
-                      <td className="py-3 px-4"><span className="bg-red-50 text-red-700 px-2 py-1 rounded-md text-xs">{h.type}</span></td>
-                      <td className="py-3 px-4 text-right">
-                        <button onClick={() => handleApi(`holidays/${h.id}`, 'DELETE')} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+              <div className="lg:col-span-2 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <Input label="Name" type="text" field="name" />
+                  <Input label="Date" type="date" field="date" />
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase">Type</label>
+                    <select className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form.type || ''} onChange={e => setForm({...form, type: e.target.value})}>
+                      <option value="">Select...</option>
+                      <option value="National Holiday">National Holiday</option>
+                      <option value="College Holiday">College Holiday</option>
+                      <option value="Festival Holiday">Festival Holiday</option>
+                      <option value="Local Holiday">Local Holiday</option>
+                    </select>
+                  </div>
+                  <button disabled={loadingAction} onClick={() => handleApi('holidays', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
+                    Add Holiday
+                  </button>
+                </div>
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-sm font-bold text-slate-600">
+                        <th className="py-3 px-4">Name</th>
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-4">Type</th>
+                        <th className="py-3 px-4 text-right">Delete</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {holidays.length === 0 ? (
+                        <tr><td colSpan="4" className="text-center py-8 text-slate-500 text-sm">No holidays found.</td></tr>
+                      ) : holidays.map(h => (
+                        <tr key={h.id} className="border-b border-slate-100 hover:bg-slate-50 text-sm font-medium">
+                          <td className="py-3 px-4">{h.name}</td>
+                          <td className="py-3 px-4">{h.date}</td>
+                          <td className="py-3 px-4"><span className="bg-red-50 text-red-700 px-2 py-1 rounded-md text-xs">{h.type}</span></td>
+                          <td className="py-3 px-4 text-right">
+                            <button onClick={() => handleApi(`holidays/${h.id}`, 'DELETE')} className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50"><Trash2 size={16}/></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         )}

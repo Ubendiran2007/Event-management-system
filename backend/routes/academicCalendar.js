@@ -251,6 +251,56 @@ router.post('/holidays', requireAuth, requireRole(['IQAC_TEAM']), async (req, re
   }
 });
 
+// Excel Import for Holidays
+router.post('/holidays/import', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+  if (checkDb(res)) return;
+  try {
+    const { records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ success: false, message: 'Invalid records payload.' });
+
+    const batch = writeBatch(db);
+    const importedIds = [];
+    let duplicates = 0;
+    let invalid = 0;
+    
+    for (const record of records) {
+      if (!record.name || !record.date || !record.type) {
+        invalid++;
+        continue;
+      }
+      
+      const q = query(collection(db, 'holidays'), where('date', '==', record.date));
+      const snap = await getDocs(q);
+      
+      if (!snap.empty) {
+        duplicates++;
+        continue;
+      }
+
+      const holidayData = {
+        name: record.name,
+        type: record.type,
+        date: record.date,
+        createdAt: new Date().toISOString()
+      };
+      
+      const docRef = doc(collection(db, 'holidays'));
+      batch.set(docRef, holidayData);
+      importedIds.push(docRef.id);
+    }
+
+    if (importedIds.length > 0) {
+      await batch.commit();
+      logCalendarAction('IMPORT_HOLIDAYS', req.user, 'Bulk Import Holidays', { importedCount: importedIds.length, duplicates, invalid });
+    }
+
+    res.json({ success: true, data: { imported: importedIds.length, duplicates, invalid } });
+  } catch (error) {
+    console.error('Error importing holidays:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 router.put('/holidays/:id', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
   if (checkDb(res)) return;
   try {
