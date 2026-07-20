@@ -1,16 +1,7 @@
-const {
-  collection,
-  getDocs,
-  query,
-  where,
-  updateDoc,
-  doc,
-} = require('../firebaseClientWrapper');
-
+const { dbAdmin } = require('../firebaseAdmin');
+const { updateDoc, doc } = require('../firebaseClientWrapper');
 const { sendEventStatusNotification } = require('./emailService');
 
-// Auto-reject applies to any event that is still pending approval
-// once the configured start date/time is reached.
 const PENDING_STATUSES = [
   'PENDING_FACULTY',
   'PENDING_HOD',
@@ -22,6 +13,9 @@ const AUTO_REJECT_BEFORE_START_MINUTES = parseInt(
   process.env.AUTO_REJECT_BEFORE_START_MINUTES || '5',
   10
 );
+
+let pendingEventsCache = [];
+let unsubscribeSnapshot = null;
 
 function parseDateParts(dateValue) {
   if (!dateValue) return null;
@@ -130,20 +124,18 @@ function floorToMinute(dateValue) {
 }
 
 async function runEventAutoRejectionOnce() {
-  if (!db) {
+  if (!dbAdmin || pendingEventsCache.length === 0) {
     return { scanned: 0, rejected: 0, skippedInvalidDate: 0 };
   }
 
-  const pendingSnapshot = await getDocs(
-    query(collection(db, 'events'), where('status', 'in', PENDING_STATUSES))
-  );
-
   let rejectedCount = 0;
   let invalidDateCount = 0;
+  
+  // Clone the array in case snapshot updates it concurrently
+  const eventsToScan = [...pendingEventsCache];
 
-  for (const eventDoc of pendingSnapshot.docs) {
-    const eventData = eventDoc.data();
-    const startDateTime = parseEventStartDateTime(eventData);
+  for (const event of eventsToScan) {
+    const startDateTime = parseEventStartDateTime(event);
 
     if (!startDateTime) {
       invalidDateCount += 1;
@@ -170,27 +162,47 @@ async function runEventAutoRejectionOnce() {
       autoRejectedBy: 'SYSTEM',
     };
 
-    await updateDoc(doc(db, 'events', eventDoc.id), autoRejectionPayload);
+    // Use dbAdmin directly to avoid circular dependency issues
+    await dbAdmin.collection('events').doc(event.id).update(autoRejectionPayload);
 
     rejectedCount += 1;
 
-    if (eventData.organizerEmail) {
+    if (event.organizerEmail) {
       await sendEventStatusNotification(
-        eventData.organizerEmail,
-        { id: eventDoc.id, ...eventData, ...autoRejectionPayload },
+        event.organizerEmail,
+        { id: event.id, ...event, ...autoRejectionPayload },
         'REJECTED'
       );
     }
   }
 
   return {
-    scanned: pendingSnapshot.size,
+    scanned: eventsToScan.length,
     rejected: rejectedCount,
     skippedInvalidDate: invalidDateCount,
   };
 }
 
 function startEventAutoRejectionJob(intervalMs = 60 * 1000) {
+  if (!dbAdmin) {
+    console.error('[auto-reject] Cannot start job: dbAdmin is not initialized');
+    return;
+  }
+
+  // Set up the real-time listener to keep pendingEventsCache updated
+  // This costs ~0 extra reads after the initial fetch!
+  const query = dbAdmin.collection('events').where('status', 'in', PENDING_STATUSES);
+  
+  unsubscribeSnapshot = query.onSnapshot((snapshot) => {
+    const updatedCache = [];
+    snapshot.forEach(docSnap => {
+      updatedCache.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    pendingEventsCache = updatedCache;
+  }, (error) => {
+    console.error('[auto-reject] onSnapshot listener error:', error);
+  });
+
   const runSafely = async () => {
     try {
       const result = await runEventAutoRejectionOnce();
@@ -204,8 +216,7 @@ function startEventAutoRejectionJob(intervalMs = 60 * 1000) {
     }
   };
 
-  // Run once shortly after startup, then on interval.
-  setTimeout(runSafely, 5000);
+  // Run on interval
   return setInterval(runSafely, intervalMs);
 }
 

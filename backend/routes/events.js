@@ -387,6 +387,11 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
 
     let finalStatus = status;
     const updatePayload = { status: finalStatus, updatedAt: new Date().toISOString() };
+    
+    if (finalStatus === 'COMPLETED') {
+      updatePayload.needsFeedbackReminders = true;
+    }
+    
     // approvedBy is set from the verified token identity, not req.body
     const approvedBy = actingName || actingRole;
     updatePayload.approvedBy = approvedBy;

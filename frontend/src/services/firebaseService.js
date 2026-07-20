@@ -277,6 +277,7 @@ export const saveIQACSubmission = async (eventId, iqacDocuments) => {
       status: 'COMPLETED',
       iqacSubmittedAt: new Date().toISOString(),
       iqacDocuments,
+      needsFeedbackReminders: true,
       updatedAt: new Date().toISOString(),
     });
     return true;

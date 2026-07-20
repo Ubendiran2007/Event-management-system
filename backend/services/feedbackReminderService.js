@@ -5,6 +5,7 @@ const {
   where,
   updateDoc,
   doc,
+  db,
 } = require('../firebaseClientWrapper');
 
 const { sendEmail } = require('./emailService');
@@ -15,10 +16,10 @@ async function runFeedbackRemindersOnce() {
     return { scannedEvents: 0, remindersSent: 0 };
   }
 
-  // We look for COMPLETED events since IQAC updates their status to COMPLETED
-  // and that is when attendanceStatus is populated into the odRequests.
+  // We look for events that have explicitly been marked as needing feedback reminders
+  // This prevents us from scanning the entire history of COMPLETED events every hour.
   const eventsSnap = await getDocs(
-    query(collection(db, 'events'), where('status', '==', 'COMPLETED'))
+    query(collection(db, 'events'), where('needsFeedbackReminders', '==', true))
   );
 
   const nowMs = Date.now();
@@ -78,9 +79,14 @@ async function runFeedbackRemindersOnce() {
 
     // Mark event as having sent this reminder type so we don't scan its OD requests repeatedly
     try {
-      await updateDoc(doc(db, 'events', eventDoc.id), {
+      const updatePayload = {
         [`feedbackReminderSent_${reminderType}`]: new Date().toISOString()
-      });
+      };
+      // Once the 72h reminder is sent, we are completely done checking this event forever.
+      if (reminderType === '72h') {
+        updatePayload.needsFeedbackReminders = false;
+      }
+      await updateDoc(doc(db, 'events', eventDoc.id), updatePayload);
       console.log(`[feedback-reminder] Marked ${reminderType} reminder complete for event ${eventDoc.id}. Sent to ${sentCountForEvent} students.`);
     } catch(e) {
       console.error(`[feedback-reminder] Failed to update event document:`, e);
