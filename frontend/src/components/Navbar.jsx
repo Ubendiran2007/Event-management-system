@@ -23,7 +23,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   // Derive active tab logic from URL
   let currentActive = 'dashboard';
   const feature = location.pathname.split('/').filter(Boolean).pop();
-  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking'].includes(feature)) {
+  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics'].includes(feature)) {
     currentActive = feature;
   } else if (location.pathname.includes('/security')) {
     currentActive = 'security';
