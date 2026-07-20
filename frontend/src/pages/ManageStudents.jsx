@@ -723,7 +723,7 @@ const ManageStudents = () => {
                             ) : (
                                 /* 3. Show Students for Selected Class */
                                 <>
-                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
+                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-2 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <div className="flex flex-col">
                                             <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
@@ -739,11 +739,11 @@ const ManageStudents = () => {
                                                 return <p className="text-sm font-medium text-slate-500 mt-0.5 flex items-center gap-1.5"><UserX size={14} /> No Class Advisor Assigned</p>;
                                             })()}
                                         </div>
-                                        <div className="relative flex-1 max-w-md ml-auto flex gap-3">
+                                        <div className="relative flex-1 ml-auto flex justify-end gap-3">
                                             <select
                                                 value={filterStatus}
                                                 onChange={(e) => setFilterStatus(e.target.value)}
-                                                className="w-1/3 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
+                                                className="w-36 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
                                             >
                                                 <option value="ALL">All Status</option>
                                                 <option value="ACTIVE">Active</option>
@@ -754,7 +754,7 @@ const ManageStudents = () => {
                                                 <select
                                                     value={filterBatch}
                                                     onChange={(e) => setFilterBatch(e.target.value)}
-                                                    className="w-1/3 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
+                                                    className="w-36 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
                                                 >
                                                     <option value="">All Batches</option>
                                                     {academicBatches.map(b => (
@@ -762,7 +762,7 @@ const ManageStudents = () => {
                                                     ))}
                                                 </select>
                                             )}
-                                            <div className="relative flex-1">
+                                            <div className="relative w-64">
                                                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                                                 <input type="text" placeholder="Search students..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
                                             </div>
@@ -876,10 +876,10 @@ const ManageStudents = () => {
                             ) : (
                                 /* Level 2: Staff List (Faculty in Dept OR Incharges) */
                                 <>
-                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
+                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-2 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
                                         <button onClick={() => staffCategory === 'FACULTY' ? setStaffDepartment(null) : setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <h3 className="text-xl font-bold text-slate-900">{staffCategory === 'FACULTY' ? `${staffDepartment} Faculty` : 'Incharges'}</h3>
-                                        <div className="relative flex-1 max-w-md ml-auto">
+                                        <div className="relative ml-auto w-64">
                                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                                             <input type="text" placeholder="Search staff..." value={staffSearchQuery} onChange={e => setStaffSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
                                         </div>
