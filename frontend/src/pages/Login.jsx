@@ -85,8 +85,8 @@ const Login = () => {
         } else {
           setAlert({
             type: 'error',
-            title: data.message && data.message !== 'Invalid email or password' ? 'Login Failed' : 'Authentication Failed',
-            message: data.message || 'The email or password entered is incorrect.\nPlease verify your credentials and try again.'
+            title: 'Authentication Failed',
+            message: 'The email or password entered is incorrect.\nPlease verify your credentials and try again.'
           });
         }
       }
