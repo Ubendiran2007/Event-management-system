@@ -20,7 +20,13 @@ const checkDb = (res) => {
 const VALID_ROLES = ['STUDENT_ORGANIZER', 'STUDENT_GENERAL'];
 const { getAllSectionDocs } = require('../utils/studentHelper');
 
+// --- CACHE IMPLEMENTATION ---
+let cachedStudents = null;
 
+const invalidateCache = () => {
+  cachedStudents = null;
+};
+// ----------------------------
 
 // GET /api/students — fetch all students
 router.get('/', async (req, res) => {
@@ -29,22 +35,33 @@ router.get('/', async (req, res) => {
     const { batch, department, section, class: classFilter } = req.query;
 
     let allStudents = [];
-    const sectionDocs = await getAllSectionDocs();
     
-    sectionDocs.forEach(secDoc => {
-      const studentsArray = secDoc.data.students || [];
-      studentsArray.forEach(data => {
-        // Create a copy without password
-        const { password, ...safeData } = data;
-        
-        if (batch && safeData.academicBatch !== batch) return;
-        if (department && safeData.department !== department) return;
-        if (section && safeData.section !== section) return;
-        if (classFilter && safeData.class !== classFilter) return;
-        
-        allStudents.push(safeData);
+    if (cachedStudents) {
+      allStudents = cachedStudents;
+    } else {
+      const sectionDocs = await getAllSectionDocs();
+      
+      sectionDocs.forEach(secDoc => {
+        const studentsArray = secDoc.data.students || [];
+        studentsArray.forEach(data => {
+          // Create a copy without password
+          const { password, ...safeData } = data;
+          allStudents.push(safeData);
+        });
       });
-    });
+      cachedStudents = allStudents;
+    }
+
+    // Apply filters
+    if (batch || department || section || classFilter) {
+      allStudents = allStudents.filter(safeData => {
+        if (batch && safeData.academicBatch !== batch) return false;
+        if (department && safeData.department !== department) return false;
+        if (section && safeData.section !== section) return false;
+        if (classFilter && safeData.class !== classFilter) return false;
+        return true;
+      });
+    }
 
     res.json({ success: true, students: allStudents, total: allStudents.length });
   } catch (err) {
@@ -85,6 +102,7 @@ router.post('/', async (req, res) => {
       await updateDoc(studentRef, { students });
     }
     
+    invalidateCache();
     res.json({ success: true, message: 'Student added successfully', student: studentData });
   } catch (err) {
     console.error('Error adding student:', err);
@@ -197,6 +215,8 @@ router.post('/bulk', async (req, res) => {
       }
     });
 
+    invalidateCache();
+
     res.json({ 
       success: true, 
       message: `Successfully added ${addedStudents.length} students`, 
@@ -261,6 +281,7 @@ router.put('/:id', async (req, res) => {
     studentsArray[studentIndex] = { ...studentsArray[studentIndex], ...updateData };
 
     await updateDoc(targetDoc.ref, { students: studentsArray });
+    invalidateCache();
     res.json({ success: true, message: 'Student updated successfully' });
   } catch (err) {
     console.error('Error updating student:', err);
@@ -294,6 +315,7 @@ router.delete('/:id', async (req, res) => {
     }
 
     await updateDoc(targetDoc.ref, { students: studentsArray });
+    invalidateCache();
     res.json({ success: true, message: 'Student deleted successfully' });
   } catch (err) {
     console.error('Error deleting student:', err);
@@ -337,6 +359,7 @@ router.put('/:id/role', async (req, res) => {
     studentsArray[studentIndex].updatedAt = new Date().toISOString();
 
     await updateDoc(targetDoc.ref, { students: studentsArray });
+    invalidateCache();
     res.json({ success: true, message: 'Student role updated successfully', studentId: id, role });
   } catch (err) {
     console.error('Error updating student role:', err);
@@ -392,6 +415,7 @@ router.post('/reset-od-usage', async (req, res) => {
       details: { studentsReset: totalReset }
     });
 
+    invalidateCache();
     res.json({ success: true, message: `Successfully reset OD limit for ${totalReset} students.`, totalReset });
   } catch (error) {
     console.error('Error resetting OD limits:', error);

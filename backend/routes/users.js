@@ -24,19 +24,32 @@ const checkDb = (res) => {
   return false;
 };
 
+// --- CACHE IMPLEMENTATION ---
+let cachedUsers = null;
+
+const invalidateCache = () => {
+  cachedUsers = null;
+};
+// ----------------------------
+
 // GET /api/users — fetch all staff members
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
   try {
-    const allStaffDocs = await getAllStaffDocs();
-    const allUsers = [];
-    allStaffDocs.forEach(staffDoc => {
-      const arr = staffDoc.data.staffs || [];
-      arr.forEach(staff => {
-        const { password, ...safeData } = staff;
-        allUsers.push({ id: staff.id, ...safeData });
+    let allUsers = [];
+    if (cachedUsers) {
+      allUsers = cachedUsers;
+    } else {
+      const allStaffDocs = await getAllStaffDocs();
+      allStaffDocs.forEach(staffDoc => {
+        const arr = staffDoc.data.staffs || [];
+        arr.forEach(staff => {
+          const { password, ...safeData } = staff;
+          allUsers.push({ id: staff.id, ...safeData });
+        });
       });
-    });
+      cachedUsers = allUsers;
+    }
     res.json({ success: true, users: allUsers, total: allUsers.length });
   } catch (err) {
     console.error('Error fetching users:', err);
@@ -87,6 +100,7 @@ router.post('/', async (req, res) => {
     const responseData = { ...userData };
     delete responseData.password;
     
+    invalidateCache();
     res.json({ success: true, message: 'Staff member added successfully', user: { id: userId, ...responseData } });
   } catch (err) {
     console.error('Error adding user:', err);
@@ -161,6 +175,7 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    invalidateCache();
     res.json({ success: true, message: 'Staff member updated successfully' });
   } catch (err) {
     console.error('Error updating user:', err);
@@ -198,6 +213,7 @@ router.delete('/:id', async (req, res) => {
     targetArr.splice(staffIdx, 1);
     await updateDoc(targetDoc.ref, { staffs: targetArr });
     
+    invalidateCache();
     res.json({ success: true, message: 'Staff member deleted successfully' });
   } catch (err) {
     console.error('Error deleting user:', err);
@@ -299,6 +315,8 @@ router.post('/bulk', async (req, res) => {
         dbDuplicates: dbDuplicates.length
       }
     });
+
+    invalidateCache();
 
     res.json({ 
       success: true, 

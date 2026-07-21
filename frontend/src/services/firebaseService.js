@@ -404,8 +404,8 @@ export const subscribeToStudents = (currentUser, callback) => {
     }
   };
   fetchStudents();
-  // OPTIMIZATION: Poll every 5 minutes (300000ms) instead of every 15 seconds to save bandwidth
-  const interval = setInterval(fetchStudents, 300000);
+  // OPTIMIZATION: Poll every 10 minutes (600000ms) to save bandwidth
+  const interval = setInterval(fetchStudents, 600000);
   return () => {
     isMounted = false;
     clearInterval(interval);
@@ -438,8 +438,8 @@ export const subscribeToUsers = (callback) => {
     }
   };
   fetchUsers();
-  // OPTIMIZATION: Poll every 5 minutes (300000ms) instead of every 15 seconds to save bandwidth
-  const interval = setInterval(fetchUsers, 300000);
+  // OPTIMIZATION: Poll every 10 minutes (600000ms) to save bandwidth
+  const interval = setInterval(fetchUsers, 600000);
   return () => {
     isMounted = false;
     clearInterval(interval);
