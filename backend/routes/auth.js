@@ -506,6 +506,9 @@ router.post('/login', async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
+    if (error.code === 8 || (error.details && error.details.includes('Quota'))) {
+      return res.status(503).json({ success: false, message: 'Database quota exceeded. Please try again later.' });
+    }
     return res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
