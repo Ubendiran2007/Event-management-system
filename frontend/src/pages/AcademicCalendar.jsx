@@ -298,44 +298,46 @@ const IQACManagementTab = () => {
 
   // Import Section Component
   const ImportSection = ({ title, columnsInfo, exampleData, endpoint, mappingFn }) => (
-    <div className="lg:col-span-1 space-y-4">
-      <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl h-full">
-        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
-        <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: {columnsInfo}</p>
-        
-        <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-          <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
-            Example Format
-          </div>
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-              <tr>
-                {Object.keys(exampleData[0]).map((key, i) => <th key={i} className="px-3 py-2 font-semibold border-r border-slate-200 last:border-0">{key}</th>)}
-              </tr>
-            </thead>
-            <tbody className="text-slate-600">
-              {exampleData.map((row, rIdx) => (
-                <tr key={rIdx} className="border-b border-slate-100 last:border-0">
-                  {Object.values(row).map((val, cIdx) => <td key={cIdx} className="px-3 py-2 border-r border-slate-100 font-mono text-[10px] last:border-0">{val}</td>)}
+    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+      <div>
+        <h3 className="font-bold text-slate-800 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import {title}</h3>
+        <p className="text-xs text-slate-500 mt-1 max-w-2xl">Ensure Excel contains columns: {columnsInfo}</p>
+      </div>
+      
+      <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <details className="relative group">
+          <summary className="bg-white border border-slate-200 text-slate-600 text-xs font-bold px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-50 list-none flex items-center gap-1 shadow-sm transition-colors">
+            Example Format <ChevronDown size={14}/>
+          </summary>
+          <div className="absolute right-0 top-full mt-2 w-max bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                <tr>
+                  {Object.keys(exampleData[0]).map((key, i) => <th key={i} className="px-3 py-2 font-semibold border-r border-slate-200 last:border-0">{key}</th>)}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="text-slate-600">
+                {exampleData.map((row, rIdx) => (
+                  <tr key={rIdx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    {Object.values(row).map((val, cIdx) => <td key={cIdx} className="px-3 py-2 border-r border-slate-100 font-mono text-[10px] last:border-0">{val}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
 
-        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, mappingFn)} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-        
-        {importData && (
-          <div className="mt-6 space-y-4">
-            <div className="bg-white p-3 rounded border border-slate-200 text-sm font-medium">
-              Found {importData.length} valid rows to import.
-            </div>
-            <button onClick={() => handleBulkImport(endpoint)} disabled={loadingAction} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors">
-              {loadingAction ? 'Importing...' : 'Confirm Import'}
-            </button>
-            <button onClick={() => setImportData(null)} className="w-full py-2 bg-slate-100 text-slate-600 rounded-lg font-bold text-sm hover:bg-slate-200 transition-colors">
-              Cancel
-            </button>
+        {!importData ? (
+          <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleFileUpload(e, mappingFn)} className="block text-sm text-slate-500 file:mr-0 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer transition-colors" />
+        ) : (
+          <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+             <span className="text-sm font-bold text-indigo-700">{importData.length} rows</span>
+             <button onClick={() => handleBulkImport(endpoint)} disabled={loadingAction} className="px-3 py-1.5 bg-indigo-600 text-white rounded font-bold text-xs hover:bg-indigo-700 transition-colors shadow-sm">
+               {loadingAction ? 'Importing...' : 'Confirm'}
+             </button>
+             <button onClick={() => setImportData(null)} className="px-3 py-1.5 bg-white text-slate-600 rounded border border-slate-200 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm">
+               Cancel
+             </button>
           </div>
         )}
       </div>
@@ -366,7 +368,7 @@ const IQACManagementTab = () => {
         {subTab === 'years' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Academic Years</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Academic Years"
                 columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong> (YYYY-MM-DD)</>}
@@ -374,7 +376,7 @@ const IQACManagementTab = () => {
                 endpoint="academic-years"
                 mappingFn={row => row.Name || row.name ? { name: row.Name || row.name, startDate: row.StartDate || row.startDate, endDate: row.EndDate || row.endDate } : null}
               />
-              <div className="lg:col-span-2 space-y-6">
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <Input label="Name (e.g. 2026-2027)" type="text" field="name" />
                   <Input label="Start Date" type="date" field="startDate" />
@@ -424,7 +426,7 @@ const IQACManagementTab = () => {
         {subTab === 'semesters' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Semesters</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Semesters"
                 columnsInfo={<><strong>Name</strong>, <strong>AcademicYear</strong>, <strong>StartDate</strong>, <strong>EndDate</strong></>}
@@ -432,7 +434,7 @@ const IQACManagementTab = () => {
                 endpoint="semesters"
                 mappingFn={row => row.Name || row.name ? { name: row.Name || row.name, academicYear: row.AcademicYear || row.academicYear, startDate: row.StartDate || row.startDate, endDate: row.EndDate || row.endDate } : null}
               />
-              <div className="lg:col-span-2 space-y-6">
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <Input label="Name" type="text" field="name" />
                   <div className="space-y-1">
@@ -481,7 +483,7 @@ const IQACManagementTab = () => {
         {subTab === 'holidays' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">College Holidays</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Holidays"
                 columnsInfo={<><strong>Name</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>Type</strong></>}
@@ -489,7 +491,7 @@ const IQACManagementTab = () => {
                 endpoint="holidays"
                 mappingFn={row => (row.Name || row.name) ? { name: row.Name || row.name, date: row.Date || row.date, type: row.Type || row.type || 'College Holiday' } : null}
               />
-              <div className="lg:col-span-2 space-y-6">
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <Input label="Name" type="text" field="name" />
                   <Input label="Date" type="date" field="date" />
@@ -542,7 +544,7 @@ const IQACManagementTab = () => {
         {subTab === 'exams' && (
           <div className="space-y-6">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Examination Schedules</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Exams"
                 columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong>, <strong>Department</strong>, <strong>Semester</strong> (Optional)</>}
@@ -550,7 +552,7 @@ const IQACManagementTab = () => {
                 endpoint="exams"
                 mappingFn={row => (row.Name || row.name) ? { name: row.Name || row.name, startDate: row.StartDate || row.startDate, endDate: row.EndDate || row.endDate, department: row.Department || row.department, semester: row.Semester || row.semester } : null}
               />
-              <div className="lg:col-span-2 space-y-6">
+              <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
                   <Input label="Name (e.g. Model Exam 1)" type="text" field="name" />
                   <Input label="Start Date" type="date" field="startDate" />
@@ -744,18 +746,21 @@ const HODManagementTab = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="flex flex-col gap-6">
         
         {/* Import Section */}
-        <div className="lg:col-span-1 space-y-4">
-          <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import via Excel</h3>
-              <p className="text-xs text-slate-500 mb-4">Ensure your Excel contains columns: <strong>Title</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>EndDate</strong> (Optional), and <strong>Type</strong>.</p>
-              
-              <div className="mb-5 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
-                <div className="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase px-3 py-2 border-b border-slate-200">
-                  Example Format
-                </div>
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Upload size={18} className="text-indigo-600"/> Import Department Activities</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-2xl">Ensure Excel contains columns: <strong>Title</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>EndDate</strong> (Optional), and <strong>Type</strong>.</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <details className="relative group">
+              <summary className="bg-white border border-slate-200 text-slate-600 text-xs font-bold px-3 py-2 rounded-lg cursor-pointer hover:bg-slate-50 list-none flex items-center gap-1 shadow-sm transition-colors">
+                Example Format <ChevronDown size={14}/>
+              </summary>
+              <div className="absolute right-0 top-full mt-2 w-max bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
                     <tr>
@@ -766,14 +771,14 @@ const HODManagementTab = () => {
                     </tr>
                   </thead>
                   <tbody className="text-slate-600">
-                    <tr className="border-b border-slate-100">
+                    <tr className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="px-3 py-2 border-r border-slate-100">Project Review 1</td>
                       <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-15</td>
                       <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-17</td>
                       <td className="px-3 py-2 text-indigo-600 font-medium">exam</td>
                     </tr>
-                    <tr>
-                      <td className="px-3 py-2 border-r border-slate-100">Guest Lecture on AI</td>
+                    <tr className="hover:bg-slate-50">
+                      <td className="px-3 py-2 border-r border-slate-100">Guest Lecture</td>
                       <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]">2026-08-20</td>
                       <td className="px-3 py-2 border-r border-slate-100 font-mono text-[10px]"></td>
                       <td className="px-3 py-2 text-indigo-600 font-medium">event</td>
@@ -781,24 +786,26 @@ const HODManagementTab = () => {
                   </tbody>
                 </table>
               </div>
+            </details>
 
-              <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-            
-            {fileData && (
-              <div className="mt-6 space-y-4">
-                <div className="bg-white p-3 rounded border border-slate-200 text-sm font-medium">
-                  Found {fileData.length} valid rows to import.
-                </div>
-                <button onClick={handleImport} disabled={loadingAction} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 transition-colors">
-                  {loadingAction ? 'Importing...' : 'Confirm Import'}
-                </button>
+            {!fileData ? (
+              <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} className="block text-sm text-slate-500 file:mr-0 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer transition-colors" />
+            ) : (
+              <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+                 <span className="text-sm font-bold text-indigo-700">{fileData.length} rows</span>
+                 <button onClick={handleImport} disabled={loadingAction} className="px-3 py-1.5 bg-indigo-600 text-white rounded font-bold text-xs hover:bg-indigo-700 transition-colors shadow-sm">
+                   {loadingAction ? 'Importing...' : 'Confirm'}
+                 </button>
+                 <button onClick={() => setFileData(null)} className="px-3 py-1.5 bg-white text-slate-600 rounded border border-slate-200 font-bold text-xs hover:bg-slate-50 transition-colors shadow-sm">
+                   Cancel
+                 </button>
               </div>
             )}
           </div>
         </div>
 
         {/* Existing Records Section */}
-        <div className="lg:col-span-2">
+        <div>
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-slate-800">Current Department Activities</h3>
             <button 

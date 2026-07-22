@@ -47,11 +47,12 @@ export const AnalyticsProvider = ({ children }) => {
     const rejectedEvents = filteredEvents.filter(e => e.status === EventStatus.REJECTED);
 
     const calcAttendanceAndFeedback = (filteredRequests) => {
-      const withAttendance = filteredRequests.filter(r => r.attendanceStatus && r.attendanceStatus !== 'NOT_ATTENDED');
-      const withFeedback = filteredRequests.filter(r => r.feedback);
+      const requests = Array.isArray(filteredRequests) ? filteredRequests : [];
+      const withAttendance = requests.filter(r => r.attendanceStatus && r.attendanceStatus !== 'NOT_ATTENDED');
+      const withFeedback = requests.filter(r => r.feedback);
       
       const attendanceCount = withAttendance.length;
-      const registrationCount = filteredRequests.length;
+      const registrationCount = requests.length;
       const attendancePercentage = registrationCount > 0 ? (attendanceCount / registrationCount) * 100 : 0;
       
       let totalRating = 0;
