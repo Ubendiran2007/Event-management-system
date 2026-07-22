@@ -145,6 +145,15 @@ const ManageStudents = () => {
         });
     } else {
         ALL_CLASSES.forEach(cls => {
+            if (isDeptRestricted && currentUser.department) {
+                const prefix = cls.split('-')[0].toUpperCase();
+                const uDept = currentUser.department.toUpperCase();
+                if (uDept === 'AI&DS' || uDept === 'AIDS') {
+                    if (prefix !== 'AIDS' && prefix !== 'AI&DS') return;
+                } else if (prefix !== uDept) {
+                    return;
+                }
+            }
             classMap[cls] = [];
         });
     }
@@ -207,7 +216,15 @@ const ManageStudents = () => {
     });
 
     // --- Staff Logic ---
-    const allowedStaff = (staffUsers || []);
+    const isStaffDeptRestricted = [UserRole.FACULTY, UserRole.HOD].includes(currentUser.role);
+    const allowedStaff = isStaffDeptRestricted
+        ? (staffUsers || []).filter(s => {
+            const uDept = (currentUser.department || '').toUpperCase();
+            const sDept = (s.department || '').toUpperCase();
+            if (uDept === 'AI&DS' || uDept === 'AIDS') return sDept === 'AI&DS' || sDept === 'AIDS';
+            return sDept === uDept;
+        })
+        : (staffUsers || []);
 
     const facultyStaff = allowedStaff.filter(s => ['FACULTY', 'HOD'].includes(s.role));
     const inchargeStaff = allowedStaff.filter(s => !['FACULTY', 'HOD'].includes(s.role));
@@ -994,12 +1011,22 @@ const ManageStudents = () => {
                             <div className="glass-panel rounded-2xl pb-24">
                                 <div className="p-6 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
                                     <h3 className="text-lg font-bold text-slate-800">Assign Class Advisors</h3>
-                                    <p className="text-sm text-slate-500 mt-1">Map CSE classes to faculty members for monitoring event tracking and attendance.</p>
+                                    <p className="text-sm text-slate-500 mt-1">Map {currentUser.department || 'your department'} classes to faculty members for monitoring event tracking and attendance.</p>
                                 </div>
                                 <div className="divide-y divide-slate-100">
-                                    {ALL_CLASSES.map((cls, idx) => {
+                                    {ALL_CLASSES.filter(cls => {
+                                        if (isDeptRestricted && currentUser.department) {
+                                            const prefix = cls.split('-')[0].toUpperCase();
+                                            const uDept = currentUser.department.toUpperCase();
+                                            if (uDept === 'AI&DS' || uDept === 'AIDS') {
+                                                return prefix === 'AIDS' || prefix === 'AI&DS';
+                                            }
+                                            return prefix === uDept;
+                                        }
+                                        return true;
+                                    }).map((cls, idx, filteredArr) => {
                                         const assignedFaculty = allowedStaff.filter(s => s.role === 'FACULTY' && (s.assignedClasses || []).includes(cls));
-                                        const isNearBottom = idx >= Math.max(0, ALL_CLASSES.length - 2);
+                                        const isNearBottom = idx >= Math.max(0, filteredArr.length - 2);
                                         return (
                                             <div key={cls} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors last:rounded-b-2xl">
                                                 <div className="flex items-center gap-4">
@@ -1045,7 +1072,7 @@ const ManageStudents = () => {
                                                                 <div className={`absolute right-0 w-full bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in duration-200 ${isNearBottom ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'}`} style={{ zIndex: 9999 }}>
                                                                     <div className="max-h-60 overflow-y-auto">
                                                                         {allowedStaff
-                                                                            .filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === 'CSE' && !(s.assignedClasses || []).includes(cls))
+                                                                            .filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === (currentUser.department || 'CSE').toUpperCase() && !(s.assignedClasses || []).includes(cls))
                                                                             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
                                                                             .map((fac, idx) => (
                                                                                 <button
@@ -1070,7 +1097,7 @@ const ManageStudents = () => {
                                                                                     {fac.name}
                                                                                 </button>
                                                                             ))}
-                                                                        {allowedStaff.filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === 'CSE' && !(s.assignedClasses || []).includes(cls)).length === 0 && (
+                                                                        {allowedStaff.filter(s => s.role === 'FACULTY' && (s.department || '').toUpperCase() === (currentUser.department || 'CSE').toUpperCase() && !(s.assignedClasses || []).includes(cls)).length === 0 && (
                                                                             <div className="px-4 py-3 text-[13px] text-slate-500 italic text-center font-medium">No available faculty</div>
                                                                         )}
                                                                     </div>
