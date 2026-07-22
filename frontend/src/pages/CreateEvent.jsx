@@ -202,7 +202,7 @@ const formatTime12 = (t24) => {
 const RequirementToggle = ({ label, checked, onToggle }) => (
   <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer bg-white">
     <span className="text-sm font-medium text-slate-700">{label}</span>
-    <input type="checkbox" checked={checked} onChange={onToggle} className="w-4 h-4" />
+    <PremiumDatePicker  type="checkbox" checked={checked} onChange={onToggle} className="w-4 h-4" />
   </label>
 );
 
@@ -1963,7 +1963,7 @@ const CreateEvent = () => {
               <Lbl required>Event Start Date</Lbl>
               <input
                 id="startDate"
-                type="date"
+                 
                 min={eventStartMinDate}
                 className={fieldCls('startDate')}
                 value={form.startDate}
@@ -1978,9 +1978,9 @@ const CreateEvent = () => {
 
             <div className="space-y-1">
               <Lbl required>Event End Date</Lbl>
-              <input
+              <PremiumDatePicker 
                 id="endDate"
-                type="date"
+                 
                 min={eventEndMinDate}
                 className={fieldCls('endDate')}
                 value={form.endDate}
@@ -2023,7 +2023,7 @@ const CreateEvent = () => {
 
             <div className="space-y-1">
               <Lbl>Number of Days</Lbl>
-              <input readOnly className={`${inputClass} bg-slate-100`} value={numberOfDays || ''} placeholder="Auto calculated" />
+              <PremiumDatePicker  readOnly className={`${inputClass} bg-slate-100`} value={numberOfDays || ''} placeholder="Auto calculated" />
               <p className="field-hint">Auto-calculated from dates</p>
             </div>
 
@@ -2301,11 +2301,11 @@ const CreateEvent = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Lbl>Event Date</Lbl>
-              <input type="date" min={eventStartMinDate} className={inputClass} value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} />
+              <input   min={eventStartMinDate} className={inputClass} value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} />
             </div>
             <div className="space-y-1">
               <Lbl required>Number of Venues Required</Lbl>
-              <input
+              <PremiumDatePicker 
                 id="numberOfVenuesRequired"
                 type="text"
                 inputMode="numeric"
@@ -2417,7 +2417,7 @@ const CreateEvent = () => {
               <Lbl required>Event Date</Lbl>
               <input
                 id="audioDate"
-                type="date"
+                 
                 min={audioMinDate}
                 className={fieldCls('audioDate')}
                 value={form.audioDate}
@@ -2448,7 +2448,7 @@ const CreateEvent = () => {
                   </button>
                 )}
               </div>
-              <input
+              <PremiumDatePicker 
                 id="audioVenueName"
                 className={fieldCls('audioVenueName')}
                 value={form.audioVenueName}
@@ -2615,13 +2615,13 @@ const CreateEvent = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-sm font-semibold text-slate-700">Vehicle Date</label>
-              <input type="date" className={inputClass} min={journeyMinDate}
+              <input   className={inputClass} min={journeyMinDate}
                 value={form[transportKey][journeyKey].vehicleDate}
                 onChange={(e) => updateJourney(transportKey, journeyKey, 'vehicleDate', e.target.value)} />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-semibold text-slate-700">No. of Persons <span className="text-red-500">*</span></label>
-              <input type="number" min="1" className={inputClass} placeholder="e.g. 4"
+              <PremiumDatePicker  type="number" min="1" className={inputClass} placeholder="e.g. 4"
                 value={form[transportKey][journeyKey].numberOfPersons}
                 onChange={(e) => updateJourney(transportKey, journeyKey, 'numberOfPersons', e.target.value)} />
             </div>
@@ -3100,7 +3100,7 @@ const CreateEvent = () => {
               <Lbl required>Arrival Date</Lbl>
               <input
                 id="accom_arrivalDate"
-                type="date"
+                 
                 min={accommodationArrivalMinDate}
                 className={fieldCls('accom_arrivalDate')}
                 value={form.accommodation.arrivalDate}
@@ -3122,9 +3122,9 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>Departure Date</Lbl>
-              <input
+              <PremiumDatePicker 
                 id="accom_departureDate"
-                type="date"
+                 
                 min={accommodationDepartureMinDate}
                 className={fieldCls('accom_departureDate')}
                 value={form.accommodation.departureDate}
@@ -3146,7 +3146,7 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl>Number of Days</Lbl>
-              <input className={`${inputClass} bg-slate-100`} readOnly value={accommodationDays || ''} />
+              <PremiumDatePicker  className={`${inputClass} bg-slate-100`} readOnly value={accommodationDays || ''} />
               <p className="field-hint">Auto-calculated from dates</p>
             </div>
             <div className="space-y-1">
@@ -3214,8 +3214,8 @@ const CreateEvent = () => {
                       <tbody>
                         {form.accommodation.mealSchedule.map((row) => (
                           <tr key={row.id} className="border-t border-slate-200">
-                            <td className="px-2 py-2"><input type="date" min={diningMinDate} className={inputClass} value={row.date} onChange={(e) => updateDiningRow(row.id, 'date', e.target.value)} /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" onKeyDown={onlyDigitsKeyDown} className={inputClass} value={row.guestCount} onChange={(e) => updateDiningRow(row.id, 'guestCount', e.target.value)} /></td>
+                            <td className="px-2 py-2"><input   min={diningMinDate} className={inputClass} value={row.date} onChange={(e) => updateDiningRow(row.id, 'date', e.target.value)} /></td>
+                            <td className="px-2 py-2"><PremiumDatePicker  type="number" min="0" onKeyDown={onlyDigitsKeyDown} className={inputClass} value={row.guestCount} onChange={(e) => updateDiningRow(row.id, 'guestCount', e.target.value)} /></td>
                             {['breakfast', 'morningRefreshment', 'lunchVeg', 'lunchNonVeg', 'eveningRefreshment', 'dinnerVeg', 'dinnerNonVeg'].map((key) => (
                               <td key={key} className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={row[key]} onChange={(e) => updateDiningRow(row.id, key, e.target.checked)} />
@@ -3319,7 +3319,7 @@ const CreateEvent = () => {
                   <div className="space-y-1">
                     <Lbl required>Needed By Date</Lbl>
                     <input
-                      type="date"
+                       
                       min={form.startDate || todayIso}
                       className={inputClass}
                       value={form.media.preEventPosterNeededByDate}

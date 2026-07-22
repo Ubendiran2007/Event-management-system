@@ -140,8 +140,8 @@ const IQACExtensionApprovalWidget = ({ events, hodName }) => {
                   <div className="space-y-2 mt-1">
                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block px-1">Grant Extension Until:</label>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="date"
+                      <PremiumDatePicker  
+                         
                         min={new Date().toISOString().split('T')[0]}
                         value={selectedDates[ev.id] || ''}
                         onChange={(e) => setSelectedDates(prev => ({ ...prev, [ev.id]: e.target.value }))}

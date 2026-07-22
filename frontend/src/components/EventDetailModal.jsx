@@ -1828,7 +1828,7 @@ const EventDetailModal = ({ event, onClose }) => {
                     </div>
                   </div>
                   
-                  <input
+                  <PremiumDatePicker 
                     type="file"
                     accept="image/*"
                     className="hidden"
@@ -2232,7 +2232,7 @@ const EventDetailModal = ({ event, onClose }) => {
               <div className="flex-1">
                 <label className="block text-xs font-bold text-slate-700 mb-1">{isMultiDay ? 'New Start Date' : 'New Date'}</label>
                 <input 
-                  type="date"
+                   
                   value={postponeDate}
                   onChange={(e) => {
                     setPostponeDate(e.target.value);
@@ -2244,8 +2244,8 @@ const EventDetailModal = ({ event, onClose }) => {
               {isMultiDay && (
                 <div className="flex-1">
                   <label className="block text-xs font-bold text-slate-700 mb-1">New End Date</label>
-                  <input 
-                    type="date"
+                  <PremiumDatePicker  
+                     
                     value={postponeEndDate}
                     onChange={(e) => setPostponeEndDate(e.target.value)}
                     className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500" 
