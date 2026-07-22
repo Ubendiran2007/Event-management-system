@@ -1135,7 +1135,7 @@ const Dashboard = () => {
                   >
                     <SlidersHorizontal size={16} className="text-slate-600" />
                     <span>
-                      Filter: {isDeptOfficer ? (
+                      {isDeptOfficer ? (
                         {
                           'all': 'All Events',
                           'pending': 'Pending Approval',
@@ -1216,7 +1216,7 @@ const Dashboard = () => {
                     >
                       <SlidersHorizontal size={16} className="text-slate-600" />
                       <span>
-                        Filter: {
+                        {
                           activeTab === 'approvals' ? (
                             {
                               'all': 'All Approvals',
@@ -1301,7 +1301,7 @@ const Dashboard = () => {
                     >
                       <SlidersHorizontal size={16} className="text-slate-600" />
                       <span>
-                        Filter: {
+                        {
                           {
                             'all': 'All Logs',
                             'approved': 'Approved',

@@ -437,7 +437,7 @@ const SecurityProfile = () => {
                       className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-lg sm:rounded-2xl font-extrabold transition-all text-[11px] sm:text-[13px]"
                     >
                       <SlidersHorizontal size={14} className="text-slate-600 sm:w-4 sm:h-4" />
-                      <span>Filter: <span className="hidden sm:inline">{timelineFilter}</span><span className="sm:hidden">{timelineFilter === 'All' ? 'All' : timelineFilter}</span></span>
+                      <span>{timelineFilter === 'All' ? 'All' : timelineFilter}</span>
                     </button>
                     
                     {isTimelineFilterOpen && (
@@ -692,7 +692,7 @@ const SecurityProfile = () => {
                     className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
                   >
                     <SlidersHorizontal size={16} className="text-slate-600" />
-                    <span>Role: {iqacRoleFilter === 'All' ? 'All Roles' : iqacRoleFilter === 'STUDENT_GENERAL' ? 'Student' : iqacRoleFilter === 'STUDENT_ORGANIZER' ? 'Organizer' : iqacRoleFilter === 'IQAC_TEAM' ? 'IQAC' : iqacRoleFilter === 'HR_TEAM' ? 'HR' : iqacRoleFilter === 'SYSTEM_ADMIN' ? 'ICTS' : iqacRoleFilter === 'BOYS_WARDEN' ? 'Boys Warden' : iqacRoleFilter === 'GIRLS_WARDEN' ? 'Girls Warden' : iqacRoleFilter === 'AUDIO_TEAM' ? 'Audio' : iqacRoleFilter === 'TRANSPORT_TEAM' ? 'Transport' : iqacRoleFilter}</span>
+                    <span>{iqacRoleFilter === 'All' ? 'All Roles' : iqacRoleFilter === 'STUDENT_GENERAL' ? 'Student' : iqacRoleFilter === 'STUDENT_ORGANIZER' ? 'Organizer' : iqacRoleFilter === 'IQAC_TEAM' ? 'IQAC' : iqacRoleFilter === 'HR_TEAM' ? 'HR' : iqacRoleFilter === 'SYSTEM_ADMIN' ? 'ICTS' : iqacRoleFilter === 'BOYS_WARDEN' ? 'Boys Warden' : iqacRoleFilter === 'GIRLS_WARDEN' ? 'Girls Warden' : iqacRoleFilter === 'AUDIO_TEAM' ? 'Audio' : iqacRoleFilter === 'TRANSPORT_TEAM' ? 'Transport' : iqacRoleFilter}</span>
                   </button>
                   {isIqacRoleOpen && (
                     <>
@@ -719,7 +719,7 @@ const SecurityProfile = () => {
                     className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
                   >
                     <SlidersHorizontal size={16} className="text-slate-600" />
-                    <span>Status: {iqacStatusFilter === 'All' ? 'All Statuses' : iqacStatusFilter}</span>
+                    <span>{iqacStatusFilter === 'All' ? 'All Statuses' : iqacStatusFilter}</span>
                   </button>
                   {isIqacStatusOpen && (
                     <>

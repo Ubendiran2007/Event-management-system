@@ -15,55 +15,87 @@ import {
 import { UserRole } from '../types';
 
 const FilterBar = ({ filters, setFilters, role }) => {
-  const handleChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
-  
-  return (
-    <div className="flex flex-wrap items-center gap-1 justify-end">
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <Filter size={14} className="text-indigo-500" />
-        <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
-          <option value="">All Academic Years</option>
-          <option value="2023-2024">2023-2024</option>
-          <option value="2024-2025">2024-2025</option>
-        </select>
-      </div>
+  const [openDropdown, setOpenDropdown] = React.useState(null);
+
+  const handleSelect = (name, value) => {
+    setFilters(prev => ({ ...prev, [name]: value }));
+    setOpenDropdown(null);
+  };
+
+  const getLabel = (value, options) => {
+    const opt = options.find(o => o.value === value);
+    return opt ? opt.label : '';
+  };
+
+  const academicOptions = [
+    { value: '', label: 'All Academic Years' },
+    { value: '2023-2024', label: '2023-2024' },
+    { value: '2024-2025', label: '2024-2025' }
+  ];
+
+  const deptOptions = [
+    { value: '', label: 'All Departments' },
+    { value: 'CSE', label: 'CSE' },
+    { value: 'IT', label: 'IT' },
+    { value: 'ECE', label: 'ECE' },
+    { value: 'EEE', label: 'EEE' },
+    { value: 'MECH', label: 'MECH' }
+  ];
+
+  const categoryOptions = [
+    { value: '', label: 'All Categories' },
+    { value: 'Symposium', label: 'Symposium' },
+    { value: 'Workshop', label: 'Workshop' },
+    { value: 'Guest Lecture', label: 'Guest Lecture' },
+    { value: 'Seminar', label: 'Seminar' },
+    { value: 'Hackathon', label: 'Hackathon' }
+  ];
+
+  const statusOptions = [
+    { value: '', label: 'All Statuses' },
+    { value: 'COMPLETED', label: 'Completed' },
+    { value: 'APPROVED', label: 'Approved' },
+    { value: 'REJECTED', label: 'Rejected' }
+  ];
+
+  const renderDropdown = (name, options, currentValue) => (
+    <div className="relative">
+      <button 
+        onClick={() => setOpenDropdown(openDropdown === name ? null : name)}
+        className="flex items-center gap-2 px-4 py-2 bg-white text-slate-800 border border-slate-200 shadow-sm hover:bg-slate-50 rounded-2xl font-extrabold transition-all text-[13px]"
+      >
+        <SlidersHorizontal size={16} className="text-slate-600" />
+        <span>{getLabel(currentValue, options)}</span>
+      </button>
       
-      {['IQAC_TEAM', 'PRINCIPAL', 'SYSTEM_ADMIN'].includes(role) && (
-        <div className="flex items-center gap-2 px-3 py-1.5">
-          <select name="department" value={filters.department} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
-            <option value="">All Departments</option>
-            <option value="CSE">CSE</option>
-            <option value="IT">IT</option>
-            <option value="ECE">ECE</option>
-            <option value="EEE">EEE</option>
-            <option value="MECH">MECH</option>
-          </select>
-        </div>
+      {openDropdown === name && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpenDropdown(null)} />
+          <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden flex flex-col py-1 animate-in fade-in slide-in-from-top-2 duration-200">
+            {options.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => handleSelect(name, opt.value)}
+                className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${currentValue === opt.value ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
+    </div>
+  );
 
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <select name="category" value={filters.category} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
-          <option value="">All Categories</option>
-          <option value="Symposium">Symposium</option>
-          <option value="Workshop">Workshop</option>
-          <option value="Guest Lecture">Guest Lecture</option>
-          <option value="Seminar">Seminar</option>
-          <option value="Hackathon">Hackathon</option>
-        </select>
-      </div>
-
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <select name="status" value={filters.status} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
-          <option value="">All Statuses</option>
-          <option value="COMPLETED">Completed</option>
-          <option value="APPROVED">Approved</option>
-          <option value="REJECTED">Rejected</option>
-        </select>
-      </div>
-
+  return (
+    <div className="flex flex-wrap items-center gap-2 justify-end z-20 relative">
+      {renderDropdown('academicYear', academicOptions, filters.academicYear)}
+      {['IQAC_TEAM', 'PRINCIPAL', 'SYSTEM_ADMIN'].includes(role) && renderDropdown('department', deptOptions, filters.department)}
+      {renderDropdown('category', categoryOptions, filters.category)}
+      {renderDropdown('status', statusOptions, filters.status)}
       <button 
         onClick={() => setFilters({ academicYear: '', department: '', category: '', status: '' })}
-        className="text-xs text-slate-500 hover:text-red-600 font-bold px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+        className="text-[13px] text-slate-500 hover:text-red-600 font-bold px-3 py-2 rounded-xl hover:bg-red-50 transition-colors"
       >
         Clear All
       </button>
