@@ -1,7 +1,15 @@
 const { collection, getDocs, db } = require('../firebaseClientWrapper');
 
+let sectionDocsCache = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // Helper to fetch all section documents across the DB
 const getAllSectionDocs = async () => {
+  if (sectionDocsCache && Date.now() - cacheTimestamp < CACHE_TTL) {
+    return sectionDocsCache;
+  }
+
   const allSectionDocs = [];
   // Use listDocuments() to find phantom batch documents (documents that only have subcollections)
   const batchDocsRefs = await db.collection('students').listDocuments();
@@ -20,9 +28,20 @@ const getAllSectionDocs = async () => {
       }));
     }
   }
+  
+  sectionDocsCache = allSectionDocs;
+  cacheTimestamp = Date.now();
+  
   return allSectionDocs;
 };
 
+// Helper to clear cache manually (e.g., when a student is added/updated)
+const clearSectionDocsCache = () => {
+  sectionDocsCache = null;
+  cacheTimestamp = 0;
+};
+
 module.exports = {
-  getAllSectionDocs
+  getAllSectionDocs,
+  clearSectionDocsCache
 };

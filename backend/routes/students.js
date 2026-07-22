@@ -18,13 +18,14 @@ const checkDb = (res) => {
 };
 
 const VALID_ROLES = ['STUDENT_ORGANIZER', 'STUDENT_GENERAL'];
-const { getAllSectionDocs } = require('../utils/studentHelper');
+const { getAllSectionDocs, clearSectionDocsCache } = require('../utils/studentHelper');
 
 // --- CACHE IMPLEMENTATION ---
 let cachedStudents = null;
 
 const invalidateCache = () => {
   cachedStudents = null;
+  clearSectionDocsCache();
 };
 // ----------------------------
 
