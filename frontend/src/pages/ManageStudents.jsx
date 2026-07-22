@@ -129,7 +129,8 @@ const ManageStudents = () => {
             const uDept = (currentUser.department || 'CSE').toUpperCase();
             let sDept = (s.department || '').toUpperCase();
             if (!sDept && s.class) {
-                sDept = s.class.split('-')[0].toUpperCase();
+                // Handle both 'CSE B' and 'CSE-B'
+                sDept = s.class.replace(/-/g, ' ').split(' ')[0].toUpperCase();
             }
             if (uDept === 'AI&DS' || uDept === 'AIDS') return sDept === 'AI&DS' || sDept === 'AIDS';
             return sDept === uDept;
@@ -217,14 +218,14 @@ const ManageStudents = () => {
 
     // --- Staff Logic ---
     const isStaffDeptRestricted = [UserRole.FACULTY, UserRole.HOD].includes(currentUser.role);
-    const allowedStaff = isStaffDeptRestricted
-        ? (staffUsers || []).filter(s => {
-            const uDept = (currentUser.department || '').toUpperCase();
-            const sDept = (s.department || '').toUpperCase();
+    const allowedStaff = isStaffDeptRestricted 
+        ? staffUsers.filter(staff => {
+            const uDept = (currentUser.department || 'CSE').toUpperCase();
+            let sDept = (staff.department || 'CSE').toUpperCase();
             if (uDept === 'AI&DS' || uDept === 'AIDS') return sDept === 'AI&DS' || sDept === 'AIDS';
             return sDept === uDept;
         })
-        : (staffUsers || []);
+        : staffUsers;
 
     const facultyStaff = allowedStaff.filter(s => ['FACULTY', 'HOD'].includes(s.role));
     const inchargeStaff = allowedStaff.filter(s => !['FACULTY', 'HOD'].includes(s.role));
