@@ -421,59 +421,47 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // ── 3. Fall back to students/{className}/members structure ─────────────
-    if (!foundUserObj) {
 
-      const lowerEmail = email.toLowerCase();
-      const membersGroup = collectionGroup(db, 'members');
-      
-      const membersQuery = query(membersGroup, where('username', '==', lowerEmail), limit(1));
-      const emailQuery = query(membersGroup, where('email', '==', lowerEmail), limit(1));
-      
-      let membersSnapshot = { empty: true, docs: [] };
-      let emailSnapshot = { empty: true, docs: [] };
-      
-      try {
-        const results = await Promise.all([
-          getDocs(membersQuery),
-          getDocs(emailQuery)
-        ]);
-        membersSnapshot = results[0];
-        emailSnapshot = results[1];
-      } catch (idxErr) {
-        console.error('[auth] Missing Firestore Index for members collectionGroup:', idxErr.message);
-        // We do not return 500 here, we just let it fall through as if user not found, 
-        // so the frontend shows standard 401 instead of crashing.
+      // ── 3. Fall back to students array structure ─────────────
+      if (!foundUserObj) {
+        const { getAllSectionDocs } = require('../utils/studentHelper');
+        const allSections = await getAllSectionDocs();
+        
+        let foundStudent = null;
+        let foundSectionRef = null;
+        const lowerEmail = email.toLowerCase();
+        
+        for (const sec of allSections) {
+          const studentsArr = sec.data.students || [];
+          const student = studentsArr.find(s => 
+             (s.email && s.email.toLowerCase() === lowerEmail) || 
+             (s.username && s.username.toLowerCase() === lowerEmail)
+          );
+          if (student) {
+            foundStudent = student;
+            foundSectionRef = sec.ref;
+            break;
+          }
+        }
+        
+        if (foundStudent) {
+          foundStoredPassword = foundStudent.password;
+          foundUserObj = {
+            id: foundStudent.id || foundStudent.rollNo || foundStudent.password,
+            email: foundStudent.email || foundStudent.username,
+            name: foundStudent.name || null,
+            role: (foundStudent.role || 'STUDENT_GENERAL').toUpperCase(),
+            department: foundStudent.department || 'CSE',
+            rollNo: foundStudent.rollNo || foundStudent.password,
+            isApprovedOrganizer: foundStudent.isApprovedOrganizer || false,
+            odUsed: foundStudent.odUsed || 0,
+            odLimit: foundStudent.odLimit || 7,
+            className: foundSectionRef.id,
+          };
+          isStudent = true;
+          studentRefPath = { col1: 'students', doc1: foundSectionRef.parent.parent.id, col2: foundSectionRef.parent.id, doc2: foundSectionRef.id };
+        }
       }
-
-      let foundResult = null;
-
-      if (!membersSnapshot.empty) {
-        foundResult = { memberDoc: membersSnapshot.docs[0], className: membersSnapshot.docs[0].ref.parent.parent.id };
-      } else if (!emailSnapshot.empty) {
-        foundResult = { memberDoc: emailSnapshot.docs[0], className: emailSnapshot.docs[0].ref.parent.parent.id };
-      }
-
-      if (foundResult) {
-        const { memberDoc, className } = foundResult;
-        const student = memberDoc.data();
-        foundStoredPassword = student.password;
-        foundUserObj = {
-          id: memberDoc.id,
-          email: student.email || student.username,
-          name: student.name || null,
-          role: (student.role || 'STUDENT_GENERAL').toUpperCase(),
-          department: student.department || 'CSE',
-          rollNo: student.rollNo || student.password,
-          isApprovedOrganizer: student.isApprovedOrganizer || false,
-          odUsed: student.odUsed || 0,
-          odLimit: student.odLimit || 7,
-          className,
-        };
-        isStudent = true;
-        studentRefPath = { col1: 'students', doc1: className, col2: 'members', doc2: memberDoc.id };
-      }
-    }
 
     if (!foundUserObj) {
       recordFailedLogin(email, null, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));
