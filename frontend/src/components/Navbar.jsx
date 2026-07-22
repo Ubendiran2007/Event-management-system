@@ -196,6 +196,13 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 <p className="text-xs font-semibold text-slate-700 truncate">{classAdvisorName}</p>
               </div>
             )}
+            
+            {isClassAdvisor && currentUser.assignedClasses && (
+              <div className="pt-2 mt-1 border-t border-slate-200">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Assigned Class</p>
+                <p className="text-xs font-semibold text-slate-700 truncate">{currentUser.assignedClasses.join(', ')}</p>
+              </div>
+            )}
           </div>
           
           <button

@@ -9,7 +9,7 @@ const { getAllStaffDocs } = require('../utils/staffHelper');
 
 // Protect all Manage Users APIs
 router.use(requireAuth);
-router.use(requireRole(['IQAC_TEAM', 'HOD'])); // IQAC and HOD can manage staff
+// Protect manage routes later
 
 const INCHARGE_ROLES = [
   'HR', 'TRANSPORT_MANAGER', 'WARDEN', 'IQAC_TEAM', 
@@ -56,6 +56,9 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// Protect mutation routes
+router.use(requireRole(['IQAC_TEAM', 'HOD'])); // IQAC and HOD can manage staff
 
 // POST /api/users — add a new staff member
 router.post('/', async (req, res) => {
