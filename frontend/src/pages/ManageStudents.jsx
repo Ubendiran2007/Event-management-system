@@ -598,6 +598,9 @@ const ManageStudents = () => {
                             <div className="flex items-center justify-end gap-3 shrink-0 flex-wrap">
                                 {isIQAC && activeTab === 'students' && (
                                     <>
+                                        <button onClick={() => { setBatchForm({ name: '', admissionYear: '', graduationYear: '' }); setShowBatchModal(true); }} className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all flex items-center gap-2">
+                                            <Plus size={16} /> Add Batch
+                                        </button>
                                         <button onClick={() => { setEditingStudent(null); setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '', academicBatch: '' }); setShowStudentModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
                                             <Plus size={16} /> Add Student
                                         </button>
