@@ -17,15 +17,15 @@ const FilterBar = ({ filters, setFilters, role }) => {
   const handleChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
   
   return (
-    <div className="flex flex-wrap gap-3 mb-6 items-center">
-      <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-xl px-4 py-2 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
+    <div className="flex flex-wrap gap-2 items-center justify-end">
+      <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
         <option value="">All Academic Years</option>
         <option value="2023-2024">2023-2024</option>
         <option value="2024-2025">2024-2025</option>
       </select>
       
       {['IQAC_TEAM', 'PRINCIPAL', 'SYSTEM_ADMIN'].includes(role) && (
-        <select name="department" value={filters.department} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-xl px-4 py-2 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
+        <select name="department" value={filters.department} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
           <option value="">All Departments</option>
           <option value="CSE">CSE</option>
           <option value="IT">IT</option>
@@ -35,7 +35,7 @@ const FilterBar = ({ filters, setFilters, role }) => {
         </select>
       )}
 
-      <select name="category" value={filters.category} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-xl px-4 py-2 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
+      <select name="category" value={filters.category} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
         <option value="">All Categories</option>
         <option value="Symposium">Symposium</option>
         <option value="Workshop">Workshop</option>
@@ -43,7 +43,7 @@ const FilterBar = ({ filters, setFilters, role }) => {
         <option value="Seminar">Seminar</option>
         <option value="Hackathon">Hackathon</option>
       </select>
-      <select name="status" value={filters.status} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-xl px-4 py-2 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
+      <select name="status" value={filters.status} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
         <option value="">All Statuses</option>
         <option value="COMPLETED">Completed</option>
         <option value="APPROVED">Approved</option>
@@ -51,7 +51,7 @@ const FilterBar = ({ filters, setFilters, role }) => {
       </select>
       <button 
         onClick={() => setFilters({ academicYear: '', department: '', category: '', status: '' })}
-        className="text-sm text-blue-600 hover:text-blue-700 font-bold px-3 py-2 rounded-lg hover:bg-blue-50 transition-colors"
+        className="text-sm text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
       >
         Clear Filters
       </button>
@@ -199,16 +199,18 @@ const AnalyticsDashboard = () => {
   return (
     <Layout>
       <div className="flex-1 flex flex-col min-h-0 relative">
-        <div className="bg-[#f8fafc] border-b border-slate-200 px-6 pt-6 pb-4 z-30 shrink-0">
-          <div className="max-w-6xl mx-auto w-full">
-            <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-            <p className="text-slate-500 mt-1">Real-time insights and reports based on operational data.</p>
+        <div className="bg-[#f8fafc] border-b border-slate-200 px-6 py-4 z-30 shrink-0">
+          <div className="max-w-6xl mx-auto w-full flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+              <p className="text-slate-500 mt-1">Real-time insights and reports based on operational data.</p>
+            </div>
+            <FilterBar filters={filters} setFilters={setFilters} role={role} />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-6xl mx-auto w-full">
-            <FilterBar filters={filters} setFilters={setFilters} role={role} />
             {DashboardComponent}
           </div>
         </div>
