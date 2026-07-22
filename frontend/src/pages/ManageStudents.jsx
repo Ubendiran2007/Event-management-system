@@ -270,6 +270,31 @@ const ManageStudents = () => {
         }
     };
 
+    const handleSaveBatch = async (e) => {
+        e.preventDefault();
+        setIsProcessing(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/academic-batches`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                body: JSON.stringify(batchForm)
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message);
+            
+            setShowBatchModal(false);
+            setBatchForm({ name: '', admissionYear: '', graduationYear: '' });
+            
+            const batches = await fetchAcademicBatches();
+            setAcademicBatches(batches);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to save batch: ' + err.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleDeleteStudent = async () => {
         if (!deletingStudent) return;
         setIsProcessing(true);
