@@ -243,7 +243,13 @@ const ManageStudents = () => {
                 : `${API_BASE}/api/students`;
             const method = editingStudent ? 'PUT' : 'POST';
             
-            const payload = { ...studentForm, className: studentForm.class.replace(/\s+/g, '-') };
+            const payload = { 
+                ...studentForm, 
+                class: (studentForm.class || '').toUpperCase(),
+                className: (studentForm.class || '').replace(/\s+/g, '-').toUpperCase(),
+                section: (studentForm.section || '').toUpperCase(),
+                department: (studentForm.department || '').toUpperCase()
+            };
 
             const res = await fetch(url, {
                 method,
@@ -294,10 +300,16 @@ const ManageStudents = () => {
                 : `${API_BASE}/api/users`;
             const method = editingStaff ? 'PUT' : 'POST';
             
+            const payload = {
+                ...staffForm,
+                department: (staffForm.department || '').toUpperCase(),
+                role: (staffForm.role || '').toUpperCase()
+            };
+            
             const res = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
-                body: JSON.stringify(staffForm)
+                body: JSON.stringify(payload)
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
@@ -372,76 +384,82 @@ const ManageStudents = () => {
                 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 const validDepts = DEPARTMENTS;
 
-                data.forEach((row, idx) => {
-                    const rowNum = idx + 2; 
-                    
-                    if (importType === 'students') {
-                        const name = row.Name || row.name || '';
-                        const rollNo = String(row.RollNo || row.rollno || row['Roll Number'] || row.Roll_No || '').trim();
-                        const email = String(row.Email || row.email || '').trim();
-                        const department = String(row.Department || row.department || '').trim().toUpperCase();
-                        const year = parseInt(row.Year || row.year);
-                        const semester = parseInt(row.Semester || row.semester);
-                        const section = String(row.Section || row.section || '').trim().toUpperCase();
-                        const phone = String(row.Phone || row.phone || '').trim();
-                        const className = String(row.Class || row.class || `${department}-${section}`).replace(/\s+/g, '-');
+                    data.forEach((row, idx) => {
+                        const rowNum = idx + 2; 
                         
-                        if (!name || !rollNo || !email || !department || !year || !semester || !section) {
-                            return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
+                        // Normalize keys to lowercase for case-insensitive extraction
+                        const lowerRow = Object.keys(row).reduce((acc, key) => {
+                            acc[key.toLowerCase().trim()] = row[key];
+                            return acc;
+                        }, {});
+                        
+                        if (importType === 'students') {
+                            const name = lowerRow.name || '';
+                            const rollNo = String(lowerRow.rollno || lowerRow['roll number'] || lowerRow.roll_no || '').trim();
+                            const email = String(lowerRow.email || '').trim();
+                            const department = String(lowerRow.department || '').trim().toUpperCase();
+                            const year = parseInt(lowerRow.year, 10);
+                            const semester = parseInt(lowerRow.semester, 10);
+                            const section = String(lowerRow.section || '').trim().toUpperCase();
+                            const phone = String(lowerRow.phone || '').trim();
+                            const className = String(lowerRow.class || `${department}-${section}`).replace(/\s+/g, '-').toUpperCase();
+                            
+                            if (!name || !rollNo || !email || !department || !year || !semester || !section) {
+                                return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
+                            }
+                            if (year < 1 || year > 4) return invalid.push({ row: rowNum, reason: 'Year must be 1-4', data: row });
+                            if (semester < 1 || semester > 8) return invalid.push({ row: rowNum, reason: 'Semester must be 1-8', data: row });
+                            if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
+                            if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
+                            
+                            const idUpper = rollNo.toUpperCase();
+                            const emailLower = email.toLowerCase();
+                            
+                            if (fileIdentifiers.has(idUpper) || fileEmails.has(emailLower)) {
+                                fileDups++;
+                                return invalid.push({ row: rowNum, reason: 'Duplicate in uploaded file', data: row });
+                            }
+                            
+                            if (dbIdentifiers.has(idUpper) || dbEmails.has(emailLower)) {
+                                return invalid.push({ row: rowNum, reason: 'Already exists in database', data: row });
+                            }
+                            
+                            fileIdentifiers.add(idUpper);
+                            fileEmails.add(emailLower);
+                            
+                            valid.push({ name, rollNo, email, department, className, section, phone, odLimit: lowerRow.odlimit || 7, academicBatch: selectedBatch });
+                        } else {
+                            const name = lowerRow.name || '';
+                            const staffId = String(lowerRow.staffid || lowerRow['staff id'] || '').trim();
+                            const email = String(lowerRow.email || '').trim();
+                            const department = String(lowerRow.department || '').trim().toUpperCase();
+                            const role = String(lowerRow.role || '').trim().toUpperCase();
+                            const password = String(lowerRow.password || staffId);
+                            
+                            if (!name || !staffId || !email || !department || !role) {
+                                return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
+                            }
+                            if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
+                            if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
+                            if (!STAFF_ROLES.includes(role)) return invalid.push({ row: rowNum, reason: `Role must be one of: ${STAFF_ROLES.join(', ')}`, data: row });
+                            
+                            const idUpper = staffId.toUpperCase();
+                            const emailLower = email.toLowerCase();
+                            
+                            if (fileIdentifiers.has(idUpper) || fileEmails.has(emailLower)) {
+                                fileDups++;
+                                return invalid.push({ row: rowNum, reason: 'Duplicate in uploaded file', data: row });
+                            }
+                            
+                            if (dbIdentifiers.has(idUpper) || dbEmails.has(emailLower)) {
+                                return invalid.push({ row: rowNum, reason: 'Already exists in database', data: row });
+                            }
+                            
+                            fileIdentifiers.add(idUpper);
+                            fileEmails.add(emailLower);
+                            
+                            valid.push({ name, staffId, email, department, role, password, assignedClasses: [] });
                         }
-                        if (year < 1 || year > 4) return invalid.push({ row: rowNum, reason: 'Year must be 1-4', data: row });
-                        if (semester < 1 || semester > 8) return invalid.push({ row: rowNum, reason: 'Semester must be 1-8', data: row });
-                        if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
-                        if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
-                        
-                        const idUpper = rollNo.toUpperCase();
-                        const emailLower = email.toLowerCase();
-                        
-                        if (fileIdentifiers.has(idUpper) || fileEmails.has(emailLower)) {
-                            fileDups++;
-                            return invalid.push({ row: rowNum, reason: 'Duplicate in uploaded file', data: row });
-                        }
-                        
-                        if (dbIdentifiers.has(idUpper) || dbEmails.has(emailLower)) {
-                            return invalid.push({ row: rowNum, reason: 'Already exists in database', data: row });
-                        }
-                        
-                        fileIdentifiers.add(idUpper);
-                        fileEmails.add(emailLower);
-                        
-                        valid.push({ name, rollNo, email, department, className, section, phone, odLimit: row.ODLimit || 7, academicBatch: selectedBatch });
-                    } else {
-                        const name = row.Name || row.name || '';
-                        const staffId = String(row.StaffId || row.staffid || row['Staff ID'] || '').trim();
-                        const email = String(row.Email || row.email || '').trim();
-                        const department = String(row.Department || row.department || '').trim().toUpperCase();
-                        const role = String(row.Role || row.role || '').trim().toUpperCase();
-                        const password = String(row.Password || row.password || staffId);
-                        
-                        if (!name || !staffId || !email || !department || !role) {
-                            return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
-                        }
-                        if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
-                        if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
-                        if (!STAFF_ROLES.includes(role)) return invalid.push({ row: rowNum, reason: `Role must be one of: ${STAFF_ROLES.join(', ')}`, data: row });
-                        
-                        const idUpper = staffId.toUpperCase();
-                        const emailLower = email.toLowerCase();
-                        
-                        if (fileIdentifiers.has(idUpper) || fileEmails.has(emailLower)) {
-                            fileDups++;
-                            return invalid.push({ row: rowNum, reason: 'Duplicate in uploaded file', data: row });
-                        }
-                        
-                        if (dbIdentifiers.has(idUpper) || dbEmails.has(emailLower)) {
-                            return invalid.push({ row: rowNum, reason: 'Already exists in database', data: row });
-                        }
-                        
-                        fileIdentifiers.add(idUpper);
-                        fileEmails.add(emailLower);
-                        
-                        valid.push({ name, staffId, email, department, role, password, assignedClasses: [] });
-                    }
                 });
                 
                 if (data.length === 0) throw new Error('File is empty.');
@@ -809,7 +827,29 @@ const ManageStudents = () => {
                                                         </button>
                                                         {isIQAC && (
                                                             <>
-                                                                <button onClick={() => { setEditingStudent(student); setStudentForm({ ...student, class: student.class || selectedClass, password: '', odLimit: student.odLimit || 7 }); setShowStudentModal(true); }} className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Edit size={16}/></button>
+                                                                <button onClick={() => { 
+                                                                    setEditingStudent(student);
+                                                                    
+                                                                    const parsedDept = student.department || (student.class ? student.class.split(/[\s-]/)[0].toUpperCase() : '');
+                                                                    let parsedSec = student.section || '';
+                                                                    
+                                                                    if (parsedSec.toUpperCase() === (student.class || '').toUpperCase()) {
+                                                                        parsedSec = parsedSec.split(/[\s-]/).pop();
+                                                                    }
+                                                                    if (parsedSec.toUpperCase().startsWith(parsedDept + ' ') || parsedSec.toUpperCase().startsWith(parsedDept + '-')) {
+                                                                        parsedSec = parsedSec.substring(parsedDept.length + 1).trim();
+                                                                    }
+                                                                    
+                                                                    setStudentForm({ 
+                                                                        ...student, 
+                                                                        class: student.class || selectedClass, 
+                                                                        section: parsedSec,
+                                                                        department: parsedDept,
+                                                                        password: '', 
+                                                                        odLimit: student.odLimit || 7 
+                                                                    }); 
+                                                                    setShowStudentModal(true); 
+                                                                }} className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Edit size={16}/></button>
                                                                 <button onClick={() => setDeletingStudent(student)} className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"><Trash2 size={16}/></button>
                                                             </>
                                                         )}
