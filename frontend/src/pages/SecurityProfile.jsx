@@ -363,8 +363,8 @@ const SecurityProfile = () => {
 
   return (
     <Layout>
-      <div className="flex-1 flex flex-col min-h-0 relative">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 w-full">
+      <div className="flex-1 flex flex-col min-h-0 relative h-full">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 flex flex-col min-h-0">
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
@@ -677,7 +677,7 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'iqac' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <Globe size={18} className="text-indigo-500" />
@@ -856,7 +856,7 @@ const SecurityProfile = () => {
 
 
         {activeTab === 'attendanceAudit' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
             <div className="p-6 border-b border-slate-100 flex flex-col gap-4 shrink-0">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
