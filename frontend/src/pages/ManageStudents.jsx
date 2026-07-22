@@ -596,7 +596,7 @@ const ManageStudents = () => {
         const className = (student.class || '').replace(/\s+/g, '-');
         try {
             await fetch(`${API_BASE}/api/students/${student.id}/role`, {
-                method: 'PATCH',
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ role: newRole, className, isApprovedOrganizer: newRole === UserRole.STUDENT_ORGANIZER }),
             });

@@ -368,6 +368,46 @@ router.put('/:id/role', async (req, res) => {
   }
 });
 
+// PATCH /api/students/:id/od-stats — update a student's OD stats
+router.patch('/:id/od-stats', async (req, res) => {
+  if (checkDb(res)) return;
+  const { id } = req.params;
+  const { odUsed, odLimit } = req.body;
+
+  try {
+    const sectionDocs = await getAllSectionDocs();
+    let targetDoc = null;
+    let studentIndex = -1;
+    let studentsArray = [];
+
+    for (const secDoc of sectionDocs) {
+      const arr = secDoc.data.students || [];
+      const idx = arr.findIndex(s => s.id === id);
+      if (idx !== -1) {
+        targetDoc = secDoc;
+        studentIndex = idx;
+        studentsArray = arr;
+        break;
+      }
+    }
+
+    if (!targetDoc) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    if (odUsed !== undefined) studentsArray[studentIndex].odUsed = Number(odUsed);
+    if (odLimit !== undefined) studentsArray[studentIndex].odLimit = Number(odLimit);
+    studentsArray[studentIndex].updatedAt = new Date().toISOString();
+
+    await updateDoc(targetDoc.ref, { students: studentsArray });
+    invalidateCache();
+    res.json({ success: true, message: 'Student OD stats updated successfully', studentId: id });
+  } catch (err) {
+    console.error('Error updating student OD stats:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/students/reset-od-usage — IQAC resets OD count for all students
 router.post('/reset-od-usage', async (req, res) => {
   if (checkDb(res)) return;
