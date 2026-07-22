@@ -10,7 +10,7 @@ import ApprovalPipelineChart from '../components/analytics/ApprovalPipelineChart
 import ExportPanel from '../components/analytics/ExportPanel';
 import { 
   Users, Calendar, CheckCircle, XCircle, Clock, 
-  BarChart2, BookOpen, GraduationCap, FileCheck, Filter, ArrowLeft
+  BarChart2, BookOpen, GraduationCap, FileCheck, Filter, ArrowLeft, SlidersHorizontal
 } from 'lucide-react';
 import { UserRole } from '../types';
 

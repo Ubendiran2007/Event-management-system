@@ -170,6 +170,13 @@ const IQACSubmission = () => {
   // New state for gallery, guest feedback, and registration details
   const [gallery, setGallery] = useState([]);
   const [guestFeedback, setGuestFeedback] = useState([]);
+  const [feedbackForm, setFeedbackForm] = useState({
+    name: '',
+    designation: '',
+    organization: '',
+    feedback: '',
+    highlights: '',
+  });
   const [registrationDetails, setRegistrationDetails] = useState({
     studentsCount: 0,
     facultyCount: 0,
