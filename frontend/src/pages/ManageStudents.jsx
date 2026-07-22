@@ -38,7 +38,7 @@ const STAFF_ROLES = [
 const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
 
 const ManageStudents = () => {
-    const { currentUser, students, staffUsers, loading } = useAppContext();
+    const { currentUser, students, setStudents, staffUsers, loading } = useAppContext();
     const navigate = useNavigate();
     
     // Tabs & View State
@@ -600,6 +600,9 @@ const ManageStudents = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ role: newRole, className, isApprovedOrganizer: newRole === UserRole.STUDENT_ORGANIZER }),
             });
+            if (setStudents) {
+                setStudents(prev => prev.map(s => s.id === student.id ? { ...s, role: newRole } : s));
+            }
         } catch (err) {
             console.error(err);
         } finally {

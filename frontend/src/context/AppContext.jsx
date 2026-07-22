@@ -381,6 +381,7 @@ export const AppProvider = ({ children }) => {
     revokeOrganizer,
     completeEvent,
     handleDepartmentApproval,
+    setStudents,
   };
 
   return (
