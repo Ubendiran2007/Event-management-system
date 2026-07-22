@@ -12,6 +12,19 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
+    // Check for Vite dynamic import errors (typically caused by deploying a new version)
+    const isChunkLoadFailed = error?.message?.match(/Failed to fetch dynamically imported module|Importing a module script failed/i);
+    
+    if (isChunkLoadFailed) {
+      const cacheKey = "app_chunk_failed_reload";
+      if (!sessionStorage.getItem(cacheKey)) {
+        sessionStorage.setItem(cacheKey, "true");
+        // Reload to fetch the latest index.html and correct chunks
+        window.location.reload();
+        return;
+      }
+    }
+
     this.setState({
       error: error,
       errorInfo: errorInfo
@@ -42,7 +55,10 @@ class ErrorBoundary extends React.Component {
             )}
             
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => {
+                sessionStorage.removeItem("app_chunk_failed_reload");
+                window.location.reload();
+              }}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2 mx-auto transition-colors"
             >
               <RefreshCw size={18} />

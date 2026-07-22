@@ -366,9 +366,8 @@ const IQACManagementTab = () => {
         
         {/* ACADEMIC YEARS */}
         {subTab === 'years' && (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-4">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Academic Years</h2>
-            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Academic Years"
                 columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong> (YYYY-MM-DD)</>}
@@ -417,16 +416,13 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
           </div>
         )}
 
         {/* SEMESTERS */}
         {subTab === 'semesters' && (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-4">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Semesters</h2>
-            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Semesters"
                 columnsInfo={<><strong>Name</strong>, <strong>AcademicYear</strong>, <strong>StartDate</strong>, <strong>EndDate</strong></>}
@@ -474,16 +470,13 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
           </div>
         )}
 
         {/* HOLIDAYS */}
         {subTab === 'holidays' && (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-4">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">College Holidays</h2>
-            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Holidays"
                 columnsInfo={<><strong>Name</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>Type</strong></>}
@@ -535,16 +528,13 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
           </div>
         )}
 
         {/* EXAMS */}
         {subTab === 'exams' && (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-4">
             <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Examination Schedules</h2>
-            <div className="flex flex-col gap-6">
               <ImportSection 
                 title="Exams"
                 columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong>, <strong>Department</strong>, <strong>Semester</strong> (Optional)</>}
@@ -605,8 +595,6 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
           </div>
         )}
 
