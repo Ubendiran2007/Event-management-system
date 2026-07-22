@@ -145,7 +145,7 @@ const AcademicCalendar = () => {
               const isToday = date && date.toDateString() === new Date().toDateString();
               
               return (
-                <div key={idx} className={`border-r border-b border-slate-100 p-1 sm:p-2 overflow-y-auto ${!date ? 'bg-slate-50/50' : (isSem ? 'bg-green-50/20' : '')} ${isToday ? 'ring-2 ring-indigo-500 ring-inset bg-indigo-50/10' : ''}`}>
+                <div key={idx} className={`border-r border-b border-slate-200 p-1 sm:p-2 overflow-y-auto ${!date ? 'bg-slate-50/50' : (isSem ? 'bg-green-50/20' : '')} ${isToday ? 'ring-2 ring-indigo-500 ring-inset bg-indigo-50/10' : ''}`}>
                   {date && (
                     <>
                       <div className={`text-right text-xs sm:text-sm font-bold mb-1 ${isToday ? 'text-indigo-600' : 'text-slate-600'}`}>{date.getDate()}</div>
@@ -183,6 +183,12 @@ const IQACManagementTab = () => {
   const [form, setForm] = useState({});
   const [loadingAction, setLoadingAction] = useState(false);
   const [importData, setImportData] = useState(null);
+  const [message, setMessage] = useState(null);
+
+  const showMessage = (text, type = 'success') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), 5000);
+  };
   
   const token = localStorage.getItem('sessionToken');
   const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
@@ -196,9 +202,10 @@ const IQACManagementTab = () => {
         body: body ? JSON.stringify(body) : null
       });
       const data = await res.json();
-      if (!res.ok) alert(data.message || 'Action failed');
+      if (!res.ok) showMessage(data.message || 'Action failed', 'error');
+      else showMessage('Action completed successfully', 'success');
     } catch (err) {
-      alert('Network error');
+      showMessage('Network error', 'error');
     } finally {
       setLoadingAction(false);
       setForm({});
@@ -284,13 +291,13 @@ const IQACManagementTab = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Successfully imported ${data.data.imported} records. (Skipped ${data.data.duplicates || 0} duplicates, ${data.data.invalid || 0} invalid)`);
+        showMessage(`Successfully imported ${data.data.imported} records. (Skipped ${data.data.duplicates || 0} duplicates, ${data.data.invalid || 0} invalid)`, 'success');
         setImportData(null);
       } else {
-        alert(data.message || 'Import failed');
+        showMessage(data.message || 'Import failed', 'error');
       }
     } catch (err) {
-      alert('Network error');
+      showMessage('Network error', 'error');
     } finally {
       setLoadingAction(false);
     }
@@ -346,6 +353,13 @@ const IQACManagementTab = () => {
 
   return (
     <div className="flex flex-col gap-6">
+      {message && (
+        <div className={`p-3 rounded-lg text-sm font-bold flex justify-between items-center ${message.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {message.text}
+          <button onClick={() => setMessage(null)} className="hover:opacity-75">×</button>
+        </div>
+      )}
+
       {/* Header & Filter */}
       <div className="flex justify-end mb-2">
         <select 
@@ -416,6 +430,7 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
           </div>
         )}
 
@@ -470,6 +485,7 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
           </div>
         )}
 
@@ -528,6 +544,7 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
           </div>
         )}
 
@@ -595,6 +612,7 @@ const IQACManagementTab = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
           </div>
         )}
 
