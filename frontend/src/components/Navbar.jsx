@@ -128,10 +128,10 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       )}
       
       {/* Sidebar */}
-      <aside className={`w-72 h-full bg-white border-r border-slate-100 flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 md:relative md:translate-x-0 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`w-72 h-full bg-[#f4f8ff] border-r border-blue-100 flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 md:relative md:translate-x-0 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
         {/* Header */}
-        <div className="p-6 pb-8 border-b border-slate-50/50 flex justify-between items-start">
+        <div className="p-6 pb-8 border-b border-blue-100/50 flex justify-between items-start">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleNavClick('dashboard')}>
             <img
               src={seceLogo}
@@ -161,7 +161,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-semibold text-[15px] ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    : 'text-slate-600 hover:bg-blue-100/50 hover:text-blue-900'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -174,8 +174,8 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         </div>
 
         {/* User Profile Footer */}
-        <div className="p-4 border-t border-slate-100">
-          <div className="flex flex-col gap-2 p-3 rounded-xl bg-slate-50 mb-3 border border-slate-100">
+        <div className="p-4 border-t border-blue-100/50">
+          <div className="flex flex-col gap-2 p-3 rounded-xl bg-white mb-3 border border-blue-100 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
                 {(displayData.name || 'User').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
@@ -198,7 +198,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
           
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors text-[14px]"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-blue-200 bg-white text-slate-700 font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-colors text-[14px]"
           >
             <LogOut size={18} className="text-slate-500" />
             Log Out
