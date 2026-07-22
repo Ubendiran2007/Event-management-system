@@ -91,6 +91,7 @@ const EventDetailModal = ({ event, onClose }) => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [posterUploadError, setPosterUploadError] = useState('');
   const [posterUploadSuccess, setPosterUploadSuccess] = useState('');
+  const [organizerPosterComment, setOrganizerPosterComment] = useState('');
   const [isRequestingExtension, setIsRequestingExtension] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showPostponeModal, setShowPostponeModal] = useState(false);
@@ -228,6 +229,7 @@ const EventDetailModal = ({ event, onClose }) => {
     event.status === 'REJECTED'
   );
   const canFinalizePoster = isMediaUploadAllowed && (eventPosterSrc || posterUploadSuccess) && String(event.posterWorkflow?.status || '').toUpperCase() !== 'COMPLETED';
+  const canOrganizerReviewPoster = isOrganizer && event.posterWorkflow?.status === 'SENT_TO_ORGANIZER';
 
   const handleRemovePoster = async () => {
     setIsUploadingPoster(true);
@@ -398,15 +400,53 @@ const EventDetailModal = ({ event, onClose }) => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: 'COMPLETED',
+          status: 'SENT_TO_ORGANIZER',
           finalUploadedBy: currentUser.name,
           finalUploadedAt: new Date().toISOString()
         })
       });
 
-      if (!wfRes.ok) throw new Error('Failed to finalize poster workflow.');
+      if (!wfRes.ok) throw new Error('Failed to send poster to organizer.');
 
-      setPosterUploadSuccess('Poster approved successfully! Moving forward...');
+      setPosterUploadSuccess('Poster sent to organizer for review!');
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } catch (err) {
+      setPosterUploadError(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleOrganizerPosterDecision = async (decision) => {
+    if (decision === 'REWORK_REQUESTED' && !organizerPosterComment.trim()) {
+      setPosterUploadError('Please provide a comment detailing the requested changes.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setPosterUploadError('');
+    try {
+      const payload = {
+        status: decision,
+        organizerDecisionAt: new Date().toISOString(),
+        organizerDecisionBy: currentUser.name
+      };
+
+      if (decision === 'REWORK_REQUESTED') {
+        payload.organizerReviewComment = organizerPosterComment.trim();
+      }
+
+      const wfRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster-workflow`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!wfRes.ok) throw new Error('Failed to save poster decision.');
+
+      setPosterUploadSuccess(decision === 'COMPLETED' ? 'Poster approved successfully!' : 'Rework requested sent to Media Team.');
       setTimeout(() => {
         onClose();
       }, 1500);
@@ -1900,8 +1940,8 @@ const EventDetailModal = ({ event, onClose }) => {
                           <CheckCircle2 size={18} />
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-indigo-900">Poster Ready for Approval?</p>
-                          <p className="text-[10px] text-indigo-600 font-medium">Once approved, it will be visible to everyone.</p>
+                          <p className="text-xs font-bold text-indigo-900">Poster Ready for Review?</p>
+                          <p className="text-[10px] text-indigo-600 font-medium">Send this to the event organizer for their approval.</p>
                         </div>
                       </div>
                       <button
@@ -1910,10 +1950,55 @@ const EventDetailModal = ({ event, onClose }) => {
                         className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-md shadow-indigo-200 active:scale-95 disabled:opacity-50"
                       >
                         {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <FileCheck size={14} />}
-                        Approve & Finalize
+                        Send to Organizer
                       </button>
                     </div>
                   )}
+
+                  {canOrganizerReviewPoster && (
+                    <div className="mt-2 p-5 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-4 shadow-sm">
+                      <div className="flex items-center gap-3 border-b border-amber-200/60 pb-3">
+                        <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center shadow-sm shrink-0">
+                          <CheckCircle2 size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-amber-900">Review Media Poster</p>
+                          <p className="text-xs text-amber-700 font-medium">The Media team has uploaded this poster for your event. Please review it.</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        <label className="text-xs font-bold text-amber-900 uppercase tracking-wide">Feedback / Requested Changes (Required for Rework)</label>
+                        <textarea
+                          rows={2}
+                          value={organizerPosterComment}
+                          onChange={(e) => setOrganizerPosterComment(e.target.value)}
+                          placeholder="If the poster needs changes, detail them here..."
+                          className="w-full text-sm rounded-lg border-amber-200 bg-white shadow-sm focus:border-amber-400 focus:ring focus:ring-amber-200/50 resize-none transition-colors"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                          onClick={() => handleOrganizerPosterDecision('REWORK_REQUESTED')}
+                          disabled={isProcessing || !organizerPosterComment.trim()}
+                          className="px-5 py-2 bg-white text-amber-700 border border-amber-300 rounded-lg font-bold text-xs hover:bg-amber-100 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} className="inline mr-1" />}
+                          Request Changes
+                        </button>
+                        <button
+                          onClick={() => handleOrganizerPosterDecision('COMPLETED')}
+                          disabled={isProcessing}
+                          className="px-5 py-2 bg-amber-600 text-white rounded-lg font-bold text-xs hover:bg-amber-700 transition-all shadow-md shadow-amber-200 active:scale-95 disabled:opacity-50"
+                        >
+                          {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <FileCheck size={14} className="inline mr-1" />}
+                          Approve Poster
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {posterUploadError && (
                     <div className="px-4 py-2.5 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
                       <XCircle size={16} className="shrink-0" /> {posterUploadError}

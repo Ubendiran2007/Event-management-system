@@ -839,13 +839,11 @@ router.put('/:id/resubmit-edit', async (req, res) => {
 
     // Reset all approvals upon resubmission
     const newDeptApprovals = {};
-    const wasIqacRejection = eventData.rejectedByRole === 'IQAC_TEAM';
 
     const updatePayload = {
       ...req.body,
       status: isFacultyOrganizer ? 'PENDING_HOD' : 'PENDING_FACULTY',
       isResubmitted: true,
-      iqacResubmission: wasIqacRejection,
       updatedAt: new Date().toISOString(),
       posterStatus,
       posterWorkflow,
