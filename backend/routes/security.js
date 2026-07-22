@@ -584,6 +584,8 @@ router.get('/iqac-audit', requireAuth, async (req, res) => {
   try {
     // Return combined logins + audits
     const snapshot = await getDocs(collection(db, 'auditLogs'));
+    const getTimestampStr = (ts) => ts?.toDate ? ts.toDate().toISOString() : ts;
+    
     const logs = snapshot.docs.map(d => {
       const data = d.data();
       return {
@@ -594,7 +596,7 @@ router.get('/iqac-audit', requireAuth, async (req, res) => {
         department: data.details?.department,
         rollNo: data.details?.rollNo,
         email: data.actor?.email,
-        timestamp: data.timestamp,
+        timestamp: getTimestampStr(data.timestamp),
         browser: data.userAgent ? data.userAgent.split('-')[1]?.trim() : 'Unknown',
         os: data.userAgent ? data.userAgent.split('-')[0]?.trim() : 'Unknown',
         ip: data.ipAddress,
