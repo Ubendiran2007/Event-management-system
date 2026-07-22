@@ -6,6 +6,58 @@ import { useAppContext } from '../context/AppContext';
 import { useCalendarContext } from '../context/CalendarContext';
 import * as XLSX from 'xlsx';
 
+
+const CalendarInput = ({ label, type, field, form, setForm, required = true }) => (
+  <div className="space-y-1">
+    <label className="text-xs font-bold text-slate-700 uppercase">{label}</label>
+    <input type={type} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form[field] || ''} onChange={e => setForm({...form, [field]: e.target.value})} required={required} />
+  </div>
+);
+
+const CalendarSelect = ({ label, field, form, setForm, options, required = true }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [ref]);
+
+  return (
+    <div className="space-y-1 relative" ref={ref}>
+      <label className="text-xs font-bold text-slate-700 uppercase">{label}</label>
+      <div 
+        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm flex justify-between items-center cursor-pointer"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span>{form[field] || 'Select...'}</span>
+        <ChevronDown size={16} className="text-slate-400" />
+      </div>
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          <div 
+            className="px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer text-slate-500"
+            onClick={() => { setForm({...form, [field]: ''}); setIsOpen(false); }}
+          >
+            Select...
+          </div>
+          {options.map(opt => (
+            <div 
+              key={opt.value}
+              className={`px-3 py-2 text-sm hover:bg-slate-50 cursor-pointer ${form[field] === opt.value ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-700'}`}
+              onClick={() => { setForm({...form, [field]: opt.value}); setIsOpen(false); }}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AcademicCalendar = () => {
   const navigate = useNavigate();
   const { currentUser, events: allEvents } = useAppContext();
@@ -396,9 +448,9 @@ const IQACManagementTab = () => {
               />
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <Input label="Name (e.g. 2026-2027)" type="text" field="name" />
-                  <Input label="Start Date" type="date" field="startDate" />
-                  <Input label="End Date" type="date" field="endDate" />
+                  <CalendarInput form={form} setForm={setForm} label="Name (e.g. 2026-2027)" type="text" field="name" />
+                  <CalendarInput form={form} setForm={setForm} label="Start Date" type="date" field="startDate" />
+                  <CalendarInput form={form} setForm={setForm} label="End Date" type="date" field="endDate" />
                   <button disabled={loadingAction} onClick={() => handleApi('academic-years', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors h-[38px]">
                     Create Year
                   </button>
@@ -451,7 +503,7 @@ const IQACManagementTab = () => {
               />
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <Input label="Name" type="text" field="name" />
+                  <CalendarInput form={form} setForm={setForm} label="Name" type="text" field="name" />
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 uppercase">Academic Year</label>
                     <select className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form.academicYear || ''} onChange={e => setForm({...form, academicYear: e.target.value})}>
@@ -459,8 +511,8 @@ const IQACManagementTab = () => {
                       {academicYears.map(ay => <option key={ay.id} value={ay.name}>{ay.name}</option>)}
                     </select>
                   </div>
-                  <Input label="Start Date" type="date" field="startDate" />
-                  <Input label="End Date" type="date" field="endDate" />
+                  <CalendarInput form={form} setForm={setForm} label="Start Date" type="date" field="startDate" />
+                  <CalendarInput form={form} setForm={setForm} label="End Date" type="date" field="endDate" />
                   <button disabled={loadingAction} onClick={() => handleApi('semesters', 'POST', form)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 h-[38px]">
                     Add
                   </button>
@@ -505,8 +557,8 @@ const IQACManagementTab = () => {
               />
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <Input label="Name" type="text" field="name" />
-                  <Input label="Date" type="date" field="date" />
+                  <CalendarInput form={form} setForm={setForm} label="Name" type="text" field="name" />
+                  <CalendarInput form={form} setForm={setForm} label="Date" type="date" field="date" />
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 uppercase">Type</label>
                     <select className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm" value={form.type || ''} onChange={e => setForm({...form, type: e.target.value})}>
@@ -563,11 +615,10 @@ const IQACManagementTab = () => {
               />
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <Input label="Name (e.g. Model Exam 1)" type="text" field="name" />
-                  <Input label="Start Date" type="date" field="startDate" />
-                  <Input label="End Date" type="date" field="endDate" />
-                  <CustomSelect 
-                    label="Department (or ALL)" 
+                  <CalendarInput form={form} setForm={setForm} label="Name (e.g. Model Exam 1)" type="text" field="name" />
+                  <CalendarInput form={form} setForm={setForm} label="Start Date" type="date" field="startDate" />
+                  <CalendarInput form={form} setForm={setForm} label="End Date" type="date" field="endDate" />
+                  <CalendarSelect form={form} setForm={setForm} label="Department (or ALL)" 
                     field="department" 
                     options={[
                       { value: 'ALL', label: 'ALL' },
