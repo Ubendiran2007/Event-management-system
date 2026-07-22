@@ -446,6 +446,23 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
     if (finalStatus === 'PENDING_HOD' && prevStatus === 'PENDING_FACULTY') {
       updatePayload.facultyApprovedAt = new Date().toISOString();
       updatePayload.facultyApprovedBy = approvedBy || 'Faculty';
+
+      // Delay sending the poster request to Media until Class Advisor has approved it
+      if (rawEventData.posterWorkflow) {
+        if (rawEventData.posterWorkflow.status === 'PENDING_FACULTY') {
+          updatePayload.posterWorkflow = {
+            ...rawEventData.posterWorkflow,
+            status: 'REQUESTED',
+            requestedAt: new Date().toISOString()
+          };
+        } else if (rawEventData.posterWorkflow.status === 'PENDING_FACULTY_REVISION') {
+          updatePayload.posterWorkflow = {
+            ...rawEventData.posterWorkflow,
+            status: 'REVISION_REQUIRED',
+            requestedAt: new Date().toISOString()
+          };
+        }
+      }
     }
     if (finalStatus === 'PENDING_DEPARTMENTS' && prevStatus === 'PENDING_HOD') {
       updatePayload.hodApprovedAt = new Date().toISOString();
@@ -453,13 +470,11 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
 
       // AUTO-ADVANCE: Skip PENDING_DEPARTMENTS and go to PENDING_IQAC if:
       // - No departments are required
-      // - Event is a modification request (POSTPONE or CANCEL)
-      // - Event is an IQAC Resubmission
+      // - Event is a CANCEL modification request (no need to check venue availability)
       const requiredDepts = getRequiredDepartments(rawEventData);
-      const isModification = !!rawEventData.modificationRequest;
-      const isIqacResubmission = rawEventData.iqacResubmission === true;
+      const isCancelModification = rawEventData.modificationRequest?.type === 'CANCEL';
 
-      if (requiredDepts.length === 0 || isModification || isIqacResubmission) {
+      if (requiredDepts.length === 0 || isCancelModification) {
         console.log(`[events/status] Bypassing departments for event ${req.params.id}. Auto-advancing to PENDING_IQAC.`);
         finalStatus = 'PENDING_IQAC';
         updatePayload.status = finalStatus;
@@ -813,11 +828,11 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     if (posterWorkflow.requested || hasMediaPoster || eventData.departmentApprovals?.media) {
       if (posterWorkflow.requested) {
         if (posterStatus === 'UPLOADED' || posterStatus === 'COMPLETED' || posterWorkflow.status === 'UPLOADED' || posterWorkflow.status === 'COMPLETED') {
-          posterStatus = 'REVISION_REQUIRED';
-          posterWorkflow.status = 'REVISION_REQUIRED';
+          posterStatus = isFacultyOrganizer ? 'REVISION_REQUIRED' : 'PENDING_FACULTY_REVISION';
+          posterWorkflow.status = isFacultyOrganizer ? 'REVISION_REQUIRED' : 'PENDING_FACULTY_REVISION';
         } else {
-          posterStatus = 'REQUESTED';
-          posterWorkflow.status = 'REQUESTED';
+          posterStatus = isFacultyOrganizer ? 'REQUESTED' : 'PENDING_FACULTY';
+          posterWorkflow.status = isFacultyOrganizer ? 'REQUESTED' : 'PENDING_FACULTY';
         }
       }
     }
@@ -1652,8 +1667,25 @@ router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FA
     const oldEndTime = eventData.requisition?.step1?.eventEndTime || eventData.endTime;
 
     const newStatus = req.user.role === 'STUDENT_ORGANIZER' ? 'PENDING_FACULTY' : 'PENDING_HOD';
+    
+    // Reset poster workflow if a poster was already handled
+    let posterWorkflow = eventData.posterWorkflow || {};
+    let posterStatus = eventData.posterStatus || 'PENDING';
+    const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl);
+
+    if (posterWorkflow.requested || hasMediaPoster || eventData.departmentApprovals?.media) {
+      if (posterWorkflow.requested) {
+        if (posterStatus === 'UPLOADED' || posterStatus === 'COMPLETED' || posterWorkflow.status === 'UPLOADED' || posterWorkflow.status === 'COMPLETED') {
+          posterStatus = (req.user.role === 'STUDENT_ORGANIZER') ? 'PENDING_FACULTY_REVISION' : 'REVISION_REQUIRED';
+          posterWorkflow.status = (req.user.role === 'STUDENT_ORGANIZER') ? 'PENDING_FACULTY_REVISION' : 'REVISION_REQUIRED';
+        }
+      }
+    }
+
     const firestoreUpdate = {
       status: newStatus,
+      posterStatus,
+      posterWorkflow,
       modificationRequest: {
         type: 'POSTPONE',
         reason: reason.trim(),

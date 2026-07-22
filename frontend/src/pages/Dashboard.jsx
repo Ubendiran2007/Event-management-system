@@ -337,7 +337,7 @@ const Dashboard = () => {
       }
       if (currentUser.role === UserRole.MEDIA) {
         const posterWorkflowStatus = String(ev.posterWorkflow?.status || '').toUpperCase();
-        return ['REQUESTED', 'REWORK_REQUESTED'].includes(posterWorkflowStatus) || ev.status === 'REJECTED';
+        return ['REQUESTED', 'REWORK_REQUESTED', 'REVISION_REQUIRED'].includes(posterWorkflowStatus) || ev.status === 'REJECTED';
       }
 
       // ── Department Approvals (Status must be PENDING_DEPARTMENTS) ──

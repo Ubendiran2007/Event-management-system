@@ -1488,7 +1488,7 @@ const CreateEvent = () => {
       } else {
         posterWorkflow = {
           requested: true,
-          status: 'REQUESTED',
+          status: currentUser?.role === UserRole.FACULTY ? 'REQUESTED' : 'PENDING_FACULTY',
           neededByDate: form.media?.preEventPosterNeededByDate || null,
           neededByTime: form.media?.preEventPosterNeededByTime || null,
           requestNotes: form.media?.preEventPosterNotes || 'Poster requested by organizer',
