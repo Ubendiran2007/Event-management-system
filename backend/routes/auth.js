@@ -430,10 +430,21 @@ router.post('/login', async (req, res) => {
       const membersQuery = query(membersGroup, where('username', '==', lowerEmail), limit(1));
       const emailQuery = query(membersGroup, where('email', '==', lowerEmail), limit(1));
       
-      const [membersSnapshot, emailSnapshot] = await Promise.all([
-        getDocs(membersQuery),
-        getDocs(emailQuery)
-      ]);
+      let membersSnapshot = { empty: true, docs: [] };
+      let emailSnapshot = { empty: true, docs: [] };
+      
+      try {
+        const results = await Promise.all([
+          getDocs(membersQuery),
+          getDocs(emailQuery)
+        ]);
+        membersSnapshot = results[0];
+        emailSnapshot = results[1];
+      } catch (idxErr) {
+        console.error('[auth] Missing Firestore Index for members collectionGroup:', idxErr.message);
+        // We do not return 500 here, we just let it fall through as if user not found, 
+        // so the frontend shows standard 401 instead of crashing.
+      }
 
       let foundResult = null;
 
@@ -506,7 +517,7 @@ router.post('/login', async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({ success: false, message: 'Internal server error', error: error.stack || error.toString() });
   }
 });
 
