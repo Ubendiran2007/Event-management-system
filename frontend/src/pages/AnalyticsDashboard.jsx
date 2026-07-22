@@ -18,8 +18,8 @@ const FilterBar = ({ filters, setFilters, role }) => {
   const handleChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
   
   return (
-    <div className="flex flex-wrap items-center bg-white border border-slate-200 rounded-xl shadow-sm p-1 gap-1 justify-end">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+    <div className="flex flex-wrap items-center gap-1 justify-end">
+      <div className="flex items-center gap-2 px-3 py-1.5">
         <Filter size={14} className="text-indigo-500" />
         <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
           <option value="">All Academic Years</option>
@@ -29,7 +29,7 @@ const FilterBar = ({ filters, setFilters, role }) => {
       </div>
       
       {['IQAC_TEAM', 'PRINCIPAL', 'SYSTEM_ADMIN'].includes(role) && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+        <div className="flex items-center gap-2 px-3 py-1.5">
           <select name="department" value={filters.department} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
             <option value="">All Departments</option>
             <option value="CSE">CSE</option>
@@ -41,7 +41,7 @@ const FilterBar = ({ filters, setFilters, role }) => {
         </div>
       )}
 
-      <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+      <div className="flex items-center gap-2 px-3 py-1.5">
         <select name="category" value={filters.category} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
           <option value="">All Categories</option>
           <option value="Symposium">Symposium</option>
@@ -52,7 +52,7 @@ const FilterBar = ({ filters, setFilters, role }) => {
         </select>
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+      <div className="flex items-center gap-2 px-3 py-1.5">
         <select name="status" value={filters.status} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
           <option value="">All Statuses</option>
           <option value="COMPLETED">Completed</option>
@@ -214,18 +214,19 @@ const AnalyticsDashboard = () => {
         <div className="bg-[#f8fafc] border-b border-slate-200 px-6 py-4 z-30 shrink-0">
           <div className="max-w-6xl mx-auto w-full flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
-              <Link to="/" className="p-2 -ml-2 mt-0.5 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors hidden sm:block">
-                <ArrowLeft size={24} />
-              </Link>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-                  <Link to="/" className="sm:hidden text-slate-600 hover:text-slate-900"><ArrowLeft size={20}/></Link>
                   {title}
                 </h1>
                 <p className="text-slate-500 mt-1">Real-time insights and reports based on operational data.</p>
               </div>
             </div>
-            <FilterBar filters={filters} setFilters={setFilters} role={role} />
+            <div className="flex items-center gap-3 flex-wrap justify-end">
+              <FilterBar filters={filters} setFilters={setFilters} role={role} />
+              <Link to="/" className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap ml-2">
+                  <ArrowLeft size={16} /> Back
+              </Link>
+            </div>
           </div>
         </div>
 

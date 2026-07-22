@@ -634,9 +634,6 @@ const ManageStudents = () => {
                                         </button>
                                     </>
                                 )}
-                                <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap ml-2">
-                                    <ChevronLeft size={16} /> Back
-                                </button>
                                 {isIQAC && activeTab === 'staff' && (
                                     <>
                                         <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] }); setShowStaffModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
@@ -647,6 +644,9 @@ const ManageStudents = () => {
                                         </button>
                                     </>
                                 )}
+                                <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap ml-2">
+                                    <ChevronLeft size={16} /> Back
+                                </button>
                             </div>
                         </div>
 
