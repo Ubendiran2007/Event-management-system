@@ -677,7 +677,7 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'iqac' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[600px] max-h-[600px]">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <Globe size={18} className="text-indigo-500" />
@@ -856,7 +856,7 @@ const SecurityProfile = () => {
 
 
         {activeTab === 'attendanceAudit' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[600px] max-h-[700px]">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
             <div className="p-6 border-b border-slate-100 flex flex-col gap-4 shrink-0">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="font-bold text-slate-800 flex items-center gap-2">
