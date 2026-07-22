@@ -333,12 +333,6 @@ const CreateEvent = () => {
 
     // Step 5: Transport
     externalTransport: {
-      // Organizer (auto-filled)
-      rollNo: '',
-      organizerName: '',
-      organizerDesignation: '',
-      contactNumber: '',
-      emailId: '',
       // Guest
       useResourcePerson: false,
       guestName: '',
@@ -2718,28 +2712,6 @@ const CreateEvent = () => {
                     </div>
                   </div>
                   <div className="p-5 space-y-5">
-
-                    {/* Organizer info */}
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Organizer Information <span className="text-slate-300 font-normal normal-case tracking-normal">(auto-filled)</span></p>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {[
-                          { lbl: 'Roll No', path: 'externalTransport.rollNo', placeholder: 'e.g. 21CS101' },
-                          { lbl: 'Organizer Name', path: 'externalTransport.organizerName', placeholder: currentUser?.name || '' },
-                          { lbl: 'Designation', path: 'externalTransport.organizerDesignation', placeholder: currentUser?.designation || '' },
-                          { lbl: 'Department', path: 'externalTransport.department', placeholder: currentUser?.department || '' },
-                          { lbl: 'Contact Number', path: 'externalTransport.contactNumber', placeholder: '10-digit number', type: 'tel' },
-                          { lbl: 'Email ID', path: 'externalTransport.emailId', placeholder: 'lowercase@example.com', type: 'email' },
-                        ].map(({ lbl, path, placeholder, type = 'text' }) => (
-                          <div key={path} className="space-y-1">
-                            <label className="text-sm font-semibold text-slate-700">{lbl}</label>
-                            <input type={type} className={`${inputClass} bg-slate-50`} placeholder={placeholder}
-                              value={path.split('.').reduce((o, k) => o?.[k], form) || ''}
-                              onChange={(e) => updateNested(path, type === 'email' ? e.target.value.toLowerCase() : e.target.value)} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
 
                     {/* Guest info */}
                     <div>
