@@ -360,28 +360,33 @@ const IQACManagementTab = () => {
         </div>
       )}
 
-      {/* Header & Filter */}
-      <div className="flex justify-end mb-2">
-        <select 
-          value={subTab} 
-          onChange={(e) => { setSubTab(e.target.value); setForm({}); setImportData(null); }} 
-          className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none min-w-[250px] shadow-sm"
-        >
-          <option value="years">Academic Years</option>
-          <option value="semesters">Semesters</option>
-          <option value="holidays">College Holidays</option>
-          <option value="exams">Examination Schedules</option>
-          <option value="workingDays">Working Days</option>
-        </select>
-      </div>
-
       {/* Main Content */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        {/* Header & Filter */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4 mb-6">
+          <h2 className="text-xl font-extrabold text-slate-800">
+            {subTab === 'years' && 'Manage Academic Years'}
+            {subTab === 'semesters' && 'Manage Semesters'}
+            {subTab === 'holidays' && 'College Holidays'}
+            {subTab === 'exams' && 'Examination Schedules'}
+            {subTab === 'workingDays' && 'Global Working Days'}
+          </h2>
+          <select 
+            value={subTab} 
+            onChange={(e) => { setSubTab(e.target.value); setForm({}); setImportData(null); }} 
+            className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-700 bg-slate-50 focus:bg-white hover:bg-white focus:ring-2 focus:ring-indigo-500 outline-none w-full sm:w-[250px] shadow-sm cursor-pointer transition-colors"
+          >
+            <option value="years">Academic Years</option>
+            <option value="semesters">Semesters</option>
+            <option value="holidays">College Holidays</option>
+            <option value="exams">Examination Schedules</option>
+            <option value="workingDays">Working Days</option>
+          </select>
+        </div>
         
         {/* ACADEMIC YEARS */}
         {subTab === 'years' && (
           <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Academic Years</h2>
               <ImportSection 
                 title="Academic Years"
                 columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong> (YYYY-MM-DD)</>}
@@ -437,7 +442,6 @@ const IQACManagementTab = () => {
         {/* SEMESTERS */}
         {subTab === 'semesters' && (
           <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Manage Semesters</h2>
               <ImportSection 
                 title="Semesters"
                 columnsInfo={<><strong>Name</strong>, <strong>AcademicYear</strong>, <strong>StartDate</strong>, <strong>EndDate</strong></>}
@@ -492,7 +496,6 @@ const IQACManagementTab = () => {
         {/* HOLIDAYS */}
         {subTab === 'holidays' && (
           <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-bold text-slate-800 border-b pb-2">College Holidays</h2>
               <ImportSection 
                 title="Holidays"
                 columnsInfo={<><strong>Name</strong>, <strong>Date</strong> (YYYY-MM-DD), <strong>Type</strong></>}
@@ -551,7 +554,6 @@ const IQACManagementTab = () => {
         {/* EXAMS */}
         {subTab === 'exams' && (
           <div className="flex flex-col gap-4">
-            <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Examination Schedules</h2>
               <ImportSection 
                 title="Exams"
                 columnsInfo={<><strong>Name</strong>, <strong>StartDate</strong>, <strong>EndDate</strong>, <strong>Department</strong>, <strong>Semester</strong> (Optional)</>}
@@ -619,7 +621,6 @@ const IQACManagementTab = () => {
         {/* WORKING DAYS */}
         {subTab === 'workingDays' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-bold text-slate-800 border-b pb-2">Global Working Days</h2>
             <div className="space-y-6">
               <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-6">
                   {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
