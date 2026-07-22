@@ -630,7 +630,13 @@ const ManageStudents = () => {
                             <div className="flex space-x-6 border-b border-slate-200 mt-4 overflow-x-auto no-scrollbar">
                                 {(isIQAC || isHOD) && (
                                 <button
-                                    onClick={() => setActiveTab('students')}
+                                    onClick={() => {
+                                        setActiveTab('students');
+                                        setSelectedBatchView(null);
+                                        setSelectedDepartment(null);
+                                        setSelectedClass(null);
+                                        setSearchQuery('');
+                                    }}
                                     className={`pb-3 whitespace-nowrap font-semibold text-sm transition-colors relative ${activeTab === 'students' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Students
@@ -639,7 +645,12 @@ const ManageStudents = () => {
                                 )}
                                 {isIQAC && (
                                 <button
-                                    onClick={() => setActiveTab('staff')}
+                                    onClick={() => {
+                                        setActiveTab('staff');
+                                        setStaffCategory(null);
+                                        setStaffDepartment(null);
+                                        setStaffSearchQuery('');
+                                    }}
                                     className={`pb-3 whitespace-nowrap font-semibold text-sm transition-colors relative ${activeTab === 'staff' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Staff Directory
