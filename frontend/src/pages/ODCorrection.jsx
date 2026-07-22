@@ -132,7 +132,7 @@ const ODCorrection = () => {
                     studentId: currentUser.id,
                     studentName: currentUser.name,
                     rollNo: currentUser.rollNo,
-                    className: currentUser.className,
+                    className: currentUser.className || currentUser.class || '',
                     department: currentUser.department,
                     currentOdUsed: currentUser.odUsed,
                     currentOdLimit: currentUser.odLimit,

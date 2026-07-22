@@ -3,7 +3,7 @@ const router = express.Router();
 
 const {
   collection, addDoc, getDocs, doc, updateDoc,
-  getDoc, query, where, collectionGroup,
+  getDoc, query, where, collectionGroup, db
 } = require('../firebaseClientWrapper');
 const { sendEmail } = require('../services/emailService');
 const { getAllSectionDocs } = require('../utils/studentHelper');
