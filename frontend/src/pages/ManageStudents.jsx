@@ -38,7 +38,7 @@ const STAFF_ROLES = [
 const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
 
 const ManageStudents = () => {
-    const { currentUser, students, setStudents, staffUsers, loading } = useAppContext();
+    const { currentUser, students, setStudents, staffUsers, setStaffUsers, loading } = useAppContext();
     const navigate = useNavigate();
     
     // Tabs & View State
@@ -1060,14 +1060,16 @@ const ManageStudents = () => {
                                                                     <span key={f.id} className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1">
                                                                         <UserCheck size={12} /> {f.name}
                                                                         <button onClick={async () => {
-                                                                            setIsProcessing(true);
                                                                             try {
-                                                                                await fetch(`${API_BASE}/api/users/${f.id}`, {
+                                                                                const updatedAssigned = (f.assignedClasses || []).filter(c => c !== cls);
+                                                                                setStaffUsers(prev => prev.map(u => u.id === f.id ? { ...u, assignedClasses: updatedAssigned } : u));
+                                                                                
+                                                                                fetch(`${API_BASE}/api/users/${f.id}`, {
                                                                                     method: 'PUT',
                                                                                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
-                                                                                    body: JSON.stringify({ ...f, assignedClasses: (f.assignedClasses || []).filter(c => c !== cls) })
-                                                                                });
-                                                                            } catch(e) { console.error(e); } finally { setIsProcessing(false); }
+                                                                                    body: JSON.stringify({ ...f, assignedClasses: updatedAssigned })
+                                                                                }).catch(e => console.error(e));
+                                                                            } catch(e) { console.error(e); }
                                                                         }} className="ml-1 text-emerald-400 hover:text-emerald-700" title="Remove assignment"><X size={12}/></button>
                                                                     </span>
                                                                 ))}
@@ -1100,18 +1102,19 @@ const ManageStudents = () => {
                                                                                     key={fac.id}
                                                                                     onClick={async () => {
                                                                                         setOpenDropdownId(null);
-                                                                                        setIsProcessing(true);
                                                                                         try {
                                                                                             const currentAssigned = fac.assignedClasses || [];
                                                                                             if (!currentAssigned.includes(cls)) {
-                                                                                                await fetch(`${API_BASE}/api/users/${fac.id}`, {
+                                                                                                const updatedAssigned = [...currentAssigned, cls];
+                                                                                                setStaffUsers(prev => prev.map(u => u.id === fac.id ? { ...u, assignedClasses: updatedAssigned } : u));
+
+                                                                                                fetch(`${API_BASE}/api/users/${fac.id}`, {
                                                                                                     method: 'PUT',
                                                                                                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
-                                                                                                    body: JSON.stringify({ ...fac, assignedClasses: [...currentAssigned, cls] })
-                                                                                                });
+                                                                                                    body: JSON.stringify({ ...fac, assignedClasses: updatedAssigned })
+                                                                                                }).catch(err => console.error(err));
                                                                                             }
                                                                                         } catch(err) { console.error(err); }
-                                                                                        setIsProcessing(false);
                                                                                     }}
                                                                                     className={`w-full px-4 py-2.5 text-left text-[14px] font-bold transition-colors text-slate-800 hover:bg-slate-50`}
                                                                                 >
