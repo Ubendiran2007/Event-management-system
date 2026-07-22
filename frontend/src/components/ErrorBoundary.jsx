@@ -8,19 +8,30 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
+    const isChunkLoadFailed = error?.message?.match(/Failed to fetch dynamically imported module|Importing a module script failed/i) || error.name === 'ChunkLoadError';
+    if (isChunkLoadFailed) {
+      const retryCount = parseInt(sessionStorage.getItem("app_chunk_retries") || "0", 10);
+      if (retryCount < 2) {
+        // Return false for hasError so we don't render the fallback UI during the reload
+        return { hasError: false };
+      }
+    }
     return { hasError: true };
   }
 
   componentDidCatch(error, errorInfo) {
     // Check for Vite dynamic import errors (typically caused by deploying a new version)
-    const isChunkLoadFailed = error?.message?.match(/Failed to fetch dynamically imported module|Importing a module script failed/i);
+    const isChunkLoadFailed = error?.message?.match(/Failed to fetch dynamically imported module|Importing a module script failed/i) || error.name === 'ChunkLoadError';
     
     if (isChunkLoadFailed) {
-      const cacheKey = "app_chunk_failed_reload";
-      if (!sessionStorage.getItem(cacheKey)) {
-        sessionStorage.setItem(cacheKey, "true");
-        // Reload to fetch the latest index.html and correct chunks
-        window.location.reload();
+      const retryCount = parseInt(sessionStorage.getItem("app_chunk_retries") || "0", 10);
+      
+      if (retryCount < 2) {
+        sessionStorage.setItem("app_chunk_retries", (retryCount + 1).toString());
+        // Force a cache-busting reload
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('v', Date.now().toString());
+        window.location.href = currentUrl.toString();
         return;
       }
     }
@@ -56,8 +67,10 @@ class ErrorBoundary extends React.Component {
             
             <button
               onClick={() => {
-                sessionStorage.removeItem("app_chunk_failed_reload");
-                window.location.reload();
+                sessionStorage.removeItem("app_chunk_retries");
+                const currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.set('v', Date.now().toString());
+                window.location.href = currentUrl.toString();
               }}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center gap-2 mx-auto transition-colors"
             >
