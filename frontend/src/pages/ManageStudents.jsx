@@ -720,7 +720,24 @@ const ManageStudents = () => {
                             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cse-accent" size={36} /></div>
                         ) : activeTab === 'students' ? (
                             /* STUDENTS VIEW */
-                            !selectedBatchView ? (
+                            isClassAdvisor && !selectedClass ? (
+                                <>
+                                    <div className="flex items-center gap-4 mb-6">
+                                        <h3 className="text-xl font-bold text-slate-900">Your Assigned Classes</h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {currentUser.assignedClasses.map(cls => (
+                                            <button key={cls} onClick={() => { setSelectedClass(cls); setSearchQuery(''); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
+                                                <div className="text-left">
+                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{cls}</h3>
+                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{classMap[cls]?.length || 0}</span> students</p>
+                                                </div>
+                                                <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : !selectedBatchView && !isClassAdvisor ? (
                                 /* 0. Show Batches */
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
@@ -745,7 +762,7 @@ const ManageStudents = () => {
                                         ))}
                                     </div>
                                 </>
-                            ) : !effectiveDepartment ? (
+                            ) : !effectiveDepartment && !isClassAdvisor ? (
                                 /* 1. Show Departments */
                                 <>
                                     <div className="flex items-center gap-4 mb-6">
