@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { useAnalyticsContext } from '../context/AnalyticsContext';
@@ -9,7 +10,7 @@ import ApprovalPipelineChart from '../components/analytics/ApprovalPipelineChart
 import ExportPanel from '../components/analytics/ExportPanel';
 import { 
   Users, Calendar, CheckCircle, XCircle, Clock, 
-  BarChart2, BookOpen, GraduationCap, FileCheck, Filter
+  BarChart2, BookOpen, GraduationCap, FileCheck, Filter, ArrowLeft
 } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -17,43 +18,54 @@ const FilterBar = ({ filters, setFilters, role }) => {
   const handleChange = (e) => setFilters(prev => ({ ...prev, [e.target.name]: e.target.value }));
   
   return (
-    <div className="flex flex-wrap gap-2 items-center justify-end">
-      <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
-        <option value="">All Academic Years</option>
-        <option value="2023-2024">2023-2024</option>
-        <option value="2024-2025">2024-2025</option>
-      </select>
+    <div className="flex flex-wrap items-center bg-white border border-slate-200 rounded-xl shadow-sm p-1 gap-1 justify-end">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+        <Filter size={14} className="text-indigo-500" />
+        <select name="academicYear" value={filters.academicYear} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
+          <option value="">All Academic Years</option>
+          <option value="2023-2024">2023-2024</option>
+          <option value="2024-2025">2024-2025</option>
+        </select>
+      </div>
       
       {['IQAC_TEAM', 'PRINCIPAL', 'SYSTEM_ADMIN'].includes(role) && (
-        <select name="department" value={filters.department} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
-          <option value="">All Departments</option>
-          <option value="CSE">CSE</option>
-          <option value="IT">IT</option>
-          <option value="ECE">ECE</option>
-          <option value="EEE">EEE</option>
-          <option value="MECH">MECH</option>
-        </select>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+          <select name="department" value={filters.department} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
+            <option value="">All Departments</option>
+            <option value="CSE">CSE</option>
+            <option value="IT">IT</option>
+            <option value="ECE">ECE</option>
+            <option value="EEE">EEE</option>
+            <option value="MECH">MECH</option>
+          </select>
+        </div>
       )}
 
-      <select name="category" value={filters.category} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
-        <option value="">All Categories</option>
-        <option value="Symposium">Symposium</option>
-        <option value="Workshop">Workshop</option>
-        <option value="Guest Lecture">Guest Lecture</option>
-        <option value="Seminar">Seminar</option>
-        <option value="Hackathon">Hackathon</option>
-      </select>
-      <select name="status" value={filters.status} onChange={handleChange} className="border border-slate-200 focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 rounded-lg px-3 py-1.5 text-sm bg-white font-medium text-slate-700 shadow-sm transition-all outline-none">
-        <option value="">All Statuses</option>
-        <option value="COMPLETED">Completed</option>
-        <option value="APPROVED">Approved</option>
-        <option value="REJECTED">Rejected</option>
-      </select>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+        <select name="category" value={filters.category} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
+          <option value="">All Categories</option>
+          <option value="Symposium">Symposium</option>
+          <option value="Workshop">Workshop</option>
+          <option value="Guest Lecture">Guest Lecture</option>
+          <option value="Seminar">Seminar</option>
+          <option value="Hackathon">Hackathon</option>
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2 px-3 py-1.5 border-r border-slate-100">
+        <select name="status" value={filters.status} onChange={handleChange} className="bg-transparent border-none text-sm font-bold text-slate-700 outline-none cursor-pointer hover:text-indigo-600 transition-colors">
+          <option value="">All Statuses</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
+        </select>
+      </div>
+
       <button 
         onClick={() => setFilters({ academicYear: '', department: '', category: '', status: '' })}
-        className="text-sm text-blue-600 hover:text-blue-700 font-bold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
+        className="text-xs text-slate-500 hover:text-red-600 font-bold px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
       >
-        Clear Filters
+        Clear All
       </button>
     </div>
   );
@@ -201,9 +213,17 @@ const AnalyticsDashboard = () => {
       <div className="flex-1 flex flex-col min-h-0 relative">
         <div className="bg-[#f8fafc] border-b border-slate-200 px-6 py-4 z-30 shrink-0">
           <div className="max-w-6xl mx-auto w-full flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-              <p className="text-slate-500 mt-1">Real-time insights and reports based on operational data.</p>
+            <div className="flex items-start gap-4">
+              <Link to="/" className="p-2 -ml-2 mt-0.5 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors hidden sm:block">
+                <ArrowLeft size={24} />
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                  <Link to="/" className="sm:hidden text-slate-600 hover:text-slate-900"><ArrowLeft size={20}/></Link>
+                  {title}
+                </h1>
+                <p className="text-slate-500 mt-1">Real-time insights and reports based on operational data.</p>
+              </div>
             </div>
             <FilterBar filters={filters} setFilters={setFilters} role={role} />
           </div>
