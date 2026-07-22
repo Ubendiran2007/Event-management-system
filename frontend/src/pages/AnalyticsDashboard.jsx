@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
+import { getRolePath } from '../utils/routeUtils';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { useAnalyticsContext } from '../context/AnalyticsContext';
@@ -209,6 +210,11 @@ const AnalyticsDashboard = () => {
   }
 
   const role = currentUser.role;
+
+  if (role === UserRole.STUDENT_GENERAL || role === UserRole.STUDENT_ORGANIZER) {
+    const rolePrefix = getRolePath ? getRolePath(role) : 'student';
+    return <Navigate to={`/${rolePrefix}/dashboard`} replace />;
+  }
 
   let DashboardComponent = null;
   let title = "Analytics Dashboard";

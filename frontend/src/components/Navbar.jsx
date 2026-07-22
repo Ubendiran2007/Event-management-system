@@ -101,7 +101,9 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
   navItems.push({ id: 'academic-calendar', label: 'Academic Calendar', icon: CalendarDays, path: '/academic-calendar' });
 
-  navItems.push({ id: 'analytics', label: 'Analytics', icon: BarChart2, path: '/analytics' });
+  if (currentUser.role !== UserRole.STUDENT_GENERAL && currentUser.role !== UserRole.STUDENT_ORGANIZER) {
+    navItems.push({ id: 'analytics', label: 'Analytics', icon: BarChart2, path: '/analytics' });
+  }
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });
 
