@@ -21,6 +21,7 @@ const SecurityProfile = () => {
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [isFetchingLogs, setIsFetchingLogs] = useState(true);
   const [alert, setAlert] = useState(null);
   const [timer, setTimer] = useState(60);
   const [isResendActive, setIsResendActive] = useState(false);
@@ -173,6 +174,7 @@ const SecurityProfile = () => {
 
   const fetchLogs = async () => {
     if (!currentUser) return;
+    setIsFetchingLogs(true);
     try {
       const token = localStorage.getItem('sessionToken');
       const headers = { 'Authorization': `Bearer ${token}` };
@@ -195,6 +197,8 @@ const SecurityProfile = () => {
       }
     } catch (err) {
       console.error('Error fetching security logs:', err);
+    } finally {
+      setIsFetchingLogs(false);
     }
   };
 
@@ -492,7 +496,15 @@ const SecurityProfile = () => {
                         </td>
                       </tr>
                     ))}
-                    {currentTimelinePage.length === 0 && (
+                    {isFetchingLogs && (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
+                          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div>
+                          <p className="font-semibold text-slate-600">Loading timeline...</p>
+                        </td>
+                      </tr>
+                    )}
+                    {currentTimelinePage.length === 0 && !isFetchingLogs && (
                       <tr>
                         <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
                           <AlertTriangle size={32} className="mx-auto mb-3 text-slate-300" />

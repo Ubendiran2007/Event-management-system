@@ -63,6 +63,7 @@ export const AppProvider = ({ children }) => {
         ? fetchedEvents.filter(e => !ghostIdsRef.current.has(e.id))
         : fetchedEvents;
       setEvents(filtered);
+      setLoading(false); // Unblock the UI early when primary real-time data loads
     });
 
     // Subscribe to OD requests
@@ -73,7 +74,6 @@ export const AppProvider = ({ children }) => {
     // Subscribe to students
     const unsubscribeStudents = subscribeToStudents(currentUser, (fetchedStudents) => {
       setStudents(fetchedStudents);
-      setLoading(false);
     });
 
     // Subscribe to users
