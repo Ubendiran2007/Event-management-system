@@ -108,6 +108,13 @@ const query = (baseRef, ...conditions) => {
   return q;
 };
 
+const getCountFromServer = async (queryRef) => {
+  const snapshot = await queryRef.count().get();
+  return {
+    data: () => ({ count: snapshot.data().count })
+  };
+};
+
 const where = (field, op, value) => ({ type: 'where', field, op, value });
 const orderBy = (field, dir = 'asc') => ({ type: 'orderBy', field, dir });
 const limit = (val) => ({ type: 'limit', val });
@@ -158,6 +165,7 @@ module.exports = {
   limit,
   startAfter,
   endBefore,
+  getCountFromServer,
   runTransaction,
   writeBatch,
   arrayUnion,

@@ -1,5 +1,5 @@
 const express = require('express');
-const { collection, getDocs, query, where, doc, updateDoc, collectionGroup, db } = require('../firebaseClientWrapper');
+const { collection, getDocs, query, where, doc, updateDoc, collectionGroup, db, getCountFromServer } = require('../firebaseClientWrapper');
 const { CLASSES } = require('../utils/constants');
 const { getAllSectionDocs } = require('../utils/studentHelper');
 
@@ -175,34 +175,54 @@ router.get('/summary', async (req, res) => {
   if (!checkDb(res)) return;
 
   try {
-    // Fetch events and OD requests in parallel
-    const [eventsSnap, odSnap] = await Promise.all([
-      getDocs(collection(db, 'events')),
-      getDocs(collection(db, 'odRequests')),
+    // Aggregation queries for Events
+    const eventsCol = collection(db, 'events');
+    const odCol = collection(db, 'odRequests');
+
+    const [
+      eventsTotalSnap, eventsCompletedSnap, eventsRejectedSnap,
+      eventsPendingFacultySnap, eventsPendingHodSnap, eventsPendingIqacSnap,
+      eventsPendingBaseSnap, eventsPostedSnap, eventsApprovedSnap,
+      odTotalSnap, odPendingSnap, odApprovedSnap, odRejectedSnap
+    ] = await Promise.all([
+      getCountFromServer(eventsCol),
+      getCountFromServer(query(eventsCol, where('status', '==', 'COMPLETED'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'REJECTED'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'PENDING_FACULTY'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'PENDING_HOD'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'PENDING_IQAC'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'PENDING_DEPARTMENTS'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'POSTED'))),
+      getCountFromServer(query(eventsCol, where('status', '==', 'APPROVED'))),
+      
+      getCountFromServer(odCol),
+      getCountFromServer(query(odCol, where('status', '==', 'PENDING_HOD'))), // Example of pending, we will aggregate pending counts
+      getCountFromServer(query(odCol, where('status', '==', 'APPROVED'))),
+      getCountFromServer(query(odCol, where('status', '==', 'REJECTED')))
     ]);
 
-    const events = snapshotToArray(eventsSnap);
-    const odRequests = snapshotToArray(odSnap);
+    const pendingODs = odPendingSnap.data().count; // OD Requests only use PENDING_HOD or PENDING_TUTOR, assume sum or just PENDING
+    
+    // We can also fetch the raw OD requests if we need exact string matching on "startsWith('PENDING')", 
+    // but since we want to avoid reading all ODs, we'll run 2 queries for the two possible pending states:
+    const odPendingTutorSnap = await getCountFromServer(query(odCol, where('status', '==', 'PENDING_TUTOR')));
 
     const summary = {
       events: {
-        total: events.length,
-        pending: events.filter((e) => e.status?.startsWith('PENDING')).length,
-        posted: events.filter(
-          (e) => e.status === 'POSTED' || e.status === 'APPROVED'
-        ).length,
-        completed: events.filter((e) => e.status === 'COMPLETED').length,
-        rejected: events.filter((e) => e.status === 'REJECTED').length,
-        // Breakdown by approval stage
-        pendingFaculty: events.filter((e) => e.status === 'PENDING_FACULTY').length,
-        pendingHod: events.filter((e) => e.status === 'PENDING_HOD').length,
-        pendingIqac: events.filter((e) => e.status === 'PENDING_IQAC').length,
+        total: eventsTotalSnap.data().count,
+        pending: eventsPendingFacultySnap.data().count + eventsPendingHodSnap.data().count + eventsPendingIqacSnap.data().count + eventsPendingBaseSnap.data().count,
+        posted: eventsPostedSnap.data().count + eventsApprovedSnap.data().count,
+        completed: eventsCompletedSnap.data().count,
+        rejected: eventsRejectedSnap.data().count,
+        pendingFaculty: eventsPendingFacultySnap.data().count,
+        pendingHod: eventsPendingHodSnap.data().count,
+        pendingIqac: eventsPendingIqacSnap.data().count,
       },
       odRequests: {
-        total: odRequests.length,
-        pending: odRequests.filter((r) => r.status?.startsWith('PENDING')).length,
-        approved: odRequests.filter((r) => r.status === 'APPROVED').length,
-        rejected: odRequests.filter((r) => r.status === 'REJECTED').length,
+        total: odTotalSnap.data().count,
+        pending: pendingODs + odPendingTutorSnap.data().count,
+        approved: odApprovedSnap.data().count,
+        rejected: odRejectedSnap.data().count,
       },
     };
 

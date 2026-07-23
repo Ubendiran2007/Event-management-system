@@ -131,11 +131,14 @@ router.post('/', async (req, res) => {
     const normalizedRegistrationType = allowVolunteer ? requestedType : 'PARTICIPANT';
 
     // Check for any existing OD request for this student+event
-    const snapshot = await getDocs(collection(db, 'odRequests'));
-    const existingDoc = snapshot.docs.find(d => {
-      const r = d.data();
-      return r.eventId === eventId && r.studentId === studentId;
-    });
+    const qDup = query(
+      collection(db, 'odRequests'),
+      where('eventId', '==', eventId),
+      where('studentId', '==', studentId),
+      limit(1)
+    );
+    const snapshot = await getDocs(qDup);
+    const existingDoc = snapshot.empty ? null : snapshot.docs[0];
 
     if (existingDoc) {
       const existingStatus = existingDoc.data().status;
@@ -251,13 +254,18 @@ router.get('/', async (req, res) => {
   const { eventId, studentId, organizerId, status } = req.query;
 
   try {
-    const snapshot = await getDocs(collection(db, 'odRequests'));
-    let requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    let constraints = [];
+    if (eventId) constraints.push(where('eventId', '==', eventId));
+    if (studentId) constraints.push(where('studentId', '==', studentId));
+    if (organizerId) constraints.push(where('organizerId', '==', organizerId));
+    if (status) constraints.push(where('status', '==', status));
 
-    if (eventId)     requests = requests.filter(r => r.eventId === eventId);
-    if (studentId)   requests = requests.filter(r => r.studentId === studentId);
-    if (organizerId) requests = requests.filter(r => r.organizerId === organizerId);
-    if (status)      requests = requests.filter(r => r.status === status);
+    const qList = constraints.length > 0 
+      ? query(collection(db, 'odRequests'), ...constraints) 
+      : collection(db, 'odRequests');
+      
+    const snapshot = await getDocs(qList);
+    let requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
     // Never expose passwords (shouldn't be here but defensive)
     requests = requests.map(r => {

@@ -220,7 +220,11 @@ router.post('/:eventId', async (req, res) => {
     try {
       // First clear existing gallery subcollection
       const existingGallery = await getDocs(collection(db, 'events', eventId, 'gallery'));
-      await Promise.all(existingGallery.docs.map(d => deleteDoc(d.ref)));
+      if (!existingGallery.empty) {
+        const batch = writeBatch(db);
+        existingGallery.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
       // Write new items
       await Promise.all((gallery || []).map(item => {
         const photoId = item.id || `gallery_${Date.now()}_${Math.random().toString(36).slice(2)}`;

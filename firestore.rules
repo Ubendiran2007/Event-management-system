@@ -28,15 +28,11 @@ service cloud.firestore {
     }
     
     // 2. Events Collection
-    // Read: Authenticated users can read.
-    // Create/Update: Authenticated users can create/update. 
-    // Delete: Forbidden.
-    // (Detailed business logic like status transitions and approvals is enforced in the backend API).
+    // Read: Authenticated users can read (needed for realtime onSnapshot).
+    // Write: Strictly enforced in the backend (Express API).
     match /events/{eventId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if false;
+      allow write: if false;
     }
     
     // 3. User Profiles & Settings
