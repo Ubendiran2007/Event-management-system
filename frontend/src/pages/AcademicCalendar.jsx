@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Trash2, CheckCircle, Download, ArrowLeft, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
@@ -65,6 +65,7 @@ const CalendarSelect = ({ label, field, form, setForm, options, required = true 
 };
 
 const AcademicCalendar = () => {
+  const navigate = useNavigate();
   const { currentUser } = useAppContext();
   const { events: allEvents, loading } = useCalendarEvents();
   const {
