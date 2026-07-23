@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider, useAppContext } from './context/AppContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { CalendarProvider } from './context/CalendarContext';
@@ -57,8 +57,9 @@ const RoleRoutes = () => (
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAppContext();
+  const location = useLocation();
   if (!currentUser) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />;
   }
   return children;
 };

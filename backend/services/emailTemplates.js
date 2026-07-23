@@ -1,7 +1,20 @@
 const SECE_HEADER_IMG = "https://sece.ac.in/wp-content/uploads/2023/10/sece-logo.png"; // Example or placeholder if needed
 
-function buildBaseTemplate({ title, subtitle, headerBg = '#1e293b', headerTextColor = '#ffffff', contentHtml, preheader = '' }) {
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+function buildBaseTemplate({ title, subtitle, headerBg = '#1e293b', headerTextColor = '#ffffff', contentHtml, preheader = '', actionUrl = null }) {
   const currentYear = new Date().getFullYear();
+  
+  const actionButtonHtml = actionUrl ? `
+    <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+      <a href="${actionUrl}" class="btn" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; text-align: center; transition: background-color 0.2s;">Open in Event Hub</a>
+      <p style="margin: 16px 0 0; font-size: 12px; color: #64748b;">
+        Can't click the button? Copy and paste this link:<br>
+        <a href="${actionUrl}" style="color: #2563eb; text-decoration: underline; word-break: break-all;">${actionUrl}</a>
+      </p>
+    </div>
+  ` : '';
+
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -47,6 +60,7 @@ function buildBaseTemplate({ title, subtitle, headerBg = '#1e293b', headerTextCo
           <tr>
             <td class="content">
               ${contentHtml}
+              ${actionButtonHtml}
             </td>
           </tr>
           <tr>
@@ -115,7 +129,8 @@ module.exports = {
           <p style="margin: 0; font-size: 14px; font-weight: 600; text-transform: uppercase; margin-bottom: 8px;">⚡ Action Required</p>
           <p style="margin: 0; font-size: 14px; line-height: 1.5;">Please log into the Event Management Portal to review the requisition and approve or reject this proposal.</p>
         </div>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
     });
   },
 
@@ -131,7 +146,8 @@ module.exports = {
         <div style="margin-top: 24px; text-align: center;">
           <p style="margin: 0 0 16px; font-size: 14px; color: #475569;">Please log into the portal to review the complete details and process this request.</p>
         </div>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
     });
   },
 
@@ -207,7 +223,8 @@ module.exports = {
       subtitle: 'Event Status Update',
       headerBg,
       preheader: `Update for '${eventData.title}': ${statusInfo.message}`,
-      contentHtml
+      contentHtml,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
     });
   },
 
@@ -226,7 +243,8 @@ module.exports = {
           </table>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569; line-height: 1.5;">Please coordinate with the organizer (${eventData.organizerName}) for specific design requirements and upload the completed poster to the portal.</p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
     });
   },
 
@@ -242,7 +260,8 @@ module.exports = {
           <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your official event poster has been uploaded successfully by the Media Team.</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569; line-height: 1.6;">Please log into the portal to review the design and finalize the event details.</p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
     });
   },
 
@@ -290,7 +309,8 @@ module.exports = {
             <p style="margin: 8px 0 0; font-size: 13px; line-height: 1.5;">Unfortunately, your request could not be accommodated at this time. If you have questions, please contact the event organizer.</p>
           </div>
         `}
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/registrations/${student.registrationId || student.id || ''}`
     });
   },
 
@@ -324,10 +344,8 @@ module.exports = {
         
         <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">Thank you for participating in <strong>"${safeVal(eventData.title, 'Not Provided')}"</strong>. We hope you had a great experience!</p>
         <p style="margin: 0 0 24px; font-size: 15px; color: #475569; line-height: 1.6;">To help us improve the quality of future programs, please take a few minutes to share your feedback.</p>
-        <div style="text-align: center; margin: 32px 0;">
-          <a href="${feedbackLink}" class="btn" style="background-color: #f59e0b; color: #fff;">Submit Your Feedback</a>
-        </div>
-      `
+      `,
+      actionUrl: feedbackLink || `${FRONTEND_URL}/dashboard`
     });
   },
 
@@ -343,7 +361,8 @@ module.exports = {
           <p style="margin: 0; font-size: 14px; line-height: 1.5;">The event <strong>${eventData.title}</strong> has concluded. It is now mandatory to submit the Post-Event Report to the IQAC.</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569; line-height: 1.6;">Please log into the portal to complete the IQAC submission, which includes uploading event photographs and summarizing student feedback.</p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/reports/${eventData.id || ''}`
     });
   },
 
@@ -359,7 +378,8 @@ module.exports = {
           <p style="margin: 0; font-size: 14px; line-height: 1.5;">The IQAC Post-Event Report for <strong>${eventData.title}</strong> is due by <strong>${deadlineDate}</strong>.</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569; line-height: 1.6;">Prompt submission is necessary to maintain compliance. Please complete this requirement immediately via the portal.</p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/reports/${eventData.id || ''}`
     });
   },
 
@@ -379,7 +399,8 @@ module.exports = {
           </div>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569;">Please log into the portal to approve or reject this extension request.</p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
     });
   },
 
@@ -399,7 +420,8 @@ module.exports = {
         ${isApproved 
           ? '<p style="margin: 20px 0 0; font-size: 14px; color: #475569;">You may now log into the portal and submit your report within the newly extended window.</p>'
           : '<p style="margin: 20px 0 0; font-size: 14px; color: #475569;">Please ensure that your report is submitted as soon as possible to remain compliant.</p>'}
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/reports/${eventData.id || ''}`
     });
   },
 
@@ -420,7 +442,8 @@ module.exports = {
           <p style="margin: 0; font-size: 13px; line-height: 1.5;">Your proposal is now pending review. You will receive email notifications as it progresses through the designated approvers (Faculty, HOD, Departments, IQAC).</p>
         </div>
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569;">You can track the live approval status at any time from your Dashboard in the Event Management Portal.</p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
     });
   },
 
@@ -460,7 +483,8 @@ module.exports = {
         <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
           If this login was not performed by you, immediately change your password and contact IQAC.
         </p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/security`
     });
   },
 
@@ -506,7 +530,8 @@ module.exports = {
           <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${date}</td></tr>
           <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${time}</td></tr>
         </table>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/security`
     });
   },
 
@@ -552,7 +577,8 @@ module.exports = {
           <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Date</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${date}</td></tr>
           <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; background: #f8fafc; font-weight: 600;">Time</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">${time}</td></tr>
         </table>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/login`
     });
   },
 
@@ -581,7 +607,8 @@ module.exports = {
         <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">
           If this was not you, immediately change your password and contact IQAC.
         </p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/security`
     });
   },
 
@@ -607,7 +634,8 @@ module.exports = {
         <p style="margin: 20px 0 0; font-size: 14px; color: #475569;">
           Please wait for the lock duration to expire before attempting to log in again. If you continue to face issues, you may use the "Forgot Password" option or contact the ICTS Team.
         </p>
-      `
+      `,
+      actionUrl: `${FRONTEND_URL}/login`
     });
   },
 
@@ -630,11 +658,9 @@ module.exports = {
             Until feedback is submitted, your participation certificate and event completion status will remain blocked on the portal.
           </p>
         </div>
-        <div style="text-align: center; margin: 24px 0;">
-          <a href="${link}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; font-weight: 600; border-radius: 6px;">Submit Feedback Now</a>
-        </div>
         <p style="margin: 20px 0 0; font-size: 13px; color: #64748b; line-height: 1.5;">If you have already submitted your feedback, please disregard this email.</p>
-      `
+      `,
+      actionUrl: link || `${FRONTEND_URL}/dashboard`
     });
   }
 };

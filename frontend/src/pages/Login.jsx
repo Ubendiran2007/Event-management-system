@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
@@ -14,6 +14,7 @@ import AlertCard from '../components/AlertCard';
 const Login = () => {
   const { handleLogin } = useAppContext();
   const navigate = useNavigate();
+  const location = useLocation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -73,7 +74,10 @@ const Login = () => {
           isApprovedOrganizer: data.user.isApprovedOrganizer || false,
         });
         const rolePrefix = getRolePath(userRole);
-        navigate(`/${rolePrefix}/dashboard`);
+        
+        // Redirect to the originally requested URL, or fallback to the dashboard
+        const from = location.state?.from?.pathname || `/${rolePrefix}/dashboard`;
+        navigate(from, { replace: true });
 
       } else {
         if (data.message && (data.message.toLowerCase().includes('lock') || data.message.toLowerCase().includes('too many'))) {
