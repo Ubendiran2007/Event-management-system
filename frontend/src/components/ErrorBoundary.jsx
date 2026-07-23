@@ -45,6 +45,22 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      let userRole = 'Not Logged In';
+      let userId = 'N/A';
+      try {
+        const userStr = localStorage.getItem('currentUser') || localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          userRole = user.role || 'Unknown';
+          userId = user.id || user.rollNo || 'Unknown';
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+      
+      const browserInfo = navigator.userAgent;
+      const appVersion = import.meta.env.VITE_APP_VERSION || 'v2.4.1 (Stable)';
+
       return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
           <div className="bg-white p-8 rounded-2xl shadow-xl max-w-2xl w-full text-center">
@@ -59,8 +75,12 @@ class ErrorBoundary extends React.Component {
             {this.state.error && (
               <div className="text-left bg-slate-100 p-4 rounded-xl mb-8 overflow-auto max-h-96 border border-slate-200">
                 <div className="mb-4 pb-4 border-b border-slate-200 flex flex-col gap-1 text-sm text-slate-700">
-                  <div><span className="font-bold text-slate-900">Timestamp:</span> {new Date().toLocaleString()}</div>
+                  <div><span className="font-bold text-slate-900">Time:</span> {new Date().toLocaleString()}</div>
                   <div><span className="font-bold text-slate-900">Route:</span> {window.location.pathname}</div>
+                  <div><span className="font-bold text-slate-900">Role:</span> {userRole}</div>
+                  <div><span className="font-bold text-slate-900">User:</span> {userId}</div>
+                  <div><span className="font-bold text-slate-900">Browser:</span> {browserInfo}</div>
+                  <div><span className="font-bold text-slate-900">Build:</span> {appVersion}</div>
                 </div>
                 <p className="text-red-600 font-mono text-sm font-bold mb-2">{this.state.error.toString()}</p>
                 <pre className="text-slate-700 font-mono text-xs whitespace-pre-wrap">

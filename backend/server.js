@@ -19,8 +19,16 @@ const correctionRequestsRoutes = require('./routes/correctionRequests');
 const securityRoutes = require('./routes/security');
 const usersRoutes = require('./routes/users');
 const analyticsRoutes = require('./routes/analytics');
+const notificationsRoutes = require('./routes/notifications');
+const preferencesRoutes = require('./routes/preferences');
 const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionService');
 const { startFeedbackReminderJob } = require('./services/feedbackReminderService');
+require('./notifications/orchestrator/notificationOrchestrator'); // Initialize the orchestrator to listen to the EventBus
+require('./events/consumers/auditConsumer'); // Initialize the audit consumer to log all EventBus traffic
+const workerSupervisor = require('./notifications/queue/workerSupervisor');
+workerSupervisor.start(); // Start background queue workers
+const reminderScheduler = require('./reminders/scheduler/reminderScheduler');
+reminderScheduler.start(); // Start the policy-based reminder engine
 
 const app = express();
 app.set('trust proxy', 1);
@@ -77,6 +85,8 @@ app.use('/api/correction-requests', correctionRequestsRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/preferences', preferencesRoutes);
 
 // ── Start server ─────────────────────────────────────────────────────────────
 const server = http.createServer(app);

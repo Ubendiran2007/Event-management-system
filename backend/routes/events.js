@@ -44,12 +44,14 @@ const {
   executeBackgroundNotification
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
+const { getUserId } = require('../utils/authHelper');
 const { logActivity } = require('../utils/logger');
 const crypto = require('crypto');
+const eventPublisher = require('../events/publishers/eventPublisher');
 
 const router = express.Router();
 
-// â”€â”€ Guard: firebase not ready â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Guard: firebase not ready ────────────────────────────────────────────────
 function checkDb(res) {
   if (!db) {
     res.status(503).json({
@@ -222,6 +224,7 @@ router.post('/', async (req, res) => {
     const payloadWithId = { id: docRef.id, ...payload };
     executeBackgroundNotification('events/create', async () => {
       // Resolve faculty email if student-created event
+      let targetApproverId = null;
       if (payload.status === 'PENDING_FACULTY') {
         let facultyEmail = payload.coordinator?.facultyEmail ||
                            payload.coordinator?.faculty_email ||
@@ -230,9 +233,20 @@ router.post('/', async (req, res) => {
         if (!facultyEmail && payload.coordinator?.facultyName) {
           facultyEmail = await getFacultyEmailByName(String(payload.coordinator.facultyName).trim());
         }
+        targetApproverId = facultyEmail;
         payloadWithId.coordinator = { ...payloadWithId.coordinator, facultyEmail };
       }
-      await handleEventStatusChange(payloadWithId, null, payload.status);
+      
+      // Parallel execution: New EventBus Publisher
+      eventPublisher.publishEventCreated({
+        eventId: payloadWithId.id,
+        organizerId: payloadWithId.createdBy || payloadWithId.organizerId || getUserId(req),
+        eventTitle: payloadWithId.title || payloadWithId.eventName,
+        eventType: payloadWithId.eventType,
+        department: payloadWithId.department,
+        targetApprovers: targetApproverId ? [targetApproverId] : [],
+        correlationId: crypto.randomUUID()
+      });
     });
 
     logActivity({
@@ -625,7 +639,17 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
       } else if (finalStatus === 'POSTPONED') {
         await handleEventPostponed(eventData);
       } else {
-        await handleEventStatusChange(eventData, prevStatus, notificationStatus);
+        // Parallel execution: New EventBus Publisher
+        if (notificationStatus.includes('APPROVED')) {
+          eventPublisher.publishEventApproved({
+            eventId: eventData.id,
+            organizerId: eventData.createdBy || eventData.organizerId,
+            actorId: getUserId(req), // The person approving
+            eventTitle: eventData.title || eventData.eventName,
+            approverRole: req.user?.role || 'SYSTEM',
+            correlationId: crypto.randomUUID()
+          });
+        }
       }
     });
 
@@ -992,6 +1016,17 @@ router.post('/:id/register', async (req, res) => {
       });
     });
 
+    // ── Background Notifications (centralized handler) ─────────────────
+    eventPublisher.publishRegistrationSubmitted({
+      registrationId: `${req.params.id}_${userId}`,
+      studentId: userId,
+      studentName: req.user?.name || req.user?.displayName || req.body?.name || 'Unknown Student',
+      organizerIds: eventData.organizerId ? [eventData.organizerId] : (eventData.createdBy ? [eventData.createdBy] : []),
+      eventId: req.params.id,
+      eventTitle: eventData.title || eventData.eventName,
+      correlationId: crypto.randomUUID()
+    });
+
     return res.status(201).json({ success: true, message: 'Registered successfully', entry: newEntry });
   } catch (error) {
     if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
@@ -1056,6 +1091,17 @@ router.post('/:id/withdraw', async (req, res) => {
         stats: newStats,
         updatedAt: new Date().toISOString(),
       });
+    });
+
+    // ── Background Notifications (centralized handler) ─────────────────
+    eventPublisher.publishRegistrationCancelled({
+      registrationId: `${req.params.id}_${userId}`,
+      studentId: userId,
+      studentName: req.user?.name || req.user?.displayName || 'Student',
+      organizerIds: eventData.organizerId ? [eventData.organizerId] : (eventData.createdBy ? [eventData.createdBy] : []),
+      eventId: req.params.id,
+      eventTitle: eventData.title || eventData.eventName,
+      correlationId: crypto.randomUUID()
     });
 
     return res.json({ success: true, message: 'Withdrawn successfully' });

@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, CheckCircle2, Info, XCircle, X } from 'lucide-react';
+import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAppContext } from './AppContext';
 import ConfirmationModal from '../components/ConfirmationModal';
 
 const NotificationContext = createContext(null);
@@ -24,6 +27,100 @@ export const NotificationProvider = ({ children }) => {
     onCancel: null,
     hideCancel: false,
   });
+
+  const { currentUser } = useAppContext();
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Firestore Real-time Listener for current user's notifications
+  useEffect(() => {
+    if (!currentUser?.id && !currentUser?.rollNo) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    const userId = currentUser.id || currentUser.rollNo;
+    const q = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', userId),
+      where('status', 'in', ['DELIVERED', 'VIEWED']),
+      orderBy('createdAt', 'desc'),
+      limit(20)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = [];
+      let unread = 0;
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        notifs.push({ id: doc.id, ...data });
+        if (data.status === 'DELIVERED') {
+          unread++;
+        }
+      });
+      setNotifications(notifs);
+      setUnreadCount(unread);
+    }, (error) => {
+      console.error('[NotificationContext] Error fetching notifications:', error);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  const markAsRead = useCallback(async (notificationId) => {
+    // Optimistic UI Update
+    setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, status: 'VIEWED' } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+    
+    try {
+      const ref = doc(db, 'notifications', notificationId);
+      await updateDoc(ref, { 
+        status: 'VIEWED',
+        viewedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[NotificationContext] markAsRead failed:', error);
+      // Depending on strictness, we might want to revert the optimistic update here.
+    }
+  }, []);
+
+  const markAllAsRead = useCallback(async () => {
+    if (!currentUser) return;
+    const userId = currentUser.id || currentUser.rollNo;
+    
+    // Optimistic UI
+    setNotifications(prev => prev.map(n => n.status === 'DELIVERED' ? { ...n, status: 'VIEWED' } : n));
+    setUnreadCount(0);
+
+    try {
+      await fetch('/api/notifications/bulk-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'MARK_ALL_READ' })
+      });
+    } catch (error) {
+      console.error('[NotificationContext] markAllAsRead failed:', error);
+    }
+  }, [currentUser]);
+
+  const archiveAllRead = useCallback(async () => {
+    if (!currentUser) return;
+    const userId = currentUser.id || currentUser.rollNo;
+    
+    // Optimistic UI
+    setNotifications(prev => prev.filter(n => n.status !== 'VIEWED'));
+
+    try {
+      await fetch('/api/notifications/bulk-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action: 'ARCHIVE_ALL' })
+      });
+    } catch (error) {
+      console.error('[NotificationContext] archiveAllRead failed:', error);
+    }
+  }, [currentUser]);
 
   const showToast = useCallback((message, type = 'success', duration = 3000) => {
     const id = Date.now().toString() + Math.random().toString();
@@ -104,7 +201,15 @@ export const NotificationProvider = ({ children }) => {
   }, []);
 
   return (
-    <NotificationContext.Provider value={{ showToast, showDialog }}>
+    <NotificationContext.Provider value={{ 
+      showToast, 
+      showDialog, 
+      notifications, 
+      unreadCount, 
+      markAsRead, 
+      markAllAsRead, 
+      archiveAllRead 
+    }}>
       {children}
       
       {/* Dialog Renderer */}

@@ -3,7 +3,8 @@ const router = express.Router();
 
 const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db, collectionGroup, query, where, limit } = require('../firebaseClientWrapper');
 const { getAllSectionDocs } = require('../utils/studentHelper');
-const { handleODStatusChange } = require('../services/emailHandler');
+const eventPublisher = require('../events/publishers/eventPublisher');
+const crypto = require('crypto');
 const { syncStudentODCount } = require('../utils/odSync');
 
 const normalizeRollNo = (value) =>
@@ -180,6 +181,17 @@ router.post('/', async (req, res) => {
         updatedAt: new Date().toISOString(),
       };
       await updateDoc(doc(db, 'odRequests', existingDoc.id), reActivated);
+      
+      eventPublisher.publishOdRequested({
+        odId: existingDoc.id,
+        studentId,
+        studentName,
+        approverIds: event.organizerId ? [event.organizerId] : [], // Goes to organizer first
+        eventId,
+        eventTitle: event.title || '',
+        correlationId: crypto.randomUUID()
+      });
+
       return res.status(200).json({ success: true, odRequest: { id: existingDoc.id, ...existingDoc.data(), ...reActivated } });
     }
 
@@ -215,6 +227,17 @@ router.post('/', async (req, res) => {
     };
 
     const docRef = await addDoc(collection(db, 'odRequests'), odData);
+    
+    eventPublisher.publishOdRequested({
+      odId: docRef.id,
+      studentId,
+      studentName,
+      approverIds: event.organizerId ? [event.organizerId] : [],
+      eventId,
+      eventTitle: event.title || '',
+      correlationId: crypto.randomUUID()
+    });
+
     res.status(201).json({ success: true, odRequest: { id: docRef.id, ...odData } });
   } catch (err) {
     console.error('Error creating OD request:', err);
@@ -332,13 +355,40 @@ router.patch('/:id/status', async (req, res) => {
       }
     }
 
+    // ── Background Notifications (centralized handler) ─────────────────
     (async () => {
       try {
-        if (current.email && (status === 'APPROVED' || status === 'REJECTED')) {
-          await handleODStatusChange({ id, ...current }, status, req.body.odLetterBase64);
+        const payload = {
+          odId: id,
+          studentId: current.studentId,
+          studentName: current.studentName,
+          eventId: current.eventId,
+          eventTitle: current.eventTitle,
+          reason: req.body.remarks || '',
+          correlationId: crypto.randomUUID()
+        };
+
+        if (status === 'PENDING_HOD') {
+          // Faculty Approved
+          payload.facultyId = req.user?.uid || update.facultyApprovedBy;
+          payload.hodIds = current.department ? [`hod_${current.department}`] : []; // Example: target HOD by dept
+          eventPublisher.publishOdFacultyApproved(payload);
+        } else if (status === 'PENDING_IQAC' || status === 'PENDING_PRINCIPAL') {
+          // HOD Approved
+          payload.hodId = req.user?.uid || update.hodApprovedBy;
+          eventPublisher.publishOdHodApproved(payload);
+        } else if (status === 'REJECTED') {
+          payload.actorId = req.user?.uid || update.rejectedBy;
+          eventPublisher.publishOdRejected(payload);
+        } else if (status === 'APPROVED') {
+          // Final Approval - for OD, maybe we just use OdHodApproved for final, 
+          // or we can add OdApproved if needed. 
+          // For now, if IQAC approves, we'll map it to OdHodApproved (since it notifies student).
+          payload.hodId = req.user?.uid || update.iqacApprovedBy;
+          eventPublisher.publishOdHodApproved(payload);
         }
       } catch (err) {
-        console.error('[odRequests/status/bg] Error sending email:', err.message);
+        console.error('[odRequests/status/bg] Error publishing OD event:', err.message);
       }
     })();
 
