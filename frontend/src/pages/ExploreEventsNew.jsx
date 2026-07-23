@@ -11,6 +11,7 @@ import StatusBadge from '../components/StatusBadge';
 import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
 import EventDetailModal from '../components/EventDetailModal';
+import { useExploreEvents } from '../hooks/useExploreEvents';
 import EventReportModal from '../components/EventReportModal';
 import { sortEventsByEventDateDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 import defaultPoster from '../assets/sece.avif';
@@ -1856,10 +1857,9 @@ const EventCard = ({
   );
 };
 
-const ExploreEvents = () => {
-  const { currentUser, odRequests = [], handleApproval, handleDepartmentApproval } = useAppContext();
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+export const ExploreEventsNew = () => {
+  const { currentUser, setStudents, students } = useAppContext();
+  const { events: availableEvents, loading, refresh: refreshEvents } = useExploreEvents();
   const [filter, setFilter] = useState('all');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -1871,8 +1871,8 @@ const ExploreEvents = () => {
   const location = useLocation();
 
   useEffect(() => {
-    if (location.state?.openIQAC && events.length > 0) {
-      const event = events.find(e => e.id === location.state.openIQAC);
+    if (location.state?.openIQAC && availableEvents.length > 0) {
+      const event = availableEvents.find(e => e.id === location.state.openIQAC);
       if (event) {
         setSelectedEvent(event);
         setShowEventDetail(true);
@@ -1880,58 +1880,10 @@ const ExploreEvents = () => {
         navigate(location.pathname, { replace: true, state: {} });
       }
     }
-  }, [location.state, events, navigate]);
+  }, [location.state, availableEvents, navigate]);
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  // useExploreEvents hook handles the fetching and filtering automatically
 
-  const loadEvents = async (silent = false) => {
-    try {
-      if (!silent) setLoading(true);
-      const allEvents = await fetchEvents();
-      // Show POSTED, COMPLETED, CANCELLED, POSTPONED events in the explore page
-      const visibleEvents = allEvents
-        .filter(e => {
-          // 1. Status check
-          const isValidStatus = e.status === EventStatus.POSTED || 
-                                e.status === EventStatus.COMPLETED ||
-                                ((e.status === 'CANCELLED' || e.status === 'POSTPONED') && !!e.iqacApprovedAt);
-          
-          if (!isValidStatus) return false;
-
-          // 2. Department visibility check
-          if (currentUser) {
-            const globalRoles = [
-              UserRole.IQAC_TEAM,
-              UserRole.SYSTEM_ADMIN,
-              UserRole.HR_TEAM,
-              UserRole.AUDIO_TEAM,
-              UserRole.TRANSPORT_TEAM,
-              UserRole.BOYS_WARDEN,
-              UserRole.GIRLS_WARDEN,
-              UserRole.MEDIA,
-            ];
-            const hasGlobalVisibility = globalRoles.includes(currentUser?.role);
-            const isOpenToAll = e.openToAllDepartments === true || e.audienceScope === 'Open To All' || String(e.department).toLowerCase() === 'overall';
-            const isMyDept = String(e.department).toLowerCase() === String(currentUser?.department).toLowerCase() || (e.requisition?.step1?.department === currentUser?.department);
-            const isSelectedDept = Array.isArray(e.selectedDepartments) && e.selectedDepartments.includes(currentUser?.department);
-            
-            if (!hasGlobalVisibility && !isOpenToAll && !isMyDept && !isSelectedDept) {
-              return false;
-            }
-          }
-
-          return true;
-        })
-        .sort(sortEventsByEventDateDesc);
-      setEvents(visibleEvents);
-    } catch (error) {
-      console.error('Error loading events:', error);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  };
 
   const getEventStatus = (event) => {
     const now = Date.now();
@@ -1957,15 +1909,15 @@ const ExploreEvents = () => {
   };
 
   const filteredEvents = useMemo(() => {
-    let result = events;
+    let result = availableEvents;
     if (filter !== 'all') {
-      result = events.filter(e => getEventStatus(e) === filter);
+      result = availableEvents.filter(e => getEventStatus(e) === filter);
     }
     if (filter === 'completed') {
       return [...result].sort(sortEventsByEndDateDesc);
     }
     return result;
-  }, [events, filter]);
+  }, [availableEvents, filter]);
 
   const isRegistered = (event) => {
     if (!currentUser?.id || !event?.id) return false;

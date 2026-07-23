@@ -31,23 +31,43 @@ export const AppProvider = ({ children }) => {
     const saved = localStorage.getItem('currentUser');
     return saved ? JSON.parse(saved) : null;
   });
-  const [events, setEvents] = useState([]);
   const [students, setStudents] = useState([]);
   const [staffUsers, setStaffUsers] = useState([]);
   const [odRequests, setODRequests] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedODRequest, setSelectedODRequest] = useState(null);
   const [loading, setLoading] = useState(true);
-  // IDs confirmed to not exist on the Firestore server — filtered out of every snapshot
-  const ghostIdsRef = useRef(new Set());
   const [organizerRequests, setOrganizerRequests] = useState([
     { id: 's2', name: 'Jane Smith', status: 'pending' }
   ]);
 
-  // Subscribe to real-time updates from Firebase
+  // Manual fetch for students and users (Phase 2 architecture)
+  const loadStudents = React.useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const data = await import('../services/firebaseService').then(m => m.fetchStudentsDirect(currentUser));
+      setStudents(data);
+    } catch (err) {
+      console.error('Error fetching students:', err);
+    }
+  }, [currentUser]);
+
+  const loadUsers = React.useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const data = await import('../services/firebaseService').then(m => m.fetchUsersDirect());
+      setStaffUsers(data);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  }, [currentUser]);
+
+  const refreshStudents = loadStudents;
+  const refreshUsers = loadUsers;
+
+  // Subscribe to real-time updates from Firebase for OD Requests (temporary until Phase 4)
   useEffect(() => {
     if (!currentUser) {
-      setEvents([]);
       setODRequests([]);
       setStudents([]);
       setStaffUsers([]);
@@ -57,36 +77,13 @@ export const AppProvider = ({ children }) => {
 
     setLoading(true);
 
-    // Subscribe to events — filter out any known ghost IDs on every delivery
-    const unsubscribeEvents = subscribeToEvents(currentUser, (fetchedEvents) => {
-      const filtered = ghostIdsRef.current.size
-        ? fetchedEvents.filter(e => !ghostIdsRef.current.has(e.id))
-        : fetchedEvents;
-      setEvents(filtered);
-      setLoading(false); // Unblock the UI early when primary real-time data loads
-    });
-
-    // Subscribe to OD requests
     const unsubscribeOD = subscribeToODRequests(currentUser, (fetchedOD) => {
       setODRequests(fetchedOD);
+      setLoading(false);
     });
 
-    // Subscribe to students
-    const unsubscribeStudents = subscribeToStudents(currentUser, (fetchedStudents) => {
-      setStudents(fetchedStudents);
-    });
-
-    // Subscribe to users
-    const unsubscribeUsers = subscribeToUsers((fetchedUsers) => {
-      setStaffUsers(fetchedUsers);
-    });
-
-    // Cleanup subscriptions
     return () => {
-      unsubscribeEvents();
       unsubscribeOD();
-      unsubscribeStudents();
-      unsubscribeUsers();
     };
   }, [currentUser?.id, currentUser?.role, currentUser?.department]);
 
@@ -152,11 +149,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const handleApproval = async (eventId, approve, rejectionReason = '') => {
-    const event = events.find(e => e.id === eventId);
+  const handleApproval = async (event, approve, rejectionReason = '') => {
     if (!event) {
-      throw new Error(`Event not found: ${eventId}`);
+      throw new Error(`Event not found`);
     }
+
+    const eventId = event.id;
 
     let newStatus;
     if (!approve) {
@@ -347,20 +345,8 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const filteredEvents = useMemo(() => {
-    if (!currentUser) return [];
-    if (!currentUser.department) return events; // Global roles
-    
-    if (currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER') {
-       return events.filter(e => e.department === currentUser.department || e.openToAllDepartments);
-    }
-    
-    return events.filter(e => e.department === currentUser.department);
-  }, [events, currentUser]);
-
   const value = {
     currentUser,
-    events: filteredEvents,
     students,
     staffUsers,
     odRequests,
@@ -383,6 +369,10 @@ export const AppProvider = ({ children }) => {
     handleDepartmentApproval,
     setStudents,
     setStaffUsers,
+    loadStudents,
+    refreshStudents,
+    loadUsers,
+    refreshUsers
   };
 
   return (

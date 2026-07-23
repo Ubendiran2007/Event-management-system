@@ -7,8 +7,8 @@ import { formatRollNo, formatStudentNameWithRoll, fallbackValue, getAttendanceMo
 import StatusBadge from './StatusBadge';
 import { generateODLetterBase64 } from '../utils/pdfGenerator';
 
-const ODRequestDetailModal = ({ request, onClose }) => {
-  const { currentUser, handleODApproval, events, odRequests } = useAppContext();
+const ODRequestDetailModal = ({ request, onClose, events = [] }) => {
+  const { currentUser, handleODApproval, odRequests } = useAppContext();
   const [approving, setApproving] = useState(false);
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');

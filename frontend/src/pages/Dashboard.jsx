@@ -54,6 +54,8 @@ const formatTime12 = (t24) => {
   }
 };
 import { useAppContext } from '../context/AppContext';
+import { useWorkflowEvents } from '../context/WorkflowEventsContext';
+import { useOrganizerEvents } from '../context/OrganizerEventsContext';
 import { UserRole, EventStatus, ODRequestStatus } from '../types';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
@@ -171,11 +173,22 @@ const IQACExtensionApprovalWidget = ({ events, hodName }) => {
 const Dashboard = () => {
   const {
     currentUser,
-    events,
     students,
     odRequests,
-    loading
+    loading,
+    refreshStudents,
+    loadStudents
   } = useAppContext();
+
+  const { events: workflowEvents, loading: workflowLoading } = useWorkflowEvents();
+  const { events: organizerEvents, loading: organizerLoading } = useOrganizerEvents();
+
+  const events = useMemo(() => {
+    const combined = [...workflowEvents, ...organizerEvents];
+    // Deduplicate by id
+    return Array.from(new Map(combined.map(e => [e.id, e])).values());
+  }, [workflowEvents, organizerEvents]);
+
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedODRequest, setSelectedODRequest] = useState(null);
@@ -192,6 +205,10 @@ const Dashboard = () => {
   useEffect(() => {
     setActiveTab(currentFeature);
   }, [currentFeature]);
+
+  useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
 
   useEffect(() => {
     if (currentUser && expectedRolePrefix) {
@@ -223,7 +240,7 @@ const Dashboard = () => {
         const data = await response.json();
         if (data.success) {
           alert(`Success: ${data.message}`);
-          window.location.reload(); // Reload to refresh data
+          await refreshStudents();
         } else {
           alert(`Error: ${data.message}`);
         }
@@ -2321,6 +2338,7 @@ const Dashboard = () => {
       {selectedODRequest && !isStaff && (
         <ODRequestDetailModal
           request={selectedODRequest}
+          events={events}
           onClose={() => setSelectedODRequest(null)}
         />
       )}

@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Download, Search, Users, Activity, Loader2, Printer, FileText, LayoutList } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
+import { useOrganizerEvents } from '../context/OrganizerEventsContext';
 import { UserRole } from '../types';
 import * as XLSX from 'xlsx';
 import seceHeader from '../assets/sece header.jpeg';
+
 const EventTracking = () => {
-    const { currentUser, events, odRequests, loading } = useAppContext();
+    const { currentUser, odRequests } = useAppContext();
+    const { events, loading } = useOrganizerEvents();
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedEventId, setExpandedEventId] = useState(null);

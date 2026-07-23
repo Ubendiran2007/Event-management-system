@@ -173,10 +173,8 @@ export const authenticateStudent = async (username, password) => {
       }
     }
 
-    // Fallback: Case-insensitive search across all classes in parallel if precise query fails
-    const authPromises = ALL_CLASSES.map(async (className) => {
-      // We still do a query to avoid fetching everyone if we can, but we can't do lowercase easily in Firestore.
-      // So we fetch the class, but in parallel.
+    // Fallback: Case-insensitive search across all classes sequentially to minimize Firestore reads
+    for (const className of ALL_CLASSES) {
       const membersSnapshot = await getDocs(collection(db, 'students', className, 'members'));
       for (const memberDoc of membersSnapshot.docs) {
         const student = memberDoc.data();
@@ -184,18 +182,12 @@ export const authenticateStudent = async (username, password) => {
           student.username?.toLowerCase() === username.toLowerCase() &&
           student.password?.toUpperCase() === password.toUpperCase()
         ) {
+          console.log('Student authenticated successfully (fallback):', student.name);
           return { id: memberDoc.id, ...student, className };
         }
       }
-      return null;
-    });
-    
-    const results = await Promise.all(authPromises);
-    const found = results.find(res => res !== null);
-    if (found) {
-      console.log('Student authenticated successfully (fallback):', found.name);
-      return found;
     }
+    
     console.log('No matching student found');
     return null;
   } catch (error) {
@@ -363,18 +355,20 @@ export const subscribeToEvents = (currentUser, callback) => {
   // but this query cuts down reads if they mostly stay in their lane.
   // For safety, we can just fetch all and let AppContext filter until complex OR queries are added.
   
-  return onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
-    const events = snapshot.docs
-      .filter(doc => !doc.metadata.hasPendingWrites)
-      .map(doc => ({ ...doc.data(), id: doc.id }));
+  return onSnapshot(q, (snapshot) => {
+    const events = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
     callback(events);
   });
 };
 
-export const subscribeToStudents = (currentUser, callback) => {
-  let isMounted = true;
-  const fetchStudents = async () => {
+let studentsFetchPromise = null;
+
+export const fetchStudentsDirect = async (currentUser) => {
+  if (studentsFetchPromise) return studentsFetchPromise;
+
+  studentsFetchPromise = (async () => {
     try {
+      console.log('Students API called');
       const token = localStorage.getItem('sessionToken');
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
       const res = await fetch(`${API_BASE}/api/students`, {
@@ -382,40 +376,46 @@ export const subscribeToStudents = (currentUser, callback) => {
       });
       if (res.ok) {
         const data = await res.json();
-        if (isMounted) {
-          if (currentUser?.role === 'STUDENT_GENERAL' || currentUser?.role === 'STUDENT_ORGANIZER') {
-            const myStudent = data.students.find(s => s.id === currentUser.id);
-            callback(myStudent ? [myStudent] : []);
-          } else {
-            callback(data.students || []);
-          }
+        if (currentUser?.role === 'STUDENT_GENERAL' || currentUser?.role === 'STUDENT_ORGANIZER') {
+          const myStudent = data.students.find(s => s.id === currentUser.id);
+          return myStudent ? [myStudent] : [];
+        } else {
+          return data.students || [];
         }
-      } else {
-        if (res.status === 401) {
-          localStorage.removeItem('sessionToken');
-          localStorage.removeItem('currentUser');
-          window.location.href = '/login';
-        }
-        if (isMounted) callback([]);
+      } else if (res.status === 401) {
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('currentUser');
+        window.location.href = '/login';
       }
     } catch (err) {
       console.error('Error fetching students:', err);
-      if (isMounted) callback([]);
+    } finally {
+      studentsFetchPromise = null;
     }
-  };
-  fetchStudents();
-  // OPTIMIZATION: Poll every 10 minutes (600000ms) to save bandwidth
-  const interval = setInterval(fetchStudents, 600000);
+    return [];
+  })();
+
+  return studentsFetchPromise;
+};
+
+export const subscribeToStudents = (currentUser, callback) => {
+  let isMounted = true;
+  fetchStudentsDirect(currentUser).then(data => {
+    if (isMounted) callback(data);
+  });
   return () => {
     isMounted = false;
-    clearInterval(interval);
   };
 };
 
-export const subscribeToUsers = (callback) => {
-  let isMounted = true;
-  const fetchUsers = async () => {
+let usersFetchPromise = null;
+
+export const fetchUsersDirect = async () => {
+  if (usersFetchPromise) return usersFetchPromise;
+
+  usersFetchPromise = (async () => {
     try {
+      console.log('Users API called');
       const token = localStorage.getItem('sessionToken');
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
       const res = await fetch(`${API_BASE}/api/users`, {
@@ -423,26 +423,30 @@ export const subscribeToUsers = (callback) => {
       });
       if (res.ok) {
         const data = await res.json();
-        if (isMounted) callback(data.users || []);
-      } else {
-        if (res.status === 401) {
-          localStorage.removeItem('sessionToken');
-          localStorage.removeItem('currentUser');
-          window.location.href = '/login';
-        }
-        if (isMounted) callback([]);
+        return data.users || [];
+      } else if (res.status === 401) {
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('currentUser');
+        window.location.href = '/login';
       }
     } catch (err) {
       console.error('Error fetching users:', err);
-      if (isMounted) callback([]);
+    } finally {
+      usersFetchPromise = null;
     }
-  };
-  fetchUsers();
-  // OPTIMIZATION: Poll every 10 minutes (600000ms) to save bandwidth
-  const interval = setInterval(fetchUsers, 600000);
+    return [];
+  })();
+
+  return usersFetchPromise;
+};
+
+export const subscribeToUsers = (callback) => {
+  let isMounted = true;
+  fetchUsersDirect().then(data => {
+    if (isMounted) callback(data);
+  });
   return () => {
     isMounted = false;
-    clearInterval(interval);
   };
 };
 

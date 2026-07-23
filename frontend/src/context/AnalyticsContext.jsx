@@ -14,7 +14,8 @@ export const useAnalyticsContext = () => {
 };
 
 export const AnalyticsProvider = ({ children }) => {
-  const { currentUser, events, students, staffUsers, odRequests } = useAppContext();
+  const { currentUser, students, staffUsers, odRequests } = useAppContext();
+  const { events, loading: eventsLoading } = useAnalyticsEvents();
   const { academicYears, semesters, holidays, exams, departmentCalendar } = useCalendarContext();
 
   const [filters, setFilters] = useState({

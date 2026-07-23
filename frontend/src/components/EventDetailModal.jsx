@@ -589,7 +589,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setApprovalError('');
     try {
-      await handleApproval(event.id, true);
+      await handleApproval(event, true);
       setTimeout(() => {
         onClose();
       }, 300);
@@ -615,7 +615,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setApprovalError('');
     try {
-      await handleApproval(event.id, false, reason);
+      await handleApproval(event, false, reason);
       setTimeout(() => {
         onClose();
       }, 300);

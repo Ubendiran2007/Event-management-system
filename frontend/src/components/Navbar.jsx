@@ -1,12 +1,14 @@
 import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap, BarChart2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
+import { useWorkflowEvents } from '../context/WorkflowEventsContext';
 import seceLogo from '../assets/sece logo.jpeg';
 import { UserRole } from '../types';
 import { getRolePath } from '../utils/routeUtils';
 
 const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
-  const { currentUser, handleLogout, students, events, staffUsers } = useAppContext();
+  const { currentUser, handleLogout, students, staffUsers } = useAppContext();
+  const { events } = useWorkflowEvents();
   const navigate = useNavigate();
   const location = useLocation();
 

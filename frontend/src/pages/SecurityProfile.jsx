@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
+import { useAnalyticsEvents } from '../hooks/useAnalyticsEvents';
 import Layout from '../components/Layout';
 import AlertCard from '../components/AlertCard';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 import { getRolePath } from '../utils/routeUtils';
 
 const SecurityProfile = () => {
-  const { currentUser, events } = useAppContext();
+  const { currentUser } = useAppContext();
+  const { events } = useAnalyticsEvents();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [loginHistory, setLoginHistory] = useState([]);

@@ -29,6 +29,7 @@ import { uploadFileToStorage } from '../utils/storageService';
 import Layout from '../components/Layout';
 import TimePicker from '../components/TimePicker';
 import { useAppContext } from '../context/AppContext';
+import { checkVenueAvailability } from '../services/eventService';
 import { useCalendarContext } from '../context/CalendarContext';
 import { EventStatus, UserRole } from '../types';
 import { validateUpload } from '../utils/fileValidation';
@@ -209,7 +210,7 @@ const RequirementToggle = ({ label, checked, onToggle }) => (
 const CreateEvent = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { createEvent, currentUser, events } = useAppContext();
+  const { createEvent, currentUser } = useAppContext();
   const { getOverlappingHolidays, getOverlappingExams, checkWorkingDays, getActiveSemester } = useCalendarContext();
 
   // If editing a rejected event for resubmission

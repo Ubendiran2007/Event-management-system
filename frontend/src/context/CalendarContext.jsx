@@ -157,7 +157,7 @@ export const CalendarProvider = ({ children }) => {
     return nonWorking;
   };
 
-  const value = {
+  const value = React.useMemo(() => ({
     academicYears,
     semesters,
     holidays,
@@ -170,7 +170,7 @@ export const CalendarProvider = ({ children }) => {
     getOverlappingHolidays,
     getOverlappingExams,
     checkWorkingDays
-  };
+  }), [academicYears, semesters, holidays, exams, workingDays, departmentCalendar, loading]);
 
   return (
     <CalendarContext.Provider value={value}>

@@ -38,8 +38,13 @@ const STAFF_ROLES = [
 const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
 
 const ManageStudents = () => {
-    const { currentUser, students, setStudents, staffUsers, setStaffUsers, loading } = useAppContext();
+    const { currentUser, students, setStudents, staffUsers, setStaffUsers, loading, refreshStudents, refreshUsers, loadStudents, loadUsers } = useAppContext();
     const navigate = useNavigate();
+
+    useEffect(() => {
+        loadStudents();
+        loadUsers();
+    }, [loadStudents, loadUsers]);
     
     // Tabs & View State
     const [openDropdownId, setOpenDropdownId] = useState(null);
@@ -277,6 +282,8 @@ const ManageStudents = () => {
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
             
+            await refreshStudents();
+            
             setShowStudentModal(false);
             setEditingStudent(null);
             setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '' });
@@ -325,6 +332,8 @@ const ManageStudents = () => {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
+            
+            await refreshStudents();
         } catch (err) {
             console.error(err);
             alert('Failed to delete student');
@@ -357,6 +366,8 @@ const ManageStudents = () => {
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
             
+            await refreshUsers();
+            
             setShowStaffModal(false);
             setEditingStaff(null);
             setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] });
@@ -378,6 +389,8 @@ const ManageStudents = () => {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
+            
+            await refreshUsers();
         } catch (err) {
             console.error(err);
             alert('Failed to delete staff');
@@ -541,6 +554,7 @@ const ManageStudents = () => {
             const data = await res.json();
             
             if (res.status === 500 && data.importedCount !== undefined) {
+                if (importType === 'students') await refreshStudents(); else await refreshUsers();
                 setImportSummary({
                     imported: data.importedCount,
                     dbDuplicates: data.dbDuplicatesCount || 0,
@@ -550,6 +564,7 @@ const ManageStudents = () => {
                 });
                 setImportStep('summary');
             } else if (data.success) {
+                if (importType === 'students') await refreshStudents(); else await refreshUsers();
                 setImportSummary({
                     imported: data.importedCount,
                     dbDuplicates: data.dbDuplicatesCount || 0,
@@ -580,7 +595,9 @@ const ManageStudents = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
             });
             const data = await res.json();
-            if (data.success) window.location.reload();
+            if (data.success) {
+                await refreshStudents();
+            }
             else throw new Error(data.message);
         } catch (err) {
             console.error(err);
@@ -603,6 +620,7 @@ const ManageStudents = () => {
             if (setStudents) {
                 setStudents(prev => prev.map(s => s.id === student.id ? { ...s, role: newRole } : s));
             }
+            await refreshStudents();
         } catch (err) {
             console.error(err);
         } finally {
@@ -620,6 +638,7 @@ const ManageStudents = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
                 body: JSON.stringify({ className, [field]: value }),
             });
+            await refreshStudents();
         } catch (err) {
             console.error(err);
         } finally {

@@ -3,6 +3,7 @@ import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Tras
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
+import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { useCalendarContext } from '../context/CalendarContext';
 import * as XLSX from 'xlsx';
 import PremiumDatePicker from '../components/PremiumDatePicker';
@@ -64,10 +65,10 @@ const CalendarSelect = ({ label, field, form, setForm, options, required = true 
 };
 
 const AcademicCalendar = () => {
-  const navigate = useNavigate();
-  const { currentUser, events: allEvents } = useAppContext();
+  const { currentUser } = useAppContext();
+  const { events: allEvents, loading } = useCalendarEvents();
   const {
-    academicYears, semesters, holidays, exams, workingDays, departmentCalendar, loading
+    academicYears, semesters, holidays, exams, workingDays, departmentCalendar
   } = useCalendarContext();
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -97,30 +98,52 @@ const AcademicCalendar = () => {
     return allEvents.filter(e => e.status === 'APPROVED' && e.startDate >= activeAY.startDate && e.startDate <= activeAY.endDate);
   }, [allEvents, activeAY]);
 
-  const getDayEvents = (date) => {
+  // --- Pre-calculate events per day to avoid O(N*M) looping inside calendar render ---
+  const dayEventsMap = useMemo(() => {
+    const map = new Map();
+    const addEvent = (dateStr, event) => {
+      if (!map.has(dateStr)) map.set(dateStr, []);
+      map.get(dateStr).push(event);
+    };
+
+    holidays.forEach(h => {
+      addEvent(h.date, { type: 'holiday', title: h.name, color: 'bg-red-100 text-red-800 border-red-200' });
+    });
+
+    const processRange = (start, end, event) => {
+      const curr = new Date(start);
+      const endDate = new Date(end);
+      while (curr <= endDate) {
+        const dStr = [curr.getFullYear(), String(curr.getMonth() + 1).padStart(2, '0'), String(curr.getDate()).padStart(2, '0')].join('-');
+        addEvent(dStr, event);
+        curr.setDate(curr.getDate() + 1);
+      }
+    };
+
+    exams.forEach(e => {
+      processRange(e.startDate, e.endDate, { type: 'exam', title: e.name, color: 'bg-orange-100 text-orange-800 border-orange-200' });
+    });
+
+    departmentCalendar.forEach(d => {
+      processRange(d.date, d.endDate || d.date, { type: 'dept', title: `[${d.department}] ${d.title}`, color: 'bg-purple-100 text-purple-800 border-purple-200' });
+    });
+
+    approvedEvents.forEach(e => {
+      processRange(e.startDate, e.endDate || e.startDate, { type: 'event', title: e.title || e.eventName, color: 'bg-blue-100 text-blue-800 border-blue-200' });
+    });
+
+    return map;
+  }, [holidays, exams, departmentCalendar, approvedEvents]);
+
+  const getDayEvents = useCallback((date) => {
     if (!date) return [];
     const dateStr = [
       date.getFullYear(),
       String(date.getMonth() + 1).padStart(2, '0'),
       String(date.getDate()).padStart(2, '0')
     ].join('-');
-    const dayEvents = [];
-
-    holidays.forEach(h => {
-      if (h.date === dateStr) dayEvents.push({ type: 'holiday', title: h.name, color: 'bg-red-100 text-red-800 border-red-200' });
-    });
-    exams.forEach(e => {
-      if (dateStr >= e.startDate && dateStr <= e.endDate) dayEvents.push({ type: 'exam', title: e.name, color: 'bg-orange-100 text-orange-800 border-orange-200' });
-    });
-    departmentCalendar.forEach(d => {
-      if (dateStr >= d.date && dateStr <= (d.endDate || d.date)) dayEvents.push({ type: 'dept', title: `[${d.department}] ${d.title}`, color: 'bg-purple-100 text-purple-800 border-purple-200' });
-    });
-    approvedEvents.forEach(e => {
-      if (dateStr >= e.startDate && dateStr <= (e.endDate || e.startDate)) dayEvents.push({ type: 'event', title: e.title || e.eventName, color: 'bg-blue-100 text-blue-800 border-blue-200' });
-    });
-
-    return dayEvents;
-  };
+    return dayEventsMap.get(dateStr) || [];
+  }, [dayEventsMap]);
 
   const checkIsSemester = (date) => {
     if (!date) return false;
