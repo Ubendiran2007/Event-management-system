@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, XCircle, CalendarX, CalendarClock, Bell, FileText, CheckCheck, ArchiveX } from 'lucide-react';
-import { useNotification } from '../context/NotificationContext';
+import { useNotifications } from '../hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
 
 const NotificationCenter = ({ isOpen, onClose }) => {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, archiveAllRead } = useNotification();
+  const { notifications, unreadCount, markAsRead, markAllRead, archiveNotification } = useNotifications();
   const navigate = useNavigate();
 
   // Handle ESC to close
@@ -150,7 +150,7 @@ const NotificationCenter = ({ isOpen, onClose }) => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Unread ({unreadNotifs.length})</h3>
-                      <button onClick={markAllAsRead} className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                      <button onClick={markAllRead} className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1">
                         <CheckCheck size={14} /> Mark all read
                       </button>
                     </div>
@@ -163,7 +163,7 @@ const NotificationCenter = ({ isOpen, onClose }) => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Earlier</h3>
-                      <button onClick={archiveAllRead} className="text-xs font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1">
+                      <button onClick={() => historyNotifs.forEach(n => archiveNotification(n.id))} className="text-xs font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1">
                         <ArchiveX size={14} /> Archive
                       </button>
                     </div>

@@ -6,7 +6,7 @@ import { useAppContext } from '../context/AppContext';
 import { WorkflowEventsProvider } from '../context/WorkflowEventsContext';
 import { OrganizerEventsProvider } from '../context/OrganizerEventsContext';
 import { ODWorkflowProvider } from '../context/ODWorkflowContext';
-import { useNotification } from '../context/NotificationContext';
+import { useNotifications } from '../hooks/useNotifications';
 import NotificationCenter from './NotificationCenter';
 import { Bell } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export default function Layout({ children }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const { currentUser } = useAppContext();
-  const { unreadCount } = useNotification();
+  const { unreadCount } = useNotifications();
 
   return (
     <WorkflowEventsProvider>

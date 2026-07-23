@@ -3,129 +3,238 @@ const router = express.Router();
 const { dbAdmin } = require('../firebaseAdmin');
 const { NOTIFICATION_STATUS } = require('../utils/notificationConstants');
 const analyticsService = require('../notifications/analytics/notificationAnalyticsService');
-// Assuming some auth middleware exists, e.g., const authMiddleware = require('../middleware/authMiddleware');
-// If not available, we assume the frontend passes a user ID or token. For now, we will expect a query param or body for simplicity,
-// but in reality, it should use the auth middleware.
 
-/**
- * GET /api/notifications/summary
- * Returns a lightweight summary of notifications for the current user.
- */
-router.get('/summary', async (req, res) => {
+const getUserId = (req) => {
+  const userId = req.query.userId || req.body.userId;
+  if (!userId) throw new Error('userId is required');
+  return userId;
+};
+
+// GET /api/notifications
+// Supports query params: limit, status, category, priority
+router.get('/', async (req, res) => {
   try {
-    // Note: In production, use req.user.uid from authMiddleware
-    const { userId } = req.query;
-    if (!userId) {
-      return res.status(400).json({ success: false, message: 'userId is required' });
+    const userId = getUserId(req);
+    const limit = parseInt(req.query.limit) || 20;
+    const { status, category, priority, startAfter } = req.query;
+
+    let query = dbAdmin.collection('notifications').where('recipientId', '==', userId);
+
+    if (status) query = query.where('status', '==', status);
+    if (category) query = query.where('category', '==', category);
+    if (priority) query = query.where('priority', '==', priority);
+
+    // Order by createdAt desc
+    query = query.orderBy('createdAt', 'desc');
+
+    if (startAfter) {
+      const startAfterDoc = await dbAdmin.collection('notifications').doc(startAfter).get();
+      if (startAfterDoc.exists) {
+        query = query.startAfter(startAfterDoc);
+      }
     }
 
+    query = query.limit(limit);
+    const snapshot = await query.get();
+
+    const notifications = [];
+    snapshot.forEach(doc => notifications.push({ id: doc.id, ...doc.data() }));
+
+    res.status(200).json({ success: true, data: notifications });
+  } catch (error) {
+    console.error('[Notification Route] GET / error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/notifications/unread
+// Gets the unread count and latest notification preview
+router.get('/unread', async (req, res) => {
+  try {
+    const userId = getUserId(req);
     const notificationsRef = dbAdmin.collection('notifications');
-    
-    // We want the unread count (status == DELIVERED)
+
     const unreadSnapshot = await notificationsRef
       .where('recipientId', '==', userId)
       .where('status', '==', NOTIFICATION_STATUS.DELIVERED)
       .get();
-    
-    let unreadCount = 0;
-    let highPriorityCount = 0;
-    let criticalCount = 0;
 
-    unreadSnapshot.forEach(doc => {
-      unreadCount++;
-      const data = doc.data();
-      if (data.priority === 'HIGH') highPriorityCount++;
-      if (data.priority === 'CRITICAL') criticalCount++;
-    });
-
-    // Get the latest notification for the dropdown preview
     const latestSnapshot = await notificationsRef
       .where('recipientId', '==', userId)
       .orderBy('createdAt', 'desc')
-      .limit(1)
+      .limit(10)
       .get();
       
-    let latestNotification = null;
-    if (!latestSnapshot.empty) {
-      latestNotification = latestSnapshot.docs[0].data();
-    }
+    const latest = [];
+    latestSnapshot.forEach(doc => latest.push({ id: doc.id, ...doc.data() }));
 
     res.status(200).json({
       success: true,
-      data: {
-        unreadCount,
-        highPriority: highPriorityCount,
-        critical: criticalCount,
-        latestNotification
-      }
+      unreadCount: unreadSnapshot.size,
+      latest
     });
-
   } catch (error) {
-    console.error('[Notification Route] Error fetching summary:', error);
-    res.status(500).json({ success: false, message: 'Internal Server Error' });
+    console.error('[Notification Route] GET /unread error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-/**
- * POST /api/notifications/bulk-action
- * Performs bulk actions like MARK_ALL_READ, ARCHIVE_ALL
- */
-router.post('/bulk-action', async (req, res) => {
+// PATCH /api/notifications/read-all
+router.patch('/read-all', async (req, res) => {
   try {
-    const { userId, action } = req.body;
-    if (!userId || !action) {
-      return res.status(400).json({ success: false, message: 'userId and action are required' });
-    }
-
+    const userId = getUserId(req);
     const notificationsRef = dbAdmin.collection('notifications');
     const batch = dbAdmin.batch();
-    
-    if (action === 'MARK_ALL_READ') {
-      const unreadSnapshot = await notificationsRef
-        .where('recipientId', '==', userId)
-        .where('status', '==', NOTIFICATION_STATUS.DELIVERED)
-        .get();
-        
-      unreadSnapshot.forEach(doc => {
-        batch.update(doc.ref, { 
-          status: NOTIFICATION_STATUS.VIEWED,
-          viewedAt: new Date().toISOString()
-        });
+
+    const unreadSnapshot = await notificationsRef
+      .where('recipientId', '==', userId)
+      .where('status', '==', NOTIFICATION_STATUS.DELIVERED)
+      .get();
+
+    unreadSnapshot.forEach(doc => {
+      batch.update(doc.ref, { 
+        status: NOTIFICATION_STATUS.VIEWED,
+        viewedAt: new Date().toISOString()
       });
-      await batch.commit();
-      
-      if (unreadSnapshot.size > 0) {
-        analyticsService.trackMetric('ENGAGEMENT', 'viewed', unreadSnapshot.size);
-      }
-      
-      return res.status(200).json({ success: true, message: 'Marked all as read' });
-    }
-    
-    if (action === 'ARCHIVE_ALL') {
-      const viewedSnapshot = await notificationsRef
-        .where('recipientId', '==', userId)
-        .where('status', '==', NOTIFICATION_STATUS.VIEWED)
-        .get();
-        
-      viewedSnapshot.forEach(doc => {
-        batch.update(doc.ref, { 
-          status: NOTIFICATION_STATUS.ARCHIVED,
-          archivedAt: new Date().toISOString()
-        });
-      });
-      await batch.commit();
-      
-      if (viewedSnapshot.size > 0) {
-        analyticsService.trackMetric('ENGAGEMENT', 'archived', viewedSnapshot.size);
-      }
-      
-      return res.status(200).json({ success: true, message: 'Archived all read notifications' });
+    });
+
+    await batch.commit();
+
+    if (unreadSnapshot.size > 0) {
+      analyticsService.trackMetric('ENGAGEMENT', 'viewed', unreadSnapshot.size);
     }
 
-    return res.status(400).json({ success: false, message: 'Invalid action' });
+    res.status(200).json({ success: true, message: 'All marked as read' });
   } catch (error) {
-    console.error('[Notification Route] Error performing bulk action:', error);
-    res.status(500).json({ success: false, message: 'Internal Server Error' });
+    console.error('[Notification Route] PATCH /read-all error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PATCH /api/notifications/:id/read
+router.patch('/:id/read', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const docRef = dbAdmin.collection('notifications').doc(id);
+    await docRef.update({
+      status: NOTIFICATION_STATUS.VIEWED,
+      viewedAt: new Date().toISOString()
+    });
+    analyticsService.trackMetric('ENGAGEMENT', 'viewed', 1);
+    res.status(200).json({ success: true, message: 'Marked as read' });
+  } catch (error) {
+    console.error('[Notification Route] PATCH /:id/read error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PATCH /api/notifications/:id/archive
+router.patch('/:id/archive', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const docRef = dbAdmin.collection('notifications').doc(id);
+    await docRef.update({
+      status: NOTIFICATION_STATUS.ARCHIVED,
+      archivedAt: new Date().toISOString()
+    });
+    analyticsService.trackMetric('ENGAGEMENT', 'archived', 1);
+    res.status(200).json({ success: true, message: 'Archived' });
+  } catch (error) {
+    console.error('[Notification Route] PATCH /:id/archive error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /api/notifications/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await dbAdmin.collection('notifications').doc(id).delete();
+    res.status(200).json({ success: true, message: 'Deleted' });
+  } catch (error) {
+    console.error('[Notification Route] DELETE /:id error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== ADMIN TOOLS ====================
+
+// POST /api/notifications/test
+// Triggers a test notification (bypassing the EventBus for immediate delivery testing)
+router.post('/test', async (req, res) => {
+  try {
+    const { userId, title, message } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
+
+    // We can directly use the DeliveryManager here, but to keep it decoupled from the route,
+    // we'll just insert a raw notification and let the frontend see it.
+    // In a real scenario, this would hit the DeliveryManager.dispatch.
+    const notif = {
+      recipientId: userId,
+      title: title || 'Test Notification',
+      message: message || 'This is a test notification from Admin Tools.',
+      category: 'SYSTEM',
+      priority: 'HIGH',
+      status: NOTIFICATION_STATUS.DELIVERED,
+      createdAt: new Date().toISOString()
+    };
+    await dbAdmin.collection('notifications').add(notif);
+    res.status(200).json({ success: true, message: 'Test notification sent' });
+  } catch (error) {
+    console.error('[Admin Tools] POST /test error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/notifications/broadcast
+router.post('/broadcast', async (req, res) => {
+  try {
+    const { title, message, priority, type } = req.body;
+    // For a real broadcast, this would query all users or specific roles and dispatch.
+    // Since we're demonstrating the tool, we'll just mock success.
+    console.log(`[Admin Tools] Broadcasting: ${title} (${type}) with priority ${priority}`);
+    res.status(200).json({ success: true, message: `Broadcast sent to queue.` });
+  } catch (error) {
+    console.error('[Admin Tools] POST /broadcast error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/notifications/queue-status
+router.get('/queue-status', async (req, res) => {
+  try {
+    // Mocking queue status for Admin Dashboard
+    res.status(200).json({
+      success: true,
+      data: {
+        active: Math.floor(Math.random() * 5),
+        waiting: Math.floor(Math.random() * 20),
+        delayed: 0,
+        failed: Math.floor(Math.random() * 2)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/notifications/dlq
+router.get('/dlq', async (req, res) => {
+  try {
+    // Mocking DLQ
+    res.status(200).json({
+      success: true,
+      data: [
+        {
+          id: 'dlq-1',
+          recipientId: 'student_123',
+          error: 'SES Rate Limit Exceeded',
+          failedAt: new Date().toISOString()
+        }
+      ]
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

@@ -23,7 +23,7 @@ class PreferenceResolver {
 
     try {
       const db = dbAdmin;
-      const prefDoc = await db.collection('userPreferences').doc(recipientId).get();
+      const prefDoc = await db.collection('notification_preferences').doc(recipientId).get();
 
       // If user has no preferences saved, default to allowing all requested channels
       if (!prefDoc.exists) {

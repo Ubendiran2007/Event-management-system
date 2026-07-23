@@ -12,6 +12,9 @@ const CreateEvent = lazy(() => import('./pages/CreateEvent'));
 const ExploreEvents = lazy(() => import('./pages/ExploreEventsNew'));
 const IQACSubmission = lazy(() => import('./pages/IQACSubmission'));
 const ManageStudents = lazy(() => import('./pages/ManageStudents'));
+const NotificationCenterPage = lazy(() => import('./pages/notifications/NotificationCenterPage'));
+const NotificationPreferences = lazy(() => import('./pages/notifications/NotificationPreferences'));
+const AdminNotificationTools = lazy(() => import('./pages/notifications/AdminNotificationTools'));
 
 const AcademicCalendar = lazy(() => import('./pages/AcademicCalendar'));
 const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'));
@@ -43,6 +46,9 @@ const RoleRoutes = () => (
     <Route path="analytics" element={<AnalyticsDashboard />} />
     <Route path="od-correction" element={<ODCorrection />} />
     <Route path="security" element={<SecurityProfile />} />
+    <Route path="notifications" element={<NotificationCenterPage />} />
+    <Route path="preferences" element={<NotificationPreferences />} />
+    <Route path="admin-notifications" element={<AdminNotificationTools />} />
     
     {/* Fallback within role */}
     <Route path="*" element={<Dashboard />} />

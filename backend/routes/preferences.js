@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
   try {
     const userId = getUserId(req);
     const db = dbAdmin;
-    const prefDoc = await db.collection('userPreferences').doc(userId).get();
+    const prefDoc = await db.collection('notification_preferences').doc(userId).get();
 
     if (!prefDoc.exists) {
       // Return default preferences
@@ -52,7 +52,7 @@ router.put('/', async (req, res) => {
     }
 
     const db = dbAdmin;
-    await db.collection('userPreferences').doc(userId).set({
+    await db.collection('notification_preferences').doc(userId).set({
       global: global || { IN_APP: true, EMAIL: true },
       categories: categories || {},
       updatedAt: new Date().toISOString()
