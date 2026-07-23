@@ -14,10 +14,10 @@ const getAllSectionDocs = async () => {
   // Use listDocuments() to find phantom batch documents (documents that only have subcollections)
   const batchDocsRefs = await db.collection('students').listDocuments();
   
-  for (const batchRef of batchDocsRefs) {
+  const fetchPromises = batchDocsRefs.map(async (batchRef) => {
     const depts = await batchRef.listCollections();
-    for (const deptCol of depts) {
-      if (deptCol.id === 'departments') continue; // skip old structure if present
+    const deptPromises = depts.map(async (deptCol) => {
+      if (deptCol.id === 'departments') return; // skip old structure if present
       const snap = await deptCol.get();
       snap.docs.forEach(d => allSectionDocs.push({
          ref: d.ref,
@@ -26,8 +26,11 @@ const getAllSectionDocs = async () => {
          dept: deptCol.id,
          sec: d.id
       }));
-    }
-  }
+    });
+    await Promise.all(deptPromises);
+  });
+  
+  await Promise.all(fetchPromises);
   
   sectionDocsCache = allSectionDocs;
   cacheTimestamp = Date.now();
