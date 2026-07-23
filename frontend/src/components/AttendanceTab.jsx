@@ -777,8 +777,7 @@ const AttendanceTab = ({ event }) => {
           targetDate={selectedDate}
           onClose={() => setShowCorrectionModal(false)}
           onCorrect={(res) => {
-            // Refresh stats in-place without page reload
-            if (res.attendanceStats) setLocalStats(res.attendanceStats);
+            // Refresh config in-place without page reload
             if (res.attendanceConfigs) setLocalConfigs(res.attendanceConfigs);
             setShowCorrectionModal(false);
           }}

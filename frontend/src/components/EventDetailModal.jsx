@@ -109,6 +109,14 @@ const EventDetailModal = ({ event, onClose }) => {
 
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (showPostponeModal) setPostponeError(null);
+  }, [showPostponeModal]);
+
+  useEffect(() => {
+    if (showCancelModal) setCancelError(null);
+  }, [showCancelModal]);
+
   if (!event) return null;
 
   const r = event.requisition;
@@ -121,14 +129,6 @@ const EventDetailModal = ({ event, onClose }) => {
     setPostponeStartTime(s1?.eventStartTime || event?.startTime || '00:00');
     setPostponeEndTime(s1?.eventEndTime || event?.endTime || '00:00');
   }
-
-  useEffect(() => {
-    if (showPostponeModal) setPostponeError(null);
-  }, [showPostponeModal]);
-
-  useEffect(() => {
-    if (showCancelModal) setCancelError(null);
-  }, [showCancelModal]);
 
   // ── IQAC Submission Eligibility ────────────────────────────────────────────
   // Organizer can submit IQAC report if:
@@ -857,7 +857,7 @@ const EventDetailModal = ({ event, onClose }) => {
                         </div>
 
                         {/* Detailed Timeline — globally visible to all roles */}
-                        {true && (
+                        <>
                           <div className="mt-4 pt-4 border-t border-slate-100 space-y-2.5">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Approval Timeline Details</p>
                             
@@ -963,7 +963,7 @@ const EventDetailModal = ({ event, onClose }) => {
                                 : isIqacActive ? <span className="italic">Reviewing...</span> : <span className="text-[10px]">Waiting</span>}
                             </div>
                           </div>
-                        )}
+                        </>
                       </>
                     );
                   })()}

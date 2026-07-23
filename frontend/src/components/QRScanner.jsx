@@ -52,7 +52,8 @@ const QRScannerInner = ({ onScanSuccess, onScanError }) => {
   }, [onScanSuccess, onScanError]);
   
   // Create a stable unique ID for this instance
-  const READER_ID = useMemo(() => 'qr-reader-' + Math.random().toString(36).slice(2, 8), []);
+  const readerIdRef = useRef('qr-reader-' + Math.random().toString(36).slice(2, 8));
+  const READER_ID = readerIdRef.current;
 
   // Safe stop helper
   const safeStop = useCallback(async () => {
