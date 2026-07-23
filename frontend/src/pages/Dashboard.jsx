@@ -56,6 +56,7 @@ const formatTime12 = (t24) => {
 import { useAppContext } from '../context/AppContext';
 import { useWorkflowEvents } from '../context/WorkflowEventsContext';
 import { useOrganizerEvents } from '../context/OrganizerEventsContext';
+import { useODWorkflow } from '../context/ODWorkflowContext';
 import { UserRole, EventStatus, ODRequestStatus } from '../types';
 import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
@@ -174,11 +175,12 @@ const Dashboard = () => {
   const {
     currentUser,
     students,
-    odRequests,
     loading,
     refreshStudents,
     loadStudents
   } = useAppContext();
+  
+  const { odRequests, loading: odLoading } = useODWorkflow();
 
   const { events: workflowEvents, loading: workflowLoading } = useWorkflowEvents();
   const { events: organizerEvents, loading: organizerLoading } = useOrganizerEvents();

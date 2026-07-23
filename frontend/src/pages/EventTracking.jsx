@@ -4,12 +4,14 @@ import { ChevronLeft, Download, Search, Users, Activity, Loader2, Printer, FileT
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
 import { useOrganizerEvents } from '../context/OrganizerEventsContext';
+import { useODWorkflow } from '../context/ODWorkflowContext';
 import { UserRole } from '../types';
 import * as XLSX from 'xlsx';
 import seceHeader from '../assets/sece header.jpeg';
 
 const EventTracking = () => {
-    const { currentUser, odRequests } = useAppContext();
+    const { currentUser } = useAppContext();
+    const { odRequests } = useODWorkflow();
     const { events, loading } = useOrganizerEvents();
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');

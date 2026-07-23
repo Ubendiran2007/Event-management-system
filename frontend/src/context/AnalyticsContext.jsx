@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { useAppContext } from './AppContext';
 import { useCalendarContext } from './CalendarContext';
+import { useAnalyticsEvents } from '../hooks/useAnalyticsEvents';
+import { useAnalyticsOD } from '../hooks/useAnalyticsOD';
 import { EventStatus } from '../types';
 
 const AnalyticsContext = createContext(null);
@@ -14,8 +16,9 @@ export const useAnalyticsContext = () => {
 };
 
 export const AnalyticsProvider = ({ children }) => {
-  const { currentUser, students, staffUsers, odRequests } = useAppContext();
+  const { currentUser, students, staffUsers } = useAppContext();
   const { events, loading: eventsLoading } = useAnalyticsEvents();
+  const { odRequests, loading: odLoading } = useAnalyticsOD();
   const { academicYears, semesters, holidays, exams, departmentCalendar } = useCalendarContext();
 
   const [filters, setFilters] = useState({

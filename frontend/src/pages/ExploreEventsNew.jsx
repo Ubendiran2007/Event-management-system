@@ -12,6 +12,7 @@ import ODLetterModal from '../components/ODLetterModal';
 import FeedbackModal from '../components/FeedbackModal';
 import EventDetailModal from '../components/EventDetailModal';
 import { useExploreEvents } from '../hooks/useExploreEvents';
+import { useMyODs } from '../hooks/useMyODs';
 import EventReportModal from '../components/EventReportModal';
 import { sortEventsByEventDateDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 import defaultPoster from '../assets/sece.avif';
@@ -31,7 +32,8 @@ const formatTime12 = (t24) => {
 
 // ── IQAC Summary Modal ─────────────────────────────────────────────────────────
 const IQACSummaryModal = ({ event, onClose }) => {
-  const { odRequests } = useAppContext();
+  const { currentUser } = useAppContext();
+  const { odRequests } = useMyODs(currentUser?.id);
   const [freshIqacData, setFreshIqacData] = useState(null);
   const [showOfficialReport, setShowOfficialReport] = useState(false);
 
@@ -1859,6 +1861,7 @@ const EventCard = ({
 
 export const ExploreEventsNew = () => {
   const { currentUser, setStudents, students } = useAppContext();
+  const { odRequests } = useMyODs(currentUser?.id);
   const { events: availableEvents, loading, refresh: refreshEvents } = useExploreEvents();
   const [filter, setFilter] = useState('all');
   const [isFilterOpen, setIsFilterOpen] = useState(false);

@@ -33,7 +33,6 @@ export const AppProvider = ({ children }) => {
   });
   const [students, setStudents] = useState([]);
   const [staffUsers, setStaffUsers] = useState([]);
-  const [odRequests, setODRequests] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedODRequest, setSelectedODRequest] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -77,13 +76,10 @@ export const AppProvider = ({ children }) => {
 
     setLoading(true);
 
-    const unsubscribeOD = subscribeToODRequests(currentUser, (fetchedOD) => {
-      setODRequests(fetchedOD);
-      setLoading(false);
-    });
+    // OD Requests are now handled by ODWorkflowProvider and useMyODs in Phase 4.
+    setLoading(false);
 
     return () => {
-      unsubscribeOD();
     };
   }, [currentUser?.id, currentUser?.role, currentUser?.department]);
 
@@ -252,9 +248,8 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const handleODApproval = async (requestId, approve, approverInfo = {}, odLetterBase64 = null, remarks = '') => {
-    const request = odRequests.find(r => r.id === requestId);
-    if (!request) return;
+  const handleODApproval = async (request, approve, approverInfo = {}, odLetterBase64 = null, remarks = '') => {
+    if (!request || !request.id) return;
 
     let newStatus;
     if (!approve) {
@@ -276,7 +271,7 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${requestId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${request.id}/status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -349,7 +344,6 @@ export const AppProvider = ({ children }) => {
     currentUser,
     students,
     staffUsers,
-    odRequests,
     selectedEvent,
     selectedODRequest,
     organizerRequests,

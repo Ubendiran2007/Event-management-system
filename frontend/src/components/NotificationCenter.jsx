@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, XCircle, CalendarX, CalendarClock, Bell, FileText } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useWorkflowEvents } from '../context/WorkflowEventsContext';
+import { useODWorkflow } from '../context/ODWorkflowContext';
 
 const NotificationCenter = ({ isOpen, onClose }) => {
-  const { currentUser, odRequests } = useAppContext();
+  const { currentUser } = useAppContext();
   const { events } = useWorkflowEvents();
+  const { odRequests } = useODWorkflow();
   const [readNotifs, setReadNotifs] = useState(() => {
     try {
       return new Set(JSON.parse(localStorage.getItem(`readNotifs_${currentUser?.id}`) || '[]'));

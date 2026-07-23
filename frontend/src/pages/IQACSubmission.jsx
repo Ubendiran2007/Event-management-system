@@ -155,7 +155,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const IQACSubmission = () => {
-  const { currentUser, selectedEvent, odRequests = [] } = useAppContext();
+  const { currentUser, selectedEvent } = useAppContext();
   const navigate = useNavigate();
 
   const [uploads, setUploads] = useState({});

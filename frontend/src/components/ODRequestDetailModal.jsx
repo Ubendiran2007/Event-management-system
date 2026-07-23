@@ -8,7 +8,7 @@ import StatusBadge from './StatusBadge';
 import { generateODLetterBase64 } from '../utils/pdfGenerator';
 
 const ODRequestDetailModal = ({ request, onClose, events = [] }) => {
-  const { currentUser, handleODApproval, odRequests } = useAppContext();
+  const { currentUser, handleODApproval } = useAppContext();
   const [approving, setApproving] = useState(false);
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -79,7 +79,7 @@ const ODRequestDetailModal = ({ request, onClose, events = [] }) => {
         odLetterBase64 = await generateODLetterBase64(request, event);
       }
 
-      await handleODApproval(request.id, true, { name: currentUser.name }, odLetterBase64);
+      await handleODApproval(request, true, { name: currentUser.name }, odLetterBase64);
       onClose();
     } catch (error) {
       console.error('Approval failed:', error);
@@ -96,7 +96,7 @@ const ODRequestDetailModal = ({ request, onClose, events = [] }) => {
     
     setApproving(true);
     try {
-      await handleODApproval(request.id, false, { name: currentUser.name }, null, rejectionReason.trim());
+      await handleODApproval(request, false, { name: currentUser.name }, null, rejectionReason.trim());
       setShowRejectInput(false);
       setRejectionReason('');
       onClose();
@@ -322,7 +322,7 @@ const ODRequestDetailModal = ({ request, onClose, events = [] }) => {
             {/* Attendance Status - ONLY IF RECORDED OR ACTIVE */}
             {(() => {
                 const mode = getAttendanceMode(event);
-                const liveRequest = odRequests?.find(r => r.id === request.id) || request;
+                const liveRequest = request; // Removed odRequests dependency
                 const attendance = liveRequest.attendance || {};
                 const isHistorical = event?.status === 'COMPLETED' || event?.status === 'CANCELLED';
                 
