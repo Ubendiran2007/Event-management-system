@@ -10,6 +10,7 @@ import { formatRollNo, formatEventRef, fallbackValue, formatVenue, getAttendance
  * Style matches the official ODLetterModal.
  */
 export const generateODLetterBase64 = async (odRequest, event) => {
+  let container = null;
   try {
     const displayRollNo = formatRollNo(odRequest?.rollNo, odRequest?.studentId) || 'N/A';
     const formatClassSection = (value) =>
@@ -78,7 +79,7 @@ export const generateODLetterBase64 = async (odRequest, event) => {
     });
 
     // Create a temporary hidden container for the letter
-    const container = document.createElement('div');
+    container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '-9999px';
     container.style.top = '0';
@@ -244,7 +245,7 @@ export const generateODLetterBase64 = async (odRequest, event) => {
     return pdf.output('datauristring');
   } catch (error) {
     console.error('Error generating OD PDF:', error);
-    if (document.body.contains(container)) document.body.removeChild(container);
+    if (container && document.body.contains(container)) document.body.removeChild(container);
     return null;
   }
 };

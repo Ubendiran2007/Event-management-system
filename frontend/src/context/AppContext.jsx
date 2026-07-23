@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import { EventStatus, ODRequestStatus, UserRole } from '../types';
 import {
   fetchEvents,
@@ -67,7 +67,6 @@ export const AppProvider = ({ children }) => {
   // Subscribe to real-time updates from Firebase for OD Requests (temporary until Phase 4)
   useEffect(() => {
     if (!currentUser) {
-      setODRequests([]);
       setStudents([]);
       setStaffUsers([]);
       setLoading(false);
@@ -203,8 +202,6 @@ export const AppProvider = ({ children }) => {
       }
     } catch (error) {
       if (String(error?.message || '').toLowerCase().includes('event not found')) {
-        ghostIdsRef.current.add(eventId); // blacklist so future snapshots skip it
-        setEvents(prev => prev.filter(e => e.id !== eventId));
         throw new Error('GHOST_EVENT');
       }
       throw error;

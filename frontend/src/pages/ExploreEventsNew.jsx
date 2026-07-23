@@ -2035,7 +2035,7 @@ export const ExploreEventsNew = () => {
     } catch (error) {
       console.error('Error withdrawing:', error);
       // Roll back optimistic update on failure
-      loadEvents(true);
+      refreshEvents(true);
     } finally {
       setProcessingEventId(null);
     }
@@ -2258,4 +2258,4 @@ export const ExploreEventsNew = () => {
   );
 };
 
-export default ExploreEvents;
+export default ExploreEventsNew;
