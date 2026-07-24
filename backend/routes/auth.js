@@ -493,7 +493,18 @@ router.post('/login', async (req, res) => {
         .catch(err => console.error('[auth] Password upgrade error:', err));
     }
 
-    // Removed DATA CONSISTENCY CHECK to ensure login remains read-only for admin fields
+    // ── DATA CONSISTENCY CHECK (Module A & B) ──
+    const finalRole = String(foundUserObj.role || '').toUpperCase();
+    if (!finalRole) {
+      console.error(`[AUTH FATAL] Profile resolved without a role for ${email}`);
+      return res.status(500).json({ success: false, message: 'CRITICAL: Profile resolved without a role.' });
+    }
+
+    const deptRoles = ['FACULTY', 'HOD', 'STUDENT_GENERAL', 'STUDENT_ORGANIZER'];
+    if (deptRoles.includes(finalRole) && !foundUserObj.department) {
+      console.error(`[AUTH FATAL] Profile resolved without a department for ${email}. Role: ${finalRole}`);
+      return res.status(500).json({ success: false, message: 'CRITICAL: Profile resolved without a department. Data flow aborted.' });
+    }
 
     return res.json({
       success: true,

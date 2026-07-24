@@ -1,5 +1,6 @@
-import { collection, query, where, getDocs, onSnapshot, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { where } from './firebaseService';
 
 /**
  * EVENT OWNERSHIP MATRIX

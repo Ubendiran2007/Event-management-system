@@ -22,10 +22,17 @@ export const WorkflowEventsProvider = ({ children }) => {
     setLoading(true);
     if (import.meta.env.DEV) console.log('[eventService] Workflow subscription created');
     
-    const unsubscribe = subscribeToWorkflowEvents(currentUser, (fetchedEvents) => {
-      setEvents(fetchedEvents);
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribeToWorkflowEvents(currentUser, (fetchedEvents) => {
+        setEvents(fetchedEvents);
+        setLoading(false);
+      });
+    } catch (error) {
+      console.error('[WorkflowEventsContext] Subscription error:', error);
+      setEvents([]);
       setLoading(false);
-    });
+    }
 
     return () => {
       if (import.meta.env.DEV) console.log('[eventService] Workflow subscription closed');

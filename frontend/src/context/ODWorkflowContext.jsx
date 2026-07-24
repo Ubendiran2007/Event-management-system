@@ -29,10 +29,17 @@ export const ODWorkflowProvider = ({ children }) => {
 
     setLoading(true);
     console.log('[odService] OD Workflow subscription created');
-    const unsubscribe = subscribeToODWorkflows(currentUser, (requests) => {
-      setOdRequests(requests);
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribeToODWorkflows(currentUser, (requests) => {
+        setOdRequests(requests);
+        setLoading(false);
+      });
+    } catch (error) {
+      console.error('[ODWorkflowContext] Subscription error:', error);
+      setOdRequests([]);
       setLoading(false);
-    });
+    }
 
     return () => {
       console.log('[odService] OD Workflow subscription closed');

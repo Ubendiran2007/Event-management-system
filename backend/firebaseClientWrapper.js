@@ -115,7 +115,14 @@ const getCountFromServer = async (queryRef) => {
   };
 };
 
-const where = (field, op, value) => ({ type: 'where', field, op, value });
+const where = (field, op, value) => {
+  if (value === undefined) {
+    const err = new Error(`[FIRESTORE FATAL] where() called with undefined value for field "${field}". This indicates a systemic data flow failure.`);
+    console.error(err.stack);
+    throw err;
+  }
+  return { type: 'where', field, op, value };
+};
 const orderBy = (field, dir = 'asc') => ({ type: 'orderBy', field, dir });
 const limit = (val) => ({ type: 'limit', val });
 const startAfter = (...vals) => ({ type: 'startAfter', vals });

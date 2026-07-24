@@ -8,13 +8,21 @@ import {
   updateDoc,
   addDoc,
   query,
-  where,
+  where as fsWhere,
   orderBy,
   limit,
   onSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Status } from '../types';
+
+export const where = (field, op, value) => {
+  if (value === undefined) {
+    console.error(`[FIRESTORE FATAL] Frontend safeWhere() blocked undefined query on field: "${field}"`);
+    return fsWhere(field, op, '__UNDEFINED_DATA_FLOW_ERROR__');
+  }
+  return fsWhere(field, op, value);
+};
 
 // ==================== MASTER COLLECTIONS ====================
 export const fetchDepartments = async () => {

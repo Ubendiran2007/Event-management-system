@@ -28,10 +28,17 @@ export const OrganizerEventsProvider = ({ children }) => {
     setLoading(true);
     if (import.meta.env.DEV) console.log('[eventService] Organizer subscription created');
     
-    const unsubscribe = subscribeToOrganizerEvents(currentUser, (fetchedEvents) => {
-      setEvents(fetchedEvents);
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribeToOrganizerEvents(currentUser, (fetchedEvents) => {
+        setEvents(fetchedEvents);
+        setLoading(false);
+      });
+    } catch (error) {
+      console.error('[OrganizerEventsContext] Subscription error:', error);
+      setEvents([]);
       setLoading(false);
-    });
+    }
 
     return () => {
       if (import.meta.env.DEV) console.log('[eventService] Organizer subscription closed');

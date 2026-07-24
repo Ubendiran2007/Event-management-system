@@ -107,7 +107,7 @@ const AcademicCalendar = () => {
       map.get(dateStr).push(event);
     };
 
-    holidays.forEach(h => {
+    holidays?.forEach(h => {
       addEvent(h.date, { type: 'holiday', title: h.name, color: 'bg-red-100 text-red-800 border-red-200' });
     });
 
@@ -121,15 +121,15 @@ const AcademicCalendar = () => {
       }
     };
 
-    exams.forEach(e => {
+    exams?.forEach(e => {
       processRange(e.startDate, e.endDate, { type: 'exam', title: e.name, color: 'bg-orange-100 text-orange-800 border-orange-200' });
     });
 
-    departmentCalendar.forEach(d => {
+    departmentCalendar?.forEach(d => {
       processRange(d.date, d.endDate || d.date, { type: 'dept', title: `[${d.department}] ${d.title}`, color: 'bg-purple-100 text-purple-800 border-purple-200' });
     });
 
-    approvedEvents.forEach(e => {
+    approvedEvents?.forEach(e => {
       processRange(e.startDate, e.endDate || e.startDate, { type: 'event', title: e.title || e.eventName, color: 'bg-blue-100 text-blue-800 border-blue-200' });
     });
 
