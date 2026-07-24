@@ -1,11 +1,12 @@
-import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { notificationService } from '../services/notificationService';
-import { useAuth } from './AuthContext'; // Assuming AuthContext exists
+import { useAppContext } from './AppContext';
 
 export const NotificationContext = createContext();
 
 export const NotificationProvider = ({ children }) => {
-  const { currentUser } = useAuth() || { currentUser: { uid: 'student_1' } }; // Fallback for dev if needed
+  const { currentUser } = useAppContext() || { currentUser: { id: 'student_1' } }; // Fallback for dev if needed
+
   
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -16,7 +17,7 @@ export const NotificationProvider = ({ children }) => {
   // Current active filters
   const [filters, setFilters] = useState({});
 
-  const userId = currentUser?.uid;
+  const userId = currentUser?.id;
 
   // Poll for unread count every 30 seconds
   useEffect(() => {
