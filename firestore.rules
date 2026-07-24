@@ -9,22 +9,18 @@ service cloud.firestore {
 
     // 1. Logs (auditLogs, activityLogs, emailLogs, eventApprovalLogs)
     // Written strictly by the Backend (Admin SDK). 
-    // EmailAudit.jsx reads emailLogs directly from the frontend, so we must allow read for authenticated users (or restrict by role if custom claims are set, but for safety layer, isAuthenticated is the baseline).
+    // Client reads are DENIED to protect operational/sensitive data.
     match /auditLogs/{logId} {
-      allow read: if isAuthenticated();
-      allow write: if false; 
+      allow read, write: if false; 
     }
     match /activityLogs/{logId} {
-      allow read: if isAuthenticated();
-      allow write: if false; 
+      allow read, write: if false; 
     }
     match /emailLogs/{logId} {
-      allow read: if isAuthenticated();
-      allow write: if false; 
+      allow read, write: if false; 
     }
     match /eventApprovalLogs/{logId} {
-      allow read: if isAuthenticated();
-      allow write: if false; 
+      allow read, write: if false; 
     }
     
     // 2. Events Collection
@@ -38,7 +34,12 @@ service cloud.firestore {
     // 3. User Profiles & Settings
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if request.auth.uid == userId; // Basic ownership
+      // Block privilege escalation: Users cannot modify their role, department, or organizer status.
+      allow write: if request.auth.uid == userId 
+                   && (
+                     (resource == null && !request.resource.data.keys().hasAny(['role', 'department', 'isApprovedOrganizer'])) ||
+                     (resource != null && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'department', 'isApprovedOrganizer', 'email']))
+                   );
     }
     
     // 4. Legacy / Root Collections
@@ -52,7 +53,6 @@ service cloud.firestore {
       allow write: if false;
     }
     match /eventFeedback/{docId} {
-      allow read: if isAuthenticated();
       allow read: if isAuthenticated();
       allow write: if false;
     }

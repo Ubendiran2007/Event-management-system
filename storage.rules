@@ -7,35 +7,58 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // MIME Validation (Prohibit executable/SVG)
+    function isImage() {
+      return request.resource.contentType.matches('image/.*') 
+             && !request.resource.contentType.matches('.*svg.*');
+    }
+    
+    function isPDF() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    // Size Validation
+    function isSizeUnder(mb) {
+      return request.resource.size < mb * 1024 * 1024;
+    }
+
+    // Ownership Validation via Firestore Lookup
+    function isOrganizer(eventId) {
+      let eventDoc = firestore.get(/databases/(default)/documents/events/$(eventId));
+      return eventDoc != null && (
+        eventDoc.data.get('organizerId', '') == request.auth.uid ||
+        eventDoc.data.get('createdBy', '') == request.auth.uid
+      );
+    }
+
     match /events/{eventId} {
       
       // Posters: Publicly readable (needed for landing pages, dashboards)
-      // Writable by authenticated users (event creators)
+      // Writable by authenticated users. (Event might not exist yet during initial upload)
       match /poster_{fileName} {
         allow read: if true;
-        allow write: if isAuthenticated();
+        allow write: if isAuthenticated() && isImage() && isSizeUnder(5);
       }
       
       // Resource Persons: Publicly readable 
-      // Writable by authenticated users
       match /resourcePersons/{fileName} {
         allow read: if true;
-        allow write: if isAuthenticated();
+        allow write: if isAuthenticated() && isImage() && isSizeUnder(5);
       }
       
       // Gallery: Readable by authenticated users (students viewing past events)
-      // Writable by authenticated users (event creators)
+      // Writable ONLY by the Event Organizer, strictly images, under 10MB
       match /gallery/{fileName} {
         allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow write: if isAuthenticated() && isImage() && isSizeUnder(10) && isOrganizer(eventId);
       }
       
       // IQAC Documents: Highly restricted
-      // Readable by authenticated users (but backend controls the actual URL distribution)
-      // Writable by authenticated users
+      // Readable by authenticated users
+      // Writable ONLY by the Event Organizer, strictly PDFs, under 20MB
       match /documents/{fileName} {
         allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow write: if isAuthenticated() && isPDF() && isSizeUnder(20) && isOrganizer(eventId);
       }
     }
     
