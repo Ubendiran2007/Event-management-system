@@ -56,16 +56,35 @@ function isValidEmail(email) {
  * @param {string} recipient   – email address
  * @param {Function} sendFn    – async function that sends the email
  */
-async function safeSend(label, recipient, sendFn) {
+async function safeSend(label, recipient, sendFn, maxRetries = 2) {
   if (!isValidEmail(recipient)) {
     console.warn('[EMAIL_SKIP] ' + label + ' — invalid/missing recipient: ' + recipient);
     return;
   }
-  try {
-    await sendFn();
-    console.log('[EMAIL_SENT] ' + label + ' → ' + recipient);
-  } catch (err) {
-    console.error('[EMAIL_FAIL] ' + label + ' → ' + recipient + ' | Error: ' + err.message);
+  
+  const timeoutMs = parseInt(process.env.EMAIL_TIMEOUT_MS, 10) || 10000;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('ETIMEDOUT')), timeoutMs)
+      );
+      
+      await Promise.race([sendFn(), timeoutPromise]);
+      console.log(`[EMAIL_SENT] ${label} → ${recipient} (Attempt ${attempt})`);
+      return; // Success
+    } catch (err) {
+      const isRetryable = err.message === 'ETIMEDOUT' || err.code === 'ECONNRESET' || err.code === 'EAI_AGAIN';
+      
+      if (isRetryable && attempt < maxRetries) {
+        console.warn(`[EMAIL_RETRY] ${label} → ${recipient} (Attempt ${attempt} failed: ${err.message}). Retrying...`);
+        // Exponential backoff: 1s, 2s, 4s...
+        await new Promise(res => setTimeout(res, Math.pow(2, attempt - 1) * 1000));
+      } else {
+        console.error(`[EMAIL_FAIL] ${label} → ${recipient} | Error: ${err.message} (Permanent failure or max retries reached)`);
+        break; // Stop retrying
+      }
+    }
   }
 }
 

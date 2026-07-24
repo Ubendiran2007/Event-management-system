@@ -328,7 +328,7 @@ router.post('/login/seed-staff-users', async (req, res) => {
 });
 
 // POST /api/login — authenticate a user
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next) => {
   const { email, password } = req.body;
   const reqDetails = getRequestDetails(req);
 
@@ -515,7 +515,7 @@ router.post('/login', async (req, res) => {
 
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error', error: error.stack || error.toString() });
+    next(error);
   }
 });
 

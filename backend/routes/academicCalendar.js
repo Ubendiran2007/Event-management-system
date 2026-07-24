@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 
+// Enforce authentication for all routes in this router
+router.use(requireAuth);
+
+
 const { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where, db, writeBatch, deleteDoc } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { logActivity, logAudit } = require('../utils/logger');
@@ -39,7 +43,7 @@ const logCalendarAction = (action, user, target, details, status = 'SUCCESS') =>
 // ACADEMIC YEARS (IQAC Only)
 // ==========================================
 
-router.post('/academic-years', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/academic-years', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { name, startDate, endDate, status = 'ACTIVE' } = req.body;
@@ -82,7 +86,7 @@ router.post('/academic-years', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_AD
   }
 });
 
-router.put('/academic-years/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.put('/academic-years/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -116,7 +120,7 @@ router.put('/academic-years/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM
   }
 });
 
-router.put('/academic-years/:id/activate', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.put('/academic-years/:id/activate', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -147,7 +151,7 @@ router.put('/academic-years/:id/activate', requireAuth, requireRole(['IQAC_TEAM'
 });
 
 // Excel Import for Academic Years
-router.post('/academic-years/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/academic-years/import', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { records } = req.body;
@@ -217,7 +221,7 @@ router.post('/academic-years/import', requireAuth, requireRole(['IQAC_TEAM', 'SY
 // SEMESTERS (IQAC Only)
 // ==========================================
 
-router.post('/semesters', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/semesters', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { name, academicYear, startDate, endDate, status = 'ACTIVE' } = req.body;
@@ -247,7 +251,7 @@ router.post('/semesters', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']
   }
 });
 
-router.put('/semesters/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.put('/semesters/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -276,7 +280,7 @@ router.put('/semesters/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMI
   }
 });
 
-router.delete('/semesters/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.delete('/semesters/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -290,7 +294,7 @@ router.delete('/semesters/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_A
 });
 
 // Excel Import for Semesters
-router.post('/semesters/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/semesters/import', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { records } = req.body;
@@ -361,7 +365,7 @@ router.post('/semesters/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_
 // COLLEGE HOLIDAYS (IQAC Only)
 // ==========================================
 
-router.post('/holidays', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/holidays', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { name, date, type } = req.body;
@@ -387,7 +391,7 @@ router.post('/holidays', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN'])
 });
 
 // Excel Import for Holidays
-router.post('/holidays/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/holidays/import', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { records } = req.body;
@@ -453,7 +457,7 @@ router.post('/holidays/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_A
   }
 });
 
-router.put('/holidays/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.put('/holidays/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -470,7 +474,7 @@ router.put('/holidays/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN
   }
 });
 
-router.delete('/holidays/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.delete('/holidays/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -486,7 +490,7 @@ router.delete('/holidays/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_AD
 // EXAMINATIONS (IQAC Only)
 // ==========================================
 
-router.post('/exams', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/exams', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { name, startDate, endDate, department, semester } = req.body;
@@ -500,7 +504,7 @@ router.post('/exams', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), a
   }
 });
 
-router.put('/exams/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.put('/exams/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -513,7 +517,7 @@ router.put('/exams/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN'])
   }
 });
 
-router.delete('/exams/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.delete('/exams/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -526,7 +530,7 @@ router.delete('/exams/:id', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN
 });
 
 // Excel Import for Exams
-router.post('/exams/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/exams/import', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { records } = req.body;
@@ -596,7 +600,7 @@ router.post('/exams/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMI
 // WORKING DAYS (IQAC Only)
 // ==========================================
 
-router.post('/working-days', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/working-days', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const workingDays = req.body; // { Monday: true, Tuesday: true, ... }
@@ -609,7 +613,7 @@ router.post('/working-days', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMI
 });
 
 // Excel Import for Working Days
-router.post('/working-days/import', requireAuth, requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+router.post('/working-days/import', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { records } = req.body;
@@ -654,7 +658,7 @@ router.post('/working-days/import', requireAuth, requireRole(['IQAC_TEAM', 'SYST
 // DEPARTMENT CALENDAR (HOD Only)
 // ==========================================
 
-router.post('/department-events', requireAuth, requireRole(['HOD']), async (req, res) => {
+router.post('/department-events', requireRole(['HOD']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { title, type, date, description } = req.body;
@@ -672,7 +676,7 @@ router.post('/department-events', requireAuth, requireRole(['HOD']), async (req,
   }
 });
 
-router.put('/department-events/:id', requireAuth, requireRole(['HOD']), async (req, res) => {
+router.put('/department-events/:id', requireRole(['HOD']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -695,7 +699,7 @@ router.put('/department-events/:id', requireAuth, requireRole(['HOD']), async (r
   }
 });
 
-router.delete('/department-events/:id', requireAuth, requireRole(['HOD']), async (req, res) => {
+router.delete('/department-events/:id', requireRole(['HOD']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { id } = req.params;
@@ -715,7 +719,7 @@ router.delete('/department-events/:id', requireAuth, requireRole(['HOD']), async
 });
 
 // Excel Import for Department Events
-router.post('/department-events/import', requireAuth, requireRole(['HOD']), async (req, res) => {
+router.post('/department-events/import', requireRole(['HOD']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { records } = req.body; // Array of objects
@@ -791,7 +795,7 @@ router.post('/department-events/import', requireAuth, requireRole(['HOD']), asyn
 });
 
 // Add Single Department Event
-router.post('/department-events', requireAuth, requireRole(['HOD']), async (req, res) => {
+router.post('/department-events', requireRole(['HOD']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { title, type, date, endDate, description } = req.body;

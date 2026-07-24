@@ -1,5 +1,10 @@
 const express = require('express');
+const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
+
+// Enforce authentication for all routes in this router
+router.use(requireAuth);
+
 
 const { collection, getDocs, doc, setDoc, deleteDoc, db, collectionGroup, writeBatch, query, where, getDoc, updateDoc } = require('../firebaseClientWrapper');
 const { getAllSectionDocs } = require('../utils/studentHelper');

@@ -12,6 +12,8 @@ const eventsRoutes = require('./routes/events');
 const exploreRoutes = require('./routes/explore');
 const iqacRoutes = require('./routes/iqac');
 const studentsRoutes = require('./routes/students');
+const { setupAdminDefaults } = require('./scripts/setupAdmin');
+const errorHandler = require('./middleware/errorHandler');
 const academicBatchesRoutes = require('./routes/academicBatches');
 const academicCalendarRoutes = require('./routes/academicCalendar');
 const odRequestsRoutes = require('./routes/odRequests');
@@ -87,6 +89,9 @@ app.use('/api/users', usersRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/preferences', preferencesRoutes);
+
+// ── Global Error Handler ─────────────────────────────────────────────────────
+app.use(errorHandler);
 
 // ── Start server ─────────────────────────────────────────────────────────────
 const server = http.createServer(app);

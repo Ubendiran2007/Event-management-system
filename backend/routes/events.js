@@ -44,12 +44,18 @@ const {
   executeBackgroundNotification
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
+const { validateEvent } = require('../middleware/validators');
+const asyncHandler = require('../utils/asyncHandler');
 const { getUserId } = require('../utils/authHelper');
 const { logActivity } = require('../utils/logger');
 const crypto = require('crypto');
 const eventPublisher = require('../events/publishers/eventPublisher');
 
 const router = express.Router();
+
+// Enforce authentication for all routes in this router
+router.use(requireAuth);
+
 
 // ── Guard: firebase not ready ────────────────────────────────────────────────
 function checkDb(res) {
@@ -179,101 +185,97 @@ function getRequiredDepartments(eventData) {
 
 // â”€â”€ POST /api/events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Create a new event (saves to Firestore "events" collection)
-router.post('/', async (req, res) => {
+router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, asyncHandler(async (req, res) => {
   if (!checkDb(res)) return;
 
   const eventData = req.body;
 
-  if (!eventData || !eventData.title) {
-    return res.status(400).json({ success: false, message: 'Event title is required' });
+  const { parseEventStartDateTime } = require('../services/eventAutoRejectionService');
+  const startDateTime = parseEventStartDateTime(eventData);
+  if (startDateTime) {
+    const nowMs = new Date().getTime();
+    const startMs = startDateTime.getTime();
+    const rejectAtMs = startMs - parseInt(process.env.AUTO_REJECT_BEFORE_START_MINUTES || '5', 10) * 60 * 1000;
+    if (nowMs >= rejectAtMs) {
+      return res.status(400).json({ success: false, message: 'Cannot create an event that starts in less than 5 minutes or is already in the past.' });
+    }
   }
 
-  try {
-    const { parseEventStartDateTime } = require('../services/eventAutoRejectionService');
-    const startDateTime = parseEventStartDateTime(eventData);
-    if (startDateTime) {
-      const nowMs = new Date().getTime();
-      const startMs = startDateTime.getTime();
-      const rejectAtMs = startMs - parseInt(process.env.AUTO_REJECT_BEFORE_START_MINUTES || '5', 10) * 60 * 1000;
-      if (nowMs >= rejectAtMs) {
-        return res.status(400).json({ success: false, message: 'Cannot create an event that starts in less than 5 minutes or is already in the past.' });
-      }
-    }
+  const startDateTimeStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
+  const department = eventData.department || eventData.requisition?.step1?.organizerDetails?.department || 'GEN';
+  const referenceId = await generateEventReferenceId(department, startDateTimeStr);
 
-    const startDateTimeStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
-    const department = eventData.department || eventData.requisition?.step1?.organizerDetails?.department || 'GEN';
-    const referenceId = await generateEventReferenceId(department, startDateTimeStr);
+  const payload = {
+    ...eventData,
+    referenceId,
+    // Ownership constraints - explicitly override client values
+    createdBy: req.user.id,
+    organizerId: req.user.id,
+    department: req.user.department || department,
+    // System fields
+    status: 'PENDING_FACULTY',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
 
-    const payload = {
-      ...eventData,
-      referenceId,
-      status: eventData.status || 'PENDING_FACULTY',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    let docRef;
-    if (eventData.id) {
-      docRef = doc(db, 'events', eventData.id);
-      await setDoc(docRef, payload);
-    } else {
-      docRef = await addDoc(collection(db, 'events'), payload);
-    }
-
-    // ── Background Notifications (centralized handler) ─────────────────
-    const payloadWithId = { id: docRef.id, ...payload };
-    executeBackgroundNotification('events/create', async () => {
-      // Resolve faculty email if student-created event
-      let targetApproverId = null;
-      if (payload.status === 'PENDING_FACULTY') {
-        let facultyEmail = payload.coordinator?.facultyEmail ||
-                           payload.coordinator?.faculty_email ||
-                           payload.facultyEmail || null;
-        if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
-        if (!facultyEmail && payload.coordinator?.facultyName) {
-          facultyEmail = await getFacultyEmailByName(String(payload.coordinator.facultyName).trim());
-        }
-        targetApproverId = facultyEmail;
-        payloadWithId.coordinator = { ...payloadWithId.coordinator, facultyEmail };
-      }
-      
-      // Parallel execution: New EventBus Publisher
-      eventPublisher.publishEventCreated({
-        eventId: payloadWithId.id,
-        organizerId: payloadWithId.createdBy || payloadWithId.organizerId || getUserId(req),
-        eventTitle: payloadWithId.title || payloadWithId.eventName,
-        eventType: payloadWithId.eventType,
-        department: payloadWithId.department,
-        targetApprovers: targetApproverId ? [targetApproverId] : [],
-        correlationId: crypto.randomUUID()
-      });
-    });
-
-    logActivity({
-      category: 'EVENT',
-      action: 'EVENT_CREATED',
-      status: 'SUCCESS',
-      correlationId: docRef.id,
-      requestId: crypto.randomUUID(),
-      actor: {
-        userId: eventData.coordinator?.studentEmail || 'UNKNOWN',
-        name: eventData.coordinator?.studentName || 'Unknown User',
-        role: eventData.role || 'STUDENT'
-      },
-      target: { entityType: 'EVENT', entityId: docRef.id },
-      details: { title: payload.title, status: payload.status }
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: 'Event created successfully',
-      event: { id: docRef.id, ...payload },
-    });
-  } catch (error) {
-    console.error('[events/create] Error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to create event', error: error.message });
+  let docRef;
+  if (eventData.id) {
+    docRef = doc(db, 'events', eventData.id);
+    await setDoc(docRef, payload);
+  } else {
+    docRef = await addDoc(collection(db, 'events'), payload);
   }
-});
+
+  // ── Background Notifications (centralized handler) ─────────────────
+  const payloadWithId = { id: docRef.id, ...payload };
+  executeBackgroundNotification('events/create', async () => {
+    // Resolve faculty email if student-created event
+    let targetApproverId = null;
+    if (payload.status === 'PENDING_FACULTY') {
+      let facultyEmail = payload.coordinator?.facultyEmail ||
+                         payload.coordinator?.faculty_email ||
+                         payload.facultyEmail || null;
+      if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
+      if (!facultyEmail && payload.coordinator?.facultyName) {
+        facultyEmail = await getFacultyEmailByName(String(payload.coordinator.facultyName).trim());
+      }
+      targetApproverId = facultyEmail;
+      payloadWithId.coordinator = { ...payloadWithId.coordinator, facultyEmail };
+    }
+    
+    // Parallel execution: New EventBus Publisher
+    eventPublisher.publishEventCreated({
+      eventId: payloadWithId.id,
+      organizerId: req.user.id,
+      eventTitle: payloadWithId.title || payloadWithId.eventName,
+      eventType: payloadWithId.eventType,
+      department: payloadWithId.department,
+      targetApprovers: targetApproverId ? [targetApproverId] : [],
+      correlationId: crypto.randomUUID()
+    });
+  });
+
+  logActivity({
+    category: 'EVENT',
+    action: 'EVENT_CREATED',
+    status: 'SUCCESS',
+    correlationId: docRef.id,
+    requestId: crypto.randomUUID(),
+    actor: {
+      userId: req.user.id,
+      name: req.user.name || 'Unknown User',
+      role: req.user.role || 'STUDENT'
+    },
+    target: { entityType: 'EVENT', entityId: docRef.id },
+    details: { title: payload.title, status: payload.status }
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: 'Event created successfully',
+    event: { id: docRef.id, ...payload },
+  });
+}));
 
 // ── GET /api/events ────────────────────────────────────────────────────────
 // Get all events. Optional query params:
@@ -326,7 +328,7 @@ router.get('/:id', async (req, res) => {
 // Advance or reject an event through the approval chain
 // Auth: requireAuth — role & department come ONLY from the verified token.
 const STATUS_ALLOWED_ROLES = ['FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN'];
-router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), async (req, res) => {
+router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) => {
   if (!checkDb(res)) return;
 
   // ⚠️  Role and department are resolved from the verified session token, NOT req.body
@@ -670,7 +672,7 @@ router.patch('/:id/status', requireAuth, requireRole(STATUS_ALLOWED_ROLES), asyn
 // Body: { department: 'venue' | 'audio' | 'icts' | 'transport' | 'accommodation' | 'media', approvedBy: string }
 // Auth: role comes from verified token — not req.body
 const DEPT_APPROVAL_ROLES = ['HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN', 'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA'];
-router.patch('/:id/department-approval', requireAuth, requireRole(DEPT_APPROVAL_ROLES), async (req, res) => {
+router.patch('/:id/department-approval', requireRole(DEPT_APPROVAL_ROLES), async (req, res) => {
   if (!checkDb(res)) return;
 
   const { department, status = 'APPROVED', reason } = req.body;
@@ -1583,7 +1585,7 @@ router.patch('/:id/extend-iqac-window', async (req, res) => {
 
 // ── PATCH /api/events/:id/cancel ───────────────────────────────────────────
 // Cancel an event (STUDENT_ORGANIZER or FACULTY)
-router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.patch('/:id/cancel', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { cancellationReason, confirmationText } = req.body;
   
@@ -1673,7 +1675,7 @@ router.patch('/:id/cancel', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACU
 
 // ── PATCH /api/events/:id/postpone ─────────────────────────────────────────
 // Postpone an event (STUDENT_ORGANIZER or FACULTY)
-router.patch('/:id/postpone', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.patch('/:id/postpone', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { reason, newDate, newEndDate: providedEndDate, newStartTime, newEndTime } = req.body;
   const newEndDate = providedEndDate || newDate;
@@ -1811,7 +1813,7 @@ async function logAttendanceAudit(eventId, logData) {
 }
 
 // ── GET /api/events/:id/attendance-audit ──────────────────────────────────
-router.get('/:id/attendance-audit', requireAuth, requireRole(['IQAC_TEAM']), async (req, res) => {
+router.get('/:id/attendance-audit', requireRole(['IQAC_TEAM']), async (req, res) => {
   if (!checkDb(res)) return;
   try {
     const auditRef = collection(db, 'events', req.params.id, 'attendanceAuditLogs');
@@ -1847,7 +1849,7 @@ router.get('/:id/attendance-audit', requireAuth, requireRole(['IQAC_TEAM']), asy
 });
 
 // ── PATCH /api/events/:id/attendance-config ────────────────────────────────
-router.patch('/:id/attendance-config', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.patch('/:id/attendance-config', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { date, attendanceType } = req.body;
   if (!date || !attendanceType) return res.status(400).json({ success: false, message: 'Date and attendanceType required' });
@@ -1891,7 +1893,7 @@ router.patch('/:id/attendance-config', requireAuth, requireRole(['STUDENT_ORGANI
 });
 
 // ── PATCH /api/events/:id/attendance-session ───────────────────────────────
-router.patch('/:id/attendance-session', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.patch('/:id/attendance-session', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { date, sessionKey, action } = req.body;
   
@@ -1948,7 +1950,7 @@ router.patch('/:id/attendance-session', requireAuth, requireRole(['STUDENT_ORGAN
 });
 
 // ── PATCH /api/events/:id/finalize-attendance ──────────────────────────────
-router.patch('/:id/finalize-attendance', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.patch('/:id/finalize-attendance', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { date } = req.body;
   try {
@@ -1985,7 +1987,7 @@ router.patch('/:id/finalize-attendance', requireAuth, requireRole(['STUDENT_ORGA
 });
 
 // ── POST /api/events/:id/attendance ────────────────────────────────────────
-router.post('/:id/attendance', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.post('/:id/attendance', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { rollNo, studentName, eventId, registrationId, date } = req.body;
   try {
@@ -2105,7 +2107,7 @@ router.post('/:id/attendance', requireAuth, requireRole(['STUDENT_ORGANIZER', 'F
 });
 
 // ── PATCH /api/events/:id/attendance/correct ──────────────────────────────
-router.patch('/:id/attendance/correct', requireAuth, requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
+router.patch('/:id/attendance/correct', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
   const { registrationId, date, session, s1Present, s2Present, reason } = req.body;
   try {

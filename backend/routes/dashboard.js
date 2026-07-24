@@ -1,9 +1,14 @@
 const express = require('express');
+const { requireAuth } = require('../middleware/auth');
 const { collection, getDocs, query, where, doc, updateDoc, collectionGroup, db, getCountFromServer } = require('../firebaseClientWrapper');
 const { CLASSES } = require('../utils/constants');
 const { getAllSectionDocs } = require('../utils/studentHelper');
 
 const router = express.Router();
+
+// Enforce authentication for all routes in this router
+router.use(requireAuth);
+
 
 // ── Helper: abort early if Firebase isn't initialised yet ────────────────────
 function checkDb(res) {

@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 
+// Enforce authentication for all routes in this router
+router.use(requireAuth);
+
+
 const {
   collection, addDoc, getDocs, doc, updateDoc,
   getDoc, query, where, collectionGroup, db
@@ -286,7 +290,7 @@ router.post('/', async (req, res) => {
 // Auth: role and approverName are resolved from the verified JWT token — NOT req.body
 // ─────────────────────────────────────────────────────────────────────────────
 const CORRECTION_ALLOWED_ROLES = ['FACULTY', 'HOD', 'IQAC_TEAM'];
-router.patch('/:id/status', requireAuth, requireRole(CORRECTION_ALLOWED_ROLES), async (req, res) => {
+router.patch('/:id/status', requireRole(CORRECTION_ALLOWED_ROLES), async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
   const { action, comments = '', rejectionReason = '' } = req.body;

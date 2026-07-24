@@ -1,5 +1,10 @@
 const express = require('express');
+const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
+
+// Enforce authentication for all routes in this router
+router.use(requireAuth);
+
 const { dbAdmin } = require('../firebaseAdmin');
 const { collection, query, where, orderBy, limit, startAfter, getDocs, db } = require('../firebaseClientWrapper');
 const { NOTIFICATION_STATUS } = require('../utils/notificationConstants');
