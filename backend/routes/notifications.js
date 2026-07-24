@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { dbAdmin } = require('../firebaseAdmin');
+const { collection, query, where, orderBy, limit, startAfter, getDocs, db } = require('../firebaseClientWrapper');
 const { NOTIFICATION_STATUS } = require('../utils/notificationConstants');
 const analyticsService = require('../notifications/analytics/notificationAnalyticsService');
 
@@ -15,27 +16,25 @@ const getUserId = (req) => {
 router.get('/', async (req, res) => {
   try {
     const userId = getUserId(req);
-    const limit = parseInt(req.query.limit) || 20;
-    const { status, category, priority, startAfter } = req.query;
+    const limitNum = parseInt(req.query.limit) || 20;
+    const { status, category, priority, startAfter: startAfterParam } = req.query;
 
-    let query = dbAdmin.collection('notifications').where('recipientId', '==', userId);
+    const constraints = [where('recipientId', '==', userId)];
+    if (status) constraints.push(where('status', '==', status));
+    if (category) constraints.push(where('category', '==', category));
+    if (priority) constraints.push(where('priority', '==', priority));
 
-    if (status) query = query.where('status', '==', status);
-    if (category) query = query.where('category', '==', category);
-    if (priority) query = query.where('priority', '==', priority);
+    constraints.push(orderBy('createdAt', 'desc'));
 
-    // Order by createdAt desc
-    query = query.orderBy('createdAt', 'desc');
-
-    if (startAfter) {
-      const startAfterDoc = await dbAdmin.collection('notifications').doc(startAfter).get();
+    if (startAfterParam) {
+      const startAfterDoc = await dbAdmin.collection('notifications').doc(startAfterParam).get();
       if (startAfterDoc.exists) {
-        query = query.startAfter(startAfterDoc);
+        constraints.push(startAfter(startAfterDoc));
       }
     }
 
-    query = query.limit(limit);
-    const snapshot = await query.get();
+    constraints.push(limit(limitNum));
+    const snapshot = await getDocs(query(collection(db, 'notifications'), ...constraints));
 
     const notifications = [];
     snapshot.forEach(doc => notifications.push({ id: doc.id, ...doc.data() }));
@@ -54,16 +53,18 @@ router.get('/unread', async (req, res) => {
     const userId = getUserId(req);
     const notificationsRef = dbAdmin.collection('notifications');
 
-    const unreadSnapshot = await notificationsRef
-      .where('recipientId', '==', userId)
-      .where('status', '==', NOTIFICATION_STATUS.DELIVERED)
-      .get();
+    const unreadSnapshot = await getDocs(query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', userId),
+      where('status', '==', NOTIFICATION_STATUS.DELIVERED)
+    ));
 
-    const latestSnapshot = await notificationsRef
-      .where('recipientId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .limit(10)
-      .get();
+    const latestSnapshot = await getDocs(query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    ));
       
     const latest = [];
     latestSnapshot.forEach(doc => latest.push({ id: doc.id, ...doc.data() }));
@@ -86,10 +87,11 @@ router.patch('/read-all', async (req, res) => {
     const notificationsRef = dbAdmin.collection('notifications');
     const batch = dbAdmin.batch();
 
-    const unreadSnapshot = await notificationsRef
-      .where('recipientId', '==', userId)
-      .where('status', '==', NOTIFICATION_STATUS.DELIVERED)
-      .get();
+    const unreadSnapshot = await getDocs(query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', userId),
+      where('status', '==', NOTIFICATION_STATUS.DELIVERED)
+    ));
 
     unreadSnapshot.forEach(doc => {
       batch.update(doc.ref, { 
