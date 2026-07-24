@@ -153,6 +153,10 @@ export const updateStudentRole = async (studentId, role, className, isApprovedOr
 
 // Authenticate student by username (email) and password (roll number)
 export const authenticateStudent = async (username, password) => {
+  if (!username || !password) {
+    console.warn('authenticateStudent called with missing credentials');
+    return null;
+  }
   try {
     console.log('Authenticating student:', username);
     // Optimized: using collectionGroup query for the specific username instead of reading all students
@@ -330,6 +334,7 @@ export const subscribeToODRequests = (currentUser, callback) => {
   
   let q;
   if (currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER') {
+    if (!currentUser.id) return () => {};
     q = query(collection(db, 'odRequests'), where('studentId', '==', currentUser.id));
   } else {
     // For now, faculty and global roles still subscribe to all to do client-side filtering.

@@ -486,7 +486,7 @@ const Dashboard = () => {
     };
 
     try {
-      const [odReq, eventReq] = await Promise.all([
+      const results = await Promise.allSettled([
         fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -508,8 +508,11 @@ const Dashboard = () => {
         })
       ]);
 
-      if (!odReq.ok || !eventReq.ok) {
-        console.warn("One or more registration systems returned non-ok status");
+      const odReq = results[0].status === 'fulfilled' ? results[0].value : null;
+      const eventReq = results[1].status === 'fulfilled' ? results[1].value : null;
+
+      if (!odReq || !odReq.ok || !eventReq || !eventReq.ok) {
+        console.warn("One or more registration systems returned non-ok status or failed to fetch");
       }
     } catch (error) {
       console.error('Error registering:', error);

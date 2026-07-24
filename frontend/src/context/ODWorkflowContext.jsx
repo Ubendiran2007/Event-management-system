@@ -19,6 +19,14 @@ export const ODWorkflowProvider = ({ children }) => {
       return;
     }
 
+    // Guard: Prevent infinite loading if a staff member lacks a department
+    if (['FACULTY', 'HOD'].includes(currentUser.role) && !currentUser.department) {
+      console.warn('ODWorkflowContext: Missing department for staff user');
+      setOdRequests([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     console.log('[odService] OD Workflow subscription created');
     const unsubscribe = subscribeToODWorkflows(currentUser, (requests) => {

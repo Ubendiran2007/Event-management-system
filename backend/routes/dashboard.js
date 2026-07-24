@@ -179,12 +179,7 @@ router.get('/summary', async (req, res) => {
     const eventsCol = collection(db, 'events');
     const odCol = collection(db, 'odRequests');
 
-    const [
-      eventsTotalSnap, eventsCompletedSnap, eventsRejectedSnap,
-      eventsPendingFacultySnap, eventsPendingHodSnap, eventsPendingIqacSnap,
-      eventsPendingBaseSnap, eventsPostedSnap, eventsApprovedSnap,
-      odTotalSnap, odPendingSnap, odApprovedSnap, odRejectedSnap
-    ] = await Promise.all([
+    const results = await Promise.allSettled([
       getCountFromServer(eventsCol),
       getCountFromServer(query(eventsCol, where('status', '==', 'COMPLETED'))),
       getCountFromServer(query(eventsCol, where('status', '==', 'REJECTED'))),
@@ -201,28 +196,46 @@ router.get('/summary', async (req, res) => {
       getCountFromServer(query(odCol, where('status', '==', 'REJECTED')))
     ]);
 
-    const pendingODs = odPendingSnap.data().count; // OD Requests only use PENDING_HOD or PENDING_TUTOR, assume sum or just PENDING
+    const getCount = (index) => results[index].status === 'fulfilled' ? results[index].value.data().count : 0;
+
+    const eventsTotal = getCount(0);
+    const eventsCompleted = getCount(1);
+    const eventsRejected = getCount(2);
+    const eventsPendingFaculty = getCount(3);
+    const eventsPendingHod = getCount(4);
+    const eventsPendingIqac = getCount(5);
+    const eventsPendingBase = getCount(6);
+    const eventsPosted = getCount(7);
+    const eventsApproved = getCount(8);
+    
+    const odTotal = getCount(9);
+    const odPending = getCount(10);
+    const odApproved = getCount(11);
+    const odRejected = getCount(12);
+
+    const pendingODs = odPending; // OD Requests only use PENDING_HOD or PENDING_TUTOR, assume sum or just PENDING
     
     // We can also fetch the raw OD requests if we need exact string matching on "startsWith('PENDING')", 
     // but since we want to avoid reading all ODs, we'll run 2 queries for the two possible pending states:
-    const odPendingTutorSnap = await getCountFromServer(query(odCol, where('status', '==', 'PENDING_TUTOR')));
+    const odPendingTutorSnapResult = await getCountFromServer(query(odCol, where('status', '==', 'PENDING_TUTOR'))).catch(() => ({ data: () => ({ count: 0 }) }));
+    const odPendingTutorCount = odPendingTutorSnapResult.data().count;
 
     const summary = {
       events: {
-        total: eventsTotalSnap.data().count,
-        pending: eventsPendingFacultySnap.data().count + eventsPendingHodSnap.data().count + eventsPendingIqacSnap.data().count + eventsPendingBaseSnap.data().count,
-        posted: eventsPostedSnap.data().count + eventsApprovedSnap.data().count,
-        completed: eventsCompletedSnap.data().count,
-        rejected: eventsRejectedSnap.data().count,
-        pendingFaculty: eventsPendingFacultySnap.data().count,
-        pendingHod: eventsPendingHodSnap.data().count,
-        pendingIqac: eventsPendingIqacSnap.data().count,
+        total: eventsTotal,
+        pending: eventsPendingFaculty + eventsPendingHod + eventsPendingIqac + eventsPendingBase,
+        posted: eventsPosted + eventsApproved,
+        completed: eventsCompleted,
+        rejected: eventsRejected,
+        pendingFaculty: eventsPendingFaculty,
+        pendingHod: eventsPendingHod,
+        pendingIqac: eventsPendingIqac,
       },
       odRequests: {
-        total: odTotalSnap.data().count,
-        pending: pendingODs + odPendingTutorSnap.data().count,
-        approved: odApprovedSnap.data().count,
-        rejected: odRejectedSnap.data().count,
+        total: odTotal,
+        pending: pendingODs + odPendingTutorCount,
+        approved: odApproved,
+        rejected: odRejected,
       },
     };
 

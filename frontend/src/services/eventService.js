@@ -108,6 +108,7 @@ export const fetchAnalyticsEvents = async (filters = {}) => {
 
 export const checkVenueAvailability = async (dateStr, venue) => {
   const startTime = performance.now();
+  if (!dateStr || !venue) return false;
   try {
     // Only check active events that have a date
     const q = query(
@@ -157,7 +158,7 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
 };
 
 export const subscribeToOrganizerEvents = (currentUser, callback) => {
-  if (!currentUser) return () => {};
+  if (!currentUser?.id) return () => {};
   
   const startTime = performance.now();
   const q = query(eventsCollection, where('organizerId', '==', currentUser.id));

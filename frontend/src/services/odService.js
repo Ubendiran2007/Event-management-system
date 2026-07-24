@@ -15,6 +15,10 @@ const logQuery = (name, docsCount, realtime, startTime) => {
  */
 export const fetchStudentODHistory = async (studentId) => {
   const startTime = performance.now();
+  if (!studentId) {
+    console.warn('[odService] fetchStudentODHistory called with invalid studentId');
+    return [];
+  }
   try {
     const q = query(
       collection(db, 'odRequests'),
@@ -36,6 +40,10 @@ export const fetchStudentODHistory = async (studentId) => {
  */
 export const fetchEventODs = async (eventId) => {
   const startTime = performance.now();
+  if (!eventId) {
+    console.warn('[odService] fetchEventODs called with invalid eventId');
+    return [];
+  }
   try {
     const q = query(
       collection(db, 'odRequests'),
@@ -87,11 +95,14 @@ export const subscribeToODWorkflows = (currentUser, callback) => {
   if (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) {
     // Students only need to track their active workflows (pending, or recently updated).
     // Note: If they want to see COMPLETED ODs they use fetchStudentODHistory.
-    // However, to keep notifications working, we subscribe to all their ODs for now, 
-    // but bound by studentId (which is naturally a very small subset).
+    if (!currentUser.id) return () => {};
     q = query(collection(db, 'odRequests'), where('studentId', '==', currentUser.id));
   } else if (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.HOD) {
     // Faculty/HOD should only subscribe to pending requests in their department.
+    if (!currentUser.department) {
+      console.warn('[odService] Faculty/HOD missing department, cannot subscribe');
+      return () => {};
+    }
     // If your Firestore schema lacks 'department' on odRequests, you MUST add it for security/performance.
     // Assuming 'department' exists (as AppContext previously filtered by it client-side):
     q = query(
