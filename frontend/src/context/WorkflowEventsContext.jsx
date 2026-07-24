@@ -14,8 +14,8 @@ export const WorkflowEventsProvider = ({ children }) => {
 
   useEffect(() => {
     if (!currentUser) {
-      setEvents([]);
-      setLoading(false);
+      setEvents(prev => prev.length > 0 ? [] : prev);
+      setLoading(prev => prev ? false : prev);
       return;
     }
 

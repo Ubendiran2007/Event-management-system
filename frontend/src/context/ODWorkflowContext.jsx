@@ -14,16 +14,16 @@ export const ODWorkflowProvider = ({ children }) => {
 
   useEffect(() => {
     if (!currentUser) {
-      setOdRequests([]);
-      setLoading(false);
+      setOdRequests(prev => prev.length > 0 ? [] : prev);
+      setLoading(prev => prev ? false : prev);
       return;
     }
 
     // Guard: Prevent infinite loading if a staff member lacks a department
     if (['FACULTY', 'HOD'].includes(currentUser.role) && !currentUser.department) {
       console.warn('ODWorkflowContext: Missing department for staff user');
-      setOdRequests([]);
-      setLoading(false);
+      setOdRequests(prev => prev.length > 0 ? [] : prev);
+      setLoading(prev => prev ? false : prev);
       return;
     }
 

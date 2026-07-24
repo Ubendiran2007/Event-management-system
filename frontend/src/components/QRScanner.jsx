@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { SwitchCamera, Loader2, CameraOff } from 'lucide-react';
 
@@ -52,8 +52,8 @@ const QRScannerInner = ({ onScanSuccess, onScanError }) => {
   }, [onScanSuccess, onScanError]);
   
   // Create a stable unique ID for this instance
-  const readerIdRef = useRef('qr-reader-' + Math.random().toString(36).slice(2, 8));
-  const READER_ID = readerIdRef.current;
+  const stableId = useId();
+  const READER_ID = useMemo(() => `qr-reader-${stableId.replace(/:/g, '')}`, [stableId]);
 
   // Safe stop helper
   const safeStop = useCallback(async () => {
@@ -77,7 +77,7 @@ const QRScannerInner = ({ onScanSuccess, onScanError }) => {
             video.srcObject = null;
           }
         });
-      } catch (err) {}
+      } catch (err) { /* ignore */ }
     }, 300);
   }, []);
 
@@ -137,8 +137,8 @@ const QRScannerInner = ({ onScanSuccess, onScanError }) => {
         if (!isMounted) {
           // Unmounted while starting
           console.log('[QRScanner] Component unmounted during start, cleaning up...');
-          try { await html5QrCode.stop(); } catch(e) {}
-          try { html5QrCode.clear(); } catch(e) {}
+          try { await html5QrCode.stop(); } catch(e) { /* ignore */ }
+          try { html5QrCode.clear(); } catch(e) { /* ignore */ }
         } else {
           setIsScanning(true);
         }

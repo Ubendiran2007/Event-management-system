@@ -139,40 +139,6 @@ router.get('/od-requests', async (req, res) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// GET /api/dashboard/students
-// Query params (all optional):
-//   ?class=CSE-D   → restrict to a single class
-// ────────────────────────────────────────────────────────────────────────────
-router.get('/students', async (req, res) => {
-  if (!checkDb(res)) return;
-
-  try {
-    const { class: className } = req.query;
-
-    const allStudents = [];
-    
-    const sectionDocs = await getAllSectionDocs();
-    sectionDocs.forEach(secDoc => {
-      const students = secDoc.data.students || [];
-      students.forEach((s) => {
-        const { password: _pw, ...safeData } = s;
-        
-        // If a class filter is provided, ensure it matches
-        if (className && safeData.class !== className && safeData.section !== className) {
-          return;
-        }
-        allStudents.push({ id: s.id, ...safeData });
-      });
-    });
-
-    return res.json({ success: true, count: allStudents.length, students: allStudents });
-  } catch (error) {
-    console.error('[dashboard/students] Error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch students', error: error.message });
-  }
-});
-
-// ────────────────────────────────────────────────────────────────────────────
 // GET /api/dashboard/summary
 // Returns aggregated counts for all dashboard stat cards in one request.
 // ────────────────────────────────────────────────────────────────────────────
@@ -258,54 +224,5 @@ router.get('/summary', async (req, res) => {
   }
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// GET /api/dashboard
-// Single endpoint that returns everything the dashboard needs in one shot.
-// ────────────────────────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
-  if (!checkDb(res)) return;
-
-  try {
-    // Fetch events, OD requests in parallel
-    const [eventsSnap, odSnap] = await Promise.all([
-      getDocs(collection(db, 'events')),
-      getDocs(collection(db, 'odRequests'))
-    ]);
-
-    const events = snapshotToArray(eventsSnap);
-    const odRequests = snapshotToArray(odSnap);
-
-    const students = [];
-    const sectionDocs = await getAllSectionDocs();
-    sectionDocs.forEach(secDoc => {
-      const arr = secDoc.data.students || [];
-      arr.forEach((s) => {
-        const { password: _pw, ...safeData } = s;
-        students.push({ id: s.id, ...safeData });
-      });
-    });
-
-    return res.json({
-      success: true,
-      events,
-      odRequests,
-      students,
-      summary: {
-        totalEvents: events.length,
-        pendingEvents: events.filter((e) => e.status?.startsWith('PENDING')).length,
-        postedEvents: events.filter(
-          (e) => e.status === 'POSTED' || e.status === 'APPROVED'
-        ).length,
-        completedEvents: events.filter((e) => e.status === 'COMPLETED').length,
-        totalODRequests: odRequests.length,
-        pendingODRequests: odRequests.filter((r) => r.status?.startsWith('PENDING')).length,
-        totalStudents: students.length,
-      },
-    });
-  } catch (error) {
-    console.error('[dashboard] Error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to fetch dashboard data', error: error.message });
-  }
-});
 
 module.exports = router;

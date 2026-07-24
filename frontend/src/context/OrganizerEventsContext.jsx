@@ -20,8 +20,8 @@ export const OrganizerEventsProvider = ({ children }) => {
                         currentUser?.isApprovedOrganizer;
                         
     if (!currentUser || !isOrganizer) {
-      setEvents([]);
-      setLoading(false);
+      setEvents(prev => prev.length > 0 ? [] : prev);
+      setLoading(prev => prev ? false : prev);
       return;
     }
 

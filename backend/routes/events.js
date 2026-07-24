@@ -296,7 +296,10 @@ router.get('/', async (req, res) => {
         ? await getDocs(query(collection(db, 'events'), ...constraints))
         : await getDocs(collection(db, 'events'));
 
-    const events = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const events = snapshot.docs.map((d) => {
+      const data = d.data();
+      return { id: d.id, ...data, registrationStatus: computeRegistrationStatus(data) };
+    });
 
     return res.json({ success: true, count: events.length, events });
   } catch (error) {
@@ -317,7 +320,8 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    return res.json({ success: true, event: { id: docSnap.id, ...docSnap.data() } });
+    const data = docSnap.data();
+    return res.json({ success: true, event: { id: docSnap.id, ...data, registrationStatus: computeRegistrationStatus(data) } });
   } catch (error) {
     console.error('[events/get] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch event', error: error.message });
@@ -920,8 +924,8 @@ router.put('/:id/resubmit-edit', async (req, res) => {
   }
 });
 
-// â”€â”€ POST /api/events/:id/register â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// A student registers for an event â€” adds them to the registeredStudents array
+// ─── POST /api/events/:id/register ───────────────────────────────────────────
+// A student registers for an event — adds them to the registeredStudents array
 router.post('/:id/register', async (req, res) => {
   if (!checkDb(res)) return;  // checkDb returns false when db is ready
 
@@ -952,13 +956,15 @@ router.post('/:id/register', async (req, res) => {
       updatedAt: new Date().toISOString(),
     };
 
+    let eventData;
+
     await runTransaction(db, async (transaction) => {
       const eventSnap = await transaction.get(eventRef);
       if (!eventSnap.exists()) {
         throw new Error('NOT_FOUND:Event not found');
       }
 
-      const eventData = eventSnap.data();
+      eventData = eventSnap.data();
 
       if (eventData.status !== 'POSTED') {
         throw new Error('BAD_REQUEST:Cannot register for an event that is not approved and posted.');
@@ -972,21 +978,43 @@ router.post('/:id/register', async (req, res) => {
       const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
       const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
       
-      if (startDateStr) {
-        try {
+      let effectiveDeadlineTimestamp = null;
+      let eventStartTimestamp = null;
+
+      try {
+        if (startDateStr) {
           const sDP = startDateStr.split('-');
           const sTP = startTimeStr.split(':');
-          const startTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
-          
-          if (Date.now() >= startTimestamp) {
-            throw new Error('BAD_REQUEST:Registration is closed. This event is already ongoing or completed.');
-          }
-        } catch (err) {
-          const today = new Date().toISOString().split('T')[0];
-          if (startDateStr < today) {
-            throw new Error('BAD_REQUEST:Registration is closed. This event is already ongoing or completed.');
-          }
+          eventStartTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
         }
+      } catch (err) {}
+
+      // Calculate effective deadline
+      if (eventData.registrationDeadline) {
+        effectiveDeadlineTimestamp = new Date(eventData.registrationDeadline).getTime();
+      } else if (eventStartTimestamp) {
+        effectiveDeadlineTimestamp = eventStartTimestamp;
+      }
+
+      if (effectiveDeadlineTimestamp && Date.now() >= effectiveDeadlineTimestamp) {
+        throw new Error('BAD_REQUEST:Registration is closed. The deadline has passed.');
+      } else if (!effectiveDeadlineTimestamp && startDateStr) {
+        const today = new Date().toISOString().split('T')[0];
+        if (startDateStr < today) {
+          throw new Error('BAD_REQUEST:Registration is closed. The deadline has passed.');
+        }
+      }
+
+      // Check capacity
+      const stats = eventData.stats || {};
+      const currentRegisteredCount = stats.registeredCount || 0;
+      if (eventData.capacity && currentRegisteredCount >= eventData.capacity) {
+        throw new Error('BAD_REQUEST:Registration is closed. Maximum capacity reached.');
+      }
+
+      // Handle conditional approval
+      if (eventData.requiresRegistrationApproval) {
+        newEntry.status = 'PENDING_APPROVAL';
       }
 
       const regSnap = await transaction.get(registrationRef);
@@ -1001,7 +1029,6 @@ router.post('/:id/register', async (req, res) => {
       }
       
       const updatedList = [...registeredStudents, newEntry];
-      const stats = eventData.stats || {};
       const newStats = {
         ...stats,
         registeredCount: (stats.registeredCount || 0) + 1
@@ -1037,6 +1064,91 @@ router.post('/:id/register', async (req, res) => {
     
     console.error('[events/register] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to register', error: error.message });
+  }
+});
+
+// ─── PATCH /api/events/:id/registrations/:userId/status ──────────────────────
+// Organizer or Faculty approves/rejects a pending registration
+router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD']), async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const { status } = req.body;
+    if (!['REGISTERED', 'REJECTED'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status. Must be REGISTERED or REJECTED.' });
+    }
+
+    const eventId = req.params.id;
+    const studentId = req.params.userId;
+    const eventRef = doc(db, 'events', eventId);
+    const registrationId = `${eventId}_${studentId}`;
+    const registrationRef = doc(db, 'eventRegistrations', registrationId);
+
+    await runTransaction(db, async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (!eventSnap.exists()) {
+        throw new Error('NOT_FOUND:Event not found');
+      }
+
+      const eventData = eventSnap.data();
+
+      // Authorization Check
+      const actingRole = req.user.role;
+      const actingDept = req.user.department;
+      
+      let isAuthorized = false;
+      if (actingRole === 'STUDENT_ORGANIZER') {
+        if (eventData.organizerId === req.user.id) isAuthorized = true;
+      } else if (['FACULTY', 'HOD'].includes(actingRole)) {
+        if (actingDept.toUpperCase() === (eventData.department || '').toUpperCase()) isAuthorized = true;
+      }
+
+      if (!isAuthorized) {
+        throw new Error('FORBIDDEN:You do not have permission to modify registrations for this event.');
+      }
+
+      const regSnap = await transaction.get(registrationRef);
+      if (!regSnap.exists()) {
+        throw new Error('NOT_FOUND:Registration not found');
+      }
+      
+      const regData = regSnap.data();
+
+      if (regData.status === status) {
+        // Idempotent success without side effects
+        throw new Error(`NO_OP:Already ${status}`);
+      }
+      if (regData.status !== 'PENDING_APPROVAL') {
+         throw new Error('BAD_REQUEST:Only pending registrations can be approved or rejected.');
+      }
+
+      // Update registration document
+      transaction.update(registrationRef, {
+        status: status,
+        updatedAt: new Date().toISOString(),
+        reviewedBy: req.user.id,
+        reviewedAt: new Date().toISOString()
+      });
+
+      // Maintain legacy array sync
+      const registeredStudents = eventData.registeredStudents || [];
+      const updatedList = registeredStudents.map(s => s.userId === studentId ? { ...s, status } : s);
+      transaction.update(eventRef, {
+        registeredStudents: updatedList,
+        updatedAt: new Date().toISOString()
+      });
+    });
+
+    return res.status(200).json({ success: true, message: `Registration successfully updated to ${status}` });
+
+  } catch (error) {
+    if (error.message.includes('NO_OP')) return res.status(200).json({ success: true, message: error.message.split(':')[1] });
+    if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('FORBIDDEN')) return res.status(403).json({ success: false, message: error.message.split(':')[1] });
+    
+    console.error('[events/registrations/status] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update registration status', error: error.message });
   }
 });
 

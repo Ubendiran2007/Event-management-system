@@ -2267,7 +2267,46 @@ const CreateEvent = () => {
               </div>
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="md:col-span-2 border-t border-slate-200 pt-4 mt-4">
+              <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                <Users className="text-cse-accent" size={20} />
+                Registration Settings
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Maximum Capacity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Leave empty for unlimited"
+                    className={inputClass}
+                    value={form.capacity || ''}
+                    onChange={(e) => setField('capacity', e.target.value ? Number(e.target.value) : null)}
+                  />
+                  <p className="text-xs text-slate-500">Maximum number of students who can register</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Registration Deadline</label>
+                  <input
+                    type="datetime-local"
+                    className={inputClass}
+                    value={form.registrationDeadline || ''}
+                    onChange={(e) => setField('registrationDeadline', e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500">Defaults to event start time if left empty</p>
+                </div>
+                <div className="md:col-span-2 mt-2">
+                  <YesNoToggle 
+                    label="Require Organizer Approval for Registrations" 
+                    value={form.requiresRegistrationApproval || false} 
+                    onChange={(val) => setField('requiresRegistrationApproval', val)} 
+                  />
+                  <p className="text-xs text-slate-500 mt-1">If enabled, students will be 'PENDING_APPROVAL' until manually approved by you.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 md:col-span-2 border-t border-slate-200 pt-4 mt-2">
               <label className="text-sm font-semibold text-slate-700">Event Reference ID</label>
               {referenceIdDisplay ? (
                 <input readOnly className={`${inputClass} bg-slate-100 font-mono text-xs text-slate-500 font-bold`} value={referenceIdDisplay} />

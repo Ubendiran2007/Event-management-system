@@ -10,8 +10,8 @@ export const useMyODs = (studentId) => {
   useEffect(() => {
     const idToFetch = studentId || currentUser?.id;
     if (!idToFetch) {
-      setOdRequests([]);
-      setLoading(false);
+      setOdRequests(prev => prev.length > 0 ? [] : prev);
+      setLoading(prev => prev ? false : prev);
       return;
     }
 
