@@ -44,6 +44,7 @@ const {
   executeBackgroundNotification
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
+const { computeRegistrationStatus } = require('../utils/eventHelpers');
 const { validateEvent } = require('../middleware/validators');
 const asyncHandler = require('../utils/asyncHandler');
 const { getUserId } = require('../utils/authHelper');
@@ -55,7 +56,6 @@ const router = express.Router();
 
 // Enforce authentication for all routes in this router
 router.use(requireAuth);
-
 
 // ── Guard: firebase not ready ────────────────────────────────────────────────
 function checkDb(res) {
@@ -1137,6 +1137,26 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
         registeredStudents: updatedList,
         updatedAt: new Date().toISOString()
       });
+    });
+
+    // Generate audit log for the approval action
+    await logAudit({
+      category: 'REGISTRATION',
+      action: status === 'REGISTERED' ? 'REGISTRATION_APPROVED' : 'REGISTRATION_REJECTED',
+      status: 'SUCCESS',
+      actor: {
+        userId: req.user.id,
+        name: req.user.name || req.user.email,
+        role: req.user.role,
+        department: req.user.department
+      },
+      targetId: studentId,
+      eventId: eventId,
+      metadata: {
+        registrationId,
+        previousStatus: 'PENDING_APPROVAL',
+        newStatus: status
+      }
     });
 
     return res.status(200).json({ success: true, message: `Registration successfully updated to ${status}` });

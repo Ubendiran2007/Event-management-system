@@ -355,7 +355,7 @@ router.post('/login', async (req, res, next) => {
       limit(1)
     );
     const usersSnapshot = await getDocs(usersQuery);
-
+    console.log('[DEBUG AUTH]', `Looking for ${email.toLowerCase()} in users collection. Found docs:`, usersSnapshot.docs.length);
     if (!usersSnapshot.empty) {
       const userDoc = usersSnapshot.docs[0];
       const userData = userDoc.data();
@@ -469,6 +469,8 @@ router.post('/login', async (req, res, next) => {
 
     // Verify Password
     const isMatch = await verifyPassword(password, foundStoredPassword);
+    
+    console.log('[DEBUG LOGIN]', { email, foundUserObj: !!foundUserObj, foundStoredPassword, isMatch });
 
     if (!isMatch) {
       recordFailedLogin(email, foundUserObj, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));

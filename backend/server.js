@@ -40,14 +40,14 @@ const PORT = process.env.PORT || 5001;
 // ── Rate Limiting ───────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: process.env.SKIP_RATE_LIMIT === 'true' ? 10000 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: process.env.SKIP_RATE_LIMIT === 'true' ? 10000 : 20,
   message: { success: false, message: 'Too many authentication attempts, please try again later.' }
 });
 
@@ -65,6 +65,21 @@ app.use(cors({
     'http://localhost:5174'
   ].filter(Boolean) 
 }));
+
+// --- Test Endpoint for Notifications ---
+app.post('/api/test/notification', express.json(), (req, res) => {
+  const emailQueue = require('./notifications/queue/emailQueue');
+  emailQueue.enqueue({
+    correlationId: req.body.id || Date.now().toString(),
+    type: 'EVENT_REGISTRATION',
+    to: 'test@kce.ac.in',
+    subject: 'Load Test Notification',
+    body: 'This is a test notification',
+    retries: 0
+  });
+  res.json({ success: true });
+});
+
 // ── Routes ──────────────────────────────────────────────────────────────────
 // 50 MB limit — needed for base64 posters and PDF attachments (OD letters)
 app.use('/api/events', express.json({ limit: '50mb' }), express.urlencoded({ extended: true, limit: '50mb' }), eventsRoutes);
@@ -74,7 +89,10 @@ app.use('/api/od-requests', express.json({ limit: '50mb' }), express.urlencoded(
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
-app.use('/api/login', authLimiter);
+const enableRateLimit = process.env.SKIP_RATE_LIMIT !== 'true';
+if (enableRateLimit) {
+  app.use('/api/login', authLimiter);
+}
 app.use('/api', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/explore', exploreRoutes);
