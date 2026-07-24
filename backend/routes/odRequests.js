@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db, collectionGroup, query, where, limit } = require('../firebaseClientWrapper');
-const { getAllSectionDocs } = require('../utils/studentHelper');
+const { getAllSectionDocs, findStudentInFirestore } = require('../utils/studentHelper');
 const eventPublisher = require('../events/publishers/eventPublisher');
 const crypto = require('crypto');
 const { syncStudentODCount } = require('../utils/odSync');
@@ -34,23 +34,6 @@ const resolveClassSection = (studentRecord, payloadClass = '') => {
   if (classVal) return compactClassSection(classVal);
   if (sectionVal) return compactClassSection(sectionVal);
   return compactClassSection(payloadVal);
-};
-
-const findStudentInFirestore = async (studentId) => {
-  try {
-    const sectionDocs = await getAllSectionDocs();
-    for (const secDoc of sectionDocs) {
-      const arr = secDoc.data.students || [];
-      const data = arr.find(s => s.id === studentId);
-      if (data) {
-        return { className: data.class || data.section, ref: secDoc.ref, studentIndex: arr.findIndex(s => s.id === studentId), ...data };
-      }
-    }
-    return null;
-  } catch (err) {
-    console.error(`[findStudentInFirestore] Error fetching student ${studentId}:`, err.message);
-    return null;
-  }
 };
 
 const checkDb = (res) => {

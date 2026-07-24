@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // Enforce authentication for all routes in this router
+const { requireAuth, requireRole } = require('../middleware/auth');
 router.use(requireAuth);
 
 
@@ -11,7 +12,6 @@ const {
 } = require('../firebaseClientWrapper');
 const { sendEmail } = require('../services/emailService');
 const { getAllSectionDocs } = require('../utils/studentHelper');
-const { requireAuth, requireRole } = require('../middleware/auth');
 
 
 const normalizeRollNo = (value) =>

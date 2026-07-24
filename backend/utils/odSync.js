@@ -1,27 +1,5 @@
 const { dbAdmin } = require('../firebaseAdmin');
-const { getAllSectionDocs } = require('./studentHelper');
-
-async function findStudentInFirestore(studentId) {
-  try {
-    const sectionDocs = await getAllSectionDocs();
-    for (const secDoc of sectionDocs) {
-      const arr = secDoc.data.students || [];
-      const idx = arr.findIndex(s => s.id === studentId);
-      if (idx !== -1) {
-        return { 
-           studentData: arr[idx], 
-           ref: secDoc.ref, 
-           index: idx,
-           allStudents: arr
-        };
-      }
-    }
-    return null;
-  } catch (err) {
-    console.error(`[odSync/findStudentInFirestore] Error fetching student:`, err.message);
-    return null;
-  }
-}
+const { getAllSectionDocs, findStudentInFirestore } = require('./studentHelper');
 
 /**
  * Recalculates and writes the correct odUsed count for a student.
@@ -40,7 +18,7 @@ async function syncStudentODCount(studentId) {
     if (!student) return null;
 
     // Only count OD requests created after the last annual reset (if one exists)
-    const resetTimestamp = student.studentData.odResetTimestamp || null;
+    const resetTimestamp = student.odResetTimestamp || null;
 
     const odQuery = dbAdmin.collection('odRequests')
       .where('studentId', '==', studentId)
@@ -57,15 +35,15 @@ async function syncStudentODCount(studentId) {
       }
     });
 
-    if (student.studentData.odUsed !== postResetCount) {
-      student.allStudents[student.index].odUsed = postResetCount;
-      student.allStudents[student.index].updatedAt = new Date().toISOString();
+    if (student.odUsed !== postResetCount) {
+      student.allStudents[student.studentIndex].odUsed = postResetCount;
+      student.allStudents[student.studentIndex].updatedAt = new Date().toISOString();
       
       await student.ref.update({
         students: student.allStudents
       });
       console.log(
-        `[OD Sync] Updated odUsed for ${studentId}: ${student.studentData.odUsed ?? 'N/A'} → ${postResetCount}` +
+        `[OD Sync] Updated odUsed for ${studentId}: ${student.odUsed ?? 'N/A'} → ${postResetCount}` +
         (resetTimestamp ? ` (counting only post-reset ODs after ${resetTimestamp})` : '')
       );
     }

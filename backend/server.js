@@ -12,7 +12,6 @@ const eventsRoutes = require('./routes/events');
 const exploreRoutes = require('./routes/explore');
 const iqacRoutes = require('./routes/iqac');
 const studentsRoutes = require('./routes/students');
-const { setupAdminDefaults } = require('./scripts/setupAdmin');
 const errorHandler = require('./middleware/errorHandler');
 const academicBatchesRoutes = require('./routes/academicBatches');
 const academicCalendarRoutes = require('./routes/academicCalendar');

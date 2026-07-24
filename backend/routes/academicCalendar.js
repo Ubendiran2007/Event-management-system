@@ -1,13 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth, requireRole } = require('../middleware/auth');
+const { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where, db, writeBatch, deleteDoc } = require('../firebaseClientWrapper');
+const { logActivity, logAudit } = require('../utils/logger');
 
 // Enforce authentication for all routes in this router
 router.use(requireAuth);
-
-
-const { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where, db, writeBatch, deleteDoc } = require('../firebaseClientWrapper');
-const { requireAuth, requireRole } = require('../middleware/auth');
-const { logActivity, logAudit } = require('../utils/logger');
 
 const checkDb = (res) => {
   if (!db) {

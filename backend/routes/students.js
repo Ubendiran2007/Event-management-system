@@ -18,7 +18,7 @@ const checkDb = (res) => {
 };
 
 const VALID_ROLES = ['STUDENT_ORGANIZER', 'STUDENT_GENERAL'];
-const { getAllSectionDocs, clearSectionDocsCache } = require('../utils/studentHelper');
+const { getAllSectionDocs, clearSectionDocsCache, syncStructureMetadata, findStudentInFirestore } = require('../utils/studentHelper');
 
 // --- CACHE IMPLEMENTATION ---
 let cachedStudents = null;
@@ -102,6 +102,19 @@ router.post('/', async (req, res) => {
       students.push(studentData);
       await updateDoc(studentRef, { students });
     }
+    
+    // Phase 3B: Sync index and metadata
+    const indexRef = doc(db, 'student_index', studentId);
+    await setDoc(indexRef, {
+      studentId: studentId,
+      uid: null,
+      batch: academicBatch,
+      department: actualDept,
+      section: actualSection.toUpperCase(),
+      status: 'ACTIVE',
+      updatedAt: new Date().toISOString()
+    });
+    await syncStructureMetadata(academicBatch, actualDept);
     
     invalidateCache();
     res.json({ success: true, message: 'Student added successfully', student: studentData });
@@ -204,6 +217,31 @@ router.post('/bulk', async (req, res) => {
     
     await writeBatchFirebase.commit();
 
+    // Phase 3B: Sync index and metadata for bulk
+    const indexBatch = writeBatch(db);
+    const uniqueMeta = new Set();
+    for (const path of Object.keys(importsByPath)) {
+      const group = importsByPath[path];
+      uniqueMeta.add(`${group.batch}|${group.dept}`);
+      for (const st of group.students) {
+        const indexRef = doc(db, 'student_index', st.id);
+        indexBatch.set(indexRef, {
+          studentId: st.id,
+          uid: null,
+          batch: group.batch,
+          department: group.dept,
+          section: group.sec,
+          status: 'ACTIVE',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+    await indexBatch.commit();
+    for (const meta of uniqueMeta) {
+      const [b, d] = meta.split('|');
+      await syncStructureMetadata(b, d);
+    }
+
     const { logActivity } = require('../utils/logger');
     logActivity({
       category: 'USER_MANAGEMENT',
@@ -239,29 +277,19 @@ router.put('/:id', async (req, res) => {
   delete updateData.className; 
 
   try {
-    const sectionDocs = await getAllSectionDocs();
-    let targetDoc = null;
-    let studentIndex = -1;
-    let studentsArray = [];
-
-    for (const secDoc of sectionDocs) {
-      const arr = secDoc.data.students || [];
-      const idx = arr.findIndex(s => s.id === id);
-      if (idx !== -1) {
-        targetDoc = secDoc;
-        studentIndex = idx;
-        studentsArray = arr;
-        break;
-      }
-    }
-
-    if (!targetDoc) {
+    const student = await findStudentInFirestore(id);
+    if (!student) {
       return res.status(404).json({ success: false, message: 'Student not found in any class' });
     }
+
+    const targetDoc = { ref: student.ref };
+    const studentIndex = student.studentIndex;
+    const studentsArray = student.allStudents;
 
     // Check for email/rollNo uniqueness against ALL students except this one
     if (updateData.email || updateData.rollNo) {
       let conflict = false;
+      const sectionDocs = await getAllSectionDocs();
       for (const secDoc of sectionDocs) {
         const arr = secDoc.data.students || [];
         for (const s of arr) {
@@ -282,6 +310,19 @@ router.put('/:id', async (req, res) => {
     studentsArray[studentIndex] = { ...studentsArray[studentIndex], ...updateData };
 
     await updateDoc(targetDoc.ref, { students: studentsArray });
+    
+    // Sync status or uid changes to index
+    if (updateData.status || updateData.uid) {
+      const idxSnap = await getDoc(doc(db, 'student_index', id));
+      if (idxSnap.exists()) {
+         const idxData = idxSnap.data();
+         if (updateData.status) idxData.status = updateData.status;
+         if (updateData.uid) idxData.uid = updateData.uid;
+         idxData.updatedAt = new Date().toISOString();
+         await updateDoc(doc(db, 'student_index', id), idxData);
+      }
+    }
+    
     invalidateCache();
     res.json({ success: true, message: 'Student updated successfully' });
   } catch (err) {
@@ -296,26 +337,19 @@ router.delete('/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    const sectionDocs = await getAllSectionDocs();
-    let targetDoc = null;
-    let studentsArray = [];
-
-    for (const secDoc of sectionDocs) {
-      const arr = secDoc.data.students || [];
-      const idx = arr.findIndex(s => s.id === id);
-      if (idx !== -1) {
-        targetDoc = secDoc;
-        studentsArray = arr;
-        studentsArray.splice(idx, 1);
-        break;
-      }
+    const student = await findStudentInFirestore(id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found in any class' });
     }
 
-    if (!targetDoc) {
-      return res.status(404).json({ success: false, message: 'Student not found' });
-    }
+    const studentsArray = student.allStudents;
+    studentsArray.splice(student.studentIndex, 1);
 
-    await updateDoc(targetDoc.ref, { students: studentsArray });
+    await updateDoc(student.ref, { students: studentsArray });
+    
+    // Phase 3B: Delete from index
+    await deleteDoc(doc(db, 'student_index', id));
+
     invalidateCache();
     res.json({ success: true, message: 'Student deleted successfully' });
   } catch (err) {

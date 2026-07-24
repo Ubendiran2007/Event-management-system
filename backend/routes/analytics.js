@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 
 // Enforce authentication for all routes in this router
+const { requireAuth } = require('../middleware/auth');
 router.use(requireAuth);
 
-const { requireAuth } = require('../middleware/auth');
 const { logActivity, logAudit } = require('../utils/logger');
 
 // ==========================================
