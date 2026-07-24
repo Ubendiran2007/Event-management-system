@@ -232,6 +232,29 @@ const Dashboard = () => {
   const [isOdFilterOpen, setIsOdFilterOpen] = useState(false);
   const [isResettingAllOD, setIsResettingAllOD] = useState(false);
 
+  const [summaryData, setSummaryData] = useState(null);
+
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/dashboard/summary', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setSummaryData(data.summary);
+        }
+      } catch (err) {
+        console.error('Failed to load dashboard summary:', err);
+      }
+    };
+    if (currentUser) {
+      fetchSummary();
+    }
+  }, [currentUser]);
+
   const handleResetAllOD = async () => {
     if (window.confirm("WARNING: This will reset the OD used count to ZERO for ALL students across the entire institution. This action is typically only done at the start of a new semester.\n\nAre you absolutely sure you want to proceed?")) {
       setIsResettingAllOD(true);
@@ -1492,11 +1515,31 @@ const Dashboard = () => {
                       const baseEvents = isOrg ? events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email)) : events;
                       const getStatItems = () => {
                         const stats = [];
-                        stats.push({ label: isOrg ? 'My Total Events' : (isStud ? 'Available Events' : 'Total Events'), value: isStud ? availableEvents.length : baseEvents.length, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' });
-                        stats.push({ label: isStud ? 'Approved ODs' : 'Posted', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED').length : baseEvents.filter(e => e.status === EventStatus.POSTED || e.status === EventStatus.APPROVED).length, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' });
-                        stats.push({ label: (isStaff || isMedia) ? (currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue') : (isStud ? 'My Pending ODs' : 'Pending'), value: (isStaff || isMedia) ? (currentUser.role === UserRole.FACULTY ? filteredEvents.filter(e => e.status === EventStatus.PENDING_FACULTY).length : filteredEvents.length) : (isStud ? filteredODRequests.filter(r => r.status && r.status.startsWith('PENDING')).length : baseEvents.filter(e => e.status?.startsWith('PENDING')).length), icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' });
-                        stats.push({ label: isStud ? 'My Completed ODs' : 'Completed', value: isStud ? filteredODRequests.filter(r => r.status === 'APPROVED' && events.find(e => e.id === r.eventId)?.status === EventStatus.COMPLETED).length : baseEvents.filter(e => e.status === EventStatus.COMPLETED).length, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' });
-                        stats.push({ label: isStud ? 'My Rejected ODs' : 'Rejected', value: isStud ? filteredODRequests.filter(r => r.status === 'REJECTED').length : baseEvents.filter(e => e.status === EventStatus.REJECTED).length, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' });
+                        if (!summaryData) {
+                          // While loading, just show empty placeholders
+                          stats.push({ label: 'Loading...', value: '-', icon: Calendar, color: 'text-slate-400', bg: 'bg-slate-50' });
+                          return stats;
+                        }
+
+                        if (isStud) {
+                          stats.push({ label: 'Available Events', value: summaryData.events.total, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' });
+                          stats.push({ label: 'Approved ODs', value: summaryData.odRequests.approved, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' });
+                          stats.push({ label: 'My Pending ODs', value: summaryData.odRequests.pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' });
+                          stats.push({ label: 'My Completed ODs', value: summaryData.events.completed, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' });
+                          stats.push({ label: 'My Rejected ODs', value: summaryData.odRequests.rejected, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' });
+                        } else if (isOrg) {
+                          stats.push({ label: 'My Total Events', value: summaryData.events.total, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' });
+                          stats.push({ label: 'Posted', value: summaryData.events.posted, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' });
+                          stats.push({ label: currentUser.role === UserRole.FACULTY ? 'Pending Review' : 'My Queue', value: summaryData.events.pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' });
+                          stats.push({ label: 'Completed', value: summaryData.events.completed, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' });
+                          stats.push({ label: 'Rejected', value: summaryData.events.rejected, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' });
+                        } else {
+                          stats.push({ label: 'Total Events', value: summaryData.events.total, icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50' });
+                          stats.push({ label: 'Posted', value: summaryData.events.posted, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' });
+                          stats.push({ label: 'Pending', value: summaryData.events.pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' });
+                          stats.push({ label: 'Completed', value: summaryData.events.completed, icon: FileCheck, color: 'text-slate-600', bg: 'bg-slate-100' });
+                          stats.push({ label: 'Rejected', value: summaryData.events.rejected, icon: XCircle, color: 'text-rose-500', bg: 'bg-rose-50' });
+                        }
                         return stats;
                       };
                       return getStatItems().map((stat, i) => (

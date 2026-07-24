@@ -181,8 +181,18 @@ router.get('/summary', async (req, res) => {
 
   try {
     // Aggregation queries for Events
-    const eventsCol = collection(db, 'events');
-    const odCol = collection(db, 'odRequests');
+    let eventsCol = collection(db, 'events');
+    let odCol = collection(db, 'odRequests');
+
+    // Scope queries based on role
+    if (req.user.role === 'STUDENT_GENERAL' || req.user.role === 'STUDENT_ORGANIZER') {
+      eventsCol = query(collection(db, 'events'), where('organizerId', '==', req.user.id));
+      odCol = query(collection(db, 'odRequests'), where('studentId', '==', req.user.id));
+    } else if (req.user.role === 'FACULTY' || req.user.role === 'HOD') {
+      if (req.user.department) {
+        odCol = query(collection(db, 'odRequests'), where('department', '==', req.user.department));
+      }
+    }
 
     const results = await Promise.allSettled([
       getCountFromServer(eventsCol),
@@ -196,9 +206,10 @@ router.get('/summary', async (req, res) => {
       getCountFromServer(query(eventsCol, where('status', '==', 'APPROVED'))),
       
       getCountFromServer(odCol),
-      getCountFromServer(query(odCol, where('status', '==', 'PENDING_HOD'))), // Example of pending, we will aggregate pending counts
+      getCountFromServer(query(odCol, where('status', '==', 'PENDING_HOD'))), 
       getCountFromServer(query(odCol, where('status', '==', 'APPROVED'))),
-      getCountFromServer(query(odCol, where('status', '==', 'REJECTED')))
+      getCountFromServer(query(odCol, where('status', '==', 'REJECTED'))),
+      getCountFromServer(query(odCol, where('status', '==', 'PENDING_TUTOR')))
     ]);
 
     const getCount = (index) => results[index].status === 'fulfilled' ? results[index].value.data().count : 0;
@@ -214,16 +225,12 @@ router.get('/summary', async (req, res) => {
     const eventsApproved = getCount(8);
     
     const odTotal = getCount(9);
-    const odPending = getCount(10);
+    const odPendingHod = getCount(10);
     const odApproved = getCount(11);
     const odRejected = getCount(12);
+    const odPendingTutorCount = getCount(13);
 
-    const pendingODs = odPending; // OD Requests only use PENDING_HOD or PENDING_TUTOR, assume sum or just PENDING
-    
-    // We can also fetch the raw OD requests if we need exact string matching on "startsWith('PENDING')", 
-    // but since we want to avoid reading all ODs, we'll run 2 queries for the two possible pending states:
-    const odPendingTutorSnapResult = await getCountFromServer(query(odCol, where('status', '==', 'PENDING_TUTOR'))).catch(() => ({ data: () => ({ count: 0 }) }));
-    const odPendingTutorCount = odPendingTutorSnapResult.data().count;
+    const pendingODs = odPendingHod;
 
     const summary = {
       events: {

@@ -139,20 +139,39 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
   if (!currentUser) return () => {};
   
   const startTime = performance.now();
-  // Limit to events that are actively in the workflow or recently completed/posted
-  const activeStatuses = [
-    'PENDING_FACULTY',
-    'PENDING_HOD',
-    'PENDING_DEPARTMENTS',
-    'PENDING_IQAC',
-    'POSTED',
-    'COMPLETED'
-  ];
   
-  let q = query(eventsCollection, where('status', 'in', activeStatuses));
+  // Phase 3A: Role-specific subscriptions
+  // Determine which event statuses this role actually needs to see in the Workflow context
+  let roleStatuses = [];
+  
+  switch(currentUser.role) {
+    case 'FACULTY':
+      // Faculty needs to approve pending requests and see past requests they approved
+      roleStatuses = ['PENDING_FACULTY']; 
+      break;
+    case 'HOD':
+      // HOD needs to approve their pending requests
+      roleStatuses = ['PENDING_HOD'];
+      break;
+    case 'IQAC_TEAM':
+      roleStatuses = ['PENDING_IQAC'];
+      break;
+    case 'STUDENT_ORGANIZER':
+    case 'STUDENT_GENERAL':
+      // Students don't need a global workflow listener (handled by OrganizerEventsContext for their own events)
+      // Return early with empty to save reads entirely
+      callback([]);
+      return () => {};
+    default:
+      // Admins/Principals might want to see posted/completed
+      roleStatuses = ['POSTED', 'COMPLETED'];
+      break;
+  }
+  
+  let q = query(eventsCollection, where('status', 'in', roleStatuses));
   
   return onSnapshot(q, (snapshot) => {
-    logQuery('Dashboard/Workflow', snapshot.size, true, startTime);
+    logQuery(`Dashboard/Workflow (${currentUser.role})`, snapshot.size, true, startTime);
     const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(events);
   });
