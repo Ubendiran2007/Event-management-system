@@ -4,6 +4,7 @@ import { LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
 import { getRolePath } from '../utils/routeUtils';
+import { api } from '../utils/api';
 
 import Navbar from '../components/Navbar';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
@@ -50,16 +51,11 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // Authenticate against the backend API (Firestore)
-      const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: username.trim(), password }),
+      // Authenticate against the backend API via centralized api wrapper
+      const data = await api.post('/api/login', { 
+        email: username.trim(), 
+        password 
       });
-
-
-
-      const data = await response.json();
 
       if (data.success) {
         // Store session token for all subsequent API calls
