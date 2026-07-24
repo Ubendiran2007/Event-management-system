@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import { notificationService } from '../services/notificationService';
-import { useAuth } from '../context/AuthContext'; // Assuming AuthContext exists
+import { useAuth } from './AuthContext'; // Assuming AuthContext exists
 
 export const NotificationContext = createContext();
 
