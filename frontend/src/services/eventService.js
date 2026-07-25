@@ -29,12 +29,10 @@ const eventsCollection = collection(db, 'events');
 
 // ==================== STATIC FETCHES ====================
 
-import { auth } from '../firebase';
-
 export const fetchExploreEvents = async (currentUser, cursor = null, pageSize = 20) => {
   const startTime = performance.now();
   try {
-    const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+    const token = localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
     const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
     
     let url = `${baseUrl}/api/events/explore?pageSize=${pageSize}`;

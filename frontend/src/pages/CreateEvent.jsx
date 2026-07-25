@@ -214,11 +214,94 @@ const CreateEvent = () => {
   const { createEvent, currentUser } = useAppContext();
   const { getOverlappingHolidays, getOverlappingExams, checkWorkingDays, getActiveSemester } = useCalendarContext();
 
-  const reservationState = location.state?.reservation || null;
-  const lockedVenue = location.state?.venue || null;
+  const storedHold = useMemo(() => {
+    try {
+      const item = sessionStorage.getItem('currentVenueHold');
+      return item ? JSON.parse(item) : null;
+    } catch (e) { return null; }
+  }, []);
+
+  const [reservationState, setReservationState] = useState(() => location.state?.reservation || storedHold?.reservation || null);
+  const [lockedVenue, setLockedVenue] = useState(() => location.state?.venue || storedHold?.venue || null);
 
   // If editing a rejected event for resubmission
   const isResubmissionEdit = location.state?.editMode === true;
+
+  // Route protection
+  useEffect(() => {
+    if (!isResubmissionEdit && (!reservationState || !lockedVenue)) {
+      navigate('/create-event', { replace: true });
+    }
+  }, [isResubmissionEdit, reservationState, lockedVenue, navigate]);
+
+  // Hold Timer state
+  const [timeLeftSec, setTimeLeftSec] = useState(600);
+  const [isExpired, setIsExpired] = useState(false);
+  const [reReserving, setReReserving] = useState(false);
+  const [reReserveError, setReReserveError] = useState('');
+
+  useEffect(() => {
+    if (!reservationState?.expiresAt) return;
+    const target = new Date(reservationState.expiresAt).getTime();
+    
+    const updateTimer = () => {
+      const now = Date.now();
+      const diff = Math.floor((target - now) / 1000);
+      if (diff <= 0) {
+        setTimeLeftSec(0);
+        setIsExpired(true);
+      } else {
+        setTimeLeftSec(diff);
+        setIsExpired(false);
+      }
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [reservationState]);
+
+  const formatCountdown = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleReReserve = async () => {
+    if (!reservationState?.reservationId) return;
+    try {
+      setReReserving(true);
+      setReReserveError('');
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+      const res = await fetch(`${backendUrl}/api/venues/re-reserve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ reservationId: reservationState.reservationId })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Slot is no longer available.');
+      }
+      const newRes = {
+        ...reservationState,
+        reservationId: data.data.reservationId,
+        expiresAt: data.data.expiresAt
+      };
+      setReservationState(newRes);
+      sessionStorage.setItem('currentVenueHold', JSON.stringify({
+        venue: lockedVenue,
+        reservation: newRes
+      }));
+      setIsExpired(false);
+      setReReserveError('');
+    } catch (err) {
+      setReReserveError(err.message + ' Please return to Venue Selection to pick a new slot.');
+    } finally {
+      setReReserving(false);
+    }
+  };
   const editingEvent = location.state?.editingEvent || null;
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -282,10 +365,10 @@ const CreateEvent = () => {
     isIIC: 'No',
     audienceScope: 'Open To All',
     selectedDepartments: [],
-    startDate: location.state?.date || '',
-    endDate: location.state?.date || '',
-    startTime: location.state?.startTime || '09:00',
-    endTime: location.state?.endTime || '17:00',
+    startDate: location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.date || '',
+    endDate: location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.date || '',
+    startTime: location.state?.reservation?.startTime || location.state?.startTime || storedHold?.reservation?.startTime || '09:00',
+    endTime: location.state?.reservation?.endTime || location.state?.endTime || storedHold?.reservation?.endTime || '17:00',
     organizerName: currentUser?.name || '',
     department: currentUser?.department || '',
     mobileNumber: '',
@@ -1234,7 +1317,7 @@ const CreateEvent = () => {
       }
       
       if (!lockedVenue) {
-        setStepError('No venue reserved. Please return to the dashboard and reserve a venue.');
+        setStepError('No venue reserved. Please return to Venue Selection to reserve a venue.');
         return false;
       }
 
@@ -1702,6 +1785,27 @@ const CreateEvent = () => {
     setIsSubmitting(true);
     setSubmitError('');
     try {
+      if (reservationState?.reservationId && lockedVenue) {
+        const valRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/venues/validate-hold', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            reservationId: reservationState.reservationId,
+            venueId: lockedVenue.id,
+            date: form.startDate,
+            startTime: form.startTime,
+            endTime: form.endTime
+          })
+        });
+        const valData = await valRes.json();
+        if (!valData.success) {
+          throw new Error(valData.message || 'Venue hold validation failed. The reservation may have expired or entered maintenance.');
+        }
+      }
+
       const payload = buildPayload();
       
       // Determine Event ID
@@ -3547,25 +3651,61 @@ const CreateEvent = () => {
         <div className="sticky top-0 z-30 bg-[#f8fafc] pt-4 sm:pt-6 pb-3 -mt-4 sm:-mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 mb-6 border-b border-slate-200">
           
           {reservationState && lockedVenue && (
-            <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
-                  <CheckCircle2 size={16} />
+            <div className={`mb-4 border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm transition-all ${
+              isExpired ? 'bg-rose-50 border-rose-300 text-rose-900 animate-pulse' : 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-200 text-emerald-950'
+            }`}>
+              <div className="flex items-center gap-3.5">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                  isExpired ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
+                }`}>
+                  {isExpired ? <AlertCircle size={22} /> : <CheckCircle2 size={22} />}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Venue Reserved</p>
-                  <p className="text-sm font-medium text-emerald-700">{lockedVenue.name} <span className="text-emerald-600/70 ml-1">({reservationState.expiresIn || '58'} mins left)</span></p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/80 border border-emerald-200/60 shadow-2xs">
+                      {isExpired ? 'Hold Expired' : 'Venue Reserved'}
+                    </span>
+                    <span className="text-base font-black text-slate-900">{lockedVenue.name}</span>
+                  </div>
+                  <p className="text-xs sm:text-sm font-semibold mt-0.5 opacity-90">
+                    {isExpired ? (
+                      <span className="text-rose-700 font-bold">Your 10-minute hold has expired. Please re-reserve below to prevent losing this slot.</span>
+                    ) : (
+                      <span>
+                        Reservation expires in <span className="font-mono font-black text-base px-1.5 py-0.5 bg-white rounded border border-emerald-300 text-emerald-800 ml-1 shadow-2xs">{formatCountdown(timeLeftSec)}</span> — Please complete event creation before the timer expires.
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
-              <button 
-                onClick={() => {
-                  // In a real implementation, call an API to release the reservation
-                  navigate('/dashboard'); // Go back to dashboard to select a new venue
-                }}
-                className="px-3 py-1.5 bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-bold rounded-lg transition-colors"
-              >
-                Change Venue
-              </button>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                {isExpired && (
+                  <button 
+                    type="button"
+                    onClick={handleReReserve}
+                    disabled={reReserving}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                  >
+                    {reReserving ? 'Re-reserving...' : 'Reserve Again'}
+                  </button>
+                )}
+                <button 
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.removeItem('currentVenueHold');
+                    navigate('/create-event');
+                  }}
+                  className="px-3.5 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-extrabold rounded-xl transition-colors shadow-2xs"
+                >
+                  Change Venue
+                </button>
+              </div>
+            </div>
+          )}
+          {reReserveError && (
+            <div className="mb-4 p-3 bg-rose-100 border border-rose-300 text-rose-800 rounded-xl text-xs font-bold flex items-center justify-between">
+              <span>{reReserveError}</span>
+              <button onClick={() => navigate('/create-event')} className="underline font-black ml-2">Return to Selection</button>
             </div>
           )}
 
@@ -3672,6 +3812,58 @@ const CreateEvent = () => {
             </div>
           </div>
         </motion.div>
+
+        {/* Hold Expiry Modal */}
+        <AnimatePresence>
+          {isExpired && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn">
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 text-center space-y-6"
+              >
+                <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                  <AlertCircle size={36} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black text-slate-900">Your reservation has expired.</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                    If the venue is still available, the reservation will be recreated. Otherwise, return to Venue Selection. This avoids losing all the information you have already entered.
+                  </p>
+                </div>
+
+                {reReserveError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold text-left">
+                    {reReserveError}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleReReserve}
+                    disabled={reReserving}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+                  >
+                    {reReserving ? <Loader2 size={16} className="animate-spin" /> : null}
+                    <span>Reserve Again</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sessionStorage.removeItem('currentVenueHold');
+                      navigate('/create-event');
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-sm transition-all"
+                  >
+                    Return to Venue Selection
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </Layout>
   );

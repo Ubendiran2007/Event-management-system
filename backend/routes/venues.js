@@ -15,7 +15,7 @@ const db = getFirestore();
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const venuesSnapshot = await db.collection('venues')
-      .where('status', 'in', ['ACTIVE', 'MAINTENANCE'])
+      .where('status', '==', 'ACTIVE')
       .get();
       
     const venues = venuesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -23,6 +23,66 @@ router.get('/', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching venues:', err);
     return errorResponse(res, err.message, 'FETCH_VENUES_ERROR');
+  }
+});
+
+/**
+ * @route   GET /api/venues/all
+ * @desc    Get all venues regardless of status (HR / IQAC / Admin only)
+ */
+router.get('/all', authenticateToken, async (req, res) => {
+  try {
+    if (!PermissionEngine.canManageVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to view all venues', 'UNAUTHORIZED', 403);
+    }
+    const venuesSnapshot = await db.collection('venues').get();
+    const venues = venuesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return successResponse(res, venues, 'All venues fetched successfully');
+  } catch (err) {
+    console.error('Error fetching all venues:', err);
+    return errorResponse(res, err.message, 'FETCH_ALL_VENUES_ERROR');
+  }
+});
+
+/**
+ * @route   GET /api/venues/calendar/system
+ * @desc    Get system-wide calendar (reservations/events/maintenance across all venues)
+ */
+router.get('/calendar/system', authenticateToken, async (req, res) => {
+  try {
+    if (!PermissionEngine.canManageVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to view system calendar', 'UNAUTHORIZED', 403);
+    }
+    const { startDate, endDate, venueId, building, type, status } = req.query;
+    if (!startDate || !endDate) {
+      return errorResponse(res, 'startDate and endDate are required', 'VALIDATION_ERROR', 400);
+    }
+
+    let venuesQuery = db.collection('venues');
+    if (venueId) venuesQuery = venuesQuery.where('venueId', '==', venueId);
+    if (building) venuesQuery = venuesQuery.where('building', '==', building);
+    if (type) venuesQuery = venuesQuery.where('type', '==', type);
+    
+    const venuesSnap = await venuesQuery.get();
+    const targetVenueIds = venuesSnap.docs.map(d => d.id);
+    const venueMap = Object.fromEntries(venuesSnap.docs.map(d => [d.id, d.data()]));
+
+    const calendar = [];
+    for (const vId of targetVenueIds) {
+      const vCal = await VenueAvailabilityService.getVenueCalendar(vId, startDate, endDate);
+      vCal.forEach(item => {
+        const vData = venueMap[vId] || {};
+        const calItem = { ...item, venueId: vId, venueName: vData.name, building: vData.building, venueType: vData.type };
+        if (!status || status === 'ALL' || item.type === status || (status === 'RESERVED' && item.type === 'EVENT')) {
+          calendar.push(calItem);
+        }
+      });
+    }
+
+    return successResponse(res, calendar, 'System calendar fetched successfully');
+  } catch (err) {
+    console.error('Error fetching system calendar:', err);
+    return errorResponse(res, err.message, 'FETCH_SYSTEM_CALENDAR_ERROR');
   }
 });
 
@@ -86,18 +146,51 @@ router.post('/release', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /api/venues/re-reserve
+ * @desc    Re-reserve an expired or expiring hold
+ */
+router.post('/re-reserve', authenticateToken, async (req, res) => {
+  try {
+    const { reservationId } = req.body;
+    if (!reservationId) {
+      return errorResponse(res, 'reservationId is required', 'VALIDATION_ERROR', 400);
+    }
+    const reservation = await VenueAvailabilityService.reReserveVenue(reservationId, req.user.uid);
+    return successResponse(res, reservation, 'Venue re-reserved successfully');
+  } catch (err) {
+    console.error('Error re-reserving venue:', err);
+    return errorResponse(res, err.message, 'RE_RESERVE_ERROR', 409);
+  }
+});
+
+/**
+ * @route   POST /api/venues/validate-hold
+ * @desc    Validate hold right before event submission
+ */
+router.post('/validate-hold', authenticateToken, async (req, res) => {
+  try {
+    const { reservationId, venueId, date, startTime, endTime } = req.body;
+    await VenueAvailabilityService.validateHoldForSubmission(reservationId, venueId, req.user.uid, date, startTime, endTime);
+    return successResponse(res, { valid: true }, 'Hold is valid');
+  } catch (err) {
+    console.error('Error validating hold:', err);
+    return errorResponse(res, err.message, 'VALIDATE_HOLD_ERROR', 400);
+  }
+});
+
 // ==========================================
-// IQAC Venue Master Management (Admin Routes)
+// HR / IQAC Venue Master Management Routes
 // ==========================================
 
 /**
  * @route   POST /api/venues
- * @desc    Create a new venue (IQAC only)
+ * @desc    Create a new venue (HR / Super Admin only)
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    if (!PermissionEngine.canManageVenue(req.user)) {
-      return errorResponse(res, 'Unauthorized to manage venues', 'UNAUTHORIZED', 403);
+    if (!PermissionEngine.canEditVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to create venues (Read Only)', 'UNAUTHORIZED', 403);
     }
 
     const payload = req.body;
@@ -106,10 +199,10 @@ router.post('/', authenticateToken, async (req, res) => {
     const venueData = {
       venueId: newVenueRef.id,
       name: payload.name,
-      code: payload.code,
+      code: payload.code || '',
       building: payload.building,
       floor: payload.floor,
-      capacity: payload.capacity,
+      capacity: Number(payload.capacity),
       type: payload.type,
       facilities: payload.facilities || [],
       status: payload.status || 'ACTIVE',
@@ -120,7 +213,6 @@ router.post('/', authenticateToken, async (req, res) => {
 
     await newVenueRef.set(venueData);
 
-    // Audit Logging
     await db.collection('eventAuditLogs').add({
       module: 'VENUE_MASTER',
       action: 'VENUE_CREATED',
@@ -139,12 +231,12 @@ router.post('/', authenticateToken, async (req, res) => {
 
 /**
  * @route   PATCH /api/venues/:id
- * @desc    Update a venue (IQAC only)
+ * @desc    Update a venue (HR / Super Admin only)
  */
 router.patch('/:id', authenticateToken, async (req, res) => {
   try {
-    if (!PermissionEngine.canManageVenue(req.user)) {
-      return errorResponse(res, 'Unauthorized to manage venues', 'UNAUTHORIZED', 403);
+    if (!PermissionEngine.canEditVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to edit venues (Read Only)', 'UNAUTHORIZED', 403);
     }
 
     const { id } = req.params;
@@ -167,7 +259,6 @@ router.patch('/:id', authenticateToken, async (req, res) => {
 
       t.update(venueRef, updateData);
 
-      // Audit Logging
       const auditRef = db.collection('eventAuditLogs').doc();
       t.set(auditRef, {
         module: 'VENUE_MASTER',
@@ -184,6 +275,160 @@ router.patch('/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error updating venue:', err);
     return errorResponse(res, err.message, 'UPDATE_VENUE_ERROR');
+  }
+});
+
+/**
+ * @route   DELETE /api/venues/:id
+ * @desc    Archive/Disable a venue (Soft delete, unless SUPER_ADMIN & permanent=true)
+ */
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    if (!PermissionEngine.canEditVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to delete venues (Read Only)', 'UNAUTHORIZED', 403);
+    }
+
+    const { id } = req.params;
+    const { permanent } = req.query;
+    const venueRef = db.collection('venues').doc(id);
+    const doc = await venueRef.get();
+    if (!doc.exists) {
+      return errorResponse(res, 'Venue not found', 'NOT_FOUND', 404);
+    }
+    const oldData = doc.data();
+
+    // Check if active reservations exist
+    const activeResSnap = await db.collection('venueReservations')
+      .where('venueId', '==', id)
+      .where('status', 'in', ['RESERVED', 'CONSUMED'])
+      .get();
+
+    // If future reservations or holds exist, cannot delete
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const hasFuture = activeResSnap.docs.some(d => d.data().date >= todayStr);
+    if (hasFuture) {
+      return errorResponse(res, 'Cannot delete venue. Future reservations exist. Disable or archive the venue instead.', 'VALIDATION_ERROR', 400);
+    }
+
+    if (permanent === 'true' && req.user.role === 'SUPER_ADMIN') {
+      await venueRef.delete();
+      await db.collection('eventAuditLogs').add({
+        module: 'VENUE_MASTER',
+        action: 'VENUE_DELETED_PERMANENTLY',
+        oldValue: oldData,
+        performedBy: req.user.uid,
+        role: req.user.role,
+        timestamp: FieldValue.serverTimestamp()
+      });
+      return successResponse(res, null, 'Venue permanently deleted');
+    } else {
+      // Soft Delete -> ARCHIVED
+      await venueRef.update({
+        status: 'ARCHIVED',
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: req.user.uid
+      });
+      await db.collection('eventAuditLogs').add({
+        module: 'VENUE_MASTER',
+        action: 'VENUE_ARCHIVED',
+        oldValue: oldData,
+        newValue: { ...oldData, status: 'ARCHIVED' },
+        performedBy: req.user.uid,
+        role: req.user.role,
+        timestamp: FieldValue.serverTimestamp()
+      });
+      return successResponse(res, null, 'Venue archived successfully');
+    }
+  } catch (err) {
+    console.error('Error deleting venue:', err);
+    return errorResponse(res, err.message, 'DELETE_VENUE_ERROR');
+  }
+});
+
+/**
+ * @route   POST /api/venues/:id/maintenance
+ * @desc    Schedule maintenance for a venue
+ */
+router.post('/:id/maintenance', authenticateToken, async (req, res) => {
+  try {
+    if (!PermissionEngine.canEditVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to schedule maintenance', 'UNAUTHORIZED', 403);
+    }
+    const { id } = req.params;
+    const { startDate, endDate, reason } = req.body;
+    if (!startDate || !endDate) {
+      return errorResponse(res, 'startDate and endDate are required', 'VALIDATION_ERROR', 400);
+    }
+
+    const mRef = db.collection('venueMaintenance').doc();
+    const mData = {
+      maintenanceId: mRef.id,
+      venueId: id,
+      startDate,
+      endDate,
+      reason: reason || 'Scheduled Maintenance',
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: req.user.uid
+    };
+    await mRef.set(mData);
+
+    // If currently during maintenance dates, update venue status
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (todayStr >= startDate && todayStr <= endDate) {
+      await db.collection('venues').doc(id).update({ status: 'MAINTENANCE' });
+    }
+
+    return successResponse(res, mData, 'Maintenance scheduled successfully', 201);
+  } catch (err) {
+    console.error('Error scheduling maintenance:', err);
+    return errorResponse(res, err.message, 'SCHEDULE_MAINTENANCE_ERROR');
+  }
+});
+
+/**
+ * @route   GET /api/venues/:id/maintenance
+ * @desc    Get maintenance schedules for a venue
+ */
+router.get('/:id/maintenance', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const snap = await db.collection('venueMaintenance').where('venueId', '==', id).get();
+    const schedules = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return successResponse(res, schedules, 'Maintenance fetched successfully');
+  } catch (err) {
+    console.error('Error fetching maintenance:', err);
+    return errorResponse(res, err.message, 'FETCH_MAINTENANCE_ERROR');
+  }
+});
+
+/**
+ * @route   DELETE /api/venues/:id/maintenance/:maintenanceId
+ * @desc    Cancel maintenance for a venue
+ */
+router.delete('/:id/maintenance/:maintenanceId', authenticateToken, async (req, res) => {
+  try {
+    if (!PermissionEngine.canEditVenue(req.user)) {
+      return errorResponse(res, 'Unauthorized to cancel maintenance', 'UNAUTHORIZED', 403);
+    }
+    const { id, maintenanceId } = req.params;
+    await db.collection('venueMaintenance').doc(maintenanceId).delete();
+
+    // Recheck remaining maintenance for venue
+    const snap = await db.collection('venueMaintenance').where('venueId', '==', id).get();
+    const todayStr = new Date().toISOString().split('T')[0];
+    const activeNow = snap.docs.some(d => todayStr >= d.data().startDate && todayStr <= d.data().endDate);
+    if (!activeNow) {
+      const vDoc = await db.collection('venues').doc(id).get();
+      if (vDoc.exists && vDoc.data().status === 'MAINTENANCE') {
+        await db.collection('venues').doc(id).update({ status: 'ACTIVE' });
+      }
+    }
+
+    return successResponse(res, null, 'Maintenance cancelled successfully');
+  } catch (err) {
+    console.error('Error cancelling maintenance:', err);
+    return errorResponse(res, err.message, 'CANCEL_MAINTENANCE_ERROR');
   }
 });
 

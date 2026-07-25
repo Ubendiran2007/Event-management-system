@@ -41,6 +41,17 @@ class VenueAvailabilityService {
         throw new Error(`Venue is currently ${venueData.status} and cannot be reserved.`);
       }
 
+      // Check Maintenance Windows
+      const maintenanceQuery = db.collection('venueMaintenance')
+        .where('venueId', '==', venueId);
+      const maintenanceSnapshot = await t.get(maintenanceQuery);
+      for (const mDoc of maintenanceSnapshot.docs) {
+        const mData = mDoc.data();
+        if (date >= mData.startDate && date <= mData.endDate) {
+          throw new Error(`Venue is scheduled for maintenance (${mData.reason}) from ${mData.startDate} to ${mData.endDate}.`);
+        }
+      }
+
       // 2. Fetch existing Active Reservations for this venue on this date
       const activeReservationsQuery = db.collection('venueReservations')
         .where('venueId', '==', venueId)
@@ -65,7 +76,6 @@ class VenueAvailabilityService {
         }
 
         // If it hasn't expired, check for time overlap
-        // (Assuming time strings can be converted to comparable values, e.g., '14:00' < '15:00')
         if (this._isOverlapping(startTime, endTime, resData.startTime, resData.endTime)) {
           throw new Error("Venue is already reserved for this time slot.");
         }
@@ -90,7 +100,7 @@ class VenueAvailabilityService {
       }
 
       // 4. Create the new reservation
-      const durationMinutes = await SystemConfig.get('venueReservationDuration');
+      const durationMinutes = await SystemConfig.get('venueReservationDuration') || 10;
       const expirationDate = new Date(now.getTime() + durationMinutes * 60000);
 
       const newReservationRef = db.collection('venueReservations').doc();
@@ -102,7 +112,7 @@ class VenueAvailabilityService {
         endTime,
         reservedBy: userUid,
         status: ReservationStatus.RESERVED,
-        expiresAt: expirationDate, // Stored as a JS Date (converted to Firestore Timestamp automatically by admin SDK)
+        expiresAt: expirationDate,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()
       };
@@ -218,7 +228,82 @@ class VenueAvailabilityService {
       });
     });
 
+    // 3. Get Maintenance Windows
+    const maintenanceSnapshot = await db.collection('venueMaintenance')
+      .where('venueId', '==', venueId)
+      .where('endDate', '>=', startDate)
+      .get();
+
+    maintenanceSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.startDate <= endDate) {
+        calendar.push({
+          type: 'MAINTENANCE',
+          maintenanceId: doc.id,
+          reason: data.reason || 'Scheduled Maintenance',
+          startDate: data.startDate,
+          endDate: data.endDate
+        });
+      }
+    });
+
     return calendar;
+  }
+
+  /**
+   * Re-reserve an expired or expiring hold
+   */
+  static async reReserveVenue(reservationId, userUid) {
+    const db = getFirestore();
+    const resRef = db.collection('venueReservations').doc(reservationId);
+    const doc = await resRef.get();
+    if (!doc.exists) {
+      throw new Error("Previous reservation not found.");
+    }
+    const data = doc.data();
+    if (data.reservedBy !== userUid) {
+      throw new Error("Unauthorized to re-reserve this venue slot.");
+    }
+
+    // Try to reserve it again using standard reserveVenue logic
+    return await this.reserveVenue(data.venueId, userUid, data.date, data.startTime, data.endTime);
+  }
+
+  /**
+   * Validate hold right before submitting event
+   */
+  static async validateHoldForSubmission(reservationId, venueId, userUid, date, startTime, endTime) {
+    const db = getFirestore();
+    if (!reservationId) {
+      throw new Error("Reservation validation failed. No hold ID provided. Please reserve the venue again.");
+    }
+
+    const resRef = db.collection('venueReservations').doc(reservationId);
+    const doc = await resRef.get();
+    if (!doc.exists) {
+      throw new Error("Reservation validation failed. Hold record not found. Please reserve the venue again.");
+    }
+
+    const data = doc.data();
+    if (data.reservedBy !== userUid || data.venueId !== venueId || data.date !== date || data.startTime !== startTime || data.endTime !== endTime) {
+      throw new Error("Reservation validation failed. Event details do not match the held venue slot. Please reserve the venue again.");
+    }
+
+    if (new Date() > data.expiresAt.toDate() || data.status === ReservationStatus.EXPIRED) {
+      throw new Error("Your reservation has expired. Please reserve the venue again.");
+    }
+
+    // Check if venue entered maintenance in the meantime
+    const maintenanceQuery = db.collection('venueMaintenance').where('venueId', '==', venueId);
+    const maintenanceSnapshot = await maintenanceQuery.get();
+    for (const mDoc of maintenanceSnapshot.docs) {
+      const mData = mDoc.data();
+      if (date >= mData.startDate && date <= mData.endDate) {
+        throw new Error(`Venue has entered maintenance (${mData.reason}). Please select another venue.`);
+      }
+    }
+
+    return true;
   }
 }
 

@@ -87,11 +87,19 @@ const PermissionEngine = {
   },
 
   /**
-   * Can a user manage the Venue Master (IQAC only)
+   * Can a user view/manage the Venue Master (IQAC Read-Only, HR Full)
    */
   canManageVenue: (user) => {
     if (!user) return false;
-    return user.role === UserRole.IQAC || user.role === UserRole.SUPER_ADMIN;
+    return user.role === UserRole.IQAC || user.role === UserRole.IQAC_TEAM || user.role === UserRole.HR_TEAM || user.role === UserRole.SUPER_ADMIN || user.role === 'IQAC';
+  },
+
+  /**
+   * Can a user edit/delete/create venues (HR Team & Super Admin only)
+   */
+  canEditVenue: (user) => {
+    if (!user) return false;
+    return user.role === UserRole.HR_TEAM || user.role === UserRole.SUPER_ADMIN;
   },
 
   /**

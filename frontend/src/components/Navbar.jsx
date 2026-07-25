@@ -1,4 +1,4 @@
-import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap, BarChart2 } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap, BarChart2, Building2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useWorkflowEvents } from '../context/WorkflowEventsContext';
@@ -25,12 +25,14 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   // Derive active tab logic from URL
   let currentActive = 'dashboard';
   const feature = location.pathname.split('/').filter(Boolean).pop();
-  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics'].includes(feature)) {
+  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics', 'venue-management'].includes(feature)) {
     currentActive = feature;
   } else if (location.pathname.includes('/security')) {
     currentActive = 'security';
   } else if (location.pathname.includes('/manage-students')) {
     currentActive = 'manage-students';
+  } else if (location.pathname.includes('/venue-management')) {
+    currentActive = 'venue-management';
   } else if (feature === 'iqac') {
     currentActive = 'approvals';
   }
@@ -105,6 +107,10 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
   if (currentUser.role !== UserRole.STUDENT_GENERAL && currentUser.role !== UserRole.STUDENT_ORGANIZER) {
     navItems.push({ id: 'analytics', label: 'Analytics', icon: BarChart2, path: '/analytics' });
+  }
+
+  if (currentUser.role === UserRole.HR_TEAM || currentUser.role === UserRole.IQAC_TEAM || currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === 'IQAC') {
+    navItems.push({ id: 'venue-management', label: 'Venue Management', icon: Building2, path: '/venue-management' });
   }
 
   navItems.push({ id: 'security', label: 'Security', icon: Shield, path: '/security' });
