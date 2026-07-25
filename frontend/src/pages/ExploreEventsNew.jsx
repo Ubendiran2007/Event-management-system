@@ -1862,7 +1862,7 @@ const EventCard = ({
 export const ExploreEventsNew = () => {
   const { currentUser, setStudents, students } = useAppContext();
   const { odRequests } = useMyODs(currentUser?.id);
-  const { events: availableEvents, loading, refresh: refreshEvents } = useExploreEvents();
+  const { events: availableEvents, loading, hasMore, loadingMore, loadMore, refresh: refreshEvents } = useExploreEvents();
   const [filter, setFilter] = useState('all');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -2211,6 +2211,19 @@ export const ExploreEventsNew = () => {
                 <EventCard key={event.id} event={event} {...cardSharedProps} />
               ))}
             </div>
+        )}
+        
+        {hasMore && filteredEvents.length > 0 && filter === 'all' && (
+          <div className="mt-8 flex justify-center">
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="px-6 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-full shadow hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {loadingMore ? <Loader2 size={16} className="animate-spin" /> : null}
+              {loadingMore ? 'Loading...' : 'Load More Events'}
+            </button>
+          </div>
         )}
           </div>
         </div>

@@ -213,10 +213,31 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
     organizerId: req.user.id,
     department: req.user.department || department,
     // System fields
-    status: 'PENDING_FACULTY',
+    status: eventData.status || 'PENDING_FACULTY',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+
+  // Auto-accept the creator if they are in the managers list
+  if (payload.managers && payload.managers.length > 0) {
+    payload.managers = payload.managers.map(m => {
+      if (m.email === req.user.email) {
+        return { ...m, status: 'ACCEPTED' };
+      }
+      return m;
+    });
+  }
+
+  // SUBMIT VALIDATION: Strict backend block if acceptedManagers < 1
+  if (['PENDING_FACULTY', 'PENDING_HOD'].includes(payload.status) && payload.managers && payload.managers.length > 0) {
+    const acceptedManagers = payload.managers.filter(m => m.status === 'ACCEPTED');
+    if (acceptedManagers.length < 1) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot submit event for approval: At least one manager must accept the invitation first. Please save as a draft.' 
+      });
+    }
+  }
 
   let docRef;
   if (eventData.id) {
@@ -224,6 +245,16 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
     await setDoc(docRef, payload);
   } else {
     docRef = await addDoc(collection(db, 'events'), payload);
+  }
+
+  // Consume Venue Reservation if present
+  if (eventData.reservationId) {
+    try {
+      const VenueAvailabilityService = require('../services/venueAvailabilityService');
+      await VenueAvailabilityService.consumeReservation(eventData.reservationId);
+    } catch (e) {
+      console.warn('[events] Failed to consume reservation:', e.message);
+    }
   }
 
   // ── Background Notifications (centralized handler) ─────────────────
@@ -308,6 +339,80 @@ router.get('/', async (req, res) => {
   }
 });
 
+// ── GET /api/events/explore ──────────────────────────────────────────────────
+// Backend paginated explore events query
+router.get('/explore', async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const { pageSize = 20, lastEventId } = req.query;
+    const limitCount = Math.min(parseInt(pageSize) || 20, 100); // Standardize: Max 100
+
+    // Only fetch valid explore states
+    const constraints = [
+      where('status', 'in', ['POSTED', 'POSTPONED', 'COMPLETED', 'CANCELLED'])
+    ];
+
+    // Note: Due to Firestore query limitations with 'in' and inequality filters,
+    // we fetch recently created/updated events and filter out hidden ones.
+    // In a fully optimized production setup, you'd use a dedicated search index (like Algolia or Typesense),
+    // but for 1200 students, this is far better than the previous client-side fetch-all approach.
+    constraints.push(orderBy('createdAt', 'desc'));
+
+    if (lastEventId) {
+      const lastDocSnap = await getDoc(doc(db, 'events', lastEventId));
+      if (lastDocSnap.exists()) {
+        constraints.push(startAfter(lastDocSnap));
+      }
+    }
+
+    constraints.push(limit(limitCount * 2)); // Oversample to account for backend filtering
+
+    const snapshot = await getDocs(query(collection(db, 'events'), ...constraints));
+
+    // Resolve caller's context
+    const currentUser = req.user; 
+    const globalRoles = [
+      'IQAC_TEAM', 'SYSTEM_ADMIN', 'HR_TEAM', 'AUDIO_TEAM',
+      'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA'
+    ];
+    const hasGlobalVisibility = globalRoles.includes(currentUser?.role);
+    const userDept = String(currentUser?.department || '').toLowerCase();
+
+    // Perform backend filtering
+    const allFetched = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const filteredEvents = allFetched.filter(e => {
+      if (e.status === 'CANCELLED' && !e.iqacApprovedAt) return false;
+
+      const isOpenToAll = e.openToAllDepartments === true || e.audienceScope === 'Open To All' || String(e.department).toLowerCase() === 'overall';
+      const isMyDept = String(e.department).toLowerCase() === userDept || (e?.requisition?.step1?.department === currentUser?.department);
+      const isSelectedDept = Array.isArray(e.selectedDepartments) && e.selectedDepartments.includes(currentUser?.department);
+
+      if (!hasGlobalVisibility && !isOpenToAll && !isMyDept && !isSelectedDept) {
+        return false;
+      }
+      return true;
+    });
+
+    // Take exactly up to limitCount
+    const finalEvents = filteredEvents.slice(0, limitCount);
+    
+    // Add registration status
+    const events = finalEvents.map(data => ({
+      ...data,
+      registrationStatus: computeRegistrationStatus(data)
+    }));
+
+    const nextCursor = finalEvents.length > 0 ? finalEvents[finalEvents.length - 1].id : null;
+    const hasMore = allFetched.length > limitCount; // Approximation
+
+    return res.json({ success: true, count: events.length, events, nextCursor, hasMore });
+  } catch (error) {
+    console.error('[events/explore] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch explore events', error: error.message });
+  }
+});
+
 // ── GET /api/events/:id ─────────────────────────────────────────────────────
 // Get a single event by ID
 router.get('/:id', async (req, res) => {
@@ -342,6 +447,11 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
 
   const { status } = req.body; // Only status is read from body
 
+  // SUBMIT VALIDATION: Managers must accept before submission
+  if (['PENDING_FACULTY', 'PENDING_HOD'].includes(status)) {
+    // Only fetch event if not already done. We do it below anyway, so let's move this check down.
+  }
+
   const allowedStatuses = [
     'PENDING_FACULTY',
     'PENDING_HOD',
@@ -369,6 +479,17 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
     }
 
     const rawEventData = eventSnap.data();
+
+    // SUBMIT VALIDATION: Strict backend block if acceptedManagers < 1
+    if (['PENDING_FACULTY', 'PENDING_HOD'].includes(status) && rawEventData.managers && rawEventData.managers.length > 0) {
+      const acceptedManagers = rawEventData.managers.filter(m => m.status === 'ACCEPTED');
+      if (acceptedManagers.length < 1) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Cannot submit event for approval: At least one manager must accept the invitation first.' 
+        });
+      }
+    }
 
     if (status !== 'REJECTED') {
       const { parseEventStartDateTime } = require('../services/eventAutoRejectionService');

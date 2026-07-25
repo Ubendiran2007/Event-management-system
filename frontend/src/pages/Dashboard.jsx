@@ -62,6 +62,8 @@ import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
+
+import VenueSelectionModal from '../components/VenueSelectionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
@@ -195,6 +197,7 @@ const Dashboard = () => {
   const location = useLocation();
   const [selectedODRequest, setSelectedODRequest] = useState(null);
   const [selectedEventDetail, setSelectedEventDetail] = useState(null);
+  const [isVenueModalOpen, setIsVenueModalOpen] = useState(false);
   
   const segments = location.pathname.split('/').filter(Boolean);
   const feature = segments[segments.length - 1];
@@ -1321,7 +1324,7 @@ const Dashboard = () => {
                 </button>
                 {canCreateEvent && (
                   <button
-                    onClick={() => navigate(`/${expectedRolePrefix}/create-event`)}
+                    onClick={() => setIsVenueModalOpen(true)}
                     className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95"
                   >
                     <Plus size={18} /> Create Event
@@ -1470,7 +1473,7 @@ const Dashboard = () => {
                   </div>
                   <div className="p-5 space-y-3">
                      {canCreateEvent && (
-                       <button onClick={() => navigate(`/${expectedRolePrefix}/create-event`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group">
+                       <button onClick={() => setIsVenueModalOpen(true)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group">
                           <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><Plus size={20} /></div>
                           <div className="text-left"><p className="font-bold text-slate-800 text-sm">Create Event</p><p className="text-[11px] text-slate-500 font-medium">Initiate a new event</p></div>
                        </button>
@@ -1685,12 +1688,12 @@ const Dashboard = () => {
                                       </td>
                                       <td className="py-3 sm:py-4 px-3 sm:px-6 w-[20%] sm:w-[13%] text-right">
                                          <div className="flex items-center justify-end gap-1 sm:gap-2">
-                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && event.status === EventStatus.REJECTED && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
+                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && [EventStatus.REJECTED, EventStatus.DRAFT].includes(event.status) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
                                               <button
                                                 onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event`, { state: { editingEvent: event } }); }}
                                                 className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
                                               >
-                                                Edit
+                                                {event.status === EventStatus.DRAFT ? 'Continue Draft' : 'Edit'}
                                               </button>
                                             )}
                                             <button onClick={(e) => { e.stopPropagation(); setSelectedEventDetail(event); }} className="px-2 sm:px-4 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] sm:text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95">
@@ -2382,6 +2385,13 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+      
+      {/* Venue Selection Modal */}
+      <VenueSelectionModal 
+        isOpen={isVenueModalOpen} 
+        onClose={() => setIsVenueModalOpen(false)} 
+      />
+
       {/* OD Request Detail Modal — students only */}
       {selectedODRequest && !isStaff && (
         <ODRequestDetailModal

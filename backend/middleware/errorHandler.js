@@ -20,8 +20,13 @@ function errorHandler(err, req, res, next) {
     message: err.message || 'An unexpected error occurred.',
   };
 
-  // Only leak stack traces in development
-  if (isDevelopment && statusCode >= 500) {
+  // Include details array if provided (useful for validation errors)
+  if (err.details) {
+    errorResponse.details = err.details;
+  }
+
+  // Only leak stack traces in development, and only for non-operational or 500 errors
+  if (isDevelopment && (!err.isOperational || statusCode >= 500)) {
     errorResponse.stack = err.stack;
   }
 

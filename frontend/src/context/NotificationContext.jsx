@@ -155,3 +155,11 @@ export const NotificationProvider = ({ children }) => {
     </NotificationContext.Provider>
   );
 };
+
+export const useNotification = () => {
+  return {
+    showToast: (msg, type) => console.log('Toast:', msg),
+    showDialog: (props) => console.log('Dialog:', props),
+    showNotification: (msg, type) => console.log('Notification:', msg)
+  };
+};

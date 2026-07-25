@@ -2,12 +2,24 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Auth Helper
+    // ==========================================
+    // 0. AUTHENTICATION & MIME HELPERS
+    // ==========================================
     function isAuthenticated() {
       return request.auth != null;
     }
+    
+    // In our system, roles might be on the JWT token (custom claims)
+    function getUserRole() {
+      return request.auth.token.role; 
+    }
 
-    // MIME Validation (Prohibit executable/SVG)
+    // Role checks
+    function isMediaTeam() { return getUserRole() == 'MEDIA'; }
+    function isAdmin() { return getUserRole() == 'SYSTEM_ADMIN'; }
+    function isIQAC() { return getUserRole() == 'IQAC_TEAM'; }
+
+    // Validation
     function isImage() {
       return request.resource.contentType.matches('image/.*') 
              && !request.resource.contentType.matches('.*svg.*');
@@ -17,51 +29,106 @@ service firebase.storage {
       return request.resource.contentType == 'application/pdf';
     }
 
-    // Size Validation
+    function isCSV() {
+      return request.resource.contentType == 'text/csv' || request.resource.contentType == 'application/vnd.ms-excel';
+    }
+
     function isSizeUnder(mb) {
       return request.resource.size < mb * 1024 * 1024;
     }
 
-    // Ownership Validation via Firestore Lookup
-    function isOrganizer(eventId) {
-      let eventDoc = firestore.get(/databases/(default)/documents/events/$(eventId));
-      return eventDoc != null && (
-        eventDoc.data.get('organizerId', '') == request.auth.uid ||
-        eventDoc.data.get('createdBy', '') == request.auth.uid
+    // ==========================================
+    // 1. EVENT LOOKUP HELPERS (FIRESTORE)
+    // ==========================================
+    function getEvent(eventId) {
+      return firestore.get(/databases/(default)/documents/events/$(eventId));
+    }
+
+    function isEventOwner(eventId) {
+      let eventDoc = getEvent(eventId);
+      return eventDoc != null && eventDoc.data.ownerId == request.auth.uid;
+    }
+
+    function isEventManager(eventId) {
+      let eventDoc = getEvent(eventId);
+      return eventDoc != null && (request.auth.uid in eventDoc.data.managers);
+    }
+    
+    function isEventEnded(eventId) {
+      let eventDoc = getEvent(eventId);
+      return eventDoc != null && eventDoc.data.status == 'ENDED';
+    }
+
+    function needsMediaSupport(eventId) {
+      let eventDoc = getEvent(eventId);
+      return eventDoc != null && eventDoc.data.needsMediaSupport == true;
+    }
+
+    // Media Permissions Matrix from PermissionEngine
+    function canUploadMedia(eventId) {
+      // Must be ENDED to upload media
+      // If needsMediaSupport == true -> ONLY Media Team
+      // If needsMediaSupport == false -> ONLY Event Owner / Manager
+      return isEventEnded(eventId) && (
+        (needsMediaSupport(eventId) && isMediaTeam()) ||
+        (!needsMediaSupport(eventId) && (isEventOwner(eventId) || isEventManager(eventId))) ||
+        isAdmin()
       );
     }
 
-    match /events/{eventId} {
-      
-      // Posters: Publicly readable (needed for landing pages, dashboards)
-      // Writable by authenticated users. (Event might not exist yet during initial upload)
-      match /poster_{fileName} {
-        allow read: if true;
-        allow write: if isAuthenticated() && isImage() && isSizeUnder(5);
-      }
-      
-      // Resource Persons: Publicly readable 
-      match /resourcePersons/{fileName} {
-        allow read: if true;
-        allow write: if isAuthenticated() && isImage() && isSizeUnder(5);
-      }
-      
-      // Gallery: Readable by authenticated users (students viewing past events)
-      // Writable ONLY by the Event Organizer, strictly images, under 10MB
-      match /gallery/{fileName} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated() && isImage() && isSizeUnder(10) && isOrganizer(eventId);
-      }
-      
-      // IQAC Documents: Highly restricted
-      // Readable by authenticated users
-      // Writable ONLY by the Event Organizer, strictly PDFs, under 20MB
-      match /documents/{fileName} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated() && isPDF() && isSizeUnder(20) && isOrganizer(eventId);
-      }
+    // Document Permissions
+    function canUploadDocs(eventId) {
+      // Documents can be uploaded during drafting or post-event by Owner/Manager
+      return isEventOwner(eventId) || isEventManager(eventId) || isAdmin();
+    }
+
+
+    // ==========================================
+    // 2. PATH MATCHING RULES
+    // ==========================================
+    
+    // Poster uploads during Event Creation (Event might not exist in Firestore yet)
+    // Anyone authenticated can upload a poster (capped at 5MB) to their own temp path or event path
+    match /events/{eventId}/poster_{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isImage() && isSizeUnder(5);
+    }
+
+    match /events/{eventId}/resourcePersons/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isImage() && isSizeUnder(5);
+    }
+
+    // Media & Gallery (Strictly post-event)
+    match /event-media/{eventId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isImage() && isSizeUnder(15) && canUploadMedia(eventId);
+    }
+
+    // Event Documents (Budget, Proof, Approvals)
+    match /event-documents/{eventId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isPDF() && isSizeUnder(20) && canUploadDocs(eventId);
+    }
+
+    // Attendance files (CSV/Excel)
+    match /attendance/{eventId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isCSV() || isPDF()) && isSizeUnder(10) && canUploadDocs(eventId);
+    }
+
+    // Certificates 
+    match /certificates/{eventId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isPDF() && isSizeUnder(5) && canUploadDocs(eventId);
     }
     
+    // Feedback 
+    match /feedback/{eventId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isCSV() || isPDF()) && isSizeUnder(10) && canUploadDocs(eventId);
+    }
+
     // Default Deny
     match /{allPaths=**} {
       allow read, write: if false;

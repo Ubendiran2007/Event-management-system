@@ -126,42 +126,33 @@ async function sendMailWithFallback(mailOptions) {
     console.log(`[Email Service] ⚠️  TEST MODE: Redirecting email for "${mailOptions.to}" → ${testRecipient}`);
     mailOptions._originalTo = mailOptions.to;
     mailOptions.to = testRecipient;
-  } else {
-    console.log(`[Email Service] 📧 PRODUCTION: Sending email to "${mailOptions.to}"`);
   }
 
   try {
-    console.log('Calling transporter.sendMail()');
+    // Priority Fix: Decoupling Email Sending
+    // Write email task to the Firestore mailQueue collection for async processing by worker
+    const docRef = await addDoc(collection(db, 'mailQueue'), {
+      to: mailOptions.to,
+      from: mailOptions.from,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+      attachments: mailOptions.attachments || null,
+      status: 'PENDING',
+      attempts: 0,
+      createdAt: new Date().toISOString(),
+      originalTo: mailOptions._originalTo || null,
+      eventTitle: mailOptions.eventTitle || null,
+      eventId: mailOptions.eventId || null,
+      emailType: mailOptions.emailType || 'GENERAL'
+    });
     
-    const sendPromise = transporter.sendMail(mailOptions);
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('TRANSPORTER_SEND_TIMEOUT_15S')), 15000)
-    );
-    
-    const res = await Promise.race([sendPromise, timeoutPromise]);
-    
-    console.log('Email sent successfully');
-    console.log('[Email Service] Provider Result:', JSON.stringify({
-      messageId: res.messageId,
-      accepted: res.accepted,
-      rejected: res.rejected,
-      response: res.response
-    }, null, 2));
-    
-    await logEmailAudit(mailOptions, 'SUCCESS', '', res.response);
-    return res;
+    console.log(`[Email Service] Email task enqueued to mailQueue with ID: ${docRef.id}`);
+    return { messageId: docRef.id };
   } catch (error) {
-    console.error('[Email Service] sendMail() threw an error!');
-    console.error('error.name:', error.name);
-    console.error('error.code:', error.code);
-    console.error('error.command:', error.command);
-    console.error('error.response:', error.response);
-    console.error('error.responseCode:', error.responseCode);
-    console.error('error.message:', error.message);
-    console.error('stack trace:', error.stack);
-    
+    console.error('[Email Service] Failed to enqueue email to mailQueue:', error);
     await logEmailAudit(mailOptions, 'FAILED', error.message);
-    throw error; // Never swallow exceptions
+    throw error;
   }
 }
 

@@ -21,6 +21,7 @@ const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'));
 const ODCorrection = lazy(() => import('./pages/ODCorrection'));
 const SecurityProfile = lazy(() => import('./pages/SecurityProfile'));
 const EventTracking = lazy(() => import('./pages/EventTracking'));
+const VenueManagement = lazy(() => import('./pages/VenueManagement'));
 
 import { ROLE_PATHS, getRolePath } from './utils/routeUtils';
 
@@ -40,6 +41,7 @@ const RoleRoutes = () => (
     <Route path="create-event" element={<CreateEvent />} />
     <Route path="explore" element={<ExploreEvents />} />
     <Route path="iqac" element={<IQACSubmission />} />
+    <Route path="venue-management" element={<VenueManagement />} />
     <Route path="manage-students" element={<ManageStudents />} />
 
     <Route path="academic-calendar" element={<AcademicCalendar />} />

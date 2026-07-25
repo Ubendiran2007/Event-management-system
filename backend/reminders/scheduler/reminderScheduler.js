@@ -6,6 +6,7 @@ const approvalReminderPolicy = require('../policies/approvalReminderPolicy');
 const registrationReminderPolicy = require('../policies/registrationReminderPolicy');
 const odReminderPolicy = require('../policies/odReminderPolicy');
 const complianceReminderPolicy = require('../policies/complianceReminderPolicy');
+const venueCleanupPolicy = require('../policies/venueCleanupPolicy');
 
 const reminderService = require('../services/reminderService');
 const suppressionRules = require('../suppression/suppressionRules');
@@ -18,7 +19,8 @@ class ReminderScheduler {
       approvalReminderPolicy,
       registrationReminderPolicy,
       odReminderPolicy,
-      complianceReminderPolicy
+      complianceReminderPolicy,
+      venueCleanupPolicy
     ];
   }
 

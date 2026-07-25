@@ -63,7 +63,7 @@ const logAudit = (params) => {
   };
 
   // Do not await to ensure it's non-blocking
-  dispatchLog('auditLogs', logEntry);
+  dispatchLog('eventAuditLogs', logEntry);
 };
 
 /**
@@ -86,7 +86,7 @@ const logActivity = (params) => {
     retry: retry || null
   };
 
-  dispatchLog('activityLogs', logEntry);
+  dispatchLog('eventActivity', logEntry);
 };
 
 /**

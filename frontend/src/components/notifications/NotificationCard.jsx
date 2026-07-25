@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Check, Archive, Trash2, Calendar, UserPlus, FileText, CheckCircle, AlertTriangle, AlertCircle, Info } from 'lucide-react';
-import { useNotifications } from '../../../hooks/useNotifications';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const getIcon = (iconStr) => {
   switch (iconStr) {

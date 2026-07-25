@@ -19,9 +19,12 @@ const odRequestsRoutes = require('./routes/odRequests');
 const correctionRequestsRoutes = require('./routes/correctionRequests');
 const securityRoutes = require('./routes/security');
 const usersRoutes = require('./routes/users');
+const venuesRoutes = require('./routes/venues');
 const analyticsRoutes = require('./routes/analytics');
 const notificationsRoutes = require('./routes/notifications');
 const preferencesRoutes = require('./routes/preferences');
+const invitationsRoutes = require('./routes/invitations');
+const postEventRoutes = require('./routes/postEvent');
 const { startEventAutoRejectionJob } = require('./services/eventAutoRejectionService');
 const { startFeedbackReminderJob } = require('./services/feedbackReminderService');
 require('./notifications/orchestrator/notificationOrchestrator'); // Initialize the orchestrator to listen to the EventBus
@@ -30,6 +33,8 @@ const workerSupervisor = require('./notifications/queue/workerSupervisor');
 workerSupervisor.start(); // Start background queue workers
 const reminderScheduler = require('./reminders/scheduler/reminderScheduler');
 reminderScheduler.start(); // Start the policy-based reminder engine
+const mailWorker = require('./workers/mailWorker');
+mailWorker.start(); // Start async notification queue worker
 
 const app = express();
 app.set('trust proxy', 1);
@@ -98,6 +103,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/explore', exploreRoutes);
 app.use('/api/iqac', iqacRoutes);
 app.use('/api/students', studentsRoutes);
+app.use('/api/venues', venuesRoutes);
 app.use('/api/academic-batches', academicBatchesRoutes);
 app.use('/api/academic-calendar', academicCalendarRoutes);
 app.use('/api/correction-requests', correctionRequestsRoutes);
@@ -106,6 +112,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/preferences', preferencesRoutes);
+app.use('/api/invitations', invitationsRoutes);
+app.use('/api/post-event', postEventRoutes);
 
 // ── Global Error Handler ─────────────────────────────────────────────────────
 app.use(errorHandler);

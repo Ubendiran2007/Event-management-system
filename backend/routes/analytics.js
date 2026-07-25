@@ -6,6 +6,8 @@ const { requireAuth } = require('../middleware/auth');
 router.use(requireAuth);
 
 const { logActivity, logAudit } = require('../utils/logger');
+const AnalyticsService = require('../services/analyticsService');
+const { UserRole } = require('../events/constants/eventTypes');
 
 // ==========================================
 // POST /api/analytics/log-export
@@ -52,6 +54,40 @@ router.post('/log-export', async (req, res) => {
   } catch (error) {
     console.error('Failed to log export:', error);
     return res.status(500).json({ success: false, message: 'Failed to log export' });
+  }
+});
+
+
+
+// ==========================================
+// GET /api/analytics/operational
+// ==========================================
+router.get('/operational', async (req, res) => {
+  try {
+    const data = await AnalyticsService.getOperationalAnalytics();
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// GET /api/analytics/reporting
+// ==========================================
+router.get('/reporting', async (req, res) => {
+  try {
+    if (req.user.role !== UserRole.IQAC && req.user.role !== UserRole.SUPER_ADMIN) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Admin access required.' });
+    }
+
+    const month = parseInt(req.query.month) || new Date().getMonth() + 1;
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const department = req.query.department || null;
+
+    const data = await AnalyticsService.getReportingAnalytics(month, year, department);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

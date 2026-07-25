@@ -32,6 +32,7 @@ export const StudentStatus = {
 };
 
 export const EventStatus = {
+  DRAFT: 'DRAFT',
   PENDING_CLASS_ADVISOR: 'PENDING_CLASS_ADVISOR',
   PENDING_HOD: 'PENDING_HOD',
   PENDING_DEPARTMENTS: 'PENDING_DEPARTMENTS',

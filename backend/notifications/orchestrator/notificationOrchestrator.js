@@ -8,22 +8,67 @@ class NotificationOrchestrator {
   }
 
   setupListeners() {
-    // 0. Listen to EVENT_CREATED
-    eventBus.on('EVENT_CREATED', async (payload) => {
+    // 0. Listen to EVENT_CREATED (Owner)
+    eventBus.on(NOTIFICATION_TYPES.EVENT_CREATED, async (payload) => {
       await this.processEvent(payload, {
-        type: 'EVENT_CREATED',
+        type: NOTIFICATION_TYPES.EVENT_CREATED,
         category: NOTIFICATION_CATEGORIES.EVENT,
         priority: PRIORITY_LEVELS.MEDIUM,
-        title: `New Event Created: ${payload.metadata?.eventTitle || 'Untitled'}`,
-        message: `An event requires your approval in department ${payload.metadata?.department || 'GEN'}.`,
+        title: `Event Draft Created: ${payload.metadata?.eventTitle || 'Untitled'}`,
+        message: `Your draft event was created. Don't forget to submit for approval.`,
         icon: 'calendar-plus',
         color: 'blue',
+        deepLink: `/dashboard/events/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP]
+      });
+    });
+
+    // MANAGER_INVITED (Manager)
+    eventBus.on(NOTIFICATION_TYPES.MANAGER_INVITED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.MANAGER_INVITED,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.MEDIUM,
+        title: `Manager Invitation`,
+        message: `You have been invited to manage ${payload.metadata?.eventTitle}.`,
+        icon: 'users',
+        color: 'blue',
+        deepLink: `/dashboard/invitations`,
+        channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
+      });
+    });
+
+    // MANAGER_ACCEPTED (Owner)
+    eventBus.on(NOTIFICATION_TYPES.MANAGER_ACCEPTED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.MANAGER_ACCEPTED,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.LOW,
+        title: `Manager Accepted`,
+        message: `${payload.metadata?.managerName} accepted the invitation for ${payload.metadata?.eventTitle}.`,
+        icon: 'user-check',
+        color: 'green',
+        deepLink: `/dashboard/events/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP]
+      });
+    });
+
+    // EVENT_SUBMITTED (Faculty / First Approver)
+    eventBus.on(NOTIFICATION_TYPES.EVENT_SUBMITTED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.EVENT_SUBMITTED,
+        category: NOTIFICATION_CATEGORIES.APPROVAL,
+        priority: PRIORITY_LEVELS.HIGH,
+        title: `Approval Required`,
+        message: `Event ${payload.metadata?.eventTitle} is awaiting your approval.`,
+        icon: 'clock',
+        color: 'amber',
         deepLink: `/dashboard/approvals`,
         channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
       });
     });
 
-    // 1. Listen to EVENT_APPROVED
+    // 1. Listen to EVENT_APPROVED / APPROVAL_GRANTED (Owner)
     eventBus.on(NOTIFICATION_TYPES.EVENT_APPROVED, async (payload) => {
       await this.processEvent(payload, {
         type: NOTIFICATION_TYPES.EVENT_APPROVED,
@@ -35,6 +80,36 @@ class NotificationOrchestrator {
         color: 'green',
         deepLink: `/dashboard/events/${payload.entityId}`,
         channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
+      });
+    });
+
+    // APPROVAL_REJECTED (Owner)
+    eventBus.on(NOTIFICATION_TYPES.APPROVAL_REJECTED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.APPROVAL_REJECTED,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.HIGH,
+        title: `Event Rejected: ${payload.metadata?.eventTitle}`,
+        message: `Your event request was rejected: ${payload.metadata?.reason}.`,
+        icon: 'x-circle',
+        color: 'red',
+        deepLink: `/dashboard/events/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
+      });
+    });
+
+    // EVENT_PUBLISHED (Registered Students / Public Announcement)
+    eventBus.on(NOTIFICATION_TYPES.EVENT_PUBLISHED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.EVENT_PUBLISHED,
+        category: NOTIFICATION_CATEGORIES.ANNOUNCEMENT,
+        priority: PRIORITY_LEVELS.MEDIUM,
+        title: `New Event Published`,
+        message: `${payload.metadata?.eventTitle} is now published and open for registrations!`,
+        icon: 'bell',
+        color: 'blue',
+        deepLink: `/events/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP]
       });
     });
 
@@ -143,6 +218,51 @@ class NotificationOrchestrator {
       });
     });
 
+    // EVENT_STARTED (Managers)
+    eventBus.on(NOTIFICATION_TYPES.EVENT_STARTED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.EVENT_STARTED,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.MEDIUM,
+        title: `Event Started`,
+        message: `${payload.metadata?.eventTitle} has officially started!`,
+        icon: 'play',
+        color: 'green',
+        deepLink: `/dashboard/events/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP]
+      });
+    });
+
+    // EVENT_ENDED (Managers)
+    eventBus.on(NOTIFICATION_TYPES.EVENT_ENDED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.EVENT_ENDED,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.MEDIUM,
+        title: `Event Ended`,
+        message: `${payload.metadata?.eventTitle} has ended. The Post Event Workspace is now active.`,
+        icon: 'stop-circle',
+        color: 'gray',
+        deepLink: `/dashboard/post-event/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
+      });
+    });
+
+    // POST_EVENT_PENDING (Managers)
+    eventBus.on(NOTIFICATION_TYPES.POST_EVENT_PENDING, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.POST_EVENT_PENDING,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.HIGH,
+        title: `Post Event Action Required`,
+        message: `Please complete the post event workspace for ${payload.metadata?.eventTitle}.`,
+        icon: 'alert-circle',
+        color: 'amber',
+        deepLink: `/dashboard/post-event/${payload.entityId}`,
+        channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
+      });
+    });
+
     // 4. Listen to Post-Event Reports
     eventBus.on(NOTIFICATION_TYPES.REPORT_SUBMITTED, async (payload) => {
       await this.processEvent(payload, {
@@ -196,6 +316,21 @@ class NotificationOrchestrator {
         icon: 'x-circle',
         color: 'red',
         deepLink: `/dashboard/events/${payload.entityId}/report`,
+        channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
+      });
+    });
+
+    // IQAC_VERIFIED (Owner)
+    eventBus.on(NOTIFICATION_TYPES.IQAC_VERIFIED, async (payload) => {
+      await this.processEvent(payload, {
+        type: NOTIFICATION_TYPES.IQAC_VERIFIED,
+        category: NOTIFICATION_CATEGORIES.EVENT,
+        priority: PRIORITY_LEVELS.HIGH,
+        title: `Event Fully Verified`,
+        message: `IQAC has verified all post-event details for ${payload.metadata?.eventTitle}. Event is now Completed.`,
+        icon: 'check-circle',
+        color: 'green',
+        deepLink: `/dashboard/events/${payload.entityId}`,
         channels: [CHANNELS.IN_APP, CHANNELS.EMAIL]
       });
     });

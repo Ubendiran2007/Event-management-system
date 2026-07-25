@@ -29,41 +29,40 @@ const eventsCollection = collection(db, 'events');
 
 // ==================== STATIC FETCHES ====================
 
-export const fetchExploreEvents = async (currentUser) => {
+import { auth } from '../firebase';
+
+export const fetchExploreEvents = async (currentUser, cursor = null, pageSize = 20) => {
   const startTime = performance.now();
   try {
-    const q = query(
-      eventsCollection, 
-      where('status', 'in', ['POSTED', 'POSTPONED', 'COMPLETED', 'CANCELLED'])
-    );
-    const snapshot = await getDocs(q);
-    const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+    const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
     
-    // Client side filtering exactly matching ExploreEventsNew logic
-    const filtered = events.filter(e => {
-        if (e.status === 'CANCELLED' && !e.iqacApprovedAt) return false;
-        if (currentUser) {
-            const globalRoles = [
-              'IQAC_TEAM', 'SYSTEM_ADMIN', 'HR_TEAM', 'AUDIO_TEAM',
-              'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA'
-            ];
-            const hasGlobalVisibility = globalRoles.includes(currentUser?.role);
-            const isOpenToAll = e.openToAllDepartments === true || e.audienceScope === 'Open To All' || String(e.department).toLowerCase() === 'overall';
-            const isMyDept = String(e.department).toLowerCase() === String(currentUser?.department).toLowerCase() || (e?.requisition?.step1?.department === currentUser?.department);
-            const isSelectedDept = Array.isArray(e.selectedDepartments) && e.selectedDepartments.includes(currentUser?.department);
-            
-            if (!hasGlobalVisibility && !isOpenToAll && !isMyDept && !isSelectedDept) {
-              return false;
-            }
-        }
-        return true;
+    let url = `${baseUrl}/api/events/explore?pageSize=${pageSize}`;
+    if (cursor) {
+      url += `&lastEventId=${cursor}`;
+    }
+
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     });
+
+    if (!res.ok) {
+      throw new Error('Failed to fetch explore events from backend');
+    }
+
+    const data = await res.json();
+    logQuery('Explore (Backend API)', data.events?.length || 0, false, startTime);
     
-    logQuery('Explore', snapshot.size, false, startTime);
-    return filtered;
+    return {
+      events: data.events || [],
+      nextCursor: data.nextCursor || null,
+      hasMore: data.hasMore || false
+    };
   } catch (err) {
-    console.error('Error fetching explore events:', err);
-    return [];
+    console.error('Error fetching explore events via API:', err);
+    return { events: [], nextCursor: null, hasMore: false };
   }
 };
 

@@ -33,7 +33,8 @@ import { checkVenueAvailability } from '../services/eventService';
 import { useCalendarContext } from '../context/CalendarContext';
 import { EventStatus, UserRole } from '../types';
 import { validateUpload } from '../utils/fileValidation';
-
+import EventManagerSelector from '../components/EventManagerSelector';
+import VolunteerRequirementSelector from '../components/VolunteerRequirementSelector';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Hackathon', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
@@ -213,6 +214,9 @@ const CreateEvent = () => {
   const { createEvent, currentUser } = useAppContext();
   const { getOverlappingHolidays, getOverlappingExams, checkWorkingDays, getActiveSemester } = useCalendarContext();
 
+  const reservationState = location.state?.reservation || null;
+  const lockedVenue = location.state?.venue || null;
+
   // If editing a rejected event for resubmission
   const isResubmissionEdit = location.state?.editMode === true;
   const editingEvent = location.state?.editingEvent || null;
@@ -278,10 +282,10 @@ const CreateEvent = () => {
     isIIC: 'No',
     audienceScope: 'Open To All',
     selectedDepartments: [],
-    startDate: '',
-    endDate: '',
-    startTime: '09:00',
-    endTime: '17:00',
+    startDate: location.state?.date || '',
+    endDate: location.state?.date || '',
+    startTime: location.state?.startTime || '09:00',
+    endTime: location.state?.endTime || '17:00',
     organizerName: currentUser?.name || '',
     department: currentUser?.department || '',
     mobileNumber: '',
@@ -292,6 +296,8 @@ const CreateEvent = () => {
     resourcePersonFeedbackLink: '',
     // Dynamic guest list (replaces old flat fields noOfGuests/guestNames/guestDesignation/guestOrganization)
     guests: [],
+    managers: [],
+    volunteerRequirements: [],
     schedule: [
       { id: Date.now(), time: '09:00', agenda: 'Inauguration', speaker: '' }
     ],
@@ -667,6 +673,8 @@ const CreateEvent = () => {
               organization: step1.guestDetails.organizationIndustry || '',
             }] : []),
           ],
+      managers: step1.managers || [],
+      volunteerRequirements: step1.volunteerRequirements || [],
       venueRequired: step1.requirements?.venueRequired ?? true,
       audioRequired: step1.requirements?.audioRequired ?? true,
       ictsRequired: step1.requirements?.ictsRequired ?? true,
@@ -1224,28 +1232,12 @@ const CreateEvent = () => {
         setStepError('Number of venues required must be a number.');
         return false;
       }
-      const hasSelectedVenue = Object.values(form.venueSelection || {}).some((v) => v.selected);
-      if (!hasSelectedVenue) {
-        setStepError('Please select at least one venue option.');
-        return false;
-      }
-      // Every selected venue must have qty >= 1
-      const venueZeroQty = Object.entries(form.venueSelection || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
-      if (venueZeroQty) {
-        setStepError(`Quantity for "${venueZeroQty[0]}" must be at least 1.`);
-        return false;
-      }
       
-      const totalAllocated = Object.values(form.venueSelection || {}).reduce((acc, v) => acc + (v.selected ? Number(v.qty || 0) : 0), 0);
-      const requiredVenues = Number(form.numberOfVenuesRequired);
-      if (totalAllocated < requiredVenues) {
-        setStepError(`Total Venue Allocation (${totalAllocated}) is less than Required (${requiredVenues}). Please match the required count.`);
+      if (!lockedVenue) {
+        setStepError('No venue reserved. Please return to the dashboard and reserve a venue.');
         return false;
       }
-      if (totalAllocated > requiredVenues) {
-        setStepError(`Total Venue Allocation (${totalAllocated}) exceeds Required (${requiredVenues}). Please match the required count.`);
-        return false;
-      }
+
       // Every selected hall requirement must have qty >= 1
       const hallZeroQty = Object.entries(form.hallRequirements || {}).find(([, v]) => v.selected && Number(v.qty) <= 0);
       if (hallZeroQty) {
@@ -1469,10 +1461,10 @@ const CreateEvent = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const buildPayload = () => {
-    const initialStatus = currentUser?.role === UserRole.FACULTY
+  const buildPayload = (statusOverride) => {
+    const initialStatus = statusOverride || (currentUser?.role === UserRole.FACULTY
       ? EventStatus.PENDING_HOD
-      : EventStatus.PENDING_FACULTY;
+      : EventStatus.PENDING_FACULTY);
     let posterWorkflow = {
       requested: false,
       status: 'NOT_REQUIRED',
@@ -1517,7 +1509,9 @@ const CreateEvent = () => {
       date: form.startDate === form.endDate ? form.startDate : `${form.startDate} - ${form.endDate}`,
       startTime: form.startTime,
       endTime: form.endTime,
-      venue: form.audioVenueName || Object.entries(form.venueSelection).find(([, v]) => v.selected)?.[0] || '',
+      venue: lockedVenue?.name || form.audioVenueName || Object.entries(form.venueSelection).find(([, v]) => v.selected)?.[0] || '',
+      venueId: lockedVenue?.id || null,
+      reservationId: reservationState?.reservationId || null,
       organizerId: currentUser?.id || '',
       organizerName: form.organizerName,
       organizerEmail: currentUser?.email || '',
@@ -1569,6 +1563,8 @@ const CreateEvent = () => {
             guestDesignation: (form.guests || []).map(g => g.designation).filter(Boolean).join(', '),
             organizationIndustry: (form.guests || []).map(g => g.organization).filter(Boolean).join(', '),
           },
+          managers: form.managers || [],
+          volunteerRequirements: form.volunteerRequirements || [],
           requirements: {
             venueRequired: form.venueRequired,
             audioRequired: form.audioRequired,
@@ -1634,6 +1630,55 @@ const CreateEvent = () => {
         annexureVI_media: form.mediaRequired ? form.media : null,
       },
     };
+  };
+
+  const handleSaveDraft = async () => {
+    setIsSubmitting(true);
+    setSubmitError('');
+    try {
+      const payload = buildPayload(EventStatus.DRAFT);
+      
+      let eventId = isResubmissionEdit ? editingEvent.id : null;
+      if (!eventId) {
+        const eventRef = doc(collection(db, 'events'));
+        eventId = eventRef.id;
+      }
+      payload.id = eventId;
+
+      if (form.posterFile) {
+        try {
+          const metadata = await uploadFileToStorage(
+            form.posterFile, 
+            `events/${eventId}/poster_${Date.now()}.jpg`
+          );
+          payload.posterStorage = metadata;
+          payload.posterDataUrl = null;
+        } catch (uploadErr) {
+          throw new Error(`Poster upload failed: ${uploadErr.message}`);
+        }
+      } else if (form.posterStorage) {
+         payload.posterStorage = form.posterStorage;
+      }
+
+      const endpoint = isResubmissionEdit
+        ? `${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${editingEvent.id}/resubmit-edit`
+        : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events';
+      const method = isResubmissionEdit ? 'PUT' : 'POST';
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to save draft');
+      }
+      navigate('/dashboard');
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to save draft');
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -2118,6 +2163,14 @@ const CreateEvent = () => {
             </div>
 
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
+              <h4 className="font-semibold text-slate-800 mb-3">Event Managers</h4>
+              <EventManagerSelector 
+                selectedManagers={form.managers || []} 
+                onChange={(newManagers) => setField('managers', newManagers)} 
+              />
+            </div>
+
+            <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3 text-sm">Feedback Links (Google Forms)</h4>
             </div>
 
@@ -2240,6 +2293,14 @@ const CreateEvent = () => {
             </div>
 
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
+              <VolunteerRequirementSelector 
+                requirements={form.volunteerRequirements || []}
+                departments={activeDepartments}
+                onChange={(newReqs) => setField('volunteerRequirements', newReqs)}
+              />
+            </div>
+
+            <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3">Other Requirements</h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {['gifts', 'trophy', 'bouquet'].map((key) => (
@@ -2354,41 +2415,22 @@ const CreateEvent = () => {
             </div>
 
             <div className="md:col-span-2">
-              <h4 className="font-semibold text-slate-800 mb-1">Venue Selection <span className="text-red-500">*</span><span className="text-xs font-normal text-slate-500 ml-1">(Qty must be ≥ 1 when checked)</span></h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {VENUE_OPTIONS.map((v) => {
-                  const item = form.venueSelection[v];
-                  const isTouched = touchedQuantities[`venueSelection.${v}`];
-                  const qtyInvalid = (qtyErrorsVisible || isTouched) && item.selected && Number(item.qty || 0) <= 0;
-                  return (
-                    <div key={v} className={`rounded-lg border p-3 flex items-center gap-3 ${qtyInvalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'}`}>
-                      <input
-                        type="checkbox"
-                        checked={item.selected}
-                        onChange={(e) => {
-                          updateQtyMap('venueSelection', v, { selected: e.target.checked, qty: e.target.checked ? item.qty : 0 });
-                          setQtyErrorsVisible(false);
-                        }}
-                      />
-                      <span className="text-sm flex-1">{v}</span>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          disabled={!item.selected}
-                          className={`w-24 px-3 py-2 rounded-lg border text-sm transition-colors ${qtyInvalid ? 'border-red-500 bg-red-50 text-red-700 focus:outline-none focus:ring-1 focus:ring-red-400' : 'border-slate-200'} disabled:opacity-40`}
-                          value={item.qty}
-                          onKeyDown={onlyDigitsKeyDown}
-                          onChange={(e) => updateQtyMap('venueSelection', v, { qty: Number(e.target.value || 0) })}
-                          onBlur={() => setQtyTouched('venueSelection', v, true)}
-                          placeholder="Qty"
-                        />
-                        {qtyInvalid && <span className="text-xs text-red-600">⚠ Enter qty</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <h4 className="font-semibold text-slate-800 mb-1">Reserved Venue</h4>
+              {lockedVenue ? (
+                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div>
+                    <p className="font-bold text-slate-900">{lockedVenue.name}</p>
+                    <p className="text-sm text-slate-500">{lockedVenue.building} - Floor {lockedVenue.floor}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-not-allowed">
+                    <span role="img" aria-label="locked">🔒</span> Reserved
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
+                  No venue was reserved through the selection modal. Please go back to the dashboard to reserve a venue.
+                </div>
+              )}
             </div>
 
             <div className="md:col-span-2">
@@ -3503,6 +3545,30 @@ const CreateEvent = () => {
     <Layout>
       <div className="w-full relative p-4 sm:p-6 pb-20 max-w-7xl mx-auto">
         <div className="sticky top-0 z-30 bg-[#f8fafc] pt-4 sm:pt-6 pb-3 -mt-4 sm:-mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 mb-6 border-b border-slate-200">
+          
+          {reservationState && lockedVenue && (
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Venue Reserved</p>
+                  <p className="text-sm font-medium text-emerald-700">{lockedVenue.name} <span className="text-emerald-600/70 ml-1">({reservationState.expiresIn || '58'} mins left)</span></p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  // In a real implementation, call an API to release the reservation
+                  navigate('/dashboard'); // Go back to dashboard to select a new venue
+                }}
+                className="px-3 py-1.5 bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-bold rounded-lg transition-colors"
+              >
+                Change Venue
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-row items-center justify-between gap-3 mb-4">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">Create Event Requisition</h2>
@@ -3573,26 +3639,37 @@ const CreateEvent = () => {
               <ChevronLeft size={16} /> Previous
             </button>
 
-            {currentStep !== STEP_KEYS.REVIEW ? (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={goNext}
+                onClick={handleSaveDraft}
                 disabled={isSubmitting}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-60"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 font-semibold disabled:opacity-60 transition-colors"
               >
-                Next <ChevronRight size={16} />
+                Save Draft
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-60"
-              >
-                {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                {isSubmitting ? (isResubmissionEdit ? 'Resubmitting...' : 'Submitting...') : (isResubmissionEdit ? 'Update & Resubmit' : 'Submit Requisition')}
-              </button>
-            )}
+
+              {currentStep !== STEP_KEYS.REVIEW ? (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-60"
+                >
+                  Next <ChevronRight size={16} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-60"
+                >
+                  {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  {isSubmitting ? (isResubmissionEdit ? 'Resubmitting...' : 'Submitting...') : (isResubmissionEdit ? 'Update & Resubmit' : 'Submit Requisition')}
+                </button>
+              )}
+            </div>
           </div>
         </motion.div>
       </div>
