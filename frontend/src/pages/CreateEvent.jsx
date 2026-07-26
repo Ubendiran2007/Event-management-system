@@ -309,6 +309,8 @@ const CreateEvent = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [stepError, setStepError] = useState('');
+  const [editImpact, setEditImpact] = useState(null);
+  const [checkingImpact, setCheckingImpact] = useState(false);
   // Per-field inline error messages
   const [fieldErrors, setFieldErrors] = useState({});
   // Shows red on qty=0 rows ONLY after user clicks Next and validation fails
@@ -792,6 +794,110 @@ const CreateEvent = () => {
       schedule: editingEvent.requisition?.step1?.schedule || editingEvent.schedule || [{ id: Date.now(), time: '09:00', agenda: 'Inauguration', speaker: '' }],
     }));
   }, [editingEvent, currentUser]);
+
+  useEffect(() => {
+    if (!isResubmissionEdit || !editingEvent?.id || !form.startDate) {
+      setEditImpact(null);
+      return;
+    }
+    const checkImpact = async () => {
+      setCheckingImpact(true);
+      try {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${editingEvent.id}/check-edit-impact`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            date: form.startDate,
+            startTime: form.startTime,
+            endTime: form.endTime,
+            managers: form.managers || []
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setEditImpact(data);
+        }
+      } catch (err) {
+        console.error('Error checking edit impact:', err);
+      } finally {
+        setCheckingImpact(false);
+      }
+    };
+    const timer = setTimeout(checkImpact, 600);
+    return () => clearTimeout(timer);
+  }, [isResubmissionEdit, editingEvent, form.startDate, form.startTime, form.endTime, form.managers]);
+
+  const renderEditImpactBanner = () => {
+    if (checkingImpact) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-sm text-slate-600 animate-pulse">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          Analyzing schedule impact of time & manager changes...
+        </div>
+      );
+    }
+    if (!editImpact) return null;
+
+    const hasConflicts = editImpact.affectedStudentsCount > 0;
+    return (
+      <div className={`mb-6 p-4 rounded-2xl border transition-all shadow-sm ${
+        hasConflicts 
+          ? 'bg-amber-50/90 border-amber-300 text-amber-900' 
+          : 'bg-emerald-50/90 border-emerald-300 text-emerald-900'
+      }`}>
+        <div className="flex items-start gap-3">
+          <div className={`p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs ${
+            hasConflicts ? 'bg-amber-600' : 'bg-emerald-600'
+          }`}>
+            {hasConflicts ? '⚠️' : '✓'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h5 className="font-bold text-sm">
+              {hasConflicts ? 'Event Edit Impact Assessment' : 'No Schedule Conflicts Detected'}
+            </h5>
+            <p className="text-xs mt-0.5 font-medium opacity-90">
+              {editImpact.summary || `${editImpact.affectedStudentsCount} students affected`}
+            </p>
+
+            {hasConflicts && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {editImpact.registrationConflictsCount > 0 && (
+                  <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200">
+                    <span className="font-bold text-amber-800">👥 {editImpact.registrationConflictsCount} Registered Participant(s) Affected:</span>
+                    <ul className="mt-1 space-y-0.5 max-h-24 overflow-y-auto pl-2 list-disc text-slate-700">
+                      {editImpact.details?.registrationConflicts?.slice(0, 5).map((c, idx) => (
+                        <li key={idx} className="truncate">
+                          {c.studentName} — busy with {c.conflicts?.[0]?.conflictingEvent || 'another event'}
+                        </li>
+                      ))}
+                      {(editImpact.details?.registrationConflicts?.length || 0) > 5 && (
+                        <li className="text-slate-500 font-medium">...and {editImpact.details.registrationConflicts.length - 5} more</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+                {editImpact.managerConflictsCount > 0 && (
+                  <div className="p-2.5 bg-white/80 rounded-xl border border-amber-200">
+                    <span className="font-bold text-red-800">🛠️ {editImpact.managerConflictsCount} Assigned Manager(s) Affected:</span>
+                    <ul className="mt-1 space-y-0.5 max-h-24 overflow-y-auto pl-2 list-disc text-slate-700">
+                      {editImpact.details?.managerConflicts?.map((c, idx) => (
+                        <li key={idx} className="truncate">
+                          Manager ID #{c.studentId} — busy with {c.conflictingEvent} ({c.startTime}-{c.endTime})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const advanceStep = (prev, stepsLen) => {
     const next = Math.min(prev + 1, stepsLen - 1);
@@ -1757,6 +1863,12 @@ const CreateEvent = () => {
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
+        if (response.status === 409) {
+          const conflictDetails = data.conflicts && data.conflicts.length > 0 
+            ? data.conflicts.map(c => `• ${c.studentName || 'Manager'} (${c.studentId}) is busy with "${c.conflictingEvent}" (${c.startTime}-${c.endTime})`).join('\n')
+            : '';
+          throw new Error(`Manager Availability Conflict:\n${data.message}\n${conflictDetails}`);
+        }
         throw new Error(data.message || 'Failed to save draft');
       }
       navigate('/dashboard');
@@ -1848,6 +1960,12 @@ const CreateEvent = () => {
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
+        if (response.status === 409) {
+          const conflictDetails = data.conflicts && data.conflicts.length > 0 
+            ? data.conflicts.map(c => `• ${c.studentName || 'Manager'} (${c.studentId}) is busy with "${c.conflictingEvent}" (${c.startTime}-${c.endTime})`).join('\n')
+            : '';
+          throw new Error(`Manager Availability Conflict:\n${data.message}\n${conflictDetails}`);
+        }
         throw new Error(data.message || (isResubmissionEdit ? 'Failed to update and resubmit event' : 'Failed to create event'));
       }
       navigate('/dashboard');
@@ -1876,6 +1994,7 @@ const CreateEvent = () => {
     if (currentStep === STEP_KEYS.EVENT_INFO) {
       return (
         <Card title="Step 1 - Event Requisition (Basic Event Information)" icon={ClipboardList}>
+          {isResubmissionEdit && renderEditImpactBanner()}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1 md:col-span-2">
               <Lbl required>Event Name</Lbl>
@@ -2283,7 +2402,12 @@ const CreateEvent = () => {
               <h4 className="font-semibold text-slate-800 mb-3">Event Managers</h4>
               <EventManagerSelector 
                 selectedManagers={form.managers || []} 
-                onChange={(newManagers) => setField('managers', newManagers)} 
+                onChange={(newManagers) => setField('managers', newManagers)}
+                eventId={editingEvent?.id || null}
+                date={form.startDate || ''}
+                startTime={form.startTime || '00:00'}
+                endTime={form.endTime || '23:59'}
+                department={form.department || ''}
               />
             </div>
 

@@ -201,7 +201,7 @@ const Dashboard = () => {
   
   const segments = location.pathname.split('/').filter(Boolean);
   const feature = segments[segments.length - 1];
-  const validFeatures = ['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations'];
+  const validFeatures = ['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'my-schedule'];
   const currentFeature = validFeatures.includes(feature) ? feature : 'dashboard';
   
   const [activeTab, setActiveTab] = useState(currentFeature);
@@ -257,6 +257,52 @@ const Dashboard = () => {
       fetchSummary();
     }
   }, [currentUser]);
+
+  const [mySchedule, setMySchedule] = useState(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+
+  useEffect(() => {
+    const fetchSchedule = async () => {
+      if (activeTab !== 'my-schedule') return;
+      setLoadingSchedule(true);
+      try {
+        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events/my-schedule', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setMySchedule(data);
+        }
+      } catch (err) {
+        console.error('Failed to load my schedule:', err);
+      } finally {
+        setLoadingSchedule(false);
+      }
+    };
+    if (currentUser) {
+      fetchSchedule();
+    }
+  }, [currentUser, activeTab]);
+
+  const isTimeOverlapping = (itemA, itemB) => {
+    if (!itemA.date || !itemB.date) return false;
+    const dStartA = itemA.date;
+    const dEndA = itemA.endDate || itemA.date;
+    const dStartB = itemB.date;
+    const dEndB = itemB.endDate || itemB.date;
+    if (dEndA < dStartB || dStartA > dEndB) return false;
+    const sA = (itemA.startTime || '00:00').trim();
+    const eA = (itemA.endTime || '23:59').trim();
+    const sB = (itemB.startTime || '00:00').trim();
+    const eB = (itemB.endTime || '23:59').trim();
+    const startIsoA = `${dStartA}T${sA}`;
+    const endIsoA = `${dEndA}T${eA}`;
+    const startIsoB = `${dStartB}T${sB}`;
+    const endIsoB = `${dEndB}T${eB}`;
+    return (startIsoA < endIsoB) && (endIsoA > startIsoB);
+  };
 
   const handleResetAllOD = async () => {
     if (window.confirm("WARNING: This will reset the OD used count to ZERO for ALL students across the entire institution. This action is typically only done at the start of a new semester.\n\nAre you absolutely sure you want to proceed?")) {
@@ -2373,6 +2419,99 @@ const Dashboard = () => {
                           </div>
                           <h3 className="text-slate-800 font-bold text-lg mb-1">No registrations found</h3>
                           <p className="text-slate-500 font-medium text-sm">You haven't registered for any events yet.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* My Schedule Tab */}
+                  {activeTab === 'my-schedule' && (
+                    <div className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm overflow-y-auto">
+                      {loadingSchedule ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                          <p className="text-slate-500 font-medium text-sm">Loading your chronological schedule...</p>
+                        </div>
+                      ) : !mySchedule || !mySchedule.schedule || mySchedule.schedule.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30 rounded-xl">
+                          <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
+                            <Calendar size={36} />
+                          </div>
+                          <h3 className="text-slate-800 font-bold text-lg mb-1">Your schedule is clear</h3>
+                          <p className="text-slate-500 font-medium text-sm">No upcoming event participations, manager assignments, or OD duties found.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                              <span>📅 Chronological Timeline</span>
+                              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                                {mySchedule.schedule.length} Item(s)
+                              </span>
+                            </h3>
+                          </div>
+                          
+                          <div className="relative border-l-2 border-blue-200 ml-4 pl-6 space-y-6 my-4">
+                            {mySchedule.schedule.map((item, idx) => {
+                              const conflicts = mySchedule.schedule.filter((other, oIdx) => oIdx !== idx && isTimeOverlapping(item, other));
+                              const hasConflict = conflicts.length > 0;
+
+                              return (
+                                <div key={item.id || idx} className="relative group">
+                                  <div className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 bg-white transition-all ${
+                                    hasConflict ? 'border-red-500 bg-red-100 shadow-sm animate-pulse' : 'border-blue-500 group-hover:bg-blue-500 group-hover:scale-125'
+                                  }`} />
+
+                                  <div className={`p-4 rounded-xl border transition-all shadow-2xs ${
+                                    hasConflict 
+                                      ? 'bg-red-50/50 border-red-300 hover:border-red-400' 
+                                      : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md'
+                                  }`}>
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-extrabold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
+                                          📅 {item.date} {item.startTime && `• ⏰ ${item.startTime} - ${item.endTime || ''}`}
+                                        </span>
+                                        {item.type === 'MANAGED_EVENT' && (
+                                          <span className="px-2.5 py-0.5 rounded-md bg-purple-100 text-purple-800 text-xs font-bold border border-purple-200">
+                                            🛠️ Event Manager
+                                          </span>
+                                        )}
+                                        {item.type === 'REGISTRATION' && (
+                                          <span className="px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200">
+                                            🎟️ Participant
+                                          </span>
+                                        )}
+                                        {item.type === 'OD_APPROVED' && (
+                                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
+                                            📋 Approved OD
+                                          </span>
+                                        )}
+                                        {item.type === 'ORGANIZED_EVENT' && (
+                                          <span className="px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200">
+                                            👑 Organizer
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {hasConflict && (
+                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-100 text-red-800 border border-red-300 text-xs font-extrabold shadow-2xs animate-bounce">
+                                          <span>⚠️ Schedule Conflict: Overlaps with "{conflicts.map(c => c.title).join(', ')}"</span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <h4 className="font-bold text-slate-900 text-base mb-1">{item.title}</h4>
+                                    
+                                    <div className="flex items-center gap-4 text-xs font-medium text-slate-500 mt-2">
+                                      <span>📍 Venue: <strong className="text-slate-700">{item.venue || 'Campus / TBA'}</strong></span>
+                                      {item.status && <span>• Status: <strong className="text-slate-700">{item.status}</strong></span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -70,6 +70,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   if (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) {
     navItems.push({ id: 'available', label: 'Available Events', icon: Compass, path: '/available' });
     navItems.push({ id: 'my-registrations', label: 'My Registrations', icon: Ticket, path: '/my-registrations' });
+    navItems.push({ id: 'my-schedule', label: 'My Schedule', icon: Calendar, path: '/my-schedule' });
   }
 
   const approvalRoles = [

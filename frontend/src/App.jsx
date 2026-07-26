@@ -36,6 +36,7 @@ const RoleRoutes = () => (
     <Route path="modifications" element={<Dashboard />} />
     <Route path="available" element={<Dashboard />} />
     <Route path="my-registrations" element={<Dashboard />} />
+    <Route path="my-schedule" element={<Dashboard />} />
     <Route path="tracking" element={<EventTracking />} />
 
     {/* Dedicated Pages */}

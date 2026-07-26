@@ -49,8 +49,11 @@ const { validateEvent } = require('../middleware/validators');
 const asyncHandler = require('../utils/asyncHandler');
 const { getUserId } = require('../utils/authHelper');
 const { logActivity } = require('../utils/logger');
-const crypto = require('crypto');
 const eventPublisher = require('../events/publishers/eventPublisher');
+const ScheduleService = require('../services/ScheduleService');
+const RegistrationConflictService = require('../services/RegistrationConflictService');
+const ManagerAvailabilityService = require('../services/ManagerAvailabilityService');
+const ManagerRecommendationService = require('../services/ManagerRecommendationService');
 
 const router = express.Router();
 
@@ -239,6 +242,25 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
     }
   }
 
+  // Validate manager assignments
+  if (payload.managers && payload.managers.length > 0) {
+    try {
+      const evDate = payload.requisition?.step1?.eventStartDate || payload.date;
+      const evStartTime = payload.requisition?.step1?.eventStartTime || payload.startTime || '00:00';
+      const evEndTime = payload.requisition?.step1?.eventEndTime || payload.endTime || '23:59';
+      await ManagerAvailabilityService.validateManagerAssignments(eventData.id || null, evDate, evStartTime, evEndTime, payload.managers, req.user);
+    } catch (err) {
+      if (err.status === 409 || (err.message && err.message.includes('CONFLICT'))) {
+        return res.status(409).json({
+          success: false,
+          message: err.message.split(':')[1] || err.message,
+          conflicts: err.conflicts || []
+        });
+      }
+      throw err;
+    }
+  }
+
   let docRef;
   if (eventData.id) {
     docRef = doc(db, 'events', eventData.id);
@@ -412,6 +434,98 @@ router.get('/explore', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to fetch explore events', error: error.message });
   }
 });
+
+// ── GET /api/events/my-schedule ─────────────────────────────────────────────
+router.get('/my-schedule', async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const schedule = await ScheduleService.getStudentSchedule(req.user.id);
+    return res.json({ success: true, schedule, total: schedule.length });
+  } catch (err) {
+    console.error('[events/my-schedule] Error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── POST /api/events/check-manager-availability ─────────────────────────────
+router.post('/check-manager-availability', async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const { eventId, date, startTime, endTime, managerIds = [] } = req.body;
+    const availability = await ManagerAvailabilityService.checkAvailability(eventId, date, startTime, endTime, managerIds);
+    return res.json(availability);
+  } catch (err) {
+    console.error('[events/check-manager-availability] Error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── POST /api/events/suggest-managers ───────────────────────────────────────
+router.post('/suggest-managers', async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const { eventId, date, startTime, endTime, department = '', limit = 5, excludedIds = [] } = req.body;
+    const suggestions = await ManagerRecommendationService.suggestManagers(eventId, date, startTime, endTime, department, limit, excludedIds);
+    return res.json({ success: true, suggestions });
+  } catch (err) {
+    console.error('[events/suggest-managers] Error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── POST /api/events/check-edit-impact & /:id/check-edit-impact ─────────────
+const checkEditImpactHandler = async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const eventId = req.params.id || req.body.eventId || null;
+    const { date, startTime, endTime, managers = [] } = req.body;
+    
+    // 1. Check registrations for this event
+    const affectedRegistrationConflicts = [];
+    if (eventId) {
+      const regSnap = await getDocs(query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId)));
+      const activeStatuses = ['REGISTERED', 'APPROVED', 'OD_APPROVED', 'ATTENDED'];
+      
+      for (const docSnap of regSnap.docs) {
+        const reg = docSnap.data();
+        if (!activeStatuses.includes(reg.status)) continue;
+        const studentId = String(reg.userId || reg.studentId);
+        if (!studentId) continue;
+        
+        const { hasConflict, conflicts } = await ScheduleService.checkOverlap(studentId, date, startTime, endTime, eventId);
+        if (hasConflict) {
+          affectedRegistrationConflicts.push({
+            studentId,
+            studentName: reg.userName || reg.name || 'Student',
+            conflicts
+          });
+        }
+      }
+    }
+
+    // 2. Check manager conflicts
+    const affectedManagerConflicts = await ManagerAvailabilityService.findConflicts(eventId, date, startTime, endTime, managers);
+
+    const totalAffected = affectedRegistrationConflicts.length + affectedManagerConflicts.length;
+    return res.json({
+      success: true,
+      affectedStudentsCount: totalAffected,
+      registrationConflictsCount: affectedRegistrationConflicts.length,
+      managerConflictsCount: affectedManagerConflicts.length,
+      details: {
+        registrationConflicts: affectedRegistrationConflicts,
+        managerConflicts: affectedManagerConflicts
+      },
+      summary: `${totalAffected} students affected -> ${affectedRegistrationConflicts.length} Registration Conflicts -> ${affectedManagerConflicts.length} Manager Conflicts`
+    });
+  } catch (err) {
+    console.error('[events/check-edit-impact] Error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+router.post('/check-edit-impact', checkEditImpactHandler);
+router.post('/:id/check-edit-impact', checkEditImpactHandler);
 
 // ── GET /api/events/:id ─────────────────────────────────────────────────────
 // Get a single event by ID
@@ -941,6 +1055,25 @@ router.put('/:id', async (req, res) => {
     }
 
     const updatePayload = { ...req.body, updatedAt: new Date().toISOString() };
+    
+    if (updatePayload.managers && updatePayload.managers.length > 0) {
+      try {
+        const evDate = updatePayload.requisition?.step1?.eventStartDate || updatePayload.date || eventSnap.data().requisition?.step1?.eventStartDate || eventSnap.data().date;
+        const evStartTime = updatePayload.requisition?.step1?.eventStartTime || updatePayload.startTime || eventSnap.data().requisition?.step1?.eventStartTime || eventSnap.data().startTime || '00:00';
+        const evEndTime = updatePayload.requisition?.step1?.eventEndTime || updatePayload.endTime || eventSnap.data().requisition?.step1?.eventEndTime || eventSnap.data().endTime || '23:59';
+        await ManagerAvailabilityService.validateManagerAssignments(req.params.id, evDate, evStartTime, evEndTime, updatePayload.managers, req.user);
+      } catch (err) {
+        if (err.status === 409 || (err.message && err.message.includes('CONFLICT'))) {
+          return res.status(409).json({
+            success: false,
+            message: err.message.split(':')[1] || err.message,
+            conflicts: err.conflicts || []
+          });
+        }
+        throw err;
+      }
+    }
+
     await updateDoc(eventRef, updatePayload);
 
     return res.json({
@@ -1017,6 +1150,25 @@ router.put('/:id/resubmit-edit', async (req, res) => {
       // Reset department approvals (except media if poster exists)
       departmentApprovals: newDeptApprovals
     };
+
+    if (updatePayload.managers && updatePayload.managers.length > 0) {
+      try {
+        const evDate = updatePayload.requisition?.step1?.eventStartDate || updatePayload.date || eventData.requisition?.step1?.eventStartDate || eventData.date;
+        const evStartTime = updatePayload.requisition?.step1?.eventStartTime || updatePayload.startTime || eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
+        const evEndTime = updatePayload.requisition?.step1?.eventEndTime || updatePayload.endTime || eventData.requisition?.step1?.eventEndTime || eventData.endTime || '23:59';
+        await ManagerAvailabilityService.validateManagerAssignments(req.params.id, evDate, evStartTime, evEndTime, updatePayload.managers, req.user);
+      } catch (err) {
+        if (err.status === 409 || (err.message && err.message.includes('CONFLICT'))) {
+          return res.status(409).json({
+            success: false,
+            message: err.message.split(':')[1] || err.message,
+            conflicts: err.conflicts || []
+          });
+        }
+        throw err;
+      }
+    }
+
     await updateDoc(eventRef, updatePayload);
 
     // After resubmitting, notify the faculty in the background
@@ -1148,6 +1300,9 @@ router.post('/:id/register', async (req, res) => {
       if (registeredStudents.some(s => s.userId === userId)) {
         throw new Error('CONFLICT:Already registered for this event');
       }
+
+      const endTimeStr = eventData.requisition?.step1?.eventEndTime || eventData.endTime || '23:59';
+      await RegistrationConflictService.validateRegistration(userId, req.params.id, startDateStr, startTimeStr, endTimeStr, userName);
       
       const updatedList = [...registeredStudents, newEntry];
       const newStats = {
@@ -1181,7 +1336,7 @@ router.post('/:id/register', async (req, res) => {
   } catch (error) {
     if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
     if (error.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, message: error.message.split(':')[1] });
-    if (error.message.includes('CONFLICT')) return res.status(409).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('CONFLICT')) return res.status(409).json({ success: false, message: error.message.split(':')[1], conflicts: error.conflicts || [] });
     
     console.error('[events/register] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to register', error: error.message });
