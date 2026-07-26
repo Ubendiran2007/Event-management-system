@@ -1,4 +1,4 @@
-const { db } = require('../config/firebase');
+const { db } = require('../firebaseClientWrapper');
 const { doc, getDoc, updateDoc, collection, query, where, getDocs, runTransaction } = require('firebase-admin/firestore');
 const PermissionEngine = require('../utils/permissions');
 const { logActivity, logAudit } = require('../utils/logger');

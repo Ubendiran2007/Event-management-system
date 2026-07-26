@@ -168,6 +168,7 @@ function getEventReference(eventData = {}) {
   );
 }
 
+/* @legacy @disabled (In-App / WhatsApp Only) */
 async function sendPosterRequestEmail(eventData, mediaEmail) {
   if (!mediaEmail) return { success: false, message: 'Media email not provided' };
   try {
@@ -188,6 +189,7 @@ async function sendPosterRequestEmail(eventData, mediaEmail) {
   }
 }
 
+/* @legacy @disabled (In-App / WhatsApp Only) */
 async function sendPosterReadyEmail(eventData, organizerEmail) {
   if (!organizerEmail) return { success: false, message: 'Organizer email not provided' };
   try {
@@ -208,6 +210,7 @@ async function sendPosterReadyEmail(eventData, organizerEmail) {
   }
 }
 
+/* @legacy @disabled (In-App / WhatsApp Only) */
 async function sendEventNotificationToFaculty(eventData, facultyEmail) {
   if (!facultyEmail) return { success: false, message: 'Faculty email not provided' };
   try {
@@ -304,6 +307,7 @@ async function sendEventCreationNotification(organizerEmail, eventData) {
   }
 }
 
+/* @legacy @disabled (In-App / WhatsApp Only) */
 async function sendStudentRegistrationStatusEmail(studentEmail, student, eventData, status, odLetterBase64) {
   if (!studentEmail) return { success: false, message: 'Student email not provided' };
   try {
@@ -336,6 +340,7 @@ async function sendStudentRegistrationStatusEmail(studentEmail, student, eventDa
   }
 }
 
+/* @legacy @disabled (In-App / WhatsApp Only) */
 async function sendPostEventFeedbackEmail(studentEmail, student, eventData, feedbackLink) {
   if (!studentEmail) return { success: false };
   try {
@@ -376,6 +381,7 @@ async function sendIQACSubmissionRequestEmail(organizerEmail, eventData) {
   }
 }
 
+/* @legacy @disabled (In-App / WhatsApp Only) */
 async function sendIQACReminderEmail(organizerEmail, eventData, deadlineDate) {
   if (!organizerEmail) return { success: false };
   try {
@@ -437,6 +443,220 @@ async function sendIQACExtensionStatusEmail(organizerEmail, eventData, isApprove
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// MANAGER ASSIGNMENT & MODIFICATION REQUEST HELPERS (#2 to #4, #8 to #15)
+// ─────────────────────────────────────────────────────────────────
+
+async function sendManagerAssignmentEmail(managerEmail, eventData, managerName) {
+  if (!managerEmail) return { success: false };
+  try {
+    const html = templates.managerAssignmentTemplate(eventData, managerName);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: managerEmail,
+      subject: `Manager Assignment: "${eventData.title}"`,
+      html,
+      text: `You have been designated as an Event Manager for "${eventData.title}". Please log into the portal to review and accept.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    console.log('[Email Service] Manager assignment email sent:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send manager assignment email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendManagerAcceptedEmail(organizerEmail, eventData, managerEmail) {
+  if (!organizerEmail) return { success: false };
+  try {
+    const html = templates.managerAcceptedTemplate(eventData, managerEmail);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: organizerEmail,
+      subject: `Manager Accepted: "${eventData.title}"`,
+      html,
+      text: `${managerEmail} has officially accepted their role as manager for "${eventData.title}".`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send manager accepted email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendManagerDeclinedEmail(organizerEmail, eventData, managerEmail) {
+  if (!organizerEmail) return { success: false };
+  try {
+    const html = templates.managerDeclinedTemplate(eventData, managerEmail);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: organizerEmail,
+      subject: `URGENT - Manager Declined: "${eventData.title}"`,
+      html,
+      text: `${managerEmail} has declined their assignment for "${eventData.title}". Please assign an alternative manager immediately.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send manager declined email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendPostponementApprovalRequestEmail(approverEmail, eventData, reason, newDate) {
+  if (!approverEmail) return { success: false };
+  try {
+    const html = templates.postponementApprovalRequestTemplate(eventData, reason, newDate);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: approverEmail,
+      subject: `Approval Required: Postponement Request for "${eventData.title}"`,
+      html,
+      text: `An event postponement request has been submitted for "${eventData.title}" and requires your review.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send postponement approval request email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendPostponementRequestToIQACEmail(iqacEmail, eventData, reason, newDate) {
+  if (!iqacEmail) return { success: false };
+  try {
+    const html = templates.postponementRequestToIQACTemplate(eventData, reason, newDate);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: iqacEmail,
+      subject: `IQAC Review: Postponement Request for "${eventData.title}"`,
+      html,
+      text: `A postponement request for "${eventData.title}" has been endorsed by HOD and awaits IQAC final approval.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send postponement IQAC email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendPostponementApprovedEmail(recipientEmail, eventData, roleLabel) {
+  if (!recipientEmail) return { success: false };
+  try {
+    const html = templates.postponementApprovedTemplate(eventData, roleLabel);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: recipientEmail,
+      subject: `Event Postponed: "${eventData.title}"`,
+      html,
+      text: `Please note that "${eventData.title}" has been officially postponed.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send postponement approved email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendPostponementRejectedEmail(organizerEmail, eventData, reason) {
+  if (!organizerEmail) return { success: false };
+  try {
+    const html = templates.postponementRejectedTemplate(eventData, reason);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: organizerEmail,
+      subject: `Postponement Rejected: "${eventData.title}"`,
+      html,
+      text: `Your request to postpone "${eventData.title}" was rejected. The event must proceed as originally scheduled.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send postponement rejected email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendCancellationApprovalRequestEmail(approverEmail, eventData, reason) {
+  if (!approverEmail) return { success: false };
+  try {
+    const html = templates.cancellationApprovalRequestTemplate(eventData, reason);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: approverEmail,
+      subject: `Approval Required: Cancellation Request for "${eventData.title}"`,
+      html,
+      text: `An event cancellation request has been submitted for "${eventData.title}" and requires your review.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send cancellation approval request email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendCancellationRequestToIQACEmail(iqacEmail, eventData, reason) {
+  if (!iqacEmail) return { success: false };
+  try {
+    const html = templates.cancellationRequestToIQACTemplate(eventData, reason);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: iqacEmail,
+      subject: `IQAC Review: Cancellation Request for "${eventData.title}"`,
+      html,
+      text: `A cancellation request for "${eventData.title}" has been endorsed by HOD and awaits IQAC final approval.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send cancellation IQAC email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendCancellationApprovedEmail(recipientEmail, eventData, roleLabel) {
+  if (!recipientEmail) return { success: false };
+  try {
+    const html = templates.cancellationApprovedTemplate(eventData, roleLabel);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: recipientEmail,
+      subject: `URGENT - Event Cancelled: "${eventData.title}"`,
+      html,
+      text: `Please be advised that "${eventData.title}" has been officially cancelled.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send cancellation approved email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendCancellationRejectedEmail(organizerEmail, eventData, reason) {
+  if (!organizerEmail) return { success: false };
+  try {
+    const html = templates.cancellationRejectedTemplate(eventData, reason);
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: organizerEmail,
+      subject: `Cancellation Rejected: "${eventData.title}"`,
+      html,
+      text: `Your request to cancel "${eventData.title}" was rejected. The event remains active.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send cancellation rejected email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   sendEventNotificationToFaculty,
   sendEventStatusNotification,
@@ -450,6 +670,17 @@ module.exports = {
   sendIQACReminderEmail,
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
+  sendManagerAssignmentEmail,
+  sendManagerAcceptedEmail,
+  sendManagerDeclinedEmail,
+  sendPostponementApprovalRequestEmail,
+  sendPostponementRequestToIQACEmail,
+  sendPostponementApprovedEmail,
+  sendPostponementRejectedEmail,
+  sendCancellationApprovalRequestEmail,
+  sendCancellationRequestToIQACEmail,
+  sendCancellationApprovedEmail,
+  sendCancellationRejectedEmail,
   sendEmail: async (optionsOrTo, subject, html) => {
     try {
       let mailOptions;

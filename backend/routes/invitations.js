@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../config/firebase');
-const { doc, getDoc, updateDoc } = require('firebase-admin/firestore');
+const { db, doc, getDoc, updateDoc } = require('../firebaseClientWrapper');
 const { authenticateToken } = require('../middleware/auth');
 const { logActivity } = require('../utils/logger');
 const crypto = require('crypto');
+const { sendManagerAcceptedEmail, sendManagerDeclinedEmail } = require('../services/emailService');
+const { executeBackgroundNotification } = require('../services/emailHandler');
 
 // Accept Invitation
 router.post('/:eventId/accept', authenticateToken, async (req, res) => {
@@ -25,10 +26,20 @@ router.post('/:eventId/accept', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, message: 'You are not invited to manage this event' });
     }
 
+    if (eventData.managers[managerIndex].status === 'ACCEPTED') {
+      return res.json({ success: true, message: 'Invitation already accepted' });
+    }
+
     const managers = [...eventData.managers];
     managers[managerIndex].status = 'ACCEPTED';
 
     await updateDoc(eventRef, { managers });
+
+    if (eventData.organizerEmail) {
+      executeBackgroundNotification('invitations/accept', async () => {
+        await sendManagerAcceptedEmail(eventData.organizerEmail, { id: eventSnap.id, ...eventData }, req.user.name || req.user.email);
+      });
+    }
 
     logActivity({
       category: 'EVENT',
@@ -64,10 +75,20 @@ router.post('/:eventId/decline', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, message: 'You are not invited to manage this event' });
     }
 
+    if (eventData.managers[managerIndex].status === 'DECLINED') {
+      return res.json({ success: true, message: 'Invitation already declined' });
+    }
+
     const managers = [...eventData.managers];
     managers[managerIndex].status = 'DECLINED';
 
     await updateDoc(eventRef, { managers });
+
+    if (eventData.organizerEmail) {
+      executeBackgroundNotification('invitations/decline', async () => {
+        await sendManagerDeclinedEmail(eventData.organizerEmail, { id: eventSnap.id, ...eventData }, req.user.name || req.user.email);
+      });
+    }
 
     logActivity({
       category: 'EVENT',

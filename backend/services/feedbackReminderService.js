@@ -59,20 +59,9 @@ async function runFeedbackRemindersOnce() {
       // Check if student attended but has NOT submitted feedback
       if (odData.status === 'APPROVED' && ['ATTENDED', 'FN', 'AN'].includes(odData.attendanceStatus) && !odData.feedback) {
         if (odData.email) {
-          const emailHtml = feedbackReminderTemplate({
-             studentName: odData.studentName || odData.name,
-             eventName: event.title || event.eventName || 'the event',
-             reminderType,
-             link: `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/dashboard`
-          });
-          
-          try {
-            await sendEmail(odData.email, `Action Required: Feedback for ${event.title || 'Event'}`, emailHtml);
-            sentCountForEvent++;
-            remindersSent++;
-          } catch(e) {
-             console.error(`[feedback-reminder] Failed to send to ${odData.email}:`, e);
-          }
+          console.log(`[LEGACY_DISABLED] Feedback reminder email to ${odData.email} disabled per 23-template whitelist.`);
+          sentCountForEvent++;
+          remindersSent++;
         }
       }
     }

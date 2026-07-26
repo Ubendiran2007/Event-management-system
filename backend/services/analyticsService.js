@@ -1,7 +1,7 @@
-const { db } = require('../config/firebase');
+const { db } = require('../firebaseClientWrapper');
 const { collection, query, where, getDocs, getCountFromServer, and, or } = require('firebase-admin/firestore');
 const { EventStatus } = require('../events/constants/eventTypes');
-const moment = require('moment');
+
 
 class AnalyticsService {
   /**
@@ -9,8 +9,9 @@ class AnalyticsService {
    */
   static async getOperationalAnalytics() {
     try {
-      const today = moment().startOf('day').toDate();
-      const endOfToday = moment().endOf('day').toDate();
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
       
       const eventsRef = collection(db, 'events');
       
@@ -66,8 +67,8 @@ class AnalyticsService {
   static async getReportingAnalytics(month, year, department) {
     try {
       // Create a dynamic date range
-      const startOfMonth = moment().year(year).month(month - 1).startOf('month').toISOString();
-      const endOfMonth = moment().year(year).month(month - 1).endOf('month').toISOString();
+      const startOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0).toISOString();
+      const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999).toISOString();
 
       const eventsRef = collection(db, 'events');
       let baseQuery = query(

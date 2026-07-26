@@ -41,6 +41,9 @@ const {
   handleIQACExtensionDecision,
   handleEventCancelled,
   handleEventPostponed,
+  notifyManagersAssigned,
+  handleModificationRequestSubmitted,
+  handleModificationRequestDecision,
   executeBackgroundNotification
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
@@ -306,6 +309,11 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
       targetApprovers: targetApproverId ? [targetApproverId] : [],
       correlationId: crypto.randomUUID()
     });
+
+    await handleEventStatusChange(payloadWithId, null, payload.status);
+    if (payloadWithId.managers && payloadWithId.managers.length > 0) {
+      await notifyManagersAssigned(payloadWithId, payloadWithId.managers, []);
+    }
   });
 
   logActivity({
@@ -1076,6 +1084,14 @@ router.put('/:id', async (req, res) => {
 
     await updateDoc(eventRef, updatePayload);
 
+    if (updatePayload.managers) {
+      const oldManagers = eventSnap.data().managers || [];
+      const updatedEvent = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
+      executeBackgroundNotification('events/update', async () => {
+        await notifyManagersAssigned(updatedEvent, updatePayload.managers, oldManagers);
+      });
+    }
+
     return res.json({
       success: true,
       message: 'Event updated successfully',
@@ -1632,10 +1648,7 @@ router.patch('/:id/poster', async (req, res) => {
 
     // Send notification if this was a requested media poster upload
     if (isMediaUpload && eventData.organizerEmail) {
-      const refreshedData = { id: req.params.id, ...eventData, ...updatePayload };
-      executeBackgroundNotification('events/poster', async () => {
-        await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
-      });
+      console.log(`[LEGACY_DISABLED] Poster ready email to organizer disabled per 23-template whitelist (In-App only).`);
     }
 
     return res.json({
@@ -1683,9 +1696,7 @@ router.patch('/:id/poster-workflow', async (req, res) => {
 
     // Trigger emails for specific steps in the workflow
     if ((updates.status === 'SENT_TO_ORGANIZER' || updates.status === 'COMPLETED') && eventData.organizerEmail) {
-      executeBackgroundNotification('events/poster-workflow', async () => {
-        await sendPosterReadyEmail(refreshedData, eventData.organizerEmail);
-      });
+      console.log(`[LEGACY_DISABLED] Poster ready workflow email to organizer disabled per 23-template whitelist (In-App only).`);
     }
 
     return res.json({
@@ -2069,9 +2080,10 @@ router.patch('/:id/cancel', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async
     await batch.commit();
 
     // Notifications
-    const { handleEventStatusChange } = require('../services/emailHandler');
     executeBackgroundNotification('events/cancel', async () => {
-      await handleEventStatusChange({ id: req.params.id, ...eventData, ...updatePayload }, eventData.status, newStatus);
+      const updatedEvent = { id: req.params.id, ...eventData, ...updatePayload };
+      await handleEventStatusChange(updatedEvent, eventData.status, newStatus);
+      await handleModificationRequestSubmitted(updatedEvent, 'CANCEL', newStatus, cancellationReason.trim());
     });
 
     return res.json({ success: true, message: 'Event cancelled successfully', event: { id: req.params.id, ...eventData, ...updatePayload } });
@@ -2193,9 +2205,10 @@ router.patch('/:id/postpone', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), asy
     await batch.commit();
 
     // Notifications
-    const { handleEventStatusChange } = require('../services/emailHandler');
     executeBackgroundNotification('events/postpone', async () => {
-      await handleEventStatusChange({ id: req.params.id, ...eventData, ...firestoreUpdate }, eventData.status, newStatus);
+      const updatedEvent = { id: req.params.id, ...eventData, ...firestoreUpdate };
+      await handleEventStatusChange(updatedEvent, eventData.status, newStatus);
+      await handleModificationRequestSubmitted(updatedEvent, 'POSTPONE', newStatus, reason.trim(), newDate);
     });
 
     return res.json({ success: true, message: 'Event postponed successfully', event: { id: req.params.id, ...eventData, ...firestoreUpdate } });

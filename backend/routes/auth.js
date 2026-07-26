@@ -276,18 +276,10 @@ async function handleLoginSuccess(userObj, reqDetails) {
   
   if (isSuspicious) {
     await logSecurityEvent(userObj, 'Suspicious Login Detected', 'WARNING', reqDetails);
-    await sendEmail(
-      userObj.email,
-      'Security Alert - New Device Login Detected',
-      emailTemplates.suspiciousLoginTemplate(userObj, reqDetails)
-    );
+    console.log(`[LEGACY_DISABLED] Suspicious login alert email disabled per 23-template whitelist.`);
   } else {
     // Regular login alert
-    await sendEmail(
-      userObj.email,
-      'New Login Detected - Event Management & IQAC Portal',
-      emailTemplates.loginAlertTemplate(userObj, reqDetails)
-    );
+    console.log(`[LEGACY_DISABLED] Regular login alert email disabled per 23-template whitelist.`);
   }
 }
 

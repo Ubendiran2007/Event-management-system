@@ -69,16 +69,30 @@ const wrapSnapshot = (snap) => {
 };
 
 const getDoc = async (ref) => {
+  if (process.env.EMAIL_TEST_MODE === 'true') {
+    return { exists: true, id: 'mock_id', data: () => ({ email: 'mock@test.com', role: 'IQAC_TEAM', name: 'Mock User' }) };
+  }
   const snap = await ref.get();
   return wrapSnapshot(snap);
 };
 
 const getDocs = async (queryRef) => {
+  if (process.env.EMAIL_TEST_MODE === 'true') {
+    return { docs: [{ id: 'mock_doc_1', data: () => ({
+      staffs: [
+        { email: 'hod@test.com', role: 'HOD', name: 'Mock HOD' },
+        { email: 'iqac@test.com', role: 'IQAC_TEAM', name: 'Mock IQAC' }
+      ]
+    }) }] };
+  }
   const snap = await queryRef.get();
   return wrapSnapshot(snap);
 };
 
 const addDoc = async (colRef, data) => {
+  if (process.env.EMAIL_TEST_MODE === 'true') {
+    return { id: 'mock_test_doc_id_' + Date.now() };
+  }
   const res = await colRef.add(data);
   return res;
 };

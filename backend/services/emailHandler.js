@@ -34,6 +34,15 @@ const {
   sendIQACSubmissionRequestEmail,
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
+  sendManagerAssignmentEmail,
+  sendPostponementApprovalRequestEmail,
+  sendPostponementRequestToIQACEmail,
+  sendPostponementApprovedEmail,
+  sendPostponementRejectedEmail,
+  sendCancellationApprovalRequestEmail,
+  sendCancellationRequestToIQACEmail,
+  sendCancellationApprovedEmail,
+  sendCancellationRejectedEmail,
 } = require('./emailService');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,12 +193,14 @@ async function handleEventStatusChange(eventData, previousStatus, newStatus) {
         eventData.organizerEmail,
         () => sendEventCreationNotification(eventData.organizerEmail, eventData)
       );
-    } else if (newStatus !== 'PENDING_FACULTY') {
+    } else if (['POSTED', 'PUBLISHED', 'IQAC_APPROVED', 'REJECTED'].includes(newStatus)) {
       await safeSend(
         'Status update to organizer [' + newStatus + ']',
         eventData.organizerEmail,
         () => sendEventStatusNotification(eventData.organizerEmail, eventData, newStatus)
       );
+    } else {
+      console.log(`[LEGACY_DISABLED] Intermediate status update email to organizer disabled per 23-template whitelist (Status: ${newStatus}).`);
     }
   }
 
@@ -208,11 +219,7 @@ async function handleEventStatusChange(eventData, previousStatus, newStatus) {
       if (deptFaculty.length > 0) facultyEmail = deptFaculty[0]; // Take first as primary
     }
 
-    await safeSend(
-      'New event notification to Faculty',
-      facultyEmail,
-      () => sendEventNotificationToFaculty(eventData, facultyEmail)
-    );
+    console.log(`[LEGACY_DISABLED] Faculty event notification email disabled per 23-template whitelist (Event: ${eventData.title}, Faculty: ${facultyEmail}).`);
     return;
   }
 
@@ -295,11 +302,7 @@ async function _notifyMediaForPoster(eventData) {
     console.warn('[EMAIL_HANDLER] No MEDIA emails found for poster request.');
     return;
   }
-  await Promise.allSettled(
-    mediaEmails.map(email =>
-      safeSend('Poster request to Media', email, () => sendPosterRequestEmail(eventData, email))
-    )
-  );
+  console.log(`[LEGACY_DISABLED] Poster request email to Media disabled per 23-template whitelist (In-App only).`);
 }
 
 /**
@@ -353,21 +356,7 @@ async function _sendFeedbackToStudents(eventData) {
       return;
     }
 
-    const feedbackLink = (process.env.FRONTEND_URL || 'http://localhost:5173') + '/dashboard';
-    await Promise.allSettled(
-      approved.map(student =>
-        safeSend(
-          'Post-event feedback to student ' + (student.studentName || student.email),
-          student.email,
-          () => sendPostEventFeedbackEmail(
-            student.email, 
-            { name: student.studentName, rollNo: normalizeRollNo(student.rollNo || student.id), department: student.department || student.class }, 
-            eventData, 
-            feedbackLink
-          )
-        )
-      )
-    );
+    console.log(`[LEGACY_DISABLED] Feedback request emails to ${approved.length} students disabled per 23-template whitelist (In-App only).`);
   } catch (err) {
     console.error('[EMAIL_HANDLER] Failed to send feedback emails: ' + err.message);
   }
@@ -406,17 +395,7 @@ async function handleODStatusChange(odRequest, newStatus, odLetterBase64 = null)
     '──────────────────────────────────────────────────────────'
   );
 
-  await safeSend(
-    'OD registration ' + newStatus + ' to student',
-    studentEmail,
-    () => sendStudentRegistrationStatusEmail(
-      studentEmail,
-      studentInfo,
-      eventData,
-      newStatus,
-      newStatus === 'APPROVED' ? odLetterBase64 : null
-    )
-  );
+  console.log(`[LEGACY_DISABLED] Student registration status email disabled per 23-template whitelist (WhatsApp + In-App only. Status: ${newStatus}).`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -428,10 +407,10 @@ async function handleODStatusChange(odRequest, newStatus, odLetterBase64 = null)
  */
 async function handleIQACExtensionRequest(eventData, reason) {
   console.log('[EMAIL_TRIGGER] IQAC extension requested — Event: ' + (eventData.id || ''));
-  const hodEmails = await getEmailsByRole('HOD');
+  const iqacEmails = await getEmailsByRole('IQAC_TEAM');
   await Promise.allSettled(
-    hodEmails.map(email =>
-      safeSend('IQAC extension request to HOD', email, () =>
+    iqacEmails.map(email =>
+      safeSend('IQAC extension request to IQAC', email, () =>
         sendIQACExtensionRequestEmail(email, eventData, reason)
       )
     )
@@ -460,70 +439,33 @@ async function handleEventCancelled(eventData) {
   console.log('[EMAIL_TRIGGER] Event CANCELLED: ' + eventId);
 
   // 1. Fetch only APPROVED students
-  const studentMap = new Map();
+  const studentEmails = new Set();
   try {
     const snap = await getDocs(query(collection(db, 'odRequests'), where('eventId', '==', eventId), where('status', '==', 'APPROVED')));
     snap.docs.forEach(d => {
       const student = d.data();
       if (isValidEmail(student.email)) {
-        studentMap.set(student.email, {
-          email: student.email,
-          name: student.studentName || 'Student',
-          rollNo: normalizeRollNo(student.rollNo || student.studentId),
-          department: student.department || student.class || 'N/A'
-        });
+        studentEmails.add(student.email.toLowerCase());
       }
     });
   } catch (err) {
     console.warn('[EMAIL_HANDLER] Could not fetch OD requests for cancellation emails', err.message);
   }
 
-  const { sendEmail } = require('./emailService');
-  const subject = `Event Cancellation Notice – ${eventData.title}`;
-  
-  const organizerName = eventData.organizerName || 'Organizer';
-  const eventDept = eventData.department || 'GEN';
-  const originalDate = eventData.requisition?.step1?.eventStartDate || eventData.date || 'N/A';
-  const originalTime = eventData.requisition?.step1?.eventStartTime || eventData.startTime || 'N/A';
-  const venue = (eventData.venue && !['n/a','na','null','undefined','tba','to be allocated','not specified','not available','nil','—','-',''].includes(String(eventData.venue).toLowerCase().trim())) ? eventData.venue : 'No Venue Assigned';
-  const reason = eventData.cancellationReason || 'No reason provided';
-  const referenceId = eventData.referenceId || 'N/A';
+  // Send Template #14 to students
+  await Promise.allSettled(Array.from(studentEmails).map(email =>
+    safeSend('Cancellation Notice to student ' + email, email, () =>
+      sendCancellationApprovedEmail(email, eventData, 'Student')
+    )
+  ));
 
-  // Send personalized emails to students
-  const studentPromises = Array.from(studentMap.values()).map(student => {
-    const html = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-        <h2 style="color: #dc2626;">Event Cancellation Notice</h2>
-        <p>Dear ${student.name},</p>
-        <p>The event <strong>${eventData.title}</strong> has been officially cancelled after the institutional approval process.</p>
-        
-        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Student Name</td><td style="padding: 8px; border: 1px solid #ddd;">${student.name}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Roll Number</td><td style="padding: 8px; border: 1px solid #ddd;">${student.rollNo}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Name</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.title}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Reference</td><td style="padding: 8px; border: 1px solid #ddd;">${referenceId}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Original Event Date</td><td style="padding: 8px; border: 1px solid #ddd;">${originalDate}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Original Event Time</td><td style="padding: 8px; border: 1px solid #ddd;">${originalTime}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Venue</td><td style="padding: 8px; border: 1px solid #ddd;">${venue}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Cancellation Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${reason}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Organizer Name</td><td style="padding: 8px; border: 1px solid #ddd;">${organizerName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Department</td><td style="padding: 8px; border: 1px solid #ddd;">${eventDept}</td></tr>
-        </table>
-        <p style="margin-top: 20px; font-size: 0.9em; color: #666;">This is an automated email from the Event Management System.</p>
-      </div>
-    `;
-    return safeSend('Cancellation Notice to student ' + student.email, student.email, () => sendEmail(student.email, subject, html));
-  });
-
-  await Promise.allSettled(studentPromises);
-
-  // 2. Notify Staff (Organizer, HOD, IQAC, etc)
+  // 2. Notify Staff (Organizer, HOD, IQAC, etc.)
   const staffEmails = new Set();
-  if (isValidEmail(eventData.organizerEmail)) staffEmails.add(eventData.organizerEmail);
+  if (isValidEmail(eventData.organizerEmail)) staffEmails.add(eventData.organizerEmail.toLowerCase());
   const facultyEmail = eventData.coordinator?.facultyEmail || eventData.facultyEmail;
-  if (isValidEmail(facultyEmail)) staffEmails.add(facultyEmail);
+  if (isValidEmail(facultyEmail)) staffEmails.add(facultyEmail.toLowerCase());
 
-  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM'];
+  const rolesToNotify = ['HOD', 'IQAC_TEAM'];
   const reqs = eventData.requisition?.step1?.requirements || {};
   const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
   
@@ -531,37 +473,21 @@ async function handleEventCancelled(eventData) {
   if (isRequired('audioRequired'))     rolesToNotify.push('AUDIO_TEAM');
   if (isRequired('ictsRequired'))      rolesToNotify.push('SYSTEM_ADMIN');
   if (isRequired('transportRequired')) rolesToNotify.push('TRANSPORT_TEAM');
-  if (isRequired('mediaRequired'))     rolesToNotify.push('MEDIA');
   if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
     const accom = eventData.requisition?.annexureV_accommodation || {};
     const males   = Number(accom.maleGuests   || 0);
     const females = Number(accom.femaleGuests  || 0);
-    if (males > 0) rolesToNotify.push('BOYS_WARDEN');
+    if (males > 0 || (males === 0 && females === 0)) rolesToNotify.push('BOYS_WARDEN');
     if (females > 0) rolesToNotify.push('GIRLS_WARDEN');
-    if (males === 0 && females === 0) rolesToNotify.push('BOYS_WARDEN');
   }
 
   for (const role of rolesToNotify) {
     const roleEmails = await getEmailsByRole(role);
-    roleEmails.forEach(e => staffEmails.add(e));
+    roleEmails.forEach(e => staffEmails.add(e.toLowerCase()));
   }
 
-  const genericHtml = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-      <h2 style="color: #dc2626;">Event Cancelled</h2>
-      <p>The following event has been permanently cancelled.</p>
-      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Name</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.title}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Reference ID</td><td style="padding: 8px; border: 1px solid #ddd;">${referenceId}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Cancelled By</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.cancelledBy || 'Organizer'}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${reason}</td></tr>
-      </table>
-      <p style="margin-top: 20px; font-size: 0.9em; color: #666;">This is an automated email from the Event Management System.</p>
-    </div>
-  `;
-  
   await Promise.allSettled(Array.from(staffEmails).map(email => 
-    safeSend('Cancellation Notice to staff ' + email, email, () => sendEmail(email, subject, genericHtml))
+    safeSend('Cancellation Notice to staff ' + email, email, () => sendCancellationApprovedEmail(email, eventData, 'Staff / Approver'))
   ));
 }
 
@@ -570,73 +496,33 @@ async function handleEventPostponed(eventData) {
   console.log('[EMAIL_TRIGGER] Event POSTPONED: ' + eventId);
 
   // 1. Fetch only APPROVED students
-  const studentMap = new Map();
+  const studentEmails = new Set();
   try {
     const snap = await getDocs(query(collection(db, 'odRequests'), where('eventId', '==', eventId), where('status', '==', 'APPROVED')));
     snap.docs.forEach(d => {
       const student = d.data();
       if (isValidEmail(student.email)) {
-        studentMap.set(student.email, {
-          email: student.email,
-          name: student.studentName || 'Student',
-          rollNo: normalizeRollNo(student.rollNo || student.studentId),
-          department: student.department || student.class || 'N/A'
-        });
+        studentEmails.add(student.email.toLowerCase());
       }
     });
   } catch (err) {
     console.warn('[EMAIL_HANDLER] Could not fetch OD requests for postponement emails', err.message);
   }
 
-  const { sendEmail } = require('./emailService');
-  const subject = `Event Postponement Notice – ${eventData.title}`;
-  
-  const organizerName = eventData.organizerName || 'Organizer';
-  const eventDept = eventData.department || 'GEN';
-  const venue = (eventData.venue && !['n/a','na','null','undefined','tba','to be allocated','not specified','not available','nil','—','-',''].includes(String(eventData.venue).toLowerCase().trim())) ? eventData.venue : 'No Venue Assigned';
-  const reason = eventData.postponementReason || 'No reason provided';
-  const referenceId = eventData.referenceId || 'N/A';
+  // Send Template #10 to students
+  await Promise.allSettled(Array.from(studentEmails).map(email =>
+    safeSend('Postponement Notice to student ' + email, email, () =>
+      sendPostponementApprovedEmail(email, eventData, 'Student')
+    )
+  ));
 
-  // Send personalized emails to students
-  const studentPromises = Array.from(studentMap.values()).map(student => {
-    const html = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-        <h2 style="color: #d97706;">Event Postponement Notice</h2>
-        <p>Dear ${student.name},</p>
-        <p>The event <strong>${eventData.title}</strong> has been postponed. Previous attendance records have been cleared. Attendance will be recorded again on the new event date.</p>
-        
-        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Student Name</td><td style="padding: 8px; border: 1px solid #ddd;">${student.name}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Roll Number</td><td style="padding: 8px; border: 1px solid #ddd;">${student.rollNo}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Name</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.title}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Reference</td><td style="padding: 8px; border: 1px solid #ddd;">${referenceId}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Previous Event Date</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.oldDate || 'N/A'}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Previous Start Time</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.oldStartTime || 'N/A'}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Previous End Time</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.oldEndTime || 'N/A'}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">New Event Date</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.newDate || 'N/A'}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">New Start Time</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.newStartTime || 'N/A'}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">New End Time</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.newEndTime || 'N/A'}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Venue (Latest)</td><td style="padding: 8px; border: 1px solid #ddd;">${venue}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Postponement Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${reason}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Organizer Name</td><td style="padding: 8px; border: 1px solid #ddd;">${organizerName}</td></tr>
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Department</td><td style="padding: 8px; border: 1px solid #ddd;">${eventDept}</td></tr>
-        </table>
-        <p style="margin-top: 20px; font-weight: bold;">Note: Your registration and OD permission (if applicable) remain valid for the new date. No further action is required.</p>
-        <p style="margin-top: 20px; font-size: 0.9em; color: #666;">This is an automated email from the Event Management System.</p>
-      </div>
-    `;
-    return safeSend('Postponement Notice to student ' + student.email, student.email, () => sendEmail(student.email, subject, html));
-  });
-
-  await Promise.allSettled(studentPromises);
-
-  // 2. Notify Staff (Organizer, HOD, IQAC, etc)
+  // 2. Notify Staff (Organizer, HOD, IQAC, etc.)
   const staffEmails = new Set();
-  if (isValidEmail(eventData.organizerEmail)) staffEmails.add(eventData.organizerEmail);
+  if (isValidEmail(eventData.organizerEmail)) staffEmails.add(eventData.organizerEmail.toLowerCase());
   const facultyEmail = eventData.coordinator?.facultyEmail || eventData.facultyEmail;
-  if (isValidEmail(facultyEmail)) staffEmails.add(facultyEmail);
+  if (isValidEmail(facultyEmail)) staffEmails.add(facultyEmail.toLowerCase());
 
-  const rolesToNotify = ['FACULTY', 'HOD', 'IQAC_TEAM'];
+  const rolesToNotify = ['HOD', 'IQAC_TEAM'];
   const reqs = eventData.requisition?.step1?.requirements || {};
   const isRequired = (k) => reqs[k] ?? eventData[k] ?? false;
   
@@ -644,38 +530,93 @@ async function handleEventPostponed(eventData) {
   if (isRequired('audioRequired'))     rolesToNotify.push('AUDIO_TEAM');
   if (isRequired('ictsRequired'))      rolesToNotify.push('SYSTEM_ADMIN');
   if (isRequired('transportRequired')) rolesToNotify.push('TRANSPORT_TEAM');
-  if (isRequired('mediaRequired'))     rolesToNotify.push('MEDIA');
   if (isRequired('accommodationDiningRequired') || isRequired('accommodationRequired')) {
     const accom = eventData.requisition?.annexureV_accommodation || {};
     const males   = Number(accom.maleGuests   || 0);
     const females = Number(accom.femaleGuests  || 0);
-    if (males > 0) rolesToNotify.push('BOYS_WARDEN');
+    if (males > 0 || (males === 0 && females === 0)) rolesToNotify.push('BOYS_WARDEN');
     if (females > 0) rolesToNotify.push('GIRLS_WARDEN');
-    if (males === 0 && females === 0) rolesToNotify.push('BOYS_WARDEN');
   }
 
   for (const role of rolesToNotify) {
     const roleEmails = await getEmailsByRole(role);
-    roleEmails.forEach(e => staffEmails.add(e));
+    roleEmails.forEach(e => staffEmails.add(e.toLowerCase()));
   }
 
-  const genericHtml = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-      <h2 style="color: #d97706;">Event Postponed</h2>
-      <p>The following event has been officially postponed.</p>
-      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Event Name</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.title}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Old Date</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.oldDate || 'N/A'}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">New Date</td><td style="padding: 8px; border: 1px solid #ddd;">${eventData.newDate || 'N/A'}</td></tr>
-        <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${reason}</td></tr>
-      </table>
-      <p style="margin-top: 20px; font-size: 0.9em; color: #666;">This is an automated email from the Event Management System.</p>
-    </div>
-  `;
-  
   await Promise.allSettled(Array.from(staffEmails).map(email => 
-    safeSend('Postponement Notice to staff ' + email, email, () => sendEmail(email, subject, genericHtml))
+    safeSend('Postponement Notice to staff ' + email, email, () => sendPostponementApprovedEmail(email, eventData, 'Staff / Approver'))
   ));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW WHITELISTED HANDLERS (#2–#4, #8–#15)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _notifiedManagersSet = new Set();
+
+async function notifyManagersAssigned(eventData, newManagers = [], oldManagers = []) {
+  if (!Array.isArray(newManagers) || newManagers.length === 0) return;
+  const oldEmails = new Set((oldManagers || []).map(m => typeof m === 'string' ? m.toLowerCase() : (m.email || '').toLowerCase()));
+  
+  for (const mgr of newManagers) {
+    const email = typeof mgr === 'string' ? mgr : mgr.email;
+    if (!isValidEmail(email)) continue;
+    const cleanEmail = email.toLowerCase();
+    
+    // Do NOT resend if manager assignment remains unchanged during a normal event update
+    if (oldEmails.has(cleanEmail)) continue;
+
+    const dedupKey = `mgr_assign_${eventData.id || eventData.title}_${cleanEmail}`;
+    if (_notifiedManagersSet.has(dedupKey)) continue;
+    _notifiedManagersSet.add(dedupKey);
+
+    const name = typeof mgr === 'object' && mgr.name ? mgr.name : 'Event Manager';
+    await safeSend('Manager assignment to ' + cleanEmail, cleanEmail, () =>
+      sendManagerAssignmentEmail(cleanEmail, eventData, name)
+    );
+  }
+}
+
+async function handleModificationRequestSubmitted(eventData, type, status, reason, newDate = null) {
+  if (type === 'POSTPONE') {
+    if (status === 'PENDING_HOD') {
+      const hodEmails = await getEmailsByRole('HOD');
+      await Promise.allSettled(hodEmails.map(email =>
+        safeSend('Postponement approval request to HOD', email, () => sendPostponementApprovalRequestEmail(email, eventData, reason, newDate))
+      ));
+    } else if (status === 'PENDING_IQAC') {
+      const iqacEmails = await getEmailsByRole('IQAC_TEAM');
+      await Promise.allSettled(iqacEmails.map(email =>
+        safeSend('Postponement approval request to IQAC', email, () => sendPostponementRequestToIQACEmail(email, eventData, reason, newDate))
+      ));
+    }
+  } else if (type === 'CANCEL') {
+    if (status === 'PENDING_HOD') {
+      const hodEmails = await getEmailsByRole('HOD');
+      await Promise.allSettled(hodEmails.map(email =>
+        safeSend('Cancellation approval request to HOD', email, () => sendCancellationApprovalRequestEmail(email, eventData, reason))
+      ));
+    } else if (status === 'PENDING_IQAC') {
+      const iqacEmails = await getEmailsByRole('IQAC_TEAM');
+      await Promise.allSettled(iqacEmails.map(email =>
+        safeSend('Cancellation approval request to IQAC', email, () => sendCancellationRequestToIQACEmail(email, eventData, reason))
+      ));
+    }
+  }
+}
+
+async function handleModificationRequestDecision(eventData, type, isApproved, reason) {
+  if (!isApproved && isValidEmail(eventData.organizerEmail)) {
+    if (type === 'POSTPONE') {
+      await safeSend('Postponement rejected to organizer', eventData.organizerEmail, () =>
+        sendPostponementRejectedEmail(eventData.organizerEmail, eventData, reason)
+      );
+    } else if (type === 'CANCEL') {
+      await safeSend('Cancellation rejected to organizer', eventData.organizerEmail, () =>
+        sendCancellationRejectedEmail(eventData.organizerEmail, eventData, reason)
+      );
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -689,6 +630,9 @@ module.exports = {
   handleIQACExtensionDecision,
   handleEventCancelled,
   handleEventPostponed,
+  notifyManagersAssigned,
+  handleModificationRequestSubmitted,
+  handleModificationRequestDecision,
   isValidEmail,
   getEmailsByRole,
   executeBackgroundNotification,

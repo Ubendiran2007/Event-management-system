@@ -116,6 +116,7 @@ const getEventDetailsHtml = (eventData) => `
 
 
 module.exports = {
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   facultyNotificationTemplate: (eventData) => {
     return buildBaseTemplate({
       title: 'New Event Proposal',
@@ -228,6 +229,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   posterRequestTemplate: (eventData) => {
     return buildBaseTemplate({
       title: 'Poster Request',
@@ -248,6 +250,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   posterReadyTemplate: (eventData) => {
     return buildBaseTemplate({
       title: 'Poster Ready',
@@ -265,6 +268,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   studentRegistrationTemplate: (student, eventData, status, isApproved) => {
     const headerBg = isApproved ? 'linear-gradient(135deg, #10b981 0%, #064e3b 100%)' : 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)';
     const rollNo = safeVal(student.rollNo, 'Not Provided');
@@ -314,6 +318,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   feedbackRequestTemplate: (student, eventData, feedbackLink) => {
     const rollNo = safeVal(student.rollNo, 'Not Provided');
     const dept = safeVal(student.department, 'Not Assigned');
@@ -366,6 +371,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   iqacReminderTemplate: (eventData, deadlineDate) => {
     return buildBaseTemplate({
       title: 'IQAC Submission Reminder',
@@ -448,9 +454,219 @@ module.exports = {
   },
 
   // ─────────────────────────────────────────────────────────────────
+  // MANAGER ASSIGNMENT WORKFLOW TEMPLATES (#2, #3, #4)
+  // ─────────────────────────────────────────────────────────────────
+
+  managerAssignmentTemplate: (eventData, managerName = 'Manager') => {
+    return buildBaseTemplate({
+      title: 'Manager Assignment',
+      subtitle: 'You have been assigned as an Event Manager',
+      headerBg: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+      preheader: `Action Required: You are assigned to manage '${eventData.title}'`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">Dear ${managerName},</p>
+        <p style="margin: 0 0 16px; font-size: 15px; color: #475569; line-height: 1.6;">You have been designated as an Event Manager for the upcoming event <strong>"${eventData.title}"</strong>.</p>
+        ${getEventDetailsHtml(eventData)}
+        <div class="alert-box alert-info" style="margin-top: 24px;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600; margin-bottom: 8px;">📋 Manager Responsibilities</p>
+          <p style="margin: 0; font-size: 13px; line-height: 1.5;">Please log into the portal to review the schedule and confirm your acceptance of this assignment.</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard`
+    });
+  },
+
+  managerAcceptedTemplate: (eventData, managerEmail) => {
+    return buildBaseTemplate({
+      title: 'Manager Accepted Assignment',
+      subtitle: 'Event Management Team Updated',
+      headerBg: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+      preheader: `Good news! ${managerEmail} accepted management of '${eventData.title}'`,
+      contentHtml: `
+        <div class="alert-box alert-success">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Assignment Confirmed</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">The assigned manager (<strong>${managerEmail}</strong>) has officially accepted their role for <strong>"${eventData.title}"</strong>.</p>
+        </div>
+        ${getEventDetailsHtml(eventData)}
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
+    });
+  },
+
+  managerDeclinedTemplate: (eventData, managerEmail) => {
+    return buildBaseTemplate({
+      title: 'Manager Declined Assignment',
+      subtitle: 'Action Required: Reassign Manager',
+      headerBg: 'linear-gradient(135deg, #ef4444 0%, #991b1b 100%)',
+      preheader: `Alert: ${managerEmail} declined management of '${eventData.title}'`,
+      contentHtml: `
+        <div class="alert-box alert-error">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Assignment Declined</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">The assigned manager (<strong>${managerEmail}</strong>) has declined their role for <strong>"${eventData.title}"</strong>.</p>
+        </div>
+        ${getEventDetailsHtml(eventData)}
+        <p style="margin: 20px 0 0; font-size: 14px; color: #b91c1c; font-weight: bold;">Please log into the portal and assign an alternative manager immediately.</p>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // POSTPONEMENT & CANCELLATION WORKFLOW TEMPLATES (#8 to #15)
+  // ─────────────────────────────────────────────────────────────────
+
+  postponementApprovalRequestTemplate: (eventData, reason, newDate) => {
+    return buildBaseTemplate({
+      title: 'Event Postponement Request',
+      subtitle: 'Requires HOD Approval',
+      headerBg: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)',
+      preheader: `Action Required: Review postponement request for '${eventData.title}'`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">An event postponement request has been submitted by the organizer and requires your review.</p>
+        ${getEventDetailsHtml(eventData)}
+        <div style="margin-top: 20px; background-color: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px;">
+          <p style="margin: 0 0 8px; font-weight: 600; color: #b45309;">Proposed New Date: ${newDate || 'Not specified'}</p>
+          <p style="margin: 0; font-size: 14px; color: #78350f; font-style: italic;">Reason: "${reason || 'No reason provided'}"</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
+    });
+  },
+
+  postponementRequestToIQACTemplate: (eventData, reason, newDate) => {
+    return buildBaseTemplate({
+      title: 'Event Postponement Request',
+      subtitle: 'Requires IQAC Final Approval',
+      headerBg: 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)',
+      preheader: `IQAC Review: Postponement request for '${eventData.title}'`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">The HOD has approved a postponement request for the following event, which now awaits final IQAC approval.</p>
+        ${getEventDetailsHtml(eventData)}
+        <div style="margin-top: 20px; background-color: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 16px;">
+          <p style="margin: 0 0 8px; font-weight: 600; color: #0369a1;">Proposed New Date: ${newDate || 'Not specified'}</p>
+          <p style="margin: 0; font-size: 14px; color: #0c4a6e; font-style: italic;">Reason: "${reason || 'No reason provided'}"</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
+    });
+  },
+
+  postponementApprovedTemplate: (eventData, roleLabel = 'Stakeholder') => {
+    return buildBaseTemplate({
+      title: 'Event Postponed',
+      subtitle: 'Official Institutional Notice',
+      headerBg: 'linear-gradient(135deg, #d97706 0%, #92400e 100%)',
+      preheader: `Notice: Event '${eventData.title}' has been officially postponed.`,
+      contentHtml: `
+        <div class="alert-box alert-warning">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Event Officially Postponed</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Please note that <strong>"${eventData.title}"</strong> has been postponed after institutional review. Previous attendance records have been cleared and will be taken on the new date.</p>
+        </div>
+        ${getEventDetailsHtml(eventData)}
+        <div style="margin-top: 20px; padding: 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px;">
+          <p style="margin: 0; font-size: 13px; color: #334155;"><strong>Reason:</strong> ${eventData.postponementReason || 'Administrative reschedule'}</p>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #334155;"><strong>New Schedule:</strong> ${eventData.newDate || eventData.date || 'TBA'}</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
+    });
+  },
+
+  postponementRejectedTemplate: (eventData, reason) => {
+    return buildBaseTemplate({
+      title: 'Postponement Request Rejected',
+      subtitle: 'Event Schedule Remains Unchanged',
+      headerBg: 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)',
+      preheader: `Update: Postponement request for '${eventData.title}' was rejected.`,
+      contentHtml: `
+        <div class="alert-box alert-error">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Postponement Rejected</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your request to postpone <strong>"${eventData.title}"</strong> could not be accommodated. The event must proceed as originally scheduled.</p>
+        </div>
+        ${getEventDetailsHtml(eventData)}
+        <p style="margin: 16px 0 0; font-size: 14px; color: #b91c1c; font-style: italic;">Rejection Reason: "${reason || 'Administrative decision'}"</p>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
+    });
+  },
+
+  cancellationApprovalRequestTemplate: (eventData, reason) => {
+    return buildBaseTemplate({
+      title: 'Event Cancellation Request',
+      subtitle: 'Requires HOD Approval',
+      headerBg: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+      preheader: `Action Required: Review cancellation request for '${eventData.title}'`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">An event cancellation request has been submitted by the organizer and requires your review.</p>
+        ${getEventDetailsHtml(eventData)}
+        <div style="margin-top: 20px; background-color: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 16px;">
+          <p style="margin: 0; font-size: 14px; color: #991b1b; font-style: italic;">Reason: "${reason || 'No reason provided'}"</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
+    });
+  },
+
+  cancellationRequestToIQACTemplate: (eventData, reason) => {
+    return buildBaseTemplate({
+      title: 'Event Cancellation Request',
+      subtitle: 'Requires IQAC Final Approval',
+      headerBg: 'linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)',
+      preheader: `IQAC Review: Cancellation request for '${eventData.title}'`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 15px; color: #0f172a;">The HOD has endorsed an event cancellation request, which now awaits final IQAC approval.</p>
+        ${getEventDetailsHtml(eventData)}
+        <div style="margin-top: 20px; background-color: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 16px;">
+          <p style="margin: 0; font-size: 14px; color: #991b1b; font-style: italic;">Reason: "${reason || 'No reason provided'}"</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/approvals/events/${eventData.id || ''}`
+    });
+  },
+
+  cancellationApprovedTemplate: (eventData, roleLabel = 'Stakeholder') => {
+    return buildBaseTemplate({
+      title: 'Event Cancelled',
+      subtitle: 'Official Institutional Cancellation Notice',
+      headerBg: 'linear-gradient(135deg, #dc2626 0%, #7f1d1d 100%)',
+      preheader: `Notice: Event '${eventData.title}' has been permanently cancelled.`,
+      contentHtml: `
+        <div class="alert-box alert-error">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Event Permanently Cancelled</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Please be advised that <strong>"${eventData.title}"</strong> has been officially cancelled after institutional review. All registrations and logistics bookings are voided.</p>
+        </div>
+        ${getEventDetailsHtml(eventData)}
+        <div style="margin-top: 20px; padding: 12px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 6px;">
+          <p style="margin: 0; font-size: 13px; color: #991b1b;"><strong>Cancellation Reason:</strong> ${eventData.cancellationReason || 'Administrative cancellation'}</p>
+        </div>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard`
+    });
+  },
+
+  cancellationRejectedTemplate: (eventData, reason) => {
+    return buildBaseTemplate({
+      title: 'Cancellation Request Rejected',
+      subtitle: 'Event Must Proceed as Scheduled',
+      headerBg: 'linear-gradient(135deg, #475569 0%, #1e293b 100%)',
+      preheader: `Update: Cancellation request for '${eventData.title}' was rejected.`,
+      contentHtml: `
+        <div class="alert-box alert-info">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">Cancellation Rejected</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your request to cancel <strong>"${eventData.title}"</strong> was not approved by institutional approvers. The event remains active.</p>
+        </div>
+        ${getEventDetailsHtml(eventData)}
+        <p style="margin: 16px 0 0; font-size: 14px; color: #334155; font-style: italic;">Rejection Reason: "${reason || 'Administrative decision'}"</p>
+      `,
+      actionUrl: `${FRONTEND_URL}/dashboard/events/${eventData.id || ''}`
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────────
   // ACCOUNT SECURITY TEMPLATES
   // ─────────────────────────────────────────────────────────────────
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   loginAlertTemplate: (user, reqDetails) => {
     return buildBaseTemplate({
       title: 'New Login Detected',
@@ -582,6 +798,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   suspiciousLoginTemplate: (user, reqDetails) => {
     return buildBaseTemplate({
       title: 'Security Alert - New Device Login Detected',
@@ -639,6 +856,7 @@ module.exports = {
     });
   },
 
+  /* @legacy @disabled (In-App / WhatsApp Only) */
   feedbackReminderTemplate: ({ studentName, eventName, reminderType, link }) => {
     const isUrgent = reminderType === '72h';
     return buildBaseTemplate({
@@ -661,6 +879,26 @@ module.exports = {
         <p style="margin: 20px 0 0; font-size: 13px; color: #64748b; line-height: 1.5;">If you have already submitted your feedback, please disregard this email.</p>
       `,
       actionUrl: link || `${FRONTEND_URL}/dashboard`
+    });
+  },
+
+  /* @legacy @disabled (In-App / WhatsApp Only) */
+  certificateReadyTemplate: (student, eventData, certificateLink) => {
+    const studentName = student?.name || 'Student';
+    const eventName = eventData?.title || eventData?.eventName || 'Event';
+    return baseLayout({
+      title: 'Participation Certificate Ready',
+      previewText: `Your certificate for ${eventName} is now available!`,
+      headerTitle: 'Certificate Available',
+      badgeText: 'Certificate Ready',
+      badgeColor: '#10b981',
+      content: `
+        <p style="margin-top: 0;">Dear <strong>${studentName}</strong>,</p>
+        <p>Thank you for your active participation in <strong>${eventName}</strong> and for completing the feedback process.</p>
+        <p>Your official participation certificate is now ready for download from your student dashboard.</p>
+      `,
+      actionText: 'Download Certificate',
+      actionUrl: certificateLink || `${FRONTEND_URL}/dashboard/certificates`
     });
   }
 };
