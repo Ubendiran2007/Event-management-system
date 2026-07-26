@@ -115,4 +115,4 @@ function assertDeptMatch(req, eventDept) {
   return userDept.toUpperCase() === eventDept.toUpperCase();
 }
 
-module.exports = { issueToken, requireAuth, requireRole, assertDeptMatch };
+module.exports = { issueToken, requireAuth, authenticateToken: requireAuth, requireRole, assertDeptMatch };

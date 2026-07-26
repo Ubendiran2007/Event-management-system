@@ -8,29 +8,29 @@ const crypto = require('crypto');
 require('dotenv').config();
 
 function getSenderAddress() {
-  return process.env.EMAIL_FROM || process.env.EMAIL_USER;
+  return process.env.EMAIL_FROM || process.env.EMAIL_USER || process.env.GMAIL_USER;
 }
 
 // 6. Verify Runtime Configuration
 console.log('--- VERIFY RUNTIME CONFIGURATION ---');
-console.log('SMTP_HOST:', process.env.SMTP_HOST || 'smtp-relay.brevo.com');
+console.log('SMTP_HOST:', process.env.SMTP_HOST || 'smtp.gmail.com');
 console.log('SMTP_PORT:', process.env.SMTP_PORT || '587');
 console.log('SMTP_SECURE:', process.env.SMTP_SECURE || 'false');
-console.log('EMAIL_USER exists:', !!process.env.EMAIL_USER);
-console.log('EMAIL_PASS exists:', !!process.env.EMAIL_PASS);
-console.log('EMAIL_FROM:', process.env.EMAIL_FROM);
+console.log('EMAIL_USER exists:', !!(process.env.EMAIL_USER || process.env.GMAIL_USER));
+console.log('EMAIL_PASS exists:', !!(process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD));
+console.log('EMAIL_FROM:', process.env.EMAIL_FROM || process.env.EMAIL_USER || process.env.GMAIL_USER);
 console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('EMAIL_PROVIDER:', process.env.EMAIL_PROVIDER);
+console.log('EMAIL_PROVIDER:', process.env.EMAIL_PROVIDER || 'gmail');
 console.log('------------------------------------');
 
 // Configure SMTP transporter with credentials and timeouts
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true' ? true : false,
+  secure: process.env.SMTP_SECURE === 'true',
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.EMAIL_USER || process.env.GMAIL_USER,
+    pass: process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD,
   },
   dnsOptions: { family: 4 },
   // 2. Configure Transport Timeouts
@@ -44,7 +44,7 @@ const transporter = nodemailer.createTransport({
 
 // 4. TCP Connectivity Test & 5. Promise Timeout for Verify
 (async () => {
-  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '587');
   
   console.log('[Email Service] TCP Connectivity Test: Starting raw connection test...');

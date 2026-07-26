@@ -1,15 +1,16 @@
-﻿const nodemailer = require('nodemailer');
+require('dotenv').config();
+const nodemailer = require('nodemailer');
 const net = require('net');
 
 console.log('--- STANDALONE SMTP TEST ---');
 
 // Validate environment variables manually to avoid dotenv dependency logic if possible, 
 // though we can load dotenv if needed. We assume the environment variables are injected by Render.
-const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+const host = process.env.SMTP_HOST || 'smtp.gmail.com';
 const port = parseInt(process.env.SMTP_PORT || '587');
 const secure = process.env.SMTP_SECURE === 'true' ? true : false;
-const user = process.env.EMAIL_USER;
-const pass = process.env.EMAIL_PASS;
+const user = process.env.EMAIL_USER || process.env.GMAIL_USER;
+const pass = process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
 const from = process.env.EMAIL_FROM || user;
 const to = process.env.EMAIL_TEST_RECIPIENT || user;
 

@@ -1,7 +1,7 @@
 class EmailProvider {
   /**
    * Interface for sending an email.
-   * Should be implemented by concrete providers like SESProvider or BrevoProvider.
+   * Should be implemented by concrete providers like SESProvider or GmailProvider.
    * @param {Object} options
    * @param {string} options.to - Recipient email address
    * @param {string} options.subject - Email subject

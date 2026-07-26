@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
-const authenticateToken = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const PermissionEngine = require('../utils/permissions');
 const VenueAvailabilityService = require('../services/venueAvailabilityService');
 
