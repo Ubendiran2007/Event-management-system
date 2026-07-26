@@ -122,7 +122,11 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
   let classAdvisorName = null;
   if ((currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) && displayData.class) {
-    const advisor = (staffUsers || []).find(u => u.role === UserRole.FACULTY && u.assignedClasses && u.assignedClasses.includes(displayData.class));
+    const targetClass = (displayData.class || '').replace(/-/g, ' ').toUpperCase();
+    const advisor = (staffUsers || []).find(u => {
+      if (u.role !== UserRole.FACULTY || !u.assignedClasses) return false;
+      return u.assignedClasses.some(c => (c || '').replace(/-/g, ' ').toUpperCase() === targetClass);
+    });
     if (advisor) {
       classAdvisorName = advisor.name;
     }

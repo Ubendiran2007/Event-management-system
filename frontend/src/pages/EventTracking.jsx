@@ -22,10 +22,12 @@ const EventTracking = () => {
     // Filter OD Requests for APPROVED students in assigned classes
     const relevantRequests = useMemo(() => {
         if (!odRequests) return [];
-        return odRequests.filter(req => 
-            req.status === 'APPROVED' &&
-            req.class && assignedClasses.includes(req.class)
-        );
+        const normalizedAssigned = assignedClasses.map(c => (c || '').replace(/-/g, ' ').toUpperCase());
+        return odRequests.filter(req => {
+            if (req.status !== 'APPROVED' || !req.class) return false;
+            const reqClassNorm = String(req.class).replace(/-/g, ' ').toUpperCase();
+            return normalizedAssigned.includes(reqClassNorm);
+        });
     }, [odRequests, assignedClasses]);
 
     // Group requests by event

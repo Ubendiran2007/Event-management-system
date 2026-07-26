@@ -454,6 +454,56 @@ router.post('/login', async (req, res, next) => {
         }
       }
 
+      // ── 3.5 Check staffs collection for new staff or live HOD assignedClasses updates ──
+      try {
+        const { getAllStaffDocs } = require('../utils/staffHelper');
+        const allStaffDocs = await getAllStaffDocs();
+        let foundInStaffs = null;
+        const lowerEmail = String(email).toLowerCase();
+
+        for (const sDoc of allStaffDocs) {
+          const arr = sDoc.data.staffs || [];
+          for (const s of arr) {
+            if (foundUserObj && (s.id === foundUserObj.id || (s.email && s.email.toLowerCase() === foundUserObj.email?.toLowerCase() && s.name === foundUserObj.name))) {
+              foundInStaffs = s;
+              break;
+            } else if (!foundUserObj && ((s.email && s.email.toLowerCase() === lowerEmail) || (s.username && s.username.toLowerCase() === lowerEmail) || (s.id && s.id.toLowerCase() === lowerEmail))) {
+              foundInStaffs = s;
+              break;
+            }
+          }
+          if (foundInStaffs) break;
+        }
+
+        if (foundInStaffs) {
+          if (!foundUserObj) {
+            foundStoredPassword = foundInStaffs.password;
+            const { password: _pw, ...safeData } = foundInStaffs;
+            foundUserObj = {
+              id: foundInStaffs.id,
+              ...safeData,
+              role: String(safeData.role || 'FACULTY').toUpperCase(),
+            };
+          } else if (!isStudent && foundUserObj.role !== 'STUDENT_GENERAL' && foundUserObj.role !== 'STUDENT_ORGANIZER') {
+            if (foundInStaffs.assignedClasses && Array.isArray(foundInStaffs.assignedClasses)) {
+              foundUserObj.assignedClasses = foundInStaffs.assignedClasses;
+            }
+            if (foundInStaffs.department) {
+              foundUserObj.department = foundInStaffs.department;
+            }
+            if (foundInStaffs.role) {
+              foundUserObj.role = String(foundInStaffs.role).toUpperCase();
+            }
+            try {
+              const { password: _pw, ...safeData } = foundInStaffs;
+              await setDoc(doc(db, 'users', foundUserObj.id), { ...foundUserObj, ...safeData, updatedAt: new Date().toISOString() }, { merge: true });
+            } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (staffErr) {
+        console.error('[auth] Error checking staffs collection during login:', staffErr);
+      }
+
     if (!foundUserObj) {
       recordFailedLogin(email, null, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));
       return res.status(401).json({ success: false, message: 'Invalid email or password' });

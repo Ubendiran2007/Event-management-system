@@ -100,6 +100,12 @@ router.post('/', async (req, res) => {
       await setDoc(newRef, { category, staffs: [userData] });
     }
     
+    try {
+      await setDoc(doc(db, 'users', userId), userData, { merge: true });
+    } catch (syncErr) {
+      console.error('Error syncing to users collection:', syncErr);
+    }
+    
     const responseData = { ...userData };
     delete responseData.password;
     
@@ -178,6 +184,12 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    try {
+      await setDoc(doc(db, 'users', id), updatedStaff, { merge: true });
+    } catch (syncErr) {
+      console.error('Error syncing to users collection:', syncErr);
+    }
+
     invalidateCache();
     res.json({ success: true, message: 'Staff member updated successfully' });
   } catch (err) {
@@ -215,6 +227,12 @@ router.delete('/:id', async (req, res) => {
 
     targetArr.splice(staffIdx, 1);
     await updateDoc(targetDoc.ref, { staffs: targetArr });
+    
+    try {
+      await deleteDoc(doc(db, 'users', id));
+    } catch (syncErr) {
+      console.error('Error deleting from users collection:', syncErr);
+    }
     
     invalidateCache();
     res.json({ success: true, message: 'Staff member deleted successfully' });

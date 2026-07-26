@@ -75,12 +75,16 @@ export const AppProvider = ({ children }) => {
 
     setLoading(true);
 
+    if (currentUser.role !== 'STUDENT_GENERAL' && currentUser.role !== 'STUDENT_ORGANIZER') {
+      loadUsers();
+    }
+
     // OD Requests are now handled by ODWorkflowProvider and useMyODs in Phase 4.
     setLoading(false);
 
     return () => {
     };
-  }, [currentUser?.id, currentUser?.role, currentUser?.department]);
+  }, [currentUser?.id, currentUser?.role, currentUser?.department, loadUsers]);
 
   // Real-time sync for currentUser if they are a student — patch ONLY OD fields from the live DB snapshot
   useEffect(() => {
@@ -110,6 +114,32 @@ export const AppProvider = ({ children }) => {
       localStorage.setItem('currentUser', JSON.stringify(patched));
     }
   }, [students]);
+
+  // Real-time sync for currentUser if they are staff — patch assignedClasses, role, department from live staffUsers
+  useEffect(() => {
+    if (!currentUser || staffUsers.length === 0) return;
+    const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
+    if (isStudent) return;
+
+    const myStaffData = staffUsers.find(u => u.id === currentUser.id || (u.email && u.email.toLowerCase() === currentUser.email?.toLowerCase() && u.name === currentUser.name));
+    if (!myStaffData) return;
+
+    const staffChanged =
+      JSON.stringify(myStaffData.assignedClasses || []) !== JSON.stringify(currentUser.assignedClasses || []) ||
+      myStaffData.role !== currentUser.role ||
+      myStaffData.department !== currentUser.department;
+
+    if (staffChanged) {
+      const patched = {
+        ...currentUser,
+        assignedClasses: myStaffData.assignedClasses || [],
+        role: myStaffData.role || currentUser.role,
+        department: myStaffData.department || currentUser.department,
+      };
+      setCurrentUser(patched);
+      localStorage.setItem('currentUser', JSON.stringify(patched));
+    }
+  }, [staffUsers, currentUser?.id, currentUser?.assignedClasses, currentUser?.role, currentUser?.department]);
 
   const handleLogin = (user) => {
     const formattedUser = user ? { ...user, role: user.role?.toUpperCase() } : user;

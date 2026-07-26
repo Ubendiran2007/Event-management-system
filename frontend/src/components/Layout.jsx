@@ -3,9 +3,6 @@ import Navbar from './Navbar';
 import { Menu, X } from 'lucide-react';
 import seceHeader from '../assets/sece header.jpeg';
 import { useAppContext } from '../context/AppContext';
-import { WorkflowEventsProvider } from '../context/WorkflowEventsContext';
-import { OrganizerEventsProvider } from '../context/OrganizerEventsContext';
-import { ODWorkflowProvider } from '../context/ODWorkflowContext';
 import { useNotifications } from '../hooks/useNotifications';
 import NotificationCenter from './NotificationCenter';
 import { Bell } from 'lucide-react';
@@ -17,9 +14,6 @@ export default function Layout({ children }) {
   const { unreadCount } = useNotifications();
 
   return (
-    <WorkflowEventsProvider>
-      <ODWorkflowProvider>
-        <OrganizerEventsProvider>
         <div className="h-screen w-full flex flex-col md:flex-row overflow-hidden bg-[#f8fafc]">
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 z-40 shrink-0">
@@ -79,8 +73,5 @@ export default function Layout({ children }) {
         {children}
       </main>
         </div>
-        </OrganizerEventsProvider>
-      </ODWorkflowProvider>
-    </WorkflowEventsProvider>
   );
 }

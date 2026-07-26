@@ -4,6 +4,9 @@ import { AppProvider, useAppContext } from './context/AppContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { CalendarProvider } from './context/CalendarContext';
 import { AnalyticsProvider } from './context/AnalyticsContext';
+import { WorkflowEventsProvider } from './context/WorkflowEventsContext';
+import { OrganizerEventsProvider } from './context/OrganizerEventsContext';
+import { ODWorkflowProvider } from './context/ODWorkflowContext';
 import './App.css';
 
 const Login = lazy(() => import('./pages/Login'));
@@ -94,20 +97,26 @@ export default function App() {
           <CalendarProvider>
             <AnalyticsProvider>
               <NotificationProvider>
-                <Suspense fallback={<LoadingFallback />}>
-                  <Routes>
-                    <Route path="/" element={<Login />} />
-                    <Route path="/login" element={<Login />} />
-                    
-                    {/* Generate nested routes for every role path */}
-                    {ROLE_PATHS.map((rolePath) => (
-                      <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
-                    ))}
-                    
-                    {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
-                    <Route path="*" element={<FallbackRoute />} />
-                  </Routes>
-                </Suspense>
+                <WorkflowEventsProvider>
+                  <ODWorkflowProvider>
+                    <OrganizerEventsProvider>
+                      <Suspense fallback={<LoadingFallback />}>
+                        <Routes>
+                          <Route path="/" element={<Login />} />
+                          <Route path="/login" element={<Login />} />
+                          
+                          {/* Generate nested routes for every role path */}
+                          {ROLE_PATHS.map((rolePath) => (
+                            <Route key={rolePath} path={`/${rolePath}/*`} element={<ProtectedRoute><RoleRoutes /></ProtectedRoute>} />
+                          ))}
+                          
+                          {/* Legacy fallback if accessed directly, redirect to proper dashboard or login */}
+                          <Route path="*" element={<FallbackRoute />} />
+                        </Routes>
+                      </Suspense>
+                    </OrganizerEventsProvider>
+                  </ODWorkflowProvider>
+                </WorkflowEventsProvider>
               </NotificationProvider>
             </AnalyticsProvider>
           </CalendarProvider>
