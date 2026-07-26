@@ -62,9 +62,11 @@ import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
-
 import VenueSelectionModal from '../components/VenueSelectionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
+import ApprovalsTable from '../components/ApprovalsTable';
+import RegistrationsTable from '../components/RegistrationsTable';
+import EventsTable from '../components/EventsTable';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 
@@ -1607,67 +1609,36 @@ const Dashboard = () => {
                 {/* Scrollable container for tab content - now relies on main page scroll */}
                 <div className="flex-1 flex flex-col bg-[#f5f7fa] min-h-0">
                   {/* Events Tab Content */}
-                  {(activeTab === 'events' || activeTab === 'approvals') && (() => {
+                  {activeTab === 'events' && (() => {
                     let displayEvents = [];
-                    if (activeTab === 'events') {
-                      const rawBaseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email)) :
-                        isDeptOfficer ? [...filteredEvents, ...approvedEvents] :
-                          filteredEvents;
-                      let baseEvents = Array.from(new Map(rawBaseEvents.map(e => [e.id, e])).values());
-                      
-                      if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
-                        baseEvents.sort(sortEventsByEventDateDesc);
-                      } else {
-                        baseEvents.sort(sortEventsBySubmissionDesc);
-                      }
+                    const rawBaseEvents = currentUser.role === UserRole.FACULTY ? events.filter(e => (e.organizerId === currentUser.id || e.organizerEmail === currentUser.email)) :
+                      isDeptOfficer ? [...filteredEvents, ...approvedEvents] :
+                        filteredEvents;
+                    let baseEvents = Array.from(new Map(rawBaseEvents.map(e => [e.id, e])).values());
+                    
+                    if (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.STUDENT_GENERAL) {
+                      baseEvents.sort(sortEventsByEventDateDesc);
+                    } else {
+                      baseEvents.sort(sortEventsBySubmissionDesc);
+                    }
 
-                      if (isDeptOfficer) {
-                        if (eventFilter === 'all') displayEvents = baseEvents;
-                        else if (eventFilter === 'pending') displayEvents = filteredEvents;
-                        else if (eventFilter === 'approved') displayEvents = approvedEvents;
-                        else displayEvents = baseEvents;
-                      } else {
-                        if (eventFilter === 'all') displayEvents = baseEvents;
-                        else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && e.status.startsWith('PENDING'));
-                        else if (eventFilter === 'approved') displayEvents = baseEvents.filter(e => e.status === EventStatus.APPROVED);
-                        else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
-                        else if (eventFilter === 'completed') displayEvents = baseEvents.filter(e => e.status === EventStatus.COMPLETED);
-                        else if (eventFilter === 'rejected') displayEvents = baseEvents.filter(e => e.status === EventStatus.REJECTED);
-                      }
+                    if (isDeptOfficer) {
+                      if (eventFilter === 'all') displayEvents = baseEvents;
+                      else if (eventFilter === 'pending') displayEvents = filteredEvents;
+                      else if (eventFilter === 'approved') displayEvents = approvedEvents;
+                      else displayEvents = baseEvents;
+                    } else {
+                      if (eventFilter === 'all') displayEvents = baseEvents;
+                      else if (eventFilter === 'process') displayEvents = baseEvents.filter(e => e.status && e.status.startsWith('PENDING'));
+                      else if (eventFilter === 'approved') displayEvents = baseEvents.filter(e => e.status === EventStatus.APPROVED);
+                      else if (eventFilter === 'posted') displayEvents = baseEvents.filter(e => e.status === EventStatus.POSTED);
+                      else if (eventFilter === 'completed') displayEvents = baseEvents.filter(e => e.status === EventStatus.COMPLETED);
+                      else if (eventFilter === 'rejected') displayEvents = baseEvents.filter(e => e.status === EventStatus.REJECTED);
+                    }
 
-                      // Apply Rule 3: Completed events sort by End Date Descending
-                      if (eventFilter === 'completed') {
-                        displayEvents = [...displayEvents].sort(sortEventsByEndDateDesc);
-                      }
-                    } else if (activeTab === 'approvals') {
-                      let pendingEvents = [];
-                      let pastApprovedEvents = [];
-
-                      if (currentUser.role === UserRole.FACULTY) {
-                        pendingEvents = events.filter(e => e.status === EventStatus.PENDING_FACULTY);
-                        pastApprovedEvents = events.filter(e => e.facultyApproval === 'APPROVED' || e.facultyApprovedAt);
-                      } else if (currentUser.role === UserRole.HOD) {
-                        pendingEvents = events.filter(e => e.status === EventStatus.PENDING_HOD);
-                        pastApprovedEvents = approvedEvents;
-                      } else if (currentUser.role === UserRole.IQAC_TEAM) {
-                        pendingEvents = events.filter(e => e.status === EventStatus.PENDING_IQAC);
-                        pastApprovedEvents = approvedEvents;
-                      } else {
-                        // For departments (HR_TEAM, AUDIO_TEAM, etc.)
-                        pendingEvents = filteredEvents;
-                        pastApprovedEvents = approvedEvents;
-                      }
-
-                      if (eventFilter === 'approved') {
-                        displayEvents = pastApprovedEvents;
-                      } else if (eventFilter === 'pending') {
-                        displayEvents = pendingEvents;
-                      } else if (eventFilter === 'modified') {
-                        const allApprovals = Array.from(new Set([...pendingEvents, ...pastApprovedEvents]));
-                        displayEvents = allApprovals.filter(e => e.status === 'CANCELLED' || e.status === 'POSTPONED' || e.isPostponed || e.modificationRequest);
-                      } else {
-                        displayEvents = Array.from(new Set([...pendingEvents, ...pastApprovedEvents])).sort(sortEventsBySubmissionDesc);
-                      }
+                    // Apply Rule 3: Completed events sort by End Date Descending
+                    if (eventFilter === 'completed') {
+                      displayEvents = [...displayEvents].sort(sortEventsByEndDateDesc);
                     }
 
                     return (
@@ -1760,15 +1731,21 @@ const Dashboard = () => {
                             </div>
                             <h3 className="text-slate-800 font-bold text-lg mb-1">No events available</h3>
                             <p className="text-slate-500 font-medium text-sm max-w-sm mx-auto">
-                              {(isStaff || isMedia)
-                                ? 'There are no events currently waiting for your approval.'
-                                : 'There are no events matching your current filters.'}
+                              There are no events matching your current filters.
                             </p>
                           </div>
                         )}
                       </div>
                     );
                   })()}
+
+                  {activeTab === 'approvals' && (
+                    <ApprovalsTable 
+                      currentUser={currentUser} 
+                      filter={eventFilter} 
+                      onRowClick={setSelectedEventDetail} 
+                    />
+                  )}
 
                   
                   {/* Modification Requests Tab Content */}
@@ -1784,7 +1761,7 @@ const Dashboard = () => {
                     return (
                       <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
                         {modEvents.length === 0 ? (
-                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                             <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
                               <ClipboardList size={36} />
                             </div>
@@ -1842,7 +1819,7 @@ const Dashboard = () => {
                   {activeTab === 'available' && (
                     <div className="flex flex-col flex-1 min-h-0 bg-slate-50/50">
                       {availableEvents.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
                             <Calendar size={36} />
                           </div>
@@ -1931,348 +1908,12 @@ const Dashboard = () => {
 
                   {/* Registrations Tab — organizer sees incoming student OD requests */}
                   {activeTab === 'registrations' && (currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY || hasOrganizedEvents) && (
-                    <div className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                      {groupedOrganizerEvents.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
-                          <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
-                            <Users size={36} />
-                          </div>
-                          <h3 className="text-slate-800 font-bold text-lg mb-1">No student registrations yet</h3>
-                          <p className="text-slate-500 font-medium text-sm">There are no OD requests to review at this time.</p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col flex-1 min-h-0">
-                          {/* Table Header */}
-                          <div className="hidden sm:grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                            <div className="col-span-4">Event Name</div>
-                            <div className="col-span-3">Venue</div>
-                            <div className="col-span-3">Date</div>
-                            <div className="col-span-2 text-right pr-2">Action</div>
-                          </div>
-                          <div className="divide-y divide-slate-100 overflow-y-auto min-h-0 flex-1">
-                            {groupedOrganizerEvents.map(group => {
-                          const groupKey = group.eventId || group.eventTitle;
-                          const isExpanded = expandedRegistrationGroups[groupKey] ?? false;
-                          const pendingCount = group.requests.filter(r => r.status === 'PENDING_ORGANIZER').length;
-                          const sourceEvent = group.eventId ? organizerEventsById[group.eventId] : null;
-                          const isVolunteerEnabledEvent = Boolean(sourceEvent?.registrationOptions?.allowVolunteer);
-
-                          const renderRequestRow = (req) => {
-                            const isToggling = togglingOD[req.id];
-                            // Profile Initials
-                            const initials = req.studentName ? req.studentName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'ST';
-
-                            return (
-                              <div key={req.id} className="px-4 py-2 bg-white hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors group">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                  <div className="flex items-start gap-3">
-                                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-100 to-blue-200 rounded-full flex items-center justify-center text-blue-800 font-bold text-xs shadow-sm shrink-0 border border-white mt-0.5">
-                                      {initials}
-                                    </div>
-                                    <div className="flex flex-col justify-center min-h-[32px]">
-                                      <p className="font-bold text-xs text-slate-800 leading-tight">
-                                        {formatStudentNameWithRoll(req.studentName, req.rollNo, req.studentId)}
-                                      </p>
-                                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                        <span className="text-[10px] text-slate-400 font-medium">{fallbackValue(req.class, 'general')}</span>
-                                        {req.registrationType && (
-                                          <span className={`text-[8px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${req.registrationType === 'VOLUNTEER' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
-                                            }`}>
-                                            {req.registrationType === 'VOLUNTEER' ? 'Volunteer' : 'Participant'}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0 sm:mt-0 mt-1">
-                                    {req.status === 'PENDING_ORGANIZER' ? (
-                                      <div className="flex gap-2 w-full sm:w-auto">
-                                        <button
-                                          onClick={() => handleOrganizerApproval(req.id, false)}
-                                          disabled={isToggling}
-                                          className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-white text-red-600 hover:bg-red-50 border border-red-200 hover:border-red-300 disabled:opacity-50 transition-all shadow-sm"
-                                        >
-                                          {isToggling ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />} Reject
-                                        </button>
-                                        <button
-                                          onClick={() => handleOrganizerApproval(req.id, true)}
-                                          disabled={isToggling}
-                                          className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 transition-all shadow-sm"
-                                        >
-                                          {isToggling ? <Loader2 size={12} className="animate-spin" /> : <UserCheck size={12} />} Approve
-                                        </button>
-                                      </div>
-                                    ) : req.status === 'WITHDRAWN' ? (
-                                      <span className="px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-400 border border-slate-200">
-                                        Withdrawn
-                                      </span>
-                                    ) : (
-                                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 border shadow-sm ${req.status === 'APPROVED'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : 'bg-red-50 text-red-700 border-red-200'
-                                        }`}>
-                                        {req.status === 'APPROVED' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                                        {req.status === 'APPROVED' ? 'Approved' : 'Rejected'}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          };
-
-                          const participantRequests = group.requests.filter(
-                            (r) => (r.registrationType || 'PARTICIPANT') !== 'VOLUNTEER'
-                          );
-                          const volunteerRequests = group.requests.filter(
-                            (r) => r.registrationType === 'VOLUNTEER'
-                          );
-
-                          return (
-                            <div key={groupKey} className="flex flex-col group transition-colors hover:bg-slate-50/50">
-                              {/* Row Content */}
-                              <div className={`sm:grid sm:grid-cols-12 gap-4 items-center px-6 py-4 transition-colors ${isExpanded ? 'bg-blue-50/30' : ''}`}>
-                                <div className="col-span-4 mb-3 sm:mb-0">
-                                  <p className="text-sm font-bold text-slate-900 leading-tight mb-1">{group.eventTitle}</p>
-                                  <div className="flex items-center gap-3 sm:hidden text-xs font-medium text-slate-500 mt-2">
-                                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-slate-400"/> {sourceEvent?.venue || 'TBA'}</span>
-                                    <span className="flex items-center gap-1.5"><Calendar size={12} className="text-slate-400"/> {group.eventDate || '-'}</span>
-                                  </div>
-                                </div>
-                                <div className="hidden sm:flex col-span-3 items-center gap-2 text-sm text-slate-600 font-medium">
-                                  <MapPin size={14} className="text-slate-400 shrink-0" />
-                                  <span className="truncate">{sourceEvent?.venue || 'TBA'}</span>
-                                </div>
-                                <div className="hidden sm:flex col-span-3 items-center gap-2 text-sm text-slate-600 font-medium">
-                                  <Calendar size={14} className="text-slate-400 shrink-0" />
-                                  <span>{group.eventDate || '-'}</span>
-                                </div>
-                                <div className="col-span-2 flex items-center sm:justify-end justify-between gap-3">
-                                  <div className="flex items-center gap-2">
-                                    {pendingCount > 0 ? (
-                                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                                        {pendingCount} Pending
-                                      </span>
-                                    ) : (
-                                      <span className="hidden sm:inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                                        {group.requests.length} Total
-                                      </span>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: !isExpanded }))}
-                                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
-                                      isExpanded 
-                                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
-                                        : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'
-                                    }`}
-                                  >
-                                    {isExpanded ? 'Close' : 'View'}
-                                    <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {isExpanded && (
-                                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" style={{ margin: 0 }}>
-                                  <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-slate-100">
-                                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                                       <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-                                           <Users className="text-blue-600" size={20} />
-                                           Registrations for {group.eventTitle}
-                                       </h3>
-                                       <button onClick={(e) => { e.stopPropagation(); setExpandedRegistrationGroups(prev => ({ ...prev, [groupKey]: false })) }} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
-                                           <X size={20} />
-                                       </button>
-                                    </div>
-                                    <div className="p-6 flex flex-col flex-1 min-h-0 overflow-hidden">
-                                      {/* Filter Search & PDF */}
-                                      <div className="mb-4 flex flex-col sm:flex-row gap-3 shrink-0">
-                                    <div className="relative flex-1">
-                                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                      <input
-                                        type="text"
-                                        placeholder="Search by student name, roll no, or class..."
-                                        value={searchQueries[groupKey] || ''}
-                                        onChange={(e) => setSearchQueries(prev => ({ ...prev, [groupKey]: e.target.value }))}
-                                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm bg-white cursor-pointer focus:cursor-text"
-                                      />
-                                    </div>
-                                    {(() => {
-                                      const approvedStudents = group.requests.filter(req => req.status === 'APPROVED');
-                                      const hasApproved = approvedStudents.length > 0;
-                                      const listText = approvedStudents.map((s, i) => `${i + 1}. ${formatStudentNameWithRoll(s.studentName, s.rollNo, s.userId)} - ${fallbackValue(s.class, 'general')}`).join('\n');
-                                      const copyKey = `${groupKey}-all`;
-                                      const isCopied = copiedStates[copyKey];
-
-                                      return (
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <button 
-                                            type="button"
-                                            disabled={!hasApproved}
-                                            onClick={(e) => { 
-                                              e.stopPropagation();
-                                              downloadStudentListPDF(group);
-                                            }}
-                                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                                              hasApproved 
-                                                ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md' 
-                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                                            }`}
-                                          >
-                                            <Download size={14} /> Download
-                                          </button>
-                                          <button
-                                            type="button"
-                                            disabled={!hasApproved}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              shareDeptList('All Participants', approvedStudents, group.eventTitle, group.eventDate);
-                                            }}
-                                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                                              hasApproved 
-                                                ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200' 
-                                                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                                            }`}
-                                          >
-                                            <ArrowUpRight size={14} /> Share
-                                          </button>
-                                          <button
-                                            type="button"
-                                            disabled={!hasApproved}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              copyToClipboard(`APPROVED PARTICIPANT OD LIST: ${group.eventTitle}\nDATE: ${group.eventDate || '-'}\n\n${listText}`, copyKey);
-                                            }}
-                                            className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-                                              !hasApproved ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' :
-                                              isCopied
-                                                ? 'bg-emerald-500 text-white'
-                                                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
-                                            }`}
-                                          >
-                                            {isCopied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
-                                          </button>
-                                        </div>
-                                      );
-                                    })()}
-                                  </div>
-
-                                  {(() => {
-                                    const query = (searchQueries[groupKey] || '').toLowerCase();
-                                    const filteredParticipantRequests = participantRequests.filter(r =>
-                                      (r.studentName && r.studentName.toLowerCase().includes(query)) ||
-                                      (r.rollNo && r.rollNo.toLowerCase().includes(query)) ||
-                                      (r.class && r.class.toLowerCase().includes(query))
-                                    );
-                                    const filteredVolunteerRequests = volunteerRequests.filter(r =>
-                                      (r.studentName && r.studentName.toLowerCase().includes(query)) ||
-                                      (r.rollNo && r.rollNo.toLowerCase().includes(query)) ||
-                                      (r.class && r.class.toLowerCase().includes(query))
-                                    );
-                                    const filteredAllRequests = group.requests.filter(r =>
-                                      (r.studentName && r.studentName.toLowerCase().includes(query)) ||
-                                      (r.rollNo && r.rollNo.toLowerCase().includes(query)) ||
-                                      (r.class && r.class.toLowerCase().includes(query))
-                                    );
-
-                                    const pendingFilteredParticipant = filteredParticipantRequests.filter(r => r.status === 'PENDING_ORGANIZER');
-                                    const pendingFilteredVolunteer = filteredVolunteerRequests.filter(r => r.status === 'PENDING_ORGANIZER');
-                                    const pendingFilteredAll = filteredAllRequests.filter(r => r.status === 'PENDING_ORGANIZER');
-
-                                    return isVolunteerEnabledEvent ? (
-                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
-                                        <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden shadow-sm">
-                                          <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 shrink-0">
-                                            <div className="flex items-center justify-between gap-2">
-                                              <div className="flex items-center gap-2">
-                                                <Users size={16} className="text-slate-500" />
-                                                <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Participants ({participantRequests.length})</p>
-                                              </div>
-                                              {pendingFilteredParticipant.length > 0 && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleBulkOrganizerApproval(filteredParticipantRequests, `${groupKey}-participants`)}
-                                                  disabled={bulkApprovingGroups[`${groupKey}-participants`]}
-                                                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
-                                                >
-                                                  {bulkApprovingGroups[`${groupKey}-participants`] ? 'Approving...' : `Approve All (${pendingFilteredParticipant.length})`}
-                                                </button>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="divide-y divide-slate-100/80 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
-                                            {filteredParticipantRequests.length > 0 ? filteredParticipantRequests.map(renderRequestRow) : (
-                                              <div className="p-8 text-center text-sm font-medium text-slate-400">No participant requests found.</div>
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        <div className="rounded-2xl border-2 border-indigo-100 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden shadow-sm">
-                                          <div className="px-5 py-4 bg-indigo-50/80 border-b-2 border-indigo-100 shrink-0">
-                                            <div className="flex items-center justify-between gap-2">
-                                              <div className="flex items-center gap-2">
-                                                <ShieldCheck size={16} className="text-indigo-500" />
-                                                <p className="text-sm font-bold uppercase tracking-wider text-indigo-800">Volunteers ({volunteerRequests.length})</p>
-                                              </div>
-                                              {pendingFilteredVolunteer.length > 0 && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleBulkOrganizerApproval(filteredVolunteerRequests, `${groupKey}-volunteers`)}
-                                                  disabled={bulkApprovingGroups[`${groupKey}-volunteers`]}
-                                                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm"
-                                                >
-                                                  {bulkApprovingGroups[`${groupKey}-volunteers`] ? 'Approving...' : `Approve All (${pendingFilteredVolunteer.length})`}
-                                                </button>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="divide-y divide-indigo-50/80 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
-                                            {filteredVolunteerRequests.length > 0 ? filteredVolunteerRequests.map(renderRequestRow) : (
-                                              <div className="p-8 text-center text-sm font-medium text-slate-400">No volunteer requests found.</div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div className="rounded-2xl border-2 border-slate-100 bg-white/50 backdrop-blur-sm flex flex-col overflow-hidden shadow-sm">
-                                        <div className="px-5 py-4 bg-slate-50/80 border-b-2 border-slate-100 flex items-center justify-between gap-2 shrink-0">
-                                          <div className="flex items-center gap-2">
-                                            <Users size={16} className="text-slate-500" />
-                                            <p className="text-sm font-bold uppercase tracking-wider text-slate-700">Registrations ({group.requests.length})</p>
-                                          </div>
-                                          {pendingFilteredAll.length > 0 && (
-                                            <button
-                                              type="button"
-                                              onClick={() => handleBulkOrganizerApproval(filteredAllRequests, `${groupKey}-all`)}
-                                              disabled={bulkApprovingGroups[`${groupKey}-all`]}
-                                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 shadow-sm shadow-emerald-500/20"
-                                            >
-                                              {bulkApprovingGroups[`${groupKey}-all`] ? 'Approving...' : `Approve All (${pendingFilteredAll.length})`}
-                                            </button>
-                                          )}
-                                        </div>
-                                        <div className="divide-y divide-slate-100/80 flex-1 min-h-0 overflow-y-auto scrollbar-thin">
-                                          {filteredAllRequests.length > 0 ? filteredAllRequests.map(renderRequestRow) : (
-                                            <div className="p-8 text-center text-sm font-medium text-slate-400">No requests found.</div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-
-
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <RegistrationsTable 
+                       currentUser={currentUser} 
+                       onRowClick={(req) => {
+                         // Open some modal or just ignore, for now we can rely on inline actions
+                       }} 
+                    />
                   )}
 
                   {/* My Registrations Tab — for all students */}
@@ -2413,7 +2054,7 @@ const Dashboard = () => {
                           </div>
                         </div>
                       ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/30">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
                             <FileText size={36} />
                           </div>
@@ -2428,12 +2069,12 @@ const Dashboard = () => {
                   {activeTab === 'my-schedule' && (
                     <div className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm overflow-y-auto">
                       {loadingSchedule ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
                           <p className="text-slate-500 font-medium text-sm">Loading your chronological schedule...</p>
                         </div>
                       ) : !mySchedule || !mySchedule.schedule || mySchedule.schedule.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px] bg-slate-50/30 rounded-xl">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/30 rounded-xl">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
                             <Calendar size={36} />
                           </div>

@@ -103,29 +103,13 @@
   }
 }
 
-/* ── Global Custom Scrollbar ── */
+/* ── Hide Global Scrollbars ── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-blue-600 rounded-full;
-  border: 1px solid transparent;
-  background-clip: content-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-blue-700;
+  display: none;
 }
 
 /* Firefox support */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: #2563eb transparent;
+  scrollbar-width: none;
 }
 

@@ -106,11 +106,22 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
   navItems.push({ id: 'academic-calendar', label: 'Academic Calendar', icon: CalendarDays, path: '/academic-calendar' });
 
-  if (currentUser.role !== UserRole.STUDENT_GENERAL && currentUser.role !== UserRole.STUDENT_ORGANIZER) {
+  const noAnalyticsRoles = [
+    UserRole.STUDENT_GENERAL, 
+    UserRole.STUDENT_ORGANIZER, 
+    UserRole.HR_TEAM, 
+    UserRole.BOYS_WARDEN, 
+    UserRole.GIRLS_WARDEN, 
+    UserRole.TRANSPORT_TEAM, 
+    UserRole.AUDIO_TEAM, 
+    UserRole.MEDIA
+  ];
+
+  if (!noAnalyticsRoles.includes(currentUser.role)) {
     navItems.push({ id: 'analytics', label: 'Analytics', icon: BarChart2, path: '/analytics' });
   }
 
-  if (currentUser.role === UserRole.HR_TEAM || currentUser.role === UserRole.IQAC_TEAM || currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === 'IQAC') {
+  if (currentUser.role === UserRole.HR_TEAM || currentUser.role === UserRole.SUPER_ADMIN) {
     navItems.push({ id: 'venue-management', label: 'Venue Management', icon: Building2, path: '/venue-management' });
   }
 

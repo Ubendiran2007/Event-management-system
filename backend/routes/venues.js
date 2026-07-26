@@ -5,6 +5,7 @@ const { successResponse, errorResponse } = require('../utils/apiResponse');
 const { authenticateToken } = require('../middleware/auth');
 const PermissionEngine = require('../utils/permissions');
 const VenueAvailabilityService = require('../services/venueAvailabilityService');
+const { parsePaginationParams } = require('../utils/paginationHelper');
 
 const db = getFirestore();
 
@@ -28,16 +29,52 @@ router.get('/', authenticateToken, async (req, res) => {
 
 /**
  * @route   GET /api/venues/all
- * @desc    Get all venues regardless of status (HR / IQAC / Admin only)
+ * @desc    Get all venues regardless of status (HR / IQAC / Admin only) with pagination
  */
 router.get('/all', authenticateToken, async (req, res) => {
   try {
     if (!PermissionEngine.canManageVenue(req.user)) {
       return errorResponse(res, 'Unauthorized to view all venues', 'UNAUTHORIZED', 403);
     }
-    const venuesSnapshot = await db.collection('venues').get();
-    const venues = venuesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    return successResponse(res, venues, 'All venues fetched successfully');
+
+    const { limit: limitCount, cursor, sortBy, sortOrder } = parsePaginationParams(req.query, 20, 100);
+    const { status: statusFilter, search } = req.query;
+
+    let queryRef = db.collection('venues');
+    if (statusFilter) queryRef = queryRef.where('status', '==', statusFilter);
+
+    const sortField = ['name', 'createdAt', 'capacity'].includes(sortBy) ? sortBy : 'name';
+    queryRef = queryRef.orderBy(sortField, sortOrder).orderBy('__name__', 'asc');
+
+    if (cursor) {
+      try {
+        const [sortVal, docId] = JSON.parse(Buffer.from(cursor, 'base64').toString('utf8'));
+        const cursorDoc = await db.collection('venues').doc(docId).get();
+        if (cursorDoc.exists) queryRef = queryRef.startAfter(cursorDoc);
+      } catch(_) {}
+    }
+
+    const venuesSnapshot = await queryRef.limit(limitCount + 1).get();
+    const allDocs = venuesSnapshot.docs;
+    const hasMore = allDocs.length > limitCount;
+    const dataDocs = hasMore ? allDocs.slice(0, limitCount) : allDocs;
+
+    let venues = dataDocs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Client-side search filter (venue names are small datasets)
+    if (search) {
+      const q = search.toLowerCase();
+      venues = venues.filter(v => (v.name || '').toLowerCase().includes(q) || (v.location || '').toLowerCase().includes(q));
+    }
+
+    const lastDoc = dataDocs.length > 0 ? dataDocs[dataDocs.length - 1] : null;
+    const nextCursor = hasMore && lastDoc
+      ? Buffer.from(JSON.stringify([lastDoc.get(sortField), lastDoc.id])).toString('base64')
+      : null;
+
+    return successResponse(res, venues, 'All venues fetched successfully', 200, {
+      pagination: { limit: limitCount, hasMore, nextCursor, count: venues.length }
+    });
   } catch (err) {
     console.error('Error fetching all venues:', err);
     return errorResponse(res, err.message, 'FETCH_ALL_VENUES_ERROR');
@@ -119,7 +156,7 @@ router.post('/reserve', authenticateToken, async (req, res) => {
       return errorResponse(res, 'Missing required reservation fields', 'VALIDATION_ERROR', 400);
     }
 
-    const reservation = await VenueAvailabilityService.reserveVenue(venueId, req.user.uid, date, startTime, endTime);
+    const reservation = await VenueAvailabilityService.reserveVenue(venueId, req.user.id, date, startTime, endTime);
     return successResponse(res, reservation, 'Venue reserved successfully', 201);
   } catch (err) {
     console.error('Error reserving venue:', err);
@@ -138,7 +175,7 @@ router.post('/release', authenticateToken, async (req, res) => {
       return errorResponse(res, 'reservationId is required', 'VALIDATION_ERROR', 400);
     }
 
-    await VenueAvailabilityService.releaseReservation(reservationId, req.user.uid);
+    await VenueAvailabilityService.releaseReservation(reservationId, req.user.id);
     return successResponse(res, null, 'Reservation released successfully');
   } catch (err) {
     console.error('Error releasing reservation:', err);
@@ -156,7 +193,7 @@ router.post('/re-reserve', authenticateToken, async (req, res) => {
     if (!reservationId) {
       return errorResponse(res, 'reservationId is required', 'VALIDATION_ERROR', 400);
     }
-    const reservation = await VenueAvailabilityService.reReserveVenue(reservationId, req.user.uid);
+    const reservation = await VenueAvailabilityService.reReserveVenue(reservationId, req.user.id);
     return successResponse(res, reservation, 'Venue re-reserved successfully');
   } catch (err) {
     console.error('Error re-reserving venue:', err);
@@ -171,7 +208,7 @@ router.post('/re-reserve', authenticateToken, async (req, res) => {
 router.post('/validate-hold', authenticateToken, async (req, res) => {
   try {
     const { reservationId, venueId, date, startTime, endTime } = req.body;
-    await VenueAvailabilityService.validateHoldForSubmission(reservationId, venueId, req.user.uid, date, startTime, endTime);
+    await VenueAvailabilityService.validateHoldForSubmission(reservationId, venueId, req.user.id, date, startTime, endTime);
     return successResponse(res, { valid: true }, 'Hold is valid');
   } catch (err) {
     console.error('Error validating hold:', err);
@@ -208,7 +245,7 @@ router.post('/', authenticateToken, async (req, res) => {
       status: payload.status || 'ACTIVE',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      updatedBy: req.user.uid
+      updatedBy: req.user.id
     };
 
     await newVenueRef.set(venueData);
@@ -217,7 +254,7 @@ router.post('/', authenticateToken, async (req, res) => {
       module: 'VENUE_MASTER',
       action: 'VENUE_CREATED',
       newValue: venueData,
-      performedBy: req.user.uid,
+      performedBy: req.user.id,
       role: req.user.role,
       timestamp: FieldValue.serverTimestamp()
     });
@@ -254,7 +291,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
       const updateData = {
         ...payload,
         updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: req.user.uid
+        updatedBy: req.user.id
       };
 
       t.update(venueRef, updateData);
@@ -265,7 +302,7 @@ router.patch('/:id', authenticateToken, async (req, res) => {
         action: 'VENUE_UPDATED',
         oldValue: oldData,
         newValue: updateData,
-        performedBy: req.user.uid,
+        performedBy: req.user.id,
         role: req.user.role,
         timestamp: FieldValue.serverTimestamp()
       });
@@ -317,7 +354,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         module: 'VENUE_MASTER',
         action: 'VENUE_DELETED_PERMANENTLY',
         oldValue: oldData,
-        performedBy: req.user.uid,
+        performedBy: req.user.id,
         role: req.user.role,
         timestamp: FieldValue.serverTimestamp()
       });
@@ -327,14 +364,14 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       await venueRef.update({
         status: 'ARCHIVED',
         updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: req.user.uid
+        updatedBy: req.user.id
       });
       await db.collection('eventAuditLogs').add({
         module: 'VENUE_MASTER',
         action: 'VENUE_ARCHIVED',
         oldValue: oldData,
         newValue: { ...oldData, status: 'ARCHIVED' },
-        performedBy: req.user.uid,
+        performedBy: req.user.id,
         role: req.user.role,
         timestamp: FieldValue.serverTimestamp()
       });
@@ -369,7 +406,7 @@ router.post('/:id/maintenance', authenticateToken, async (req, res) => {
       endDate,
       reason: reason || 'Scheduled Maintenance',
       createdAt: FieldValue.serverTimestamp(),
-      createdBy: req.user.uid
+      createdBy: req.user.id
     };
     await mRef.set(mData);
 

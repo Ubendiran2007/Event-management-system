@@ -3,6 +3,7 @@ const router = express.Router();
 const { db, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, getDoc, limit } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
+const { parsePaginationParams } = require('../utils/paginationHelper');
 
 const { buildStaffData } = require('../services/userService');
 const { getAllStaffDocs } = require('../utils/staffHelper');
@@ -32,10 +33,13 @@ const invalidateCache = () => {
 };
 // ----------------------------
 
-// GET /api/users — fetch all staff members
+// GET /api/users — fetch all staff members with in-memory pagination
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
   try {
+    const { role, department, search } = req.query;
+    const { limit: limitCount, cursor } = parsePaginationParams(req.query, 50, 200);
+
     let allUsers = [];
     if (cachedUsers) {
       allUsers = cachedUsers;
@@ -50,7 +54,36 @@ router.get('/', async (req, res) => {
       });
       cachedUsers = allUsers;
     }
-    res.json({ success: true, users: allUsers, total: allUsers.length });
+
+    // Server-side filtering
+    let filtered = allUsers;
+    if (role) filtered = filtered.filter(u => u.role === role);
+    if (department) filtered = filtered.filter(u => u.department === department);
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(u =>
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q)
+      );
+    }
+
+    // In-memory cursor (offset-based, encoded as base64 integer for simplicity)
+    let offset = 0;
+    if (cursor) {
+      try { offset = parseInt(Buffer.from(cursor, 'base64').toString('utf8'), 10) || 0; } catch(_) {}
+    }
+
+    const pageItems = filtered.slice(offset, offset + limitCount + 1);
+    const hasMore = pageItems.length > limitCount;
+    const dataItems = hasMore ? pageItems.slice(0, limitCount) : pageItems;
+    const nextOffset = offset + dataItems.length;
+    const nextCursor = hasMore ? Buffer.from(String(nextOffset)).toString('base64') : null;
+
+    res.json({
+      success: true,
+      data: dataItems,
+      pagination: { limit: limitCount, hasMore, nextCursor, count: dataItems.length }
+    });
   } catch (err) {
     console.error('Error fetching users:', err);
     res.status(500).json({ success: false, message: err.message });

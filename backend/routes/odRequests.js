@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db, collectionGroup, query, where, limit } = require('../firebaseClientWrapper');
+const { collection, getDocs, doc, getDoc, addDoc, updateDoc, db, collectionGroup, query, where, limit, orderBy, startAfter } = require('../firebaseClientWrapper');
+const { parsePaginationParams, decodeCursor, formatPaginatedResponse } = require('../utils/paginationHelper');
 const { getAllSectionDocs, findStudentInFirestore } = require('../utils/studentHelper');
 const eventPublisher = require('../events/publishers/eventPublisher');
 const crypto = require('crypto');
@@ -234,32 +235,62 @@ router.post('/', async (req, res) => {
 // GET /api/od-requests — list with optional filters: eventId, studentId, organizerId, status
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
-  const { eventId, studentId, organizerId, status } = req.query;
+  const { eventId, studentId, organizerId, status, class: filterClass } = req.query;
+  const { limit: limitCount, cursor, sortBy, sortOrder } = parsePaginationParams(req.query, 20);
 
   try {
     let constraints = [];
     if (eventId) constraints.push(where('eventId', '==', eventId));
     if (studentId) constraints.push(where('studentId', '==', studentId));
     if (organizerId) constraints.push(where('organizerId', '==', organizerId));
-    if (status) constraints.push(where('status', '==', status));
+    if (status) {
+      if (status.includes(',')) constraints.push(where('status', 'in', status.split(',')));
+      else constraints.push(where('status', '==', status));
+    }
+    
+    // Some endpoints may pass the normalized class in the query to filter OD requests for advisors
+    if (filterClass) {
+       constraints.push(where('class', '==', compactClassSection(filterClass)));
+    }
+
+    // Deterministic sorting
+    const allowedSortFields = ['createdAt', 'eventDate'];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    
+    constraints.push(orderBy(sortField, sortOrder));
+    if (sortField !== '__name__') {
+      constraints.push(orderBy('__name__', 'asc')); // Tie-breaker
+    }
+
+    if (cursor) {
+      const decoded = decodeCursor(cursor);
+      if (decoded && Array.isArray(decoded)) {
+        constraints.push(startAfter(...decoded));
+      }
+    }
+
+    // Fetch limit + 1
+    constraints.push(limit(limitCount + 1));
 
     const qList = constraints.length > 0 
       ? query(collection(db, 'odRequests'), ...constraints) 
       : collection(db, 'odRequests');
       
     const snapshot = await getDocs(qList);
-    let requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    
+    const allDocs = snapshot.docs;
+    const sortFields = sortField !== '__name__' ? [sortField, '__name__'] : ['__name__'];
 
-    // Never expose passwords (shouldn't be here but defensive)
-    requests = requests.map(r => {
-      const normalized = { ...r };
+    const response = formatPaginatedResponse(allDocs, limitCount, sortFields, (d) => {
+      const r = d.data();
+      const normalized = { id: d.id, ...r };
       normalized.rollNo = normalizeRollNo(normalized.rollNo || normalized.studentId);
       normalized.class = compactClassSection(normalized.class);
       delete normalized.password;
       return normalized;
     });
 
-    res.json({ success: true, odRequests: requests, total: requests.length });
+    res.json(response);
   } catch (err) {
     console.error('Error fetching OD requests:', err);
     res.status(500).json({ success: false, message: err.message });

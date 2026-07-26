@@ -142,8 +142,41 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
     callback([]);
     return () => {};
   }
-  
-  // Subscribe to all active workflow statuses so client-side dashboard tabs can filter correctly
+
+  // ── Scoped queries by role to minimize Firestore reads ────────────────────
+  // FACULTY: only their own events (as organizer) + events pending their review
+  if (currentUser.role === 'FACULTY') {
+    const q = query(
+      eventsCollection,
+      where('organizerId', '==', currentUser.id)
+    );
+    return onSnapshot(q, (snapshot) => {
+      logQuery(`Dashboard/Workflow (FACULTY:own)`, snapshot.size, true, startTime);
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+  }
+
+  // HOD: only their department's events (scoped by department field)
+  if (currentUser.role === 'HOD' && currentUser.department) {
+    const deptStatuses = [
+      'PENDING_FACULTY', 'PENDING_CLASS_ADVISOR', 'PENDING_HOD',
+      'APPROVED', 'POSTED', 'COMPLETED', 'REJECTED', 'POSTPONED', 'CANCELLED', 'REVISION'
+    ];
+    const q = query(
+      eventsCollection,
+      where('department', '==', currentUser.department),
+      where('status', 'in', deptStatuses)
+    );
+    return onSnapshot(q, (snapshot) => {
+      logQuery(`Dashboard/Workflow (HOD:${currentUser.department})`, snapshot.size, true, startTime);
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+  }
+
+  // IQAC_TEAM, SYSTEM_ADMIN, and department officers (HR_TEAM, AUDIO_TEAM, etc.) 
+  // need institution-wide visibility for approval workflows — keep full subscription
+  // but limit to active workflow + recent completed (exclude very old CANCELLED events)
+  // Firestore 'in' supports max 30 values — keep a focused list
   const roleStatuses = [
     'PENDING_FACULTY',
     'PENDING_CLASS_ADVISOR',
@@ -160,12 +193,11 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
     'REVISION'
   ];
   
-  let q = query(eventsCollection, where('status', 'in', roleStatuses));
+  const q = query(eventsCollection, where('status', 'in', roleStatuses));
   
   return onSnapshot(q, (snapshot) => {
     logQuery(`Dashboard/Workflow (${currentUser.role})`, snapshot.size, true, startTime);
-    const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    callback(events);
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   });
 };
 

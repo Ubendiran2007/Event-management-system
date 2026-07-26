@@ -1,194 +1,19 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Download, Search, Users, Activity, Loader2, Printer, FileText, LayoutList } from 'lucide-react';
+import { ChevronLeft, FileText, Activity, Loader2, Calendar } from 'lucide-react';
 import Layout from '../components/Layout';
 import { useAppContext } from '../context/AppContext';
-import { useOrganizerEvents } from '../context/OrganizerEventsContext';
-import { useODWorkflow } from '../context/ODWorkflowContext';
 import { UserRole } from '../types';
-import * as XLSX from 'xlsx';
-import seceHeader from '../assets/sece header.jpeg';
+import DataTable from '../components/DataTable';
+import { usePaginatedApi } from '../hooks/usePaginatedApi';
+import StatusBadge from '../components/StatusBadge';
 
 const EventTracking = () => {
     const { currentUser } = useAppContext();
-    const { odRequests } = useODWorkflow();
-    const { events, loading } = useOrganizerEvents();
     const navigate = useNavigate();
     const [searchQuery, setSearchQuery] = useState('');
-    const [expandedEventId, setExpandedEventId] = useState(null);
 
     const assignedClasses = currentUser?.assignedClasses || [];
-
-    // Filter OD Requests for APPROVED students in assigned classes
-    const relevantRequests = useMemo(() => {
-        if (!odRequests) return [];
-        const normalizedAssigned = assignedClasses.map(c => (c || '').replace(/-/g, ' ').toUpperCase());
-        return odRequests.filter(req => {
-            if (req.status !== 'APPROVED' || !req.class) return false;
-            const reqClassNorm = String(req.class).replace(/-/g, ' ').toUpperCase();
-            return normalizedAssigned.includes(reqClassNorm);
-        });
-    }, [odRequests, assignedClasses]);
-
-    // Group requests by event
-    const eventStats = useMemo(() => {
-        const stats = {};
-        relevantRequests.forEach(req => {
-            const eventId = req.eventId;
-            if (!eventId) return;
-
-            if (!stats[eventId]) {
-                const eventObj = events.find(e => e.id === eventId);
-                stats[eventId] = {
-                    eventId,
-                    eventTitle: req.eventTitle || eventObj?.title || 'Unknown Event',
-                    organizer: eventObj?.organizerName || eventObj?.organizerEmail || 'Unknown Organizer',
-                    date: req.eventDate || eventObj?.date || '',
-                    requests: []
-                };
-            }
-            stats[eventId].requests.push(req);
-        });
-
-        const sortedStats = Object.values(stats).sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            return sortedStats.filter(s => 
-                s.eventTitle.toLowerCase().includes(q) || 
-                s.organizer.toLowerCase().includes(q)
-            );
-        }
-
-        return sortedStats;
-    }, [relevantRequests, events, searchQuery]);
-
-    const handleDownloadExcel = (eventId, eventTitle, requests) => {
-        const data = requests.map((req, idx) => ({
-            'S.No': idx + 1,
-            'Roll No': req.rollNo,
-            'Name': req.studentName,
-            'Class': req.class,
-            'Registration Status': req.status,
-            'Attendance': req.attendanceStatus || 'Pending'
-        }));
-        
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Students");
-        XLSX.writeFile(wb, `${eventTitle}_Tracking_${new Date().toISOString().split('T')[0]}.xlsx`);
-    };
-
-    const generatePDFList = (title, dataList, isAllEvents = false) => {
-        const tdStyle = 'border:1px solid #555;padding:7px 10px;font-size:13px;';
-        const thStyle = 'border:1px solid #555;padding:8px 10px;font-size:13px;background:#d0e4f7;font-weight:bold;text-align:left;';
-        const tableStyle = 'border-collapse:collapse;width:100%;margin-top:10px;';
-
-        const rows = dataList.map((req, i) => `
-            <tr>
-                <td style='${tdStyle} text-align:center;'>${i + 1}</td>
-                <td style='${tdStyle} font-family: monospace; font-weight: 600;'>${req.rollNo || '-'}</td>
-                <td style='${tdStyle} font-weight: bold;'>${req.studentName || '-'}</td>
-                <td style='${tdStyle} text-align:center;'>${req.class || '-'}</td>
-                ${isAllEvents ? `<td style='${tdStyle}'>${req.eventTitle || '-'}</td>` : ''}
-                <td style='${tdStyle} text-align:center;'>${req.status || '-'}</td>
-                <td style='${tdStyle} font-weight:bold; text-align:center; color:${req.attendanceStatus === 'PRESENT' ? 'green' : req.attendanceStatus === 'ABSENT' ? 'red' : 'gray'}'>
-                    ${req.attendanceStatus === 'PRESENT' ? 'Present' : req.attendanceStatus === 'ABSENT' ? 'Absent' : 'Pending'}
-                </td>
-            </tr>
-        `).join('');
-
-        const tableHTML = `
-            <table style='${tableStyle}'>
-                <thead>
-                    <tr>
-                        <th style='${thStyle}'>S.No</th>
-                        <th style='${thStyle}'>Roll No</th>
-                        <th style='${thStyle}'>Name</th>
-                        <th style='${thStyle}'>Class</th>
-                        ${isAllEvents ? `<th style='${thStyle}'>Event</th>` : ''}
-                        <th style='${thStyle}'>Registration</th>
-                        <th style='${thStyle}'>Attendance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows || `<tr><td colspan="${isAllEvents ? 7 : 6}" style="${tdStyle}text-align:center;">No students found</td></tr>`}
-                </tbody>
-            </table>
-        `;
-
-        const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>${title}</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; color: #333; margin: 0; }
-                .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #1a3a6b; padding-bottom: 10px; }
-                .header img { max-width: 100%; max-height: 90px; object-fit: contain; }
-                .title { text-align: center; font-size: 18px; font-weight: bold; margin: 20px 0; color: #1a3a6b; text-transform: uppercase; text-decoration: underline; }
-                .meta { margin-bottom: 20px; font-size: 14px; display: flex; justify-content: space-between; }
-                @media print {
-                    @page { margin: 15mm; size: portrait; }
-                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <img src="${seceHeader}" alt="Header" />
-            </div>
-            <div class="title">${title}</div>
-            <div class="meta">
-                <div><strong>Total Students:</strong> ${dataList.length}</div>
-                <div><strong>Generated On:</strong> ${new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</div>
-            </div>
-            ${tableHTML}
-            <script>
-                window.onload = () => { setTimeout(() => { window.print(); }, 500); };
-            </script>
-        </body>
-        </html>
-        `;
-
-        const printWin = window.open('', '_blank');
-        if (printWin) {
-            printWin.document.open();
-            printWin.document.write(html);
-            printWin.document.close();
-        } else {
-            alert('Please allow popups to download the PDF report.');
-        }
-    };
-
-    const handleDownloadAllPDF = () => {
-        const allRequests = [];
-        eventStats.forEach(stat => {
-            stat.requests.forEach(req => {
-                allRequests.push({ ...req, eventTitle: stat.eventTitle });
-            });
-        });
-        generatePDFList('All Events - Student Tracking Report', allRequests, true);
-    };
-
-    const handleDownloadSinglePDF = (eventTitle, requests) => {
-        generatePDFList(`${eventTitle} - Student Tracking Report`, requests, false);
-    };
-
-    const handlePrint = () => {
-        window.print();
-    };
-
-    if (loading) {
-        return (
-            <Layout>
-                <div className="flex-1 flex justify-center py-20 min-h-0 relative">
-                    <Loader2 className="animate-spin text-blue-600" size={36} />
-                </div>
-            </Layout>
-        );
-    }
 
     // Redirect if not a faculty with assigned classes
     if (!currentUser || currentUser.role !== UserRole.FACULTY || !currentUser.assignedClasses || currentUser.assignedClasses.length === 0) {
@@ -204,29 +29,99 @@ const EventTracking = () => {
         );
     }
 
+    const filters = useMemo(() => {
+        // Pass the first assigned class for now, or you could support multiple classes
+        // The backend `class` filter handles one class. If they have multiple, they'd need a dropdown
+        // For simplicity we will query all approved requests for the first assigned class.
+        return {
+            status: 'APPROVED',
+            class: assignedClasses[0] // Uses the first class
+        };
+    }, [assignedClasses]);
+
+    const { data, loading, pagination, actions } = usePaginatedApi('/api/od-requests', filters, { limit: 20, sortBy: 'createdAt', sortOrder: 'desc' });
+
+    // Filter by search query client side for simplicity on the current page if backend search isn't available
+    const displayData = useMemo(() => {
+        if (!searchQuery) return data;
+        const q = searchQuery.toLowerCase();
+        return data.filter(d => 
+            (d.eventTitle || '').toLowerCase().includes(q) ||
+            (d.studentName || '').toLowerCase().includes(q) ||
+            (d.rollNo || '').toLowerCase().includes(q)
+        );
+    }, [data, searchQuery]);
+
+    const columns = [
+        {
+            key: 'event',
+            label: 'EVENT DETAILS',
+            render: (req) => (
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                        <Calendar size={18} />
+                    </div>
+                    <div>
+                        <p className="font-bold text-slate-900 text-sm">{req.eventTitle || 'Unknown Event'}</p>
+                        <p className="text-xs text-slate-500">{req.eventDate || 'No date'}</p>
+                    </div>
+                </div>
+            )
+        },
+        {
+            key: 'student',
+            label: 'STUDENT',
+            render: (req) => (
+                <div>
+                    <p className="font-bold text-slate-800 text-sm">{req.studentName}</p>
+                    <div className="flex items-center gap-2 text-xs mt-0.5">
+                        <span className="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{req.rollNo}</span>
+                        <span className="text-slate-500 font-medium">{req.class}</span>
+                    </div>
+                </div>
+            )
+        },
+        {
+            key: 'status',
+            label: 'REGISTRATION',
+            render: (req) => <StatusBadge status={req.status} />
+        },
+        {
+            key: 'attendance',
+            label: 'ATTENDANCE',
+            render: (req) => {
+                const isPresent = req.attendanceStatus === 'PRESENT';
+                const isAbsent = req.attendanceStatus === 'ABSENT';
+                
+                return (
+                    <span className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${isPresent ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : isAbsent ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                        {isPresent ? 'Present' : isAbsent ? 'Absent' : 'Pending'}
+                    </span>
+                );
+            }
+        }
+    ];
+
     return (
         <Layout>
-            <div className="flex-1 flex flex-col min-h-0 relative">
+            <div className="flex-1 flex flex-col min-h-0 relative bg-[#f8fafc]">
                 {/* Header */}
-                <div className="bg-[#f8fafc] border-b border-slate-200 px-6 pt-6 z-30 shrink-0 print:hidden">
-                    <div className="max-w-5xl mx-auto w-full">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div className="border-b border-slate-200 px-6 pt-6 pb-6 bg-white z-10 shrink-0">
+                    <div className="max-w-6xl mx-auto w-full">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
                                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight flex items-center gap-2">
                                     <Activity className="text-blue-600" size={28} />
                                     Event Tracking
                                 </h2>
-                                <p className="text-slate-500 mt-1 text-sm font-medium">Monitor participation for your assigned classes: <span className="font-bold text-slate-700">{assignedClasses.join(', ')}</span></p>
+                                <p className="text-slate-500 mt-1 text-sm font-medium">Monitor participation for: <span className="font-bold text-slate-700">{assignedClasses.join(', ')}</span></p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1.5 px-4 py-2 text-sm whitespace-nowrap">
+                                <button onClick={() => navigate('/dashboard')} className="px-4 py-2 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-xl font-bold text-sm transition-all flex items-center gap-1.5 shadow-sm">
                                     <ChevronLeft size={16} /> Back
                                 </button>
-                                <button onClick={handleDownloadAllPDF} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-sm shadow-slate-200">
-                                    <FileText size={16} /> Export All (PDF)
-                                </button>
-                                <button onClick={handlePrint} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-1.5 shadow-sm shadow-slate-200">
-                                    <Printer size={16} /> Print Report
+                                <button className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-sm">
+                                    <FileText size={16} /> Export View
                                 </button>
                             </div>
                         </div>
@@ -234,162 +129,22 @@ const EventTracking = () => {
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto px-6 py-8">
-                    <div className="max-w-5xl mx-auto w-full">
-                        
-                        {/* Print Header Image (Only visible when printing via Print Report button) */}
-                        <div className="hidden print:block mb-8 border-b-2 border-[#1a3a6b] pb-4">
-                            <img src={seceHeader} alt="SECE Header" className="w-full max-h-[100px] object-contain" />
-                            <h2 className="text-center text-xl font-bold text-[#1a3a6b] mt-4 uppercase underline">Event Tracking Report</h2>
-                        </div>
-                        
-                        {/* Search & Stats */}
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8 print:hidden">
-                            <div className="relative w-full md:flex-1">
-                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input 
-                                    type="text" 
-                                    placeholder="Search events or organizers..." 
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all text-sm shadow-sm"
-                                />
-                            </div>
-                            <div className="w-full md:w-auto min-w-[280px] p-4 rounded-2xl flex items-center gap-4 bg-white border border-slate-200 shadow-sm">
-                                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0">
-                                    <LayoutList size={24} />
-                                </div>
-                                <div>
-                                    <p className="text-2xl font-bold text-slate-900 leading-none mb-1">{eventStats.length}</p>
-                                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Active Events</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Events List */}
-                        <div className="space-y-4">
-                            {eventStats.map(stat => {
-                                const isExpanded = expandedEventId === stat.eventId;
-                                const attendanceCount = stat.requests.filter(r => r.attendanceStatus === 'PRESENT').length;
-                                const totalCount = stat.requests.length;
-
-                                return (
-                                    <div key={stat.eventId} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                        {/* Event Header - Click to expand */}
-                                        <div 
-                                            onClick={() => setExpandedEventId(isExpanded ? null : stat.eventId)}
-                                            className="p-5 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 select-none"
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <h3 className="font-bold text-lg text-slate-900 truncate">{stat.eventTitle}</h3>
-                                                <p className="text-sm text-slate-500 mt-0.5">Organizer: <span className="font-medium text-slate-700">{stat.organizer}</span> • {new Date(stat.date).toLocaleDateString()}</p>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-6">
-                                                <div className="text-center px-4 border-r border-slate-100 hidden sm:block">
-                                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Approved</p>
-                                                    <p className="text-xl font-bold text-slate-800">{totalCount}</p>
-                                                </div>
-                                                <div className="text-center px-4">
-                                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Attendance</p>
-                                                    <div className="flex items-center justify-center gap-1 text-xl font-bold">
-                                                        <span className="text-emerald-600">{attendanceCount}</span>
-                                                        <span className="text-slate-300 text-sm">/</span>
-                                                        <span className="text-slate-800">{totalCount}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Expanded Details */}
-                                        {isExpanded && (
-                                            <div className="border-t border-slate-100 bg-slate-50/50 p-5">
-                                                <div className="flex justify-between items-center mb-4">
-                                                    <h4 className="font-bold text-slate-700">Student List</h4>
-                                                    <div className="flex gap-2">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleDownloadExcel(stat.eventId, stat.eventTitle, stat.requests); }}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-colors shadow-sm"
-                                                        >
-                                                            <Download size={14} /> Excel
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleDownloadSinglePDF(stat.eventTitle, stat.requests); }}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors shadow-sm"
-                                                        >
-                                                            <FileText size={14} /> PDF
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                                                    <table className="w-full text-sm text-left">
-                                                        <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
-                                                            <tr>
-                                                                <th className="px-4 py-3 font-semibold">Roll No</th>
-                                                                <th className="px-4 py-3 font-semibold">Name</th>
-                                                                <th className="px-4 py-3 font-semibold">Class</th>
-                                                                <th className="px-4 py-3 font-semibold">Reg Status</th>
-                                                                <th className="px-4 py-3 font-semibold">Attendance</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100">
-                                                            {stat.requests.map(req => (
-                                                                <tr key={req.id} className="hover:bg-slate-50/50">
-                                                                    <td className="px-4 py-3 font-medium text-slate-700">{req.rollNo}</td>
-                                                                    <td className="px-4 py-3 font-medium text-slate-900">{req.studentName}</td>
-                                                                    <td className="px-4 py-3">
-                                                                        <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">{req.class}</span>
-                                                                    </td>
-                                                                    <td className="px-4 py-3">
-                                                                        <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700">{req.status}</span>
-                                                                    </td>
-                                                                    <td className="px-4 py-3">
-                                                                        {req.attendanceStatus === 'PRESENT' ? (
-                                                                            <span className="text-emerald-600 font-bold flex items-center gap-1"><Users size={14}/> Present</span>
-                                                                        ) : req.attendanceStatus === 'ABSENT' ? (
-                                                                            <span className="text-rose-600 font-bold">Absent</span>
-                                                                        ) : (
-                                                                            <span className="text-slate-400 font-semibold italic">Pending</span>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                            
-                            {eventStats.length === 0 && (
-                                <div className="p-12 text-center bg-white border border-slate-200 border-dashed rounded-3xl">
-                                    <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                        <Search className="text-slate-300" size={32} />
-                                    </div>
-                                    <h3 className="text-lg font-bold text-slate-700 mb-1">No tracked events found</h3>
-                                    <p className="text-sm text-slate-500">None of your assigned students have approved event registrations.</p>
-                                </div>
-                            )}
-                        </div>
-
+                <div className="flex-1 overflow-y-auto p-6 min-h-0">
+                    <div className="max-w-6xl mx-auto w-full h-full flex flex-col min-h-0">
+                        <DataTable 
+                            columns={columns}
+                            data={displayData}
+                            loading={loading}
+                            pagination={pagination}
+                            onNextPage={actions.nextPage}
+                            onPrevPage={actions.prevPage}
+                            hasPrevPage={pagination.hasPrevPage}
+                            onSearch={setSearchQuery}
+                            searchPlaceholder="Search event or student..."
+                        />
                     </div>
                 </div>
             </div>
-            
-            {/* Print Styles */}
-            <style>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    .glass-panel, button, input { display: none !important; }
-                    .space-y-4 > div { border: none !important; box-shadow: none !important; page-break-inside: avoid; margin-bottom: 20px; }
-                    .space-y-4 > div > div { border: none !important; display: block !important; padding: 0 !important; }
-                    .space-y-4 > div * { visibility: visible; }
-                    .space-y-4 { position: absolute; left: 0; top: 0; width: 100%; }
-                }
-            `}</style>
         </Layout>
     );
 };

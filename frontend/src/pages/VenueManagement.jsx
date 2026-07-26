@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, Plus, Edit2, AlertCircle, Calendar, Wrench, Trash2, CheckCircle2, XCircle, Search, Filter, Clock, MapPin, Users, ShieldAlert, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Building2, Plus, Edit2, AlertCircle, Calendar, Wrench, Trash2, CheckCircle2, XCircle, Search, Filter, SlidersHorizontal, Clock, MapPin, Users, ShieldAlert, ChevronLeft, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import Layout from '../components/Layout';
 import { UserRole } from '../types';
@@ -8,9 +8,69 @@ const VENUE_TYPES = ['Auditorium', 'Seminar Hall', 'Conference Hall', 'Smart Cla
 const BUILDINGS = ['Block A', 'Block B', 'Block C', 'IT Centre', 'Main Building', 'Admin Block', 'Other'];
 const COMMON_FACILITIES = ['Projector', 'AC', 'Smart Board', 'Sound System', 'Microphone', 'Wi-Fi', 'Recording Equipment', 'Podium', 'LED Display'];
 
+const CustomFilterSelect = ({ value, onChange, options, className }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedLabel = options.find(o => o.value === value)?.label || 'Select';
+
+  return (
+    <div className="relative w-full" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full text-left flex items-center justify-between ${className}`}
+      >
+        <span className="truncate pr-4">{selectedLabel}</span>
+        <ChevronDown size={14} className={`shrink-0 pointer-events-none transition-transform ${isOpen ? 'rotate-180 text-blue-500' : 'text-slate-400'}`} />
+      </button>
+      
+      {isOpen && (
+        <div className="absolute left-0 right-0 sm:right-auto top-full mt-2 min-w-full bg-white border border-slate-200 shadow-xl rounded-xl overflow-hidden z-50 flex flex-col max-h-64 overflow-y-auto">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${value === String(opt.value) ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const VenueManagement = () => {
   const { currentUser } = useAppContext();
   const [activeTab, setActiveTab] = useState('venues'); // 'venues' or 'calendar'
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +117,12 @@ const VenueManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
+  // Pagination state for venues
+  const [venuesPagination, setVenuesPagination] = useState({ hasMore: false, nextCursor: null, count: 0 });
+  const [venuesCursorHistory, setVenuesCursorHistory] = useState([]);
+  const [venuesCursor, setVenuesCursor] = useState(null);
+  const VENUES_PAGE_LIMIT = 20;
+
   const isReadOnly = false;
   const canAccess = true;
 
@@ -75,16 +141,28 @@ const VenueManagement = () => {
     }
   }, [activeTab, calDate, calEndDate, calBuilding, calVenueId, calStatus, calType]);
 
-  const fetchVenues = async () => {
+  const fetchVenues = async (cursor = null) => {
     try {
       setLoading(true);
       setError('');
-      const res = await fetch(`${backendUrl}/api/venues/all`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+      const params = new URLSearchParams({ limit: VENUES_PAGE_LIMIT, sortBy: 'name', sortOrder: 'asc' });
+      if (statusFilter && statusFilter !== 'ALL') params.append('status', statusFilter);
+      if (cursor) params.append('cursor', cursor);
+
+      const res = await fetch(`${backendUrl}/api/venues/all?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache'
+        }
       });
       const data = await res.json();
       if (data.success) {
         setVenues(Array.isArray(data.data) ? data.data : []);
+        setVenuesPagination(data.pagination || { hasMore: false, nextCursor: null, count: 0 });
+        setVenuesCursor(cursor);
       } else {
         setError(data.message || 'Failed to fetch venues');
       }
@@ -92,6 +170,22 @@ const VenueManagement = () => {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVenuesNextPage = () => {
+    if (venuesPagination.hasMore && venuesPagination.nextCursor) {
+      setVenuesCursorHistory(prev => [...prev, venuesCursor]);
+      fetchVenues(venuesPagination.nextCursor);
+    }
+  };
+
+  const handleVenuesPrevPage = () => {
+    if (venuesCursorHistory.length > 0) {
+      const history = [...venuesCursorHistory];
+      const prevCursor = history.pop();
+      setVenuesCursorHistory(history);
+      fetchVenues(prevCursor);
     }
   };
 
@@ -108,6 +202,8 @@ const VenueManagement = () => {
       if (calStatus && calStatus !== 'ALL') params.append('status', calStatus);
 
       const res = await fetch(`${backendUrl}/api/venues/calendar/system?${params.toString()}`, {
+        method: 'GET',
+        cache: 'no-store',
         headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       const data = await res.json();
@@ -333,15 +429,59 @@ const VenueManagement = () => {
               Venue Management
             </h1>
           </div>
-          {!isReadOnly && activeTab !== 'crud' && (
-            <button 
-              onClick={handleOpenAddModal}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 shrink-0 self-start sm:self-center active:scale-95 text-sm cursor-pointer"
-            >
-              <Plus size={18} className="stroke-[3]" />
-              Add New Venue
-            </button>
-          )}
+          <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
+            {/* Custom Dropdown Filter */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200/80 rounded-full text-sm font-extrabold text-slate-700 shadow-sm hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                <SlidersHorizontal size={16} className="text-slate-500" />
+                {activeTab === 'venues' ? 'Venues Directory' : activeTab === 'calendar' ? 'System Reservation Calendar' : activeTab === 'history' ? 'Reservation History' : 'Manage Venue'}
+              </button>
+              
+              {isDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 shadow-xl rounded-xl overflow-hidden z-50 flex flex-col">
+                  <button 
+                    onClick={() => { setActiveTab('venues'); setIsDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${activeTab === 'venues' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Venues Directory {venues.length > 0 ? `(${venues.length})` : ''}
+                  </button>
+                  <button 
+                    onClick={() => { setActiveTab('calendar'); setIsDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${activeTab === 'calendar' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    System Reservation Calendar
+                  </button>
+                  <button 
+                    onClick={() => { setActiveTab('history'); setIsDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${activeTab === 'history' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Reservation History
+                  </button>
+                  {!isReadOnly && (
+                    <button 
+                      onClick={() => { setActiveTab('crud'); setIsDropdownOpen(false); }}
+                      className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${activeTab === 'crud' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      Manage Venue
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {!isReadOnly && activeTab !== 'crud' && (
+              <button 
+                onClick={handleOpenAddModal}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-full shadow-sm transition-all flex items-center justify-center gap-2 shrink-0 active:scale-95 text-sm cursor-pointer"
+              >
+                <Plus size={18} className="stroke-[3]" />
+                Add New Venue
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Notifications */}
@@ -362,53 +502,14 @@ const VenueManagement = () => {
           </div>
         )}
 
-        {/* Navigation Tabs (No Scrollbars) */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-200/60 p-1.5 rounded-2xl w-full sm:w-fit border border-slate-300/50 shrink-0">
-          <button
-            onClick={() => setActiveTab('venues')}
-            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 shadow-2xs cursor-pointer ${
-              activeTab === 'venues' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <Building2 size={17} className={activeTab === 'venues' ? 'text-blue-600' : 'text-slate-400'} />
-            Venues Directory <span className={`px-2 py-0.5 rounded-full text-[11px] ${activeTab === 'venues' ? 'bg-blue-100 text-blue-800' : 'bg-slate-300/70 text-slate-700'}`}>{venues.length}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('calendar')}
-            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 cursor-pointer ${
-              activeTab === 'calendar' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <Calendar size={17} className={activeTab === 'calendar' ? 'text-blue-600' : 'text-slate-400'} />
-            System Reservation Calendar
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 cursor-pointer ${
-              activeTab === 'history' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <Clock size={17} className={activeTab === 'history' ? 'text-blue-600' : 'text-slate-400'} />
-            Reservation History
-          </button>
-          <button
-            onClick={() => setActiveTab('crud')}
-            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 cursor-pointer ${
-              activeTab === 'crud' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <Plus size={17} className={activeTab === 'crud' ? 'text-blue-600' : 'text-slate-400'} />
-            Venue CRUD Operations
-          </button>
-        </div>
 
         {/* Scrollable Inner Content Container (Header and Tabs stay fixed without scrollbar!) */}
-        <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-6">
+        <div className="flex-1 min-h-0 flex flex-col">
           {/* TAB 1: VENUES DIRECTORY */}
         {activeTab === 'venues' && (
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 flex flex-col space-y-4">
             {/* Search and Filters Bar */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center transition-all">
+            <div className="shrink-0 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center transition-all">
               <div className="relative w-full sm:max-w-md">
                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
@@ -420,32 +521,25 @@ const VenueManagement = () => {
                 />
               </div>
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-                  <Filter size={14} className="text-blue-600" /> Status:
-                </span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/80 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all cursor-pointer"
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="ACTIVE">Active (Bookable)</option>
-                  <option value="MAINTENANCE">Under Maintenance</option>
-                  <option value="DISABLED">Disabled</option>
-                  <option value="ARCHIVED">Archived</option>
-                </select>
-                <button 
-                  onClick={fetchVenues} 
-                  className="p-2.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-50 border border-slate-200/80 rounded-xl transition-all shadow-2xs active:scale-95" 
-                  title="Refresh Venues Directory"
-                >
-                  <RefreshCw size={18} className={loading ? 'animate-spin text-blue-600' : ''} />
-                </button>
+                <div className="shrink-0 w-full sm:w-48">
+                  <CustomFilterSelect
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/80 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all cursor-pointer"
+                    options={[
+                      { value: 'ALL', label: 'All Statuses' },
+                      { value: 'ACTIVE', label: 'Active (Bookable)' },
+                      { value: 'MAINTENANCE', label: 'Under Maintenance' },
+                      { value: 'DISABLED', label: 'Disabled' },
+                      { value: 'ARCHIVED', label: 'Archived' }
+                    ]}
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Table Container */}
+            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -458,42 +552,50 @@ const VenueManagement = () => {
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">Try clearing your search filter or add a new institutional venue to get started.</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Venue Name & Type</th>
-                        <th className="py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Location</th>
-                        <th className="py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Capacity</th>
-                        <th className="py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Facilities Available</th>
-                        <th className="py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Current Status</th>
-                        <th className="py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      {filteredVenues.map(v => (
-                        <tr key={v.id} className="hover:bg-blue-50/30 transition-colors group">
-                          <td className="py-4 px-6">
+                <div className="flex flex-col flex-1 min-h-0">
+                  {/* FAKE HEADER TO AVOID SCROLLBAR */}
+                  <div className="overflow-hidden bg-slate-50 border-b border-slate-200 pr-[10px] shrink-0">
+                    <table className="w-full text-left border-collapse table-fixed">
+                      <thead>
+                        <tr>
+                          <th className="w-[22%] py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Venue Name & Type</th>
+                          <th className="w-[14%] py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Location</th>
+                          <th className="w-[11%] py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Capacity</th>
+                          <th className="w-[22%] py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Facilities Available</th>
+                          <th className="w-[13%] py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider">Current Status</th>
+                          <th className="w-[18%] py-3.5 px-6 font-extrabold text-slate-600 text-xs uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                      </thead>
+                    </table>
+                  </div>
+                  
+                  {/* SCROLLABLE BODY */}
+                  <div className="flex-1 overflow-y-auto">
+                    <table className="w-full text-left border-collapse table-fixed">
+                      <tbody className="divide-y divide-slate-100 text-sm">
+                        {filteredVenues.map(v => (
+                          <tr key={v.id} className="hover:bg-blue-50/30 transition-colors group">
+                            <td className="w-[22%] py-4 px-6">
                             <div className="font-extrabold text-slate-900 text-base">{v.name}</div>
                             <span className="inline-block mt-0.5 px-2 py-0.5 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-md">
                               {v.type || 'Hall'}
                             </span>
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-slate-700">
-                            <div className="flex items-center gap-1.5">
+                            </td>
+                            <td className="w-[14%] py-4 px-6 font-semibold text-slate-700">
+                              <div className="flex items-center gap-1.5">
                               <MapPin size={15} className="text-slate-400" />
                               <span>{v.building}</span>
                             </div>
                             <div className="text-xs text-slate-400 font-medium ml-5">Floor {v.floor}</div>
-                          </td>
-                          <td className="py-4 px-6 font-extrabold text-slate-800">
-                            <div className="flex items-center gap-1.5">
+                            </td>
+                            <td className="w-[11%] py-4 px-6 font-extrabold text-slate-800">
+                              <div className="flex items-center gap-1.5">
                               <Users size={16} className="text-blue-500" />
                               <span>{v.capacity} Seats</span>
                             </div>
-                          </td>
-                          <td className="py-4 px-6">
-                            <div className="flex flex-wrap gap-1 max-w-xs">
+                            </td>
+                            <td className="w-[22%] py-4 px-6">
+                              <div className="flex flex-wrap gap-1 max-w-xs">
                               {(() => {
                                 const facs = Array.isArray(v.facilities) ? v.facilities : (typeof v.facilities === 'string' && v.facilities.trim() ? v.facilities.split(',').map(s => s.trim()) : []);
                                 return facs.length > 0 ? (
@@ -507,9 +609,9 @@ const VenueManagement = () => {
                                 );
                               })()}
                             </div>
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold shadow-sm ${
+                            </td>
+                            <td className="w-[13%] py-4 px-6">
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold shadow-sm ${
                               v.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
                               v.status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse' :
                               'bg-slate-100 text-slate-600 border border-slate-300'
@@ -521,16 +623,15 @@ const VenueManagement = () => {
                               }`} />
                               {v.status || 'ACTIVE'}
                             </span>
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            </td>
+                            <td className="w-[18%] py-4 px-6 text-right">
+                              <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => handleOpenMaintenanceModal(v)}
-                                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
-                                title="Schedule or view maintenance windows"
+                                className="p-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                                title={isReadOnly ? 'View Maintenance' : 'Schedule Maintenance'}
                               >
-                                <Wrench size={14} />
-                                {isReadOnly ? 'View Maint.' : 'Maintenance'}
+                                <Wrench size={16} />
                               </button>
 
                               {!isReadOnly && (
@@ -558,6 +659,31 @@ const VenueManagement = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+              {/* Pagination Footer */}
+              {(venuesPagination.hasMore || venuesCursorHistory.length > 0) && (
+                <div className="shrink-0 px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                  <span className="text-sm text-slate-500 font-medium">
+                    Showing {venuesPagination.count || filteredVenues.length} venues
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleVenuesPrevPage}
+                      disabled={venuesCursorHistory.length === 0 || loading}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-bold bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-slate-700"
+                    >
+                      <ChevronLeft size={16} /> Prev
+                    </button>
+                    <button
+                      onClick={handleVenuesNextPage}
+                      disabled={!venuesPagination.hasMore || loading}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-bold bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-slate-700"
+                    >
+                      Next <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -565,23 +691,23 @@ const VenueManagement = () => {
 
         {/* TAB 2: SYSTEM RESERVATION CALENDAR */}
         {activeTab === 'calendar' && (
-          <div className="space-y-4">
+          <div className="flex-1 min-h-0 flex flex-col space-y-4">
             {/* Filter Bar */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="shrink-0 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
                 <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
                   <Filter size={18} className="text-blue-600" />
                   Reservation & Hold Filters
                 </h3>
                 <div className="flex items-center gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">From:</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase">FROM:</label>
                   <input
                     type="date"
                     value={calDate}
                     onChange={(e) => setCalDate(e.target.value)}
                     className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700"
                   />
-                  <label className="text-xs font-bold text-slate-500 uppercase ml-2">To:</label>
+                  <label className="text-[11px] font-bold text-slate-500 uppercase ml-2">TO:</label>
                   <input
                     type="date"
                     value={calEndDate}
@@ -590,68 +716,72 @@ const VenueManagement = () => {
                   />
                   <button
                     onClick={fetchSystemCalendar}
-                    className="ml-2 px-3 py-1.5 bg-blue-600 text-white font-bold text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                    className="ml-2 px-4 py-1.5 bg-blue-600 text-white font-bold text-xs rounded-md hover:bg-blue-700 transition-colors flex items-center gap-1.5"
                   >
-                    <RefreshCw size={14} /> Refresh
+                    <RefreshCw size={13} /> Refresh
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Building</label>
-                  <select
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">BUILDING</label>
+                  <CustomFilterSelect
                     value={calBuilding}
-                    onChange={(e) => setCalBuilding(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700"
-                  >
-                    <option value="">All Buildings</option>
-                    {BUILDINGS.map((b, i) => <option key={i} value={b}>{b}</option>)}
-                  </select>
+                    onChange={setCalBuilding}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                    options={[
+                      { value: '', label: 'All Buildings' },
+                      ...BUILDINGS.map(b => ({ value: b, label: b }))
+                    ]}
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Specific Venue</label>
-                  <select
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">SPECIFIC VENUE</label>
+                  <CustomFilterSelect
                     value={calVenueId}
-                    onChange={(e) => setCalVenueId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700"
-                  >
-                    <option value="">All Venues</option>
-                    {venues.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.building})</option>)}
-                  </select>
+                    onChange={setCalVenueId}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                    options={[
+                      { value: '', label: 'All Venues' },
+                      ...venues.map(v => ({ value: v.id, label: `${v.name} (${v.building})` }))
+                    ]}
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Venue Type</label>
-                  <select
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">VENUE TYPE</label>
+                  <CustomFilterSelect
                     value={calType}
-                    onChange={(e) => setCalType(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700"
-                  >
-                    <option value="">All Types</option>
-                    {VENUE_TYPES.map((t, i) => <option key={i} value={t}>{t}</option>)}
-                  </select>
+                    onChange={setCalType}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                    options={[
+                      { value: '', label: 'All Types' },
+                      ...VENUE_TYPES.map(t => ({ value: t, label: t }))
+                    ]}
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Booking Status</label>
-                  <select
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">BOOKING STATUS</label>
+                  <CustomFilterSelect
                     value={calStatus}
-                    onChange={(e) => setCalStatus(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700"
-                  >
-                    <option value="ALL">All Statuses (Confirmed / Hold / Maint.)</option>
-                    <option value="EVENT">Confirmed Reservations</option>
-                    <option value="RESERVATION">Temporary Holds (10 Min)</option>
-                    <option value="MAINTENANCE">Maintenance Periods</option>
-                  </select>
+                    onChange={setCalStatus}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                    options={[
+                      { value: 'ALL', label: 'All Statuses (Confirmed / Hold / Maint.)' },
+                      { value: 'EVENT', label: 'Confirmed Reservations' },
+                      { value: 'RESERVATION', label: 'Temporary Holds (10 Min)' },
+                      { value: 'MAINTENANCE', label: 'Maintenance Periods' }
+                    ]}
+                  />
                 </div>
               </div>
             </div>
 
             {/* Calendar Events Grid/List */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 overflow-y-auto pr-2">
               {calLoading ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                   <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -729,8 +859,8 @@ const VenueManagement = () => {
 
         {/* TAB 3: RESERVATION HISTORY */}
         {activeTab === 'history' && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6 animate-fadeIn">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col space-y-6 animate-fadeIn">
+            <div className="shrink-0 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h3 className="font-black text-slate-900 text-lg">Institutional Reservation Archive</h3>
                 <p className="text-xs font-semibold text-slate-500">Historical logs of all campus bookings, workshops, and placement drives</p>
@@ -746,7 +876,7 @@ const VenueManagement = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-2">
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-[11px] font-black uppercase tracking-wider border-b border-slate-200">
@@ -787,15 +917,15 @@ const VenueManagement = () => {
           </div>
         )}
 
-        {/* TAB 4: VENUE CRUD OPERATIONS */}
+        {/* TAB 4: MANAGE VENUE */}
         {activeTab === 'crud' && (
-          <div className="space-y-8 animate-fadeIn">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-8 animate-fadeIn">
             {/* CRUD Top Form */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5 pr-16 md:pr-20">
                 <div>
                   <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-200/60">
-                    {editingVenue ? 'Update Mode (CRUD)' : 'Create Mode (CRUD)'}
+                    {editingVenue ? 'Update Mode' : 'Create Mode'}
                   </span>
                   <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-2 flex items-center gap-2.5">
                     <Wrench className="text-blue-600" size={24} />
@@ -930,13 +1060,13 @@ const VenueManagement = () => {
                     className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
                   >
                     <Plus size={18} className="stroke-[3]" />
-                    {editingVenue ? 'Save Venue Updates (CRUD)' : 'Create & Add Venue (CRUD)'}
+                    {editingVenue ? 'Update Venue' : 'Create Venue'}
                   </button>
                 </div>
               </form>
             </div>
 
-            {/* Existing Venues Table / List in CRUD Tab */}
+            {/* Existing Venues Table / List in Manage Tab */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 sm:p-8 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>

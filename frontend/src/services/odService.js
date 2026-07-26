@@ -103,7 +103,7 @@ export const subscribeToODWorkflows = (currentUser, callback) => {
     q = query(
       collection(db, 'odRequests'),
       where('department', '==', currentUser.department),
-      where('status', '==', ODRequestStatus.PENDING_FACULTY)
+      where('status', 'in', [ODRequestStatus.PENDING_FACULTY, 'APPROVED'])
     );
   } else if (currentUser.role === UserRole.HOD) {
     if (!currentUser.department) return () => {};

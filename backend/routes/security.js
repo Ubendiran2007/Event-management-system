@@ -1,5 +1,5 @@
 const express = require('express');
-const { collection, collectionGroup, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, db, updateDoc } = require('../firebaseClientWrapper');
+const { collection, collectionGroup, doc, getDoc, getDocs, query, setDoc, where, deleteDoc, orderBy, limit, startAfter, db, updateDoc } = require('../firebaseClientWrapper');
 const { CLASSES } = require('../utils/constants');
 const { getAllSectionDocs } = require('../utils/studentHelper');
 const { getAllStaffDocs } = require('../utils/staffHelper');
@@ -8,6 +8,7 @@ const bcrypt = require('bcryptjs');
 const UAParser = require('ua-parser-js');
 const { sendEmail } = require('../services/emailService');
 const emailTemplates = require('../services/emailTemplates');
+const { parsePaginationParams } = require('../utils/paginationHelper');
 
 const router = express.Router();
 
@@ -481,8 +482,8 @@ router.post('/change-password/verify', requireAuth, async (req, res) => {
 router.get('/login-history', requireAuth, async (req, res) => {
   try {
     const email = req.user.email.toLowerCase();
+    const { limit: limitCount } = parsePaginationParams(req.query, 20, 100);
     
-    // Support legacy frontend format by querying the new auditLogs
     const q = query(
       collection(db, 'auditLogs'), 
       where('actor.email', '==', email), 
@@ -496,7 +497,6 @@ router.get('/login-history', requireAuth, async (req, res) => {
       const data = d.data();
       return {
         id: d.id,
-        // Legacy mapping
         email: data.actor?.email,
         timestamp: getTimestampStr(data.timestamp),
         browser: data.userAgent ? data.userAgent.split('-')[1]?.trim() : 'Unknown',
@@ -508,9 +508,14 @@ router.get('/login-history', requireAuth, async (req, res) => {
       };
     });
     
-    // Since Firebase doesn't allow orderby with equality unless indexed, we sort in memory
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    res.json({ success: true, logs: logs.slice(0, 10) });
+    const paginated = logs.slice(0, limitCount);
+    res.json({ 
+      success: true, 
+      logs: paginated,
+      data: paginated,
+      pagination: { limit: limitCount, hasMore: logs.length > limitCount, count: paginated.length, nextCursor: null }
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });

@@ -4,6 +4,7 @@ const router = express.Router();
 const { collection, getDocs, doc, getDoc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { buildStudentData } = require('../services/userService');
+const { parsePaginationParams } = require('../utils/paginationHelper');
 
 // Protect all Manage Students APIs
 router.use(requireAuth);
@@ -29,11 +30,12 @@ const invalidateCache = () => {
 };
 // ----------------------------
 
-// GET /api/students — fetch all students
+// GET /api/students — fetch students with in-memory pagination
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
   try {
-    const { batch, department, section, class: classFilter } = req.query;
+    const { batch, department, section, class: classFilter, search } = req.query;
+    const { limit: limitCount, cursor } = parsePaginationParams(req.query, 50, 200);
 
     let allStudents = [];
     
@@ -45,7 +47,6 @@ router.get('/', async (req, res) => {
       sectionDocs.forEach(secDoc => {
         const studentsArray = secDoc.data.students || [];
         studentsArray.forEach(data => {
-          // Create a copy without password
           const { password, ...safeData } = data;
           allStudents.push(safeData);
         });
@@ -54,17 +55,37 @@ router.get('/', async (req, res) => {
     }
 
     // Apply filters
-    if (batch || department || section || classFilter) {
-      allStudents = allStudents.filter(safeData => {
-        if (batch && safeData.academicBatch !== batch) return false;
-        if (department && safeData.department !== department) return false;
-        if (section && safeData.section !== section) return false;
-        if (classFilter && safeData.class !== classFilter) return false;
-        return true;
-      });
+    let filtered = allStudents;
+    if (batch) filtered = filtered.filter(s => s.academicBatch === batch);
+    if (department) filtered = filtered.filter(s => s.department === department);
+    if (section) filtered = filtered.filter(s => s.section === section);
+    if (classFilter) filtered = filtered.filter(s => s.class === classFilter);
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(s =>
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.rollNo || '').toLowerCase().includes(q) ||
+        (s.email || '').toLowerCase().includes(q)
+      );
     }
 
-    res.json({ success: true, students: allStudents, total: allStudents.length });
+    // In-memory offset pagination
+    let offset = 0;
+    if (cursor) {
+      try { offset = parseInt(Buffer.from(cursor, 'base64').toString('utf8'), 10) || 0; } catch(_) {}
+    }
+
+    const pageItems = filtered.slice(offset, offset + limitCount + 1);
+    const hasMore = pageItems.length > limitCount;
+    const dataItems = hasMore ? pageItems.slice(0, limitCount) : pageItems;
+    const nextOffset = offset + dataItems.length;
+    const nextCursor = hasMore ? Buffer.from(String(nextOffset)).toString('base64') : null;
+
+    res.json({
+      success: true,
+      data: dataItems,
+      pagination: { limit: limitCount, hasMore, nextCursor, count: dataItems.length }
+    });
   } catch (err) {
     console.error('Error fetching students:', err);
     res.status(500).json({ success: false, message: err.message });

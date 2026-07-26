@@ -384,16 +384,19 @@ export const fetchStudentsDirect = async (currentUser) => {
       console.log('Students API called');
       const token = localStorage.getItem('sessionToken');
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
-      const res = await fetch(`${API_BASE}/api/students`, {
+      // Fetch with large limit for context (AppContext needs all students for HOD/IQAC)
+      const res = await fetch(`${API_BASE}/api/students?limit=200`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
+        // Support both new paginated format (data.data) and legacy format (data.students)
+        const allStudents = data.data || data.students || [];
         if (currentUser?.role === 'STUDENT_GENERAL' || currentUser?.role === 'STUDENT_ORGANIZER') {
-          const myStudent = data.students.find(s => s.id === currentUser.id);
+          const myStudent = allStudents.find(s => s.id === currentUser.id);
           return myStudent ? [myStudent] : [];
         } else {
-          return data.students || [];
+          return allStudents;
         }
       } else if (res.status === 401) {
         localStorage.removeItem('sessionToken');
@@ -431,12 +434,13 @@ export const fetchUsersDirect = async () => {
       console.log('Users API called');
       const token = localStorage.getItem('sessionToken');
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
-      const res = await fetch(`${API_BASE}/api/users`, {
+      const res = await fetch(`${API_BASE}/api/users?limit=200`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        return data.users || [];
+        // Support both new paginated format (data.data) and legacy format (data.users)
+        return data.data || data.users || [];
       } else if (res.status === 401) {
         localStorage.removeItem('sessionToken');
         localStorage.removeItem('currentUser');

@@ -10,12 +10,15 @@ const {
   query,
   where,
   limit,
+  orderBy,
+  startAfter,
   runTransaction,
   writeBatch,
   arrayUnion,
   deleteField,
   db
 } = require('../firebaseClientWrapper');
+const { parsePaginationParams, decodeCursor, formatPaginatedResponse } = require('../utils/paginationHelper');
 const { storageAdmin } = require('../firebaseAdmin');
 // Helper to recursively delete a folder in Firebase Storage using Admin SDK
 const deleteStorageFolder = async (folderPath) => {
@@ -339,30 +342,66 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
 }));
 
 // ── GET /api/events ────────────────────────────────────────────────────────
-// Get all events. Optional query params:
-//   ?status=PENDING_FACULTY   → filter by status
-//   ?organizerId=<id>         → filter by organiser
+// Get all events. Optional query params for filtering and standard pagination.
 router.get('/', async (req, res) => {
   if (!checkDb(res)) return;
 
   try {
-    const { status, organizerId } = req.query;
+    const { status, organizerId, search, department, batch } = req.query;
+    const { limit: limitCount, cursor, sortBy, sortOrder } = parsePaginationParams(req.query, 20);
+
     const constraints = [];
 
-    if (status) constraints.push(where('status', '==', status));
+    if (status) {
+      if (status.includes(',')) {
+        constraints.push(where('status', 'in', status.split(',')));
+      } else {
+        constraints.push(where('status', '==', status));
+      }
+    }
     if (organizerId) constraints.push(where('organizerId', '==', organizerId));
+    if (department) constraints.push(where('department', '==', department));
+    if (batch) constraints.push(where('academicYear', '==', batch));
+    
+    // Simple equality for search (Firestore limitations apply without Algolia/Typesense)
+    if (search) {
+       // Typically you'd use a dedicated search index, but for basic implementation:
+       // This requires precise match or prefix match if configured. We'll leave it as a comment 
+       // or simple equality if exact name match is desired, but usually we recommend 
+       // avoiding full-text search directly on Firestore without external tools.
+       // constraints.push(where('eventName', '>=', search), where('eventName', '<=', search + '\uf8ff'));
+    }
 
-    const snapshot =
-      constraints.length > 0
-        ? await getDocs(query(collection(db, 'events'), ...constraints))
-        : await getDocs(collection(db, 'events'));
+    // Deterministic sorting
+    const allowedSortFields = ['createdAt', 'eventName', 'startDate'];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    
+    constraints.push(orderBy(sortField, sortOrder));
+    if (sortField !== '__name__') {
+      constraints.push(orderBy('__name__', 'asc')); // Tie-breaker
+    }
 
-    const events = snapshot.docs.map((d) => {
-      const data = d.data();
-      return { id: d.id, ...data, registrationStatus: computeRegistrationStatus(data) };
+    if (cursor) {
+      const decoded = decodeCursor(cursor);
+      if (decoded && Array.isArray(decoded)) {
+        constraints.push(startAfter(...decoded));
+      }
+    }
+
+    // Fetch limit + 1 to determine hasMore
+    constraints.push(limit(limitCount + 1));
+
+    const snapshot = await getDocs(query(collection(db, 'events'), ...constraints));
+
+    const allDocs = snapshot.docs;
+    const sortFields = sortField !== '__name__' ? [sortField, '__name__'] : ['__name__'];
+    
+    const response = formatPaginatedResponse(allDocs, limitCount, sortFields, (d) => {
+       const data = d.data();
+       return { id: d.id, ...data, registrationStatus: computeRegistrationStatus(data) };
     });
 
-    return res.json({ success: true, count: events.length, events });
+    return res.json(response);
   } catch (error) {
     console.error('[events/list] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch events', error: error.message });
