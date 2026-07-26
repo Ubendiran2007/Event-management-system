@@ -61,6 +61,7 @@ const Login = () => {
         // Store session token for all subsequent API calls
         if (data.token) {
           localStorage.setItem('sessionToken', data.token);
+          localStorage.setItem('token', data.token);
         }
         localStorage.setItem('user', JSON.stringify(data.user));
         const userRole = data.user.role || UserRole.STUDENT_GENERAL;

@@ -60,7 +60,8 @@ const VenueManagement = () => {
   const isReadOnly = currentUser?.role === UserRole.IQAC_TEAM || currentUser?.role === 'IQAC' || currentUser?.role === UserRole.IQAC;
   const canAccess = isReadOnly || currentUser?.role === UserRole.HR_TEAM || currentUser?.role === UserRole.SUPER_ADMIN;
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+  const getToken = () => localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
 
   useEffect(() => {
     if (canAccess) {
@@ -79,11 +80,11 @@ const VenueManagement = () => {
       setLoading(true);
       setError('');
       const res = await fetch(`${backendUrl}/api/venues/all`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       const data = await res.json();
       if (data.success) {
-        setVenues(data.data || []);
+        setVenues(Array.isArray(data.data) ? data.data : []);
       } else {
         setError(data.message || 'Failed to fetch venues');
       }
@@ -107,11 +108,11 @@ const VenueManagement = () => {
       if (calStatus && calStatus !== 'ALL') params.append('status', calStatus);
 
       const res = await fetch(`${backendUrl}/api/venues/calendar/system?${params.toString()}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       const data = await res.json();
       if (data.success) {
-        setCalendarEvents(data.data || []);
+        setCalendarEvents(Array.isArray(data.data) ? data.data : []);
       }
     } catch (err) {
       console.error('Error fetching calendar:', err);
@@ -124,11 +125,11 @@ const VenueManagement = () => {
     try {
       setMaintLoading(true);
       const res = await fetch(`${backendUrl}/api/venues/${venueId}/maintenance`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       const data = await res.json();
       if (data.success) {
-        setMaintenanceList(data.data || []);
+        setMaintenanceList(Array.isArray(data.data) ? data.data : []);
       }
     } catch (err) {
       console.error('Error fetching maintenance:', err);
@@ -194,7 +195,7 @@ const VenueManagement = () => {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getToken()}`
         },
         body: JSON.stringify(formData)
       });
@@ -220,7 +221,7 @@ const VenueManagement = () => {
       setError('');
       const res = await fetch(`${backendUrl}/api/venues/${v.id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       const data = await res.json();
       if (!data.success) {
@@ -243,7 +244,7 @@ const VenueManagement = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getToken()}`
         },
         body: JSON.stringify(maintData)
       });
@@ -267,7 +268,7 @@ const VenueManagement = () => {
       setError('');
       const res = await fetch(`${backendUrl}/api/venues/${selectedVenueForMaint.id}/maintenance/${maintId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       const data = await res.json();
       if (!data.success) {
@@ -480,15 +481,18 @@ const VenueManagement = () => {
                           </td>
                           <td className="py-4 px-6">
                             <div className="flex flex-wrap gap-1 max-w-xs">
-                              {(v.facilities && v.facilities.length > 0) ? (
-                                v.facilities.map((fac, idx) => (
-                                  <span key={idx} className="px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded text-[11px] font-semibold">
-                                    {fac}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-slate-400 font-medium italic">Standard setups</span>
-                              )}
+                              {(() => {
+                                const facs = Array.isArray(v.facilities) ? v.facilities : (typeof v.facilities === 'string' && v.facilities.trim() ? v.facilities.split(',').map(s => s.trim()) : []);
+                                return facs.length > 0 ? (
+                                  facs.map((fac, idx) => (
+                                    <span key={idx} className="px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded text-[11px] font-semibold">
+                                      {fac}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-slate-400 font-medium italic">Standard setups</span>
+                                );
+                              })()}
                             </div>
                           </td>
                           <td className="py-4 px-6">
