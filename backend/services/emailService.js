@@ -91,9 +91,9 @@ const transporter = nodemailer.createTransport({
   }
 })();
 
-async function logEmailAudit(mailOptions, status, errorMessage = '', smtpResponse = '') {
+async function logEmailAudit(mailOptions, status, errorMessage = '', smtpResponse = '', extraAuditData = {}) {
   const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
-  const recipient = Array.isArray(mailOptions.to) ? mailOptions.to.join(',') : mailOptions.to;
+  const recipient = Array.isArray(mailOptions.to) ? mailOptions.to.join(',') : (mailOptions.to || mailOptions.bcc || '');
   
   logEmail({
     action: `SEND_${mailOptions.emailType || 'GENERAL'}_EMAIL`,
@@ -102,7 +102,7 @@ async function logEmailAudit(mailOptions, status, errorMessage = '', smtpRespons
     requestId: crypto.randomUUID(),
     target: {
       entityType: 'USER_EMAIL',
-      entityId: isTestMode ? mailOptions._originalTo : recipient
+      entityId: isTestMode ? (mailOptions._originalTo || recipient) : recipient
     },
     details: {
       subject: mailOptions.subject || '',
@@ -112,6 +112,25 @@ async function logEmailAudit(mailOptions, status, errorMessage = '', smtpRespons
       eventTitle: mailOptions.eventTitle || null
     }
   });
+
+  try {
+    const auditRecord = {
+      eventId: mailOptions.eventId || extraAuditData.eventId || null,
+      eventReferenceId: mailOptions.eventReferenceId || extraAuditData.eventReferenceId || null,
+      template: mailOptions.template || extraAuditData.template || mailOptions.emailType || 'GENERAL',
+      recipientCount: extraAuditData.recipientCount || (recipient ? recipient.split(',').length : 1),
+      chunkNumber: extraAuditData.chunkNumber || 1,
+      status: status,
+      provider: process.env.EMAIL_PROVIDER || 'gmail',
+      messageId: extraAuditData.messageId || smtpResponse || '',
+      error: errorMessage || null,
+      sentAt: new Date().toISOString(),
+      retryCount: extraAuditData.retryCount || 0
+    };
+    await addDoc(collection(db, 'emailAuditLogs'), auditRecord);
+  } catch (err) {
+    console.warn('[Email Service] Failed to write Firestore emailAuditLog:', err.message);
+  }
 }
 
 async function sendMailWithFallback(mailOptions) {
@@ -148,6 +167,7 @@ async function sendMailWithFallback(mailOptions) {
     });
     
     console.log(`[Email Service] Email task enqueued to mailQueue with ID: ${docRef.id}`);
+    await logEmailAudit(mailOptions, 'SUCCESS', '', docRef.id, { messageId: docRef.id });
     return { messageId: docRef.id };
   } catch (error) {
     console.error('[Email Service] Failed to enqueue email to mailQueue:', error);
@@ -657,7 +677,54 @@ async function sendCancellationRejectedEmail(organizerEmail, eventData, reason) 
   }
 }
 
+async function sendStudentRegistrationReminderBatch(eventData, bccChunk, isApproved, reason = '', chunkNumber = 1) {
+  if (!bccChunk || !bccChunk.length) {
+    return { success: true, messageId: 'NO_RECIPIENTS' };
+  }
+  try {
+    const html = templates.studentRegistrationReminderTemplate(eventData, isApproved, reason);
+    const subject = isApproved
+      ? `[Reminder] Event Registration Approved: ${eventData.title || 'Event Starting Soon'}`
+      : `[Notice] Event Registration Status: ${eventData.title || 'Event Update'}`;
+    const mailOptions = {
+      from: getSenderAddress(),
+      bcc: Array.isArray(bccChunk) ? bccChunk.join(', ') : bccChunk,
+      subject,
+      html,
+      text: `Your registration status for ${eventData.title || 'the event'}: ${isApproved ? 'APPROVED' : 'REJECTED'}.`,
+      emailType: 'STUDENT_REMINDER',
+      eventId: eventData.id || eventData.eventId || null,
+      eventTitle: eventData.title || null,
+      template: 'studentRegistrationReminderTemplate',
+      eventReferenceId: eventData.referenceId || null
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    await logEmailAudit(mailOptions, 'SUCCESS', '', result.messageId, {
+      recipientCount: Array.isArray(bccChunk) ? bccChunk.length : 1,
+      chunkNumber,
+      template: 'studentRegistrationReminderTemplate',
+      messageId: result.messageId
+    });
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error(`[Email Service] Failed to send student reminder batch chunk ${chunkNumber}:`, error);
+    await logEmailAudit({
+      eventId: eventData.id || eventData.eventId || null,
+      eventReferenceId: eventData.referenceId || null,
+      template: 'studentRegistrationReminderTemplate',
+      to: bccChunk
+    }, 'FAILED', error.message, '', {
+      recipientCount: Array.isArray(bccChunk) ? bccChunk.length : 1,
+      chunkNumber,
+      template: 'studentRegistrationReminderTemplate'
+    });
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
+  logEmailAudit,
+  sendStudentRegistrationReminderBatch,
   sendEventNotificationToFaculty,
   sendEventStatusNotification,
   sendEventCreationNotification,

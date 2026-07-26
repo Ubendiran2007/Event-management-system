@@ -335,6 +335,21 @@ router.patch('/:id/status', async (req, res) => {
       else update.iqacRejectedAt = new Date().toISOString();
     }
 
+    if (status === 'APPROVED' || status === 'REJECTED') {
+      let eventStartTimestamp = 0;
+      try {
+        if (current.eventDate) {
+          const sDP = current.eventDate.split('-');
+          const sTP = (current.eventStartTime || '00:00').split(':');
+          eventStartTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+        }
+      } catch (err) {}
+      update.notificationPending = true;
+      update.notificationSent = false;
+      update.registrationStatus = status;
+      update.notificationScheduledAt = eventStartTimestamp ? new Date(eventStartTimestamp - 30 * 60 * 1000).toISOString() : new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    }
+
     await updateDoc(odRef, update);
 
     // Handle OD Usage Count synchronization dynamically

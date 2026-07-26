@@ -35,6 +35,8 @@ const reminderScheduler = require('./reminders/scheduler/reminderScheduler');
 reminderScheduler.start(); // Start the policy-based reminder engine
 const mailWorker = require('./workers/mailWorker');
 mailWorker.start(); // Start async notification queue worker
+const notificationScheduler = require('./services/NotificationScheduler');
+notificationScheduler.start(); // Start generic background notification scheduler (student reminders, auto-close jobs)
 
 const app = express();
 app.set('trust proxy', 1);

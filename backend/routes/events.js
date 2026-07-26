@@ -1285,6 +1285,13 @@ router.post('/:id/register', async (req, res) => {
         effectiveDeadlineTimestamp = eventStartTimestamp;
       }
 
+      if (eventData.registrationOpen === false) {
+        throw new Error('BAD_REQUEST:Registration is closed for this event.');
+      }
+      if (eventStartTimestamp && Date.now() >= eventStartTimestamp - 30 * 60 * 1000) {
+        throw new Error('BAD_REQUEST:Registration is closed. Registrations automatically close 30 minutes before the event starts.');
+      }
+
       if (effectiveDeadlineTimestamp && Date.now() >= effectiveDeadlineTimestamp) {
         throw new Error('BAD_REQUEST:Registration is closed. The deadline has passed.');
       } else if (!effectiveDeadlineTimestamp && startDateStr) {
@@ -1414,9 +1421,28 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
          throw new Error('BAD_REQUEST:Only pending registrations can be approved or rejected.');
       }
 
+      // Calculate scheduled notification time (30 mins before event start)
+      const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
+      const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
+      let eventStartTimestamp = 0;
+      try {
+        if (startDateStr) {
+          const sDP = startDateStr.split('-');
+          const sTP = startTimeStr.split(':');
+          eventStartTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+        }
+      } catch (err) {}
+      const scheduledAt = eventStartTimestamp ? new Date(eventStartTimestamp - 30 * 60 * 1000).toISOString() : new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
       // Update registration document
       transaction.update(registrationRef, {
         status: status,
+        registrationStatus: status === 'REGISTERED' ? 'APPROVED' : status,
+        notificationPending: true,
+        notificationSent: false,
+        notificationScheduledAt: scheduledAt,
+        eventId: eventId,
+        studentId: studentId,
         updatedAt: new Date().toISOString(),
         reviewedBy: req.user.id,
         reviewedAt: new Date().toISOString()
