@@ -99,7 +99,7 @@ const PermissionEngine = {
    */
   canEditVenue: (user) => {
     if (!user) return false;
-    return user.role === UserRole.HR_TEAM || user.role === UserRole.SUPER_ADMIN;
+    return user.role === UserRole.HR_TEAM || user.role === UserRole.SUPER_ADMIN || user.role === UserRole.IQAC_TEAM || user.role === 'IQAC' || user.role === UserRole.IQAC;
   },
 
   /**

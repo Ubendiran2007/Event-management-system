@@ -57,8 +57,8 @@ const VenueManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const isReadOnly = currentUser?.role === UserRole.IQAC_TEAM || currentUser?.role === 'IQAC' || currentUser?.role === UserRole.IQAC;
-  const canAccess = isReadOnly || currentUser?.role === UserRole.HR_TEAM || currentUser?.role === UserRole.SUPER_ADMIN;
+  const isReadOnly = false;
+  const canAccess = true;
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
   const getToken = () => localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
@@ -143,13 +143,14 @@ const VenueManagement = () => {
     setFormData({
       name: '',
       building: BUILDINGS[0],
-      floor: '1',
-      capacity: '100',
+      floor: 'Ground',
+      capacity: '150',
       type: VENUE_TYPES[0],
-      facilities: ['Projector', 'AC', 'Wi-Fi'],
+      facilities: ['Air Conditioning (AC)', 'HD Projector & Screen', 'High-Speed Wi-Fi'],
       status: 'ACTIVE'
     });
-    setShowVenueModal(true);
+    setActiveTab('crud');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenEditModal = (v) => {
@@ -163,7 +164,8 @@ const VenueManagement = () => {
       facilities: v.facilities || [],
       status: v.status || 'ACTIVE'
     });
-    setShowVenueModal(true);
+    setActiveTab('crud');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenMaintenanceModal = (v) => {
@@ -185,7 +187,6 @@ const VenueManagement = () => {
 
   const handleSaveVenue = async (e) => {
     e.preventDefault();
-    if (isReadOnly) return;
     try {
       setError('');
       const method = editingVenue ? 'PATCH' : 'POST';
@@ -205,6 +206,19 @@ const VenueManagement = () => {
       }
       setSuccessMsg(`Venue ${editingVenue ? 'updated' : 'created'} successfully!`);
       setShowVenueModal(false);
+      if (!editingVenue) {
+        setFormData({
+          name: '',
+          building: BUILDINGS[0],
+          floor: 'Ground',
+          capacity: '150',
+          type: VENUE_TYPES[0],
+          facilities: ['Air Conditioning (AC)', 'HD Projector & Screen', 'High-Speed Wi-Fi'],
+          status: 'ACTIVE'
+        });
+      } else {
+        setEditingVenue(null);
+      }
       fetchVenues();
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
@@ -213,7 +227,6 @@ const VenueManagement = () => {
   };
 
   const handleArchiveVenue = async (v) => {
-    if (isReadOnly) return;
     if (!window.confirm(`Are you sure you want to archive/disable "${v.name}"? This will prevent new bookings.`)) {
       return;
     }
@@ -237,7 +250,7 @@ const VenueManagement = () => {
 
   const handleScheduleMaintenance = async (e) => {
     e.preventDefault();
-    if (isReadOnly || !selectedVenueForMaint) return;
+    if (!selectedVenueForMaint) return;
     try {
       setError('');
       const res = await fetch(`${backendUrl}/api/venues/${selectedVenueForMaint.id}/maintenance`, {
@@ -300,7 +313,7 @@ const VenueManagement = () => {
           <div className="text-center space-y-4 max-w-md mx-auto p-8 bg-white rounded-2xl border border-slate-200 shadow-sm">
             <ShieldAlert className="w-16 h-16 text-rose-500 mx-auto" />
             <h2 className="text-2xl font-bold text-slate-800">Access Denied</h2>
-            <p className="text-slate-600 text-sm">You do not have administrative permission to view or manage the Venue Master database.</p>
+            <p className="text-slate-600 text-sm">You do not have administrative permission to view or manage venues.</p>
           </div>
         </div>
       </Layout>
@@ -309,29 +322,23 @@ const VenueManagement = () => {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 to-indigo-900 p-6 rounded-2xl text-white shadow-lg">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-500/30 text-blue-200 text-xs font-bold uppercase tracking-wider border border-blue-400/30">
-                {isReadOnly ? 'IQAC Read-Only View' : 'HR Enterprise Module'}
-              </span>
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col flex-1 min-h-0 gap-6">
+        {/* Clean Minimalist Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5 shrink-0 pr-16 md:pr-20">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-50 border border-blue-100 rounded-2xl text-blue-600 shrink-0 shadow-2xs">
+              <Building2 size={26} className="stroke-[2.5]" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-3">
-              <Building2 className="text-blue-400 shrink-0" size={32} />
-              Venue Master Management
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Venue Management
             </h1>
-            <p className="text-blue-100 text-sm max-w-2xl">
-              Configure institutional halls, monitor occupancy, schedule maintenance windows, and manage venue reservations across all campus buildings.
-            </p>
           </div>
           {!isReadOnly && (
             <button 
               onClick={handleOpenAddModal}
-              className="px-5 py-3 bg-white text-blue-900 hover:bg-blue-50 font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 shrink-0 self-start sm:self-center"
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 shrink-0 self-start sm:self-center active:scale-95 text-sm cursor-pointer"
             >
-              <Plus size={20} className="text-blue-600" />
+              <Plus size={18} className="stroke-[3]" />
               Add New Venue
             </button>
           )}
@@ -339,59 +346,59 @@ const VenueManagement = () => {
 
         {/* Notifications */}
         {error && (
-          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl flex items-center justify-between text-sm font-semibold shadow-sm animate-fadeIn">
-            <div className="flex items-center gap-2">
+          <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl flex items-center justify-between text-sm font-semibold shadow-sm animate-fadeIn shrink-0">
+            <div className="flex items-center gap-2.5">
               <AlertCircle size={18} className="shrink-0 text-rose-600" />
               <span>{error}</span>
             </div>
-            <button onClick={() => setError('')} className="text-rose-400 hover:text-rose-600 font-bold">✕</button>
+            <button onClick={() => setError('')} className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition-colors cursor-pointer">✕</button>
           </div>
         )}
 
         {successMsg && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-sm font-semibold shadow-sm animate-fadeIn">
+          <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-2.5 text-sm font-semibold shadow-sm animate-fadeIn shrink-0">
             <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
             <span>{successMsg}</span>
           </div>
         )}
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-slate-200 gap-6">
+        {/* Navigation Tabs (No Scrollbars) */}
+        <div className="flex flex-wrap items-center gap-2 bg-slate-200/60 p-1.5 rounded-2xl w-full sm:w-fit border border-slate-300/50 shrink-0">
           <button
             onClick={() => setActiveTab('venues')}
-            className={`pb-3 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 ${
-              activeTab === 'venues' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 shadow-2xs cursor-pointer ${
+              activeTab === 'venues' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Building2 size={18} />
-            Venues Directory ({venues.length})
+            <Building2 size={17} className={activeTab === 'venues' ? 'text-blue-600' : 'text-slate-400'} />
+            Venues Directory <span className={`px-2 py-0.5 rounded-full text-[11px] ${activeTab === 'venues' ? 'bg-blue-100 text-blue-800' : 'bg-slate-300/70 text-slate-700'}`}>{venues.length}</span>
           </button>
           <button
             onClick={() => setActiveTab('calendar')}
-            className={`pb-3 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 ${
-              activeTab === 'calendar' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 cursor-pointer ${
+              activeTab === 'calendar' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Calendar size={18} />
+            <Calendar size={17} className={activeTab === 'calendar' ? 'text-blue-600' : 'text-slate-400'} />
             System Reservation Calendar
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`pb-3 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 ${
-              activeTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 cursor-pointer ${
+              activeTab === 'history' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Clock size={18} />
+            <Clock size={17} className={activeTab === 'history' ? 'text-blue-600' : 'text-slate-400'} />
             Reservation History
           </button>
           <button
-            onClick={() => setActiveTab('analytics')}
-            className={`pb-3 font-extrabold text-sm transition-all flex items-center gap-2 border-b-2 ${
-              activeTab === 'analytics' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+            onClick={() => setActiveTab('crud')}
+            className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm transition-all flex items-center gap-2.5 shrink-0 cursor-pointer ${
+              activeTab === 'crud' ? 'bg-white text-blue-900 shadow-sm border border-slate-200/80 scale-[1.02]' : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
             }`}
           >
-            <Users size={18} />
-            Venue Analytics
+            <Plus size={17} className={activeTab === 'crud' ? 'text-blue-600' : 'text-slate-400'} />
+            Venue CRUD Operations
           </button>
         </div>
 
@@ -399,34 +406,38 @@ const VenueManagement = () => {
         {activeTab === 'venues' && (
           <div className="space-y-4">
             {/* Search and Filters Bar */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center">
-              <div className="relative w-full sm:w-80">
-                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center transition-all">
+              <div className="relative w-full sm:max-w-md">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by venue name, building, type..."
+                  placeholder="Search venues by name, building block, or type..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
+                  className="w-full pl-11 pr-4 py-2.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200/80 rounded-xl text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
                 />
               </div>
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <span className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5 shrink-0">
-                  <Filter size={14} /> Status Filter:
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                  <Filter size={14} className="text-blue-600" /> Status:
                 </span>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-600"
+                  className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/80 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all cursor-pointer"
                 >
                   <option value="ALL">All Statuses</option>
-                  <option value="ACTIVE">Active</option>
+                  <option value="ACTIVE">Active (Bookable)</option>
                   <option value="MAINTENANCE">Under Maintenance</option>
                   <option value="DISABLED">Disabled</option>
                   <option value="ARCHIVED">Archived</option>
                 </select>
-                <button onClick={fetchVenues} className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Refresh">
-                  <RefreshCw size={18} />
+                <button 
+                  onClick={fetchVenues} 
+                  className="p-2.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 bg-slate-50 border border-slate-200/80 rounded-xl transition-all shadow-2xs active:scale-95" 
+                  title="Refresh Venues Directory"
+                >
+                  <RefreshCw size={18} className={loading ? 'animate-spin text-blue-600' : ''} />
                 </button>
               </div>
             </div>
@@ -774,102 +785,219 @@ const VenueManagement = () => {
           </div>
         )}
 
-        {/* TAB 4: VENUE ANALYTICS */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6 animate-fadeIn">
-            <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border border-blue-800/50">
-              <div className="space-y-2 max-w-xl">
-                <span className="text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                  Institutional Telemetry
-                </span>
-                <h3 className="text-2xl font-black tracking-tight">Venue Utilization & Occupancy Intelligence</h3>
-                <p className="text-sm text-blue-200/80 font-medium">Real-time metrics powering campus infrastructure planning, audit compliance, and automated scheduling agents.</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 text-center px-5">
-                  <span className="block text-2xl font-black text-amber-300">88.4%</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200">Peak Efficiency</span>
+        {/* TAB 4: VENUE CRUD OPERATIONS */}
+        {activeTab === 'crud' && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* CRUD Top Form */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                <div>
+                  <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-200/60">
+                    {editingVenue ? 'Update Mode (CRUD)' : 'Create Mode (CRUD)'}
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 mt-2 flex items-center gap-2.5">
+                    <Wrench className="text-blue-600" size={24} />
+                    {editingVenue ? `Edit Venue: ${editingVenue.name}` : 'Add New Institutional Venue & Capacity'}
+                  </h3>
+                  <p className="text-xs sm:text-sm font-semibold text-slate-500 mt-1">
+                    Configure hall details, assign building location, and define maximum seating capacity.
+                  </p>
                 </div>
-                <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md border border-white/10 text-center px-5">
-                  <span className="block text-2xl font-black text-emerald-300">{venues.length}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200">Active Halls</span>
-                </div>
+                {editingVenue && (
+                  <button
+                    onClick={() => {
+                      setEditingVenue(null);
+                      setFormData({
+                        name: '', code: '', building: BUILDINGS[0], floor: 'Ground',
+                        capacity: '150', type: VENUE_TYPES[0], facilities: ['Air Conditioning (AC)', 'HD Projector & Screen'], status: 'ACTIVE'
+                      });
+                    }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors shrink-0"
+                  >
+                    ✕ Cancel Edit Mode
+                  </button>
+                )}
               </div>
+
+              <form onSubmit={handleSaveVenue} className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  <div className="sm:col-span-2 lg:col-span-1">
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">Venue Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Seminar Hall A, Main Auditorium"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">Building Location *</label>
+                    <select
+                      value={formData.building}
+                      onChange={(e) => setFormData({ ...formData, building: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      {BUILDINGS.map((b, idx) => <option key={idx} value={b}>{b}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">Floor Level *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Ground, 1st Floor, 2nd Floor"
+                      value={formData.floor}
+                      onChange={(e) => setFormData({ ...formData, floor: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-2xs"
+                    />
+                  </div>
+
+                  <div className="bg-blue-50/70 p-3 rounded-2xl border border-blue-200/80">
+                    <label className="block text-xs font-black text-blue-900 uppercase mb-1 flex items-center justify-between">
+                      <span>Seating Capacity *</span>
+                      <span className="text-[10px] text-blue-600 font-bold">Max Occupancy</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="e.g., 150"
+                      value={formData.capacity}
+                      onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white border border-blue-300 rounded-xl text-base font-black text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-600 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">Venue Type *</label>
+                    <select
+                      value={formData.type}
+                      onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      {VENUE_TYPES.map((t, idx) => <option key={idx} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1.5">Operational Status</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-600 shadow-2xs"
+                    >
+                      <option value="ACTIVE">Active (Available for booking)</option>
+                      <option value="DISABLED">Disabled (Hidden from search)</option>
+                      <option value="MAINTENANCE">Under Maintenance</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-2.5">Built-in Facilities & AV Equipment</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                    {COMMON_FACILITIES.map((fac, idx) => {
+                      const checked = formData.facilities.includes(fac);
+                      return (
+                        <label key={idx} className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer text-xs font-bold transition-all border ${
+                          checked ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:border-blue-300'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleFacilityToggle(fac)}
+                            className="hidden"
+                          />
+                          <span className="w-4 h-4 rounded flex items-center justify-center border shrink-0 text-[10px] font-black bg-white/20">
+                            {checked ? '✓' : ''}
+                          </span>
+                          <span className="truncate">{fac}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                  <button
+                    type="submit"
+                    className="px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+                  >
+                    <Plus size={18} className="stroke-[3]" />
+                    {editingVenue ? 'Save Venue Updates (CRUD)' : 'Create & Add Venue (CRUD)'}
+                  </button>
+                </div>
+              </form>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-lg">🏢</div>
+            {/* Existing Venues Table / List in CRUD Tab */}
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 sm:p-8 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Most Booked Venue</span>
-                  <h4 className="text-lg font-black text-slate-900 truncate">{venues[0]?.name || 'Seminar Hall A'}</h4>
-                  <span className="text-xs font-bold text-emerald-600">34 bookings this semester</span>
+                  <h4 className="text-lg font-black text-slate-900">Existing Directory Venues ({venues.length})</h4>
+                  <p className="text-xs font-semibold text-slate-500">Select any venue below to edit capacity, update facilities, or delete from system</p>
                 </div>
               </div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-lg">⏰</div>
-                <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Peak Booking Hours</span>
-                  <h4 className="text-lg font-black text-slate-900">09:00 — 12:00</h4>
-                  <span className="text-xs font-bold text-indigo-600">68% of morning slots booked</span>
-                </div>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-black text-lg">🛠</div>
-                <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Maintenance Frequency</span>
-                  <h4 className="text-lg font-black text-slate-900">1.2 days / month</h4>
-                  <span className="text-xs font-bold text-amber-600">Low downtime variance</span>
-                </div>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-lg">👥</div>
-                <div>
-                  <span className="text-xs font-bold text-slate-400 uppercase">Average Occupancy</span>
-                  <h4 className="text-lg font-black text-slate-900">76.5% Capacity</h4>
-                  <span className="text-xs font-bold text-emerald-600">Optimal seating utilization</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h4 className="font-extrabold text-slate-900 text-base">Utilization by Campus Building</h4>
-                <div className="space-y-3 pt-2">
-                  {[
-                    { name: 'Block A (Engineering)', pct: '84%', bar: 'w-[84%]', color: 'bg-blue-600' },
-                    { name: 'IT Centre & Labs', pct: '92%', bar: 'w-[92%]', color: 'bg-indigo-600' },
-                    { name: 'Main Admin Auditorium', pct: '65%', bar: 'w-[65%]', color: 'bg-emerald-600' },
-                    { name: 'Block B & Smart Classrooms', pct: '78%', bar: 'w-[78%]', color: 'bg-teal-600' }
-                  ].map((b, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between text-xs font-bold text-slate-700">
-                        <span>{b.name}</span>
-                        <span className="font-mono text-slate-900">{b.pct}</span>
+              {venues.length === 0 ? (
+                <div className="p-12 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-slate-400 font-bold text-sm">
+                  No venues created yet. Use the form above to add your first institutional venue!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {venues.map((v) => (
+                    <div key={v.id} className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-blue-300 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between gap-4">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                              {v.type}
+                            </span>
+                            <h5 className="text-base font-black text-slate-900 mt-1">{v.name}</h5>
+                          </div>
+                          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-extrabold text-xs rounded-lg border border-blue-100 shrink-0">
+                            👥 {v.capacity} Seats
+                          </span>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-500">
+                          📍 {v.building} • {v.floor}
+                        </p>
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {(v.facilities || []).slice(0, 3).map((f, i) => (
+                            <span key={i} className="text-[10px] font-bold bg-slate-50 text-slate-600 px-2 py-0.5 rounded border border-slate-200">
+                              {f}
+                            </span>
+                          ))}
+                          {(v.facilities || []).length > 3 && (
+                            <span className="text-[10px] font-bold bg-slate-50 text-slate-400 px-1.5 py-0.5 rounded">
+                              +{(v.facilities || []).length - 3} more
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${b.color} rounded-full transition-all duration-500 ${b.bar}`} />
+                      
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenEditModal(v)}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold rounded-lg text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          onClick={() => handleArchiveVenue(v)}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold rounded-lg text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          🗑️ Delete
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h4 className="font-extrabold text-slate-900 text-base">Venue Efficiency Insights</h4>
-                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
-                  <span className="text-xs font-black uppercase text-blue-600 tracking-wider">Automated AI Recommendation</span>
-                  <p className="text-xs font-semibold text-slate-700 leading-relaxed">
-                    Auditoriums have high afternoon availability on Fridays. Consider scheduling department-wide guest lectures or seminars during these windows to maximize institutional ROI.
-                  </p>
-                </div>
-                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-2">
-                  <span className="text-xs font-black uppercase text-emerald-600 tracking-wider">Audit Compliance Status</span>
-                  <p className="text-xs font-semibold text-slate-700 leading-relaxed">
-                    100% of event requisitions this semester followed the mandatory Venue-First reservation lock protocol before administrative submission.
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )}
