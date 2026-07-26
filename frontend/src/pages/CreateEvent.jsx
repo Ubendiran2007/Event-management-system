@@ -20,6 +20,8 @@ import {
   Send,
   Users,
   Globe,
+  AlertTriangle,
+  ShieldAlert,
 } from 'lucide-react';
 import { formatEventRef, fallbackValue } from '../utils/formatters';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -2232,6 +2234,17 @@ const CreateEvent = () => {
 
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3">Participants</h4>
+              {lockedVenue && ((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
+                <div className="p-4 bg-rose-50 border-2 border-rose-400 rounded-2xl text-rose-900 shadow-sm animate-pulse flex items-center gap-3.5 mb-4">
+                  <ShieldAlert className="text-rose-600 shrink-0" size={24} />
+                  <div className="space-y-0.5">
+                    <span className="font-extrabold text-sm block text-rose-950">⚠️ Seating Capacity Warning</span>
+                    <p className="text-xs font-semibold text-rose-800 leading-relaxed">
+                      Total expected participants (<strong className="font-mono text-rose-950">{Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)}</strong>) or maximum registration limit exceeds the reserved venue's seating capacity of <strong className="underline font-black">{lockedVenue.capacity} seats</strong>. Please ensure seating arrangements are sufficient or select a larger hall in Step 1.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -2521,14 +2534,25 @@ const CreateEvent = () => {
             <div className="md:col-span-2">
               <h4 className="font-semibold text-slate-800 mb-1">Reserved Venue</h4>
               {lockedVenue ? (
-                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                  <div>
-                    <p className="font-bold text-slate-900">{lockedVenue.name}</p>
-                    <p className="text-sm text-slate-500">{lockedVenue.building} - Floor {lockedVenue.floor}</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div>
+                      <p className="font-bold text-slate-900">{lockedVenue.name}</p>
+                      <p className="text-sm text-slate-500">{lockedVenue.building} - Floor {lockedVenue.floor}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-not-allowed">
+                      <span role="img" aria-label="locked">🔒</span> Reserved ({lockedVenue.capacity} Seats)
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-not-allowed">
-                    <span role="img" aria-label="locked">🔒</span> Reserved
-                  </div>
+
+                  {((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
+                    <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 flex items-center gap-3">
+                      <AlertTriangle className="text-rose-600 shrink-0" size={20} />
+                      <span className="text-xs font-bold">
+                        Warning: Expected attendance or capacity limit exceeds this venue's seating capacity of {lockedVenue.capacity}.
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">

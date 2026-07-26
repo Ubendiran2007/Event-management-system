@@ -293,6 +293,13 @@ class VenueAvailabilityService {
       throw new Error("Your reservation has expired. Please reserve the venue again.");
     }
 
+    // Check if venue is still ACTIVE
+    const venueRef = db.collection('venues').doc(venueId);
+    const venueDoc = await venueRef.get();
+    if (!venueDoc.exists || venueDoc.data().status !== 'ACTIVE') {
+      throw new Error(`Venue is no longer ACTIVE (${venueDoc.exists ? venueDoc.data().status : 'Not Found'}). Please select another venue.`);
+    }
+
     // Check if venue entered maintenance in the meantime
     const maintenanceQuery = db.collection('venueMaintenance').where('venueId', '==', venueId);
     const maintenanceSnapshot = await maintenanceQuery.get();
@@ -304,6 +311,34 @@ class VenueAvailabilityService {
     }
 
     return true;
+  }
+
+  /**
+   * Global cleanup method to sweep and expire old reservations
+   */
+  static async cleanupAllExpiredHolds() {
+    const db = getFirestore();
+    try {
+      const now = new Date();
+      const expiredQuery = db.collection('venueReservations')
+        .where('status', '==', ReservationStatus.RESERVED)
+        .where('expiresAt', '<=', now);
+      const snapshot = await expiredQuery.get();
+      if (snapshot.empty) return 0;
+      
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => {
+        batch.update(doc.ref, { 
+          status: ReservationStatus.EXPIRED,
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      });
+      await batch.commit();
+      return snapshot.size;
+    } catch (err) {
+      console.error('[VenueAvailabilityService] Error cleaning up expired holds:', err);
+      return 0;
+    }
   }
 }
 

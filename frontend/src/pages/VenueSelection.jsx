@@ -13,9 +13,9 @@ const VENUE_TYPES = ['Auditorium', 'Seminar Hall', 'Conference Hall', 'Smart Cla
 const BUILDINGS = ['Block A', 'Block B', 'Block C', 'IT Centre', 'Main Building', 'Admin Block', 'Other'];
 const COMMON_FACILITIES = ['Projector', 'AC', 'Smart Board', 'Sound System', 'Microphone', 'Wi-Fi', 'Podium', 'LED Display'];
 
-// Generate hourly timeline slots from 08:00 to 18:00
+// Configurable hourly timeline slots from 08:00 to 20:00
 const TIME_SLOTS = [
-  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'
+  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
 ];
 
 const VenueSelection = () => {
@@ -29,6 +29,7 @@ const VenueSelection = () => {
   const [reserving, setReserving] = useState(false);
   const [calendarData, setCalendarData] = useState({}); // map venueId -> array of events/holds/maint
   const [calLoading, setCalLoading] = useState(false);
+  const [dragRange, setDragRange] = useState(null); // { venueId, startIdx, endIdx }
 
   // Filters
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -388,11 +389,14 @@ const VenueSelection = () => {
             
             {/* Quick Stats / Legend */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-extrabold text-slate-800">
-                  Showing {filteredVenues.length} available halls for <span className="text-blue-600 underline decoration-2">{selectedDate}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <span className="text-sm font-extrabold text-slate-800 flex items-center">
+                  Showing {filteredVenues.length} available halls for <span className="text-blue-600 underline decoration-2 ml-1">{selectedDate}</span>
+                  {calLoading && <RefreshCw size={14} className="animate-spin text-blue-600 ml-2" />}
                 </span>
-                {calLoading && <RefreshCw size={14} className="animate-spin text-blue-600 ml-2" />}
+                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 flex items-center gap-1.5 shadow-2xs">
+                  💡 Tip: Click and drag across adjacent free slots to select range!
+                </span>
               </div>
               <div className="flex items-center gap-4 text-xs font-extrabold">
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-emerald-500 border border-emerald-600 inline-block" /> Free / Available</span>
@@ -465,14 +469,41 @@ const VenueSelection = () => {
                                 const isHold = status === 'HOLD';
                                 const isBooked = status === 'BOOKED' || status === 'MAINTENANCE';
 
+                                const isDraggingThis = dragRange && dragRange.venueId === venue.id && 
+                                  idx >= Math.min(dragRange.startIdx, dragRange.endIdx) && 
+                                  idx <= Math.max(dragRange.startIdx, dragRange.endIdx);
+
                                 return (
                                   <td key={idx} className="p-1.5 border-r border-slate-100 text-center align-middle">
                                     <button
                                       type="button"
                                       disabled={!isFree}
-                                      onClick={() => handleSelectVenueSlot(venue, slot, TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)])}
-                                      title={isFree ? `Click to reserve starting at ${slot}` : `${label} (${slot})`}
-                                      className={`w-full h-11 rounded-lg font-bold text-[11px] transition-all flex flex-col items-center justify-center p-1 shadow-2xs ${
+                                      onMouseDown={(e) => {
+                                        if (isFree && e.button === 0) {
+                                          setDragRange({ venueId: venue.id, startIdx: idx, endIdx: idx });
+                                        }
+                                      }}
+                                      onMouseEnter={() => {
+                                        if (dragRange && dragRange.venueId === venue.id && isFree) {
+                                          setDragRange({ ...dragRange, endIdx: idx });
+                                        }
+                                      }}
+                                      onMouseUp={() => {
+                                        if (dragRange && dragRange.venueId === venue.id) {
+                                          const sIdx = Math.min(dragRange.startIdx, idx);
+                                          const eIdx = Math.max(dragRange.startIdx, idx);
+                                          handleSelectVenueSlot(venue, TIME_SLOTS[sIdx], TIME_SLOTS[Math.min(eIdx + 1, TIME_SLOTS.length - 1)]);
+                                          setDragRange(null);
+                                        }
+                                      }}
+                                      onClick={() => {
+                                        if (!dragRange || dragRange.startIdx === dragRange.endIdx) {
+                                          handleSelectVenueSlot(venue, slot, TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)]);
+                                        }
+                                      }}
+                                      title={isFree ? `Click or drag to reserve starting at ${slot}` : `${label} (${slot})`}
+                                      className={`w-full h-11 rounded-lg font-bold text-[11px] transition-all flex flex-col items-center justify-center p-1 shadow-2xs select-none ${
+                                        isDraggingThis ? 'bg-blue-600 text-white border-2 border-blue-700 scale-105 shadow-md z-10' :
                                         isFree ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-500 hover:text-white hover:border-emerald-600 hover:scale-105 cursor-pointer' :
                                         isHold ? 'bg-amber-100 text-amber-900 border border-amber-300 cursor-not-allowed animate-pulse' :
                                         'bg-rose-100 text-rose-900 border border-rose-300 cursor-not-allowed opacity-80'
