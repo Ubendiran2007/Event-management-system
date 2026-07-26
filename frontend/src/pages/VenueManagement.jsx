@@ -322,7 +322,7 @@ const VenueManagement = () => {
 
   return (
     <Layout>
-      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col flex-1 min-h-0 gap-6">
+      <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col h-full min-h-0 gap-6 overflow-hidden">
         {/* Clean Minimalist Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5 shrink-0 pr-16 md:pr-20">
           <div className="flex items-center gap-3">
@@ -333,7 +333,7 @@ const VenueManagement = () => {
               Venue Management
             </h1>
           </div>
-          {!isReadOnly && (
+          {!isReadOnly && activeTab !== 'crud' && (
             <button 
               onClick={handleOpenAddModal}
               className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 shrink-0 self-start sm:self-center active:scale-95 text-sm cursor-pointer"
@@ -402,7 +402,9 @@ const VenueManagement = () => {
           </button>
         </div>
 
-        {/* TAB 1: VENUES DIRECTORY */}
+        {/* Scrollable Inner Content Container (Header and Tabs stay fixed without scrollbar!) */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-6">
+          {/* TAB 1: VENUES DIRECTORY */}
         {activeTab === 'venues' && (
           <div className="space-y-4">
             {/* Search and Filters Bar */}
@@ -790,7 +792,7 @@ const VenueManagement = () => {
           <div className="space-y-8 animate-fadeIn">
             {/* CRUD Top Form */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-8 space-y-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5 pr-16 md:pr-20">
                 <div>
                   <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-200/60">
                     {editingVenue ? 'Update Mode (CRUD)' : 'Create Mode (CRUD)'}
@@ -1001,6 +1003,7 @@ const VenueManagement = () => {
             </div>
           </div>
         )}
+        </div>
 
         {/* MODAL 1: ADD / EDIT VENUE */}
         {showVenueModal && !isReadOnly && (
