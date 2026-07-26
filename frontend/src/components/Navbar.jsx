@@ -146,7 +146,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       <aside className={`w-72 h-full bg-[#f4f8ff] border-r border-blue-100 flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 md:relative md:translate-x-0 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
         {/* Header */}
-        <div className="p-6 pb-8 border-b border-blue-100/50 flex justify-between items-start">
+        <div className="p-5 pb-5 border-b border-blue-100/50 flex justify-between items-start">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleNavClick('dashboard')}>
             <img
               src={seceLogo}
@@ -166,21 +166,21 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-1.5 scrollbar-thin scrollbar-thumb-slate-200">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 scrollbar-thin scrollbar-thumb-slate-200">
           {navItems.map((item) => {
             const isActive = currentActive === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id, item.path)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-semibold text-[15px] ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 font-semibold text-[14px] ${
                   isActive
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
                     : 'text-slate-600 hover:bg-blue-100/50 hover:text-blue-900'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <item.icon size={20} className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} strokeWidth={isActive ? 2.5 : 2} />
+                  <item.icon size={18} className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} strokeWidth={isActive ? 2.5 : 2} />
                   <span className="whitespace-nowrap truncate">{item.label}</span>
                 </div>
               </button>
@@ -189,40 +189,40 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
         </div>
 
         {/* User Profile Footer */}
-        <div className="p-4 border-t border-blue-100/50">
-          <div className="flex flex-col gap-2 p-3 rounded-xl bg-white mb-3 border border-blue-100 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+        <div className="p-3 border-t border-blue-100/50">
+          <div className="flex flex-col gap-1 p-2.5 rounded-xl bg-white mb-2 border border-blue-100 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
                 {(displayData.name || 'User').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-extrabold text-slate-900 truncate">{displayData.name}</p>
-                <p className="text-[11px] text-slate-500 font-medium truncate capitalize">
+                <p className="text-xs font-extrabold text-slate-900 truncate">{displayData.name}</p>
+                <p className="text-[10px] text-slate-500 font-medium truncate capitalize">
                   {(displayData.role || 'GUEST').replace('_', ' ').toLowerCase()}
                 </p>
               </div>
             </div>
             
             {classAdvisorName && (
-              <div className="pt-2 mt-1 border-t border-slate-200">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Class Advisor</p>
-                <p className="text-xs font-semibold text-slate-700 truncate">{classAdvisorName}</p>
+              <div className="pt-1.5 mt-1 border-t border-slate-200">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Class Advisor</p>
+                <p className="text-[11px] font-semibold text-slate-700 truncate">{classAdvisorName}</p>
               </div>
             )}
             
             {isClassAdvisor && currentUser.assignedClasses && (
-              <div className="pt-2 mt-1 border-t border-slate-200">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Assigned Class</p>
-                <p className="text-xs font-semibold text-slate-700 truncate">{currentUser.assignedClasses.join(', ')}</p>
+              <div className="pt-1.5 mt-1 border-t border-slate-200">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Assigned Class</p>
+                <p className="text-[11px] font-semibold text-slate-700 truncate">{currentUser.assignedClasses.join(', ')}</p>
               </div>
             )}
           </div>
           
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-blue-200 bg-white text-slate-700 font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-colors text-[14px]"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-blue-200 bg-white text-slate-700 font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-colors text-[13px]"
           >
-            <LogOut size={18} className="text-slate-500" />
+            <LogOut size={16} className="text-slate-500" />
             Log Out
           </button>
         </div>
