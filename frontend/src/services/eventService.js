@@ -137,33 +137,28 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
   
   const startTime = performance.now();
   
-  // Phase 3A: Role-specific subscriptions
-  // Determine which event statuses this role actually needs to see in the Workflow context
-  let roleStatuses = [];
-  
-  switch(currentUser.role) {
-    case 'FACULTY':
-      // Faculty needs to approve pending requests and see past requests they approved
-      roleStatuses = ['PENDING_FACULTY']; 
-      break;
-    case 'HOD':
-      // HOD needs to approve their pending requests
-      roleStatuses = ['PENDING_HOD'];
-      break;
-    case 'IQAC_TEAM':
-      roleStatuses = ['PENDING_IQAC'];
-      break;
-    case 'STUDENT_ORGANIZER':
-    case 'STUDENT_GENERAL':
-      // Students don't need a global workflow listener (handled by OrganizerEventsContext for their own events)
-      // Return early with empty to save reads entirely
-      callback([]);
-      return () => {};
-    default:
-      // Admins/Principals might want to see posted/completed
-      roleStatuses = ['POSTED', 'COMPLETED'];
-      break;
+  // Students do not require global workflow events (handled by OrganizerEventsContext)
+  if (currentUser.role === 'STUDENT_ORGANIZER' || currentUser.role === 'STUDENT_GENERAL') {
+    callback([]);
+    return () => {};
   }
+  
+  // Subscribe to all active workflow statuses so client-side dashboard tabs can filter correctly
+  const roleStatuses = [
+    'PENDING_FACULTY',
+    'PENDING_CLASS_ADVISOR',
+    'PENDING_HOD',
+    'PENDING_DEPARTMENTS',
+    'PENDING_IQAC',
+    'PENDING_PRINCIPAL',
+    'APPROVED',
+    'POSTED',
+    'COMPLETED',
+    'REJECTED',
+    'POSTPONED',
+    'CANCELLED',
+    'REVISION'
+  ];
   
   let q = query(eventsCollection, where('status', 'in', roleStatuses));
   
