@@ -1,7 +1,7 @@
 /**
  * RegistrationAutoCloseJob
- * Queries upcoming active events starting in <= 30 mins where registrationOpen is true
- * and automatically sets registrationOpen = false in Firestore.
+ * Closes registration at the configured registration deadline. This runs without
+ * a logged-in user and keeps legacy registrationOpen fields in sync.
  */
 
 const { collection, query, where, getDocs, doc, updateDoc, db } = require('../../firebaseClientWrapper');
@@ -10,7 +10,7 @@ class RegistrationAutoCloseJob {
   static async run() {
     let closedCount = 0;
     try {
-      // Get events where registrationOpen is currently true
+      // Get events that have an explicitly open registration window.
       const eventsQuery = query(
         collection(db, 'events'),
         where('registrationOpen', '==', true)
@@ -20,8 +20,6 @@ class RegistrationAutoCloseJob {
       if (!snap || !snap.docs) return { closedCount };
 
       const now = Date.now();
-      const THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
-
       for (const d of snap.docs) {
         const data = d.data();
         const startDateStr = data.requisition?.step1?.eventStartDate || data.date;
@@ -36,11 +34,24 @@ class RegistrationAutoCloseJob {
           }
         } catch (e) {}
 
-        if (eventStartTimestamp > 0 && now >= eventStartTimestamp - THRESHOLD_MS) {
+        const registration = data.registration || {};
+        const deadlineValue = registration.currentDeadline || registration.originalDeadline || data.registrationDeadline;
+        const deadlineTimestamp = deadlineValue ? new Date(deadlineValue).getTime() : 0;
+        const shouldClose = (deadlineTimestamp > 0 && now >= deadlineTimestamp) ||
+          (!deadlineTimestamp && eventStartTimestamp > 0 && now >= eventStartTimestamp - (30 * 60 * 1000));
+
+        if (shouldClose) {
           try {
+            const closedAt = new Date().toISOString();
             await updateDoc(doc(db, 'events', d.id), {
               registrationOpen: false,
-              autoClosedAt: new Date().toISOString()
+              autoClosedAt: closedAt,
+              registration: {
+                ...registration,
+                enabled: registration.enabled !== false,
+                status: 'CLOSED',
+                closedAt
+              }
             });
             closedCount++;
           } catch (err) {

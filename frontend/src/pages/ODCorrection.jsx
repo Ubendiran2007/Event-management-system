@@ -25,6 +25,7 @@ import { useAppContext } from '../context/AppContext';
 import { useNotification } from '../context/NotificationContext';
 import { UserRole } from '../types';
 import Layout from '../components/Layout';
+import { getAuthToken } from '../utils/api';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
 
 const ODCorrection = () => {
@@ -78,7 +79,7 @@ const ODCorrection = () => {
             const viewParam = activeTab === 'pending' ? 'pending' : 'history';
             const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/correction-requests?role=${currentUser.role}&department=${currentUser.department}&userId=${currentUser.id}&view=${viewParam}`, {
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                    'Authorization': `Bearer ${getAuthToken()}`
                 }
             });
             const data = await res.json();
@@ -126,7 +127,7 @@ const ODCorrection = () => {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                    'Authorization': `Bearer ${getAuthToken()}`
                 },
                 body: JSON.stringify({
                     studentId: currentUser.id,
@@ -170,7 +171,7 @@ const ODCorrection = () => {
                 method: 'PATCH',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+                    'Authorization': `Bearer ${getAuthToken()}`
                 },
                 body: JSON.stringify({
                     action: actionModal.action,

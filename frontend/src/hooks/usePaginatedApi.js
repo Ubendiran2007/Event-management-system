@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getAuthToken } from '../utils/api';
+
+// Keeps loaded cursor pages available while users move between tabs or views.
+const pageCache = new Map();
 
 /**
  * Custom hook for cursor-based pagination across the app.
@@ -7,6 +11,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
  * @param {Object} options Options like { limit: 20, sortBy: 'createdAt', sortOrder: 'desc' }
  */
 export function usePaginatedApi(endpoint, filters = {}, options = {}) {
+  const filtersKey = JSON.stringify(filters);
+  const optionsKey = JSON.stringify(options);
+  const cacheKey = `${endpoint}:${filtersKey}:${optionsKey}`;
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,7 +27,7 @@ export function usePaginatedApi(endpoint, filters = {}, options = {}) {
   // Ref to prevent race conditions
   const fetchIdRef = useRef(0);
 
-  const fetchPage = useCallback(async (cursorToFetch, historyToSet) => {
+  const fetchPage = useCallback(async (cursorToFetch, historyToSet, append = false) => {
     fetchIdRef.current += 1;
     const currentFetchId = fetchIdRef.current;
 
@@ -28,22 +35,23 @@ export function usePaginatedApi(endpoint, filters = {}, options = {}) {
     setError(null);
 
     try {
-      const token = localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
+      const token = getAuthToken();
       const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
       
       const queryParams = new URLSearchParams();
       
       // Apply filters
-      Object.entries(filters).forEach(([key, val]) => {
+      Object.entries(JSON.parse(filtersKey)).forEach(([key, val]) => {
         if (val !== undefined && val !== null && val !== '') {
           queryParams.append(key, val);
         }
       });
 
       // Apply pagination/sorting options
-      queryParams.append('limit', options.limit || 20);
-      if (options.sortBy) queryParams.append('sortBy', options.sortBy);
-      if (options.sortOrder) queryParams.append('sortOrder', options.sortOrder);
+      const parsedOptions = JSON.parse(optionsKey);
+      queryParams.append('limit', parsedOptions.limit || 20);
+      if (parsedOptions.sortBy) queryParams.append('sortBy', parsedOptions.sortBy);
+      if (parsedOptions.sortOrder) queryParams.append('sortOrder', parsedOptions.sortOrder);
       if (cursorToFetch) queryParams.append('cursor', cursorToFetch);
 
       const response = await fetch(`${baseUrl}${endpoint}?${queryParams.toString()}`, {
@@ -53,25 +61,37 @@ export function usePaginatedApi(endpoint, filters = {}, options = {}) {
       });
 
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+        const errBody = await response.json().catch(() => ({}));
+        const msg = errBody.message || `API returned ${response.status}`;
+        throw new Error(response.status === 429 || response.status === 503 ? `quota: ${msg}` : msg);
       }
 
       const result = await response.json();
 
       // Only update state if this is the most recent fetch
       if (currentFetchId === fetchIdRef.current) {
-        setData(result.data || []);
-        setHasMore(result.pagination?.hasMore || false);
-        setTotalCount(result.pagination?.count || result.data?.length || 0);
+        const pageData = result.data || [];
+        const cachedData = pageCache.get(cacheKey)?.data || [];
+        const nextData = append ? [...cachedData, ...pageData] : pageData;
+        const hasNextPage = result.pagination?.hasMore || false;
+        const nextCursor = result.pagination?.nextCursor || null;
+
+        pageCache.set(cacheKey, {
+          data: nextData,
+          hasMore: hasNextPage,
+          currentCursor: cursorToFetch,
+          cursorHistory: historyToSet,
+          nextCursor
+        });
+
+        setData(nextData);
+        setHasMore(hasNextPage);
+        setTotalCount(nextData.length);
         setCurrentCursor(cursorToFetch);
         setCursorHistory(historyToSet);
         
         // Save the next cursor provided by the API for the "Next" button
-        if (result.pagination?.nextCursor) {
-          fetchIdRef.currentNextCursor = result.pagination.nextCursor;
-        } else {
-          fetchIdRef.currentNextCursor = null;
-        }
+        fetchIdRef.currentNextCursor = nextCursor;
       }
     } catch (err) {
       if (currentFetchId === fetchIdRef.current) {
@@ -83,18 +103,30 @@ export function usePaginatedApi(endpoint, filters = {}, options = {}) {
         setLoading(false);
       }
     }
-  }, [endpoint, JSON.stringify(filters), JSON.stringify(options)]);
+  }, [cacheKey, endpoint, filtersKey, optionsKey]);
 
-  // Initial load or when filters change
+  // Reset to page 1 when filters OR limit changes
   useEffect(() => {
+    const cachedPage = pageCache.get(cacheKey);
+    if (cachedPage) {
+      setData(cachedPage.data);
+      setHasMore(cachedPage.hasMore);
+      setTotalCount(cachedPage.data.length);
+      setCurrentCursor(cachedPage.currentCursor);
+      setCursorHistory(cachedPage.cursorHistory);
+      fetchIdRef.currentNextCursor = cachedPage.nextCursor;
+      setLoading(false);
+      return;
+    }
+
     fetchPage(null, []);
-  }, [fetchPage]);
+  }, [cacheKey, fetchPage]);
 
   const handleNextPage = useCallback(() => {
     if (hasMore && fetchIdRef.currentNextCursor) {
       const nextCursor = fetchIdRef.currentNextCursor;
       const newHistory = [...cursorHistory, currentCursor]; // push current cursor to history
-      fetchPage(nextCursor, newHistory);
+      fetchPage(nextCursor, newHistory, true);
     }
   }, [hasMore, cursorHistory, currentCursor, fetchPage]);
 
@@ -107,9 +139,9 @@ export function usePaginatedApi(endpoint, filters = {}, options = {}) {
   }, [cursorHistory, fetchPage]);
 
   const reload = useCallback(() => {
-    // Keep current page if possible, otherwise reset to start
-    fetchPage(currentCursor, cursorHistory);
-  }, [currentCursor, cursorHistory, fetchPage]);
+    pageCache.delete(cacheKey);
+    fetchPage(null, []);
+  }, [cacheKey, fetchPage]);
 
   return {
     data,

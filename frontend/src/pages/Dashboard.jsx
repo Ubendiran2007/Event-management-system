@@ -69,6 +69,7 @@ import RegistrationsTable from '../components/RegistrationsTable';
 import EventsTable from '../components/EventsTable';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
+import { getAuthToken } from '../utils/api';
 
 import { formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, getEventStatus, isRegistrationLocked } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
@@ -184,16 +185,23 @@ const Dashboard = () => {
     loadStudents
   } = useAppContext();
   
-  const { odRequests, loading: odLoading } = useODWorkflow();
+  const { odRequests, loading: odLoading, error: odError } = useODWorkflow();
 
-  const { events: workflowEvents, loading: workflowLoading } = useWorkflowEvents();
-  const { events: organizerEvents, loading: organizerLoading } = useOrganizerEvents();
+  const { events: workflowEvents, loading: workflowLoading, error: workflowError } = useWorkflowEvents();
+  const { events: organizerEvents, loading: organizerLoading, error: organizerError } = useOrganizerEvents();
 
   const events = useMemo(() => {
     const combined = [...workflowEvents, ...organizerEvents];
     // Deduplicate by id
     return Array.from(new Map(combined.map(e => [e.id, e])).values());
   }, [workflowEvents, organizerEvents]);
+
+  // Unified data-loading state — true until at least one subscription has resolved
+  const isEventsLoading = workflowLoading && organizerLoading;
+  // Consolidated error — only show if all event sources failed (not just one)
+  const eventsError = workflowError && organizerError
+    ? (workflowError === 'quota' || organizerError === 'quota' ? 'quota' : (workflowError || organizerError))
+    : null;
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -244,7 +252,7 @@ const Dashboard = () => {
       try {
         const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/dashboard/summary', {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${getAuthToken()}`
           }
         });
         const data = await res.json();
@@ -270,7 +278,7 @@ const Dashboard = () => {
       try {
         const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events/my-schedule', {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${getAuthToken()}`
           }
         });
         const data = await res.json();
@@ -341,6 +349,13 @@ const Dashboard = () => {
     currentUser?.role === UserRole.STUDENT_ORGANIZER;
   const isStaff = currentUser?.role && ![UserRole.STUDENT_GENERAL, UserRole.STUDENT_ORGANIZER].includes(currentUser.role.toUpperCase());
   const canManageStudents = [UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM].includes(currentUser?.role);
+  const canAccessODCorrections = [
+    UserRole.STUDENT_GENERAL,
+    UserRole.STUDENT_ORGANIZER,
+    UserRole.FACULTY,
+    UserRole.HOD,
+    UserRole.IQAC_TEAM
+  ].includes(currentUser?.role);
 
   const hasOrganizedEvents = useMemo(() => {
     if (!currentUser || !events) return false;
@@ -382,6 +397,7 @@ const Dashboard = () => {
       [UserRole.BOYS_WARDEN]: EventStatus.PENDING_DEPARTMENTS,
       [UserRole.GIRLS_WARDEN]: EventStatus.PENDING_DEPARTMENTS,
       [UserRole.IQAC_TEAM]: EventStatus.PENDING_IQAC,
+      [UserRole.PRINCIPAL]: EventStatus.PENDING_PRINCIPAL,
     };
     const expectedPendingStatus = pendingStatusForRole[currentUser?.role];
     if (expectedPendingStatus && selectedEventDetail.status === expectedPendingStatus && latestEvent.status !== expectedPendingStatus) {
@@ -409,6 +425,15 @@ const Dashboard = () => {
         
         if (ev.status === EventStatus.PENDING_FACULTY) {
           if (!currentUser.assignedClasses || currentUser.assignedClasses.length === 0) return false;
+          
+          // Use the denormalized organizer metadata on the event
+          if (ev.organizer && ev.organizer.class) {
+            const creatorClass = (ev.organizer.class || '').replace(/-/g, ' ').toUpperCase();
+            const assigned = currentUser.assignedClasses.map(c => (c || '').replace(/-/g, ' ').toUpperCase());
+            return assigned.includes(creatorClass);
+          }
+          
+          // Legacy fallback for existing events before denormalization
           const creator = students?.find(s => s.id === ev.organizerId);
           if (creator) {
             const creatorClass = (creator.class || '').replace(/-/g, ' ').toUpperCase();
@@ -463,6 +488,15 @@ const Dashboard = () => {
       if (currentUser.role === UserRole.IQAC_TEAM) {
         return ev.status === EventStatus.PENDING_IQAC || ev.status === EventStatus.COMPLETED;
       }
+      // Principal sees events awaiting their sign-off plus all post-approval statuses for oversight
+      if (currentUser.role === UserRole.PRINCIPAL) {
+        return (
+          ev.status === EventStatus.PENDING_PRINCIPAL ||
+          ev.status === EventStatus.POSTED ||
+          ev.status === EventStatus.APPROVED ||
+          ev.status === EventStatus.COMPLETED
+        );
+      }
 
       return false;
     });
@@ -490,6 +524,7 @@ const Dashboard = () => {
       if (currentUser.role === UserRole.GIRLS_WARDEN) return depts.girlsAccommodation?.status === 'APPROVED' && (isReq('accommodationDiningRequired') || isReq('accommodationRequired'));
       if (currentUser.role === UserRole.IQAC_TEAM) return ev.status === EventStatus.POSTED || ev.status === EventStatus.COMPLETED || ev.iqacApprovedAt;
       if (currentUser.role === UserRole.MEDIA) return depts.media?.status === 'APPROVED' || ['APPROVED', 'COMPLETED'].includes(String(ev.posterWorkflow?.status || '').toUpperCase());
+      if (currentUser.role === UserRole.PRINCIPAL) return ev.status === EventStatus.POSTED || ev.status === EventStatus.COMPLETED || ev.principalApprovedAt;
       return false;
     }).sort(sortEventsByEventDateDesc);
   }, [currentUser, events]);
@@ -1526,10 +1561,12 @@ const Dashboard = () => {
                           <div className="text-left"><p className="font-bold text-slate-800 text-sm">Create Event</p><p className="text-[11px] text-slate-500 font-medium">Initiate a new event</p></div>
                        </button>
                      )}
-                     <button onClick={() => navigate(`/${expectedRolePrefix}/od-correction`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-md transition-all group">
-                        <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><AlertCircle size={20} /></div>
-                        <div className="text-left"><p className="font-bold text-slate-800 text-sm">OD Corrections</p><p className="text-[11px] text-slate-500 font-medium">Review or submit corrections</p></div>
-                     </button>
+                     {canAccessODCorrections && (
+                       <button onClick={() => navigate(`/${expectedRolePrefix}/od-correction`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-amber-300 hover:shadow-md transition-all group">
+                          <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><AlertCircle size={20} /></div>
+                          <div className="text-left"><p className="font-bold text-slate-800 text-sm">OD Corrections</p><p className="text-[11px] text-slate-500 font-medium">Review or submit corrections</p></div>
+                       </button>
+                     )}
                      <button onClick={() => navigate(`/${expectedRolePrefix}/explore`)} className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 hover:border-emerald-300 hover:shadow-md transition-all group">
                         <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><Search size={20} /></div>
                         <div className="text-left"><p className="font-bold text-slate-800 text-sm">Explore Events</p><p className="text-[11px] text-slate-500 font-medium">Discover college events</p></div>
@@ -1724,6 +1761,31 @@ const Dashboard = () => {
                             </table>
                           </div>
                         </div>
+                        ) : isEventsLoading ? (
+                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                            <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-blue-500 animate-spin mx-auto mb-5" />
+                            <p className="text-slate-500 font-medium text-sm">Loading events…</p>
+                          </div>
+                        ) : eventsError ? (
+                          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center min-h-[400px]">
+                            <div className="w-20 h-20 bg-red-50 border border-red-100 rounded-full flex items-center justify-center mx-auto mb-5 text-red-400 shadow-sm">
+                              <AlertCircle size={36} />
+                            </div>
+                            <h3 className="text-slate-800 font-bold text-lg mb-1">
+                              {eventsError === 'quota' ? 'Service Temporarily Unavailable' : 'Unable to Load Events'}
+                            </h3>
+                            <p className="text-slate-500 font-medium text-sm max-w-sm mx-auto mb-5">
+                              {eventsError === 'quota'
+                                ? 'The database quota limit has been reached. Your data is safe — events will reappear automatically once the service recovers.'
+                                : 'There was a problem loading your events. Please try again.'}
+                            </p>
+                            <button
+                              onClick={() => window.location.reload()}
+                              className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95"
+                            >
+                              Retry
+                            </button>
+                          </div>
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-transparent min-h-[400px]">
                             <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">

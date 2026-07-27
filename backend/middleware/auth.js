@@ -49,6 +49,10 @@ function issueToken(user) {
     assignedClasses: user.assignedClasses || [],
     name: user.name || '',
     email: user.email || '',
+    className: user.className || user.class || null,
+    section: user.section || null,
+    batch: user.batch || null,
+    rollNo: user.rollNo || null,
     iat: Date.now(),
     exp: Date.now() + TOKEN_TTL_MS,
   });

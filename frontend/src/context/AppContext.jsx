@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import { getAuthToken } from '../utils/api';
 import { EventStatus, ODRequestStatus, UserRole } from '../types';
 import {
   fetchEvents,
@@ -221,7 +222,7 @@ export const AppProvider = ({ children }) => {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify(body),
       });
@@ -244,7 +245,7 @@ export const AppProvider = ({ children }) => {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({
           department,
@@ -302,7 +303,7 @@ export const AppProvider = ({ children }) => {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({
           status: newStatus,

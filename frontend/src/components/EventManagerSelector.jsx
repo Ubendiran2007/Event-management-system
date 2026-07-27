@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, CheckCircle, Clock, Sparkles, AlertTriangle, UserPlus, Info, ShieldAlert } from 'lucide-react';
+import { getAuthToken } from '../utils/api';
 
 const EventManagerSelector = ({ 
   selectedManagers = [], 
@@ -26,7 +27,7 @@ const EventManagerSelector = ({
       try {
         const response = await fetch(`${backendUrl}/api/users`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${getAuthToken()}`
           }
         });
         const data = await response.json();
@@ -53,7 +54,7 @@ const EventManagerSelector = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${getAuthToken()}`
           },
           body: JSON.stringify({
             eventId,

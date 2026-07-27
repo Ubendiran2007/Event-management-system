@@ -37,7 +37,7 @@ const invalidateCache = () => {
 router.get('/', async (req, res) => {
   if (checkDb(res)) return;
   try {
-    const { role, department, search } = req.query;
+    const { role, department, search, category } = req.query;
     const { limit: limitCount, cursor } = parsePaginationParams(req.query, 50, 200);
 
     let allUsers = [];
@@ -59,6 +59,8 @@ router.get('/', async (req, res) => {
     let filtered = allUsers;
     if (role) filtered = filtered.filter(u => u.role === role);
     if (department) filtered = filtered.filter(u => u.department === department);
+    if (category === 'FACULTY') filtered = filtered.filter(u => ['FACULTY', 'HOD'].includes(u.role));
+    if (category === 'INCHARGE') filtered = filtered.filter(u => !['FACULTY', 'HOD'].includes(u.role));
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter(u =>

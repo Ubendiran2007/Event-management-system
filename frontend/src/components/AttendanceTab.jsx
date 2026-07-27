@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, QrCode, CheckCircle2, XCircle, Users, Clock, Calendar, CalendarX } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { useNotification } from '../context/NotificationContext';
+import { getAuthToken } from '../utils/api';
 import ManualCorrectionModal from './ManualCorrectionModal';
 import QRScanner from './QRScanner';
 import AttendanceTable from './AttendanceTable';
@@ -149,7 +150,7 @@ const AttendanceTab = ({ event }) => {
     try {
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/attendance-config`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify({ date: selectedDate, attendanceType: attendanceTypeSelection })
       });
       const data = await res.json();
@@ -183,7 +184,7 @@ const AttendanceTab = ({ event }) => {
     try {
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/attendance-session`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify({ date: selectedDate, sessionKey, action })
       });
       const data = await res.json();
@@ -212,7 +213,7 @@ const AttendanceTab = ({ event }) => {
     try {
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/finalize-attendance`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify({ date: selectedDate })
       });
       const data = await res.json();
@@ -274,7 +275,7 @@ const AttendanceTab = ({ event }) => {
       console.log('[Scanner] Backend Validation Started for', rollNo);
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/attendance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify({ rollNo, studentName, eventId, registrationId, date: selectedDate })
       });
       
@@ -323,7 +324,7 @@ const AttendanceTab = ({ event }) => {
     setIsProcessing(true);
     try {
       const res  = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/iqac/${event.id}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Failed to fetch attendance data.');

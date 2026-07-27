@@ -1,14 +1,16 @@
-import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap, BarChart2, Building2 } from 'lucide-react';
+import { LogOut, LayoutDashboard, Calendar, CalendarDays, Compass, Ticket, CheckCircle2, FileEdit, ClipboardList, Users, UserCog, Shield, X, Activity, GraduationCap, BarChart2, Building2, Bell } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useWorkflowEvents } from '../context/WorkflowEventsContext';
 import seceLogo from '../assets/sece logo.jpeg';
 import { UserRole } from '../types';
 import { getRolePath } from '../utils/routeUtils';
+import { useNotifications } from '../hooks/useNotifications';
 
 const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   const { currentUser, handleLogout, students, staffUsers } = useAppContext();
   const { events } = useWorkflowEvents();
+  const { unreadCount } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -25,7 +27,7 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   // Derive active tab logic from URL
   let currentActive = 'dashboard';
   const feature = location.pathname.split('/').filter(Boolean).pop();
-  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics', 'venue-management'].includes(feature)) {
+  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics', 'venue-management', 'notifications'].includes(feature)) {
     currentActive = feature;
   } else if (location.pathname.includes('/security')) {
     currentActive = 'security';
@@ -105,10 +107,12 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   
 
   navItems.push({ id: 'academic-calendar', label: 'Academic Calendar', icon: CalendarDays, path: '/academic-calendar' });
+  navItems.push({ id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications', unreadCount });
 
   const noAnalyticsRoles = [
     UserRole.STUDENT_GENERAL, 
     UserRole.STUDENT_ORGANIZER, 
+    UserRole.FACULTY,
     UserRole.HR_TEAM, 
     UserRole.BOYS_WARDEN, 
     UserRole.GIRLS_WARDEN, 
@@ -154,30 +158,30 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
       )}
       
       {/* Sidebar */}
-      <aside className={`w-72 h-full bg-[#f4f8ff] border-r border-blue-100 flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 md:relative md:translate-x-0 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`w-72 h-full bg-[#1e3a5f] border-r border-[#1e3a5f] flex flex-col shrink-0 fixed inset-y-0 left-0 z-50 md:relative md:translate-x-0 transform transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
         {/* Header */}
-        <div className="p-5 pb-5 border-b border-blue-100/50 flex justify-between items-start">
+        <div className="p-5 pb-5 border-b border-[#162d4a] flex justify-between items-start">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleNavClick('dashboard')}>
             <img
               src={seceLogo}
               alt="SECE Logo"
-              className="w-10 h-10 rounded-lg object-contain border border-slate-100 p-0.5 shadow-sm"
+              className="w-10 h-10 rounded-lg object-contain border border-blue-400 p-0.5 shadow-sm"
             />
             <div>
-              <h1 className="font-extrabold text-[15px] leading-tight text-slate-900 tracking-tight">SECE EVENT HUB</h1>
-              <p className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">Institution Portal</p>
+              <h1 className="font-extrabold text-[15px] leading-tight text-white tracking-tight">SECE EVENT HUB</h1>
+              <p className="text-[10px] text-blue-100 font-bold tracking-wider uppercase">Institution Portal</p>
             </div>
           </div>
           {isMobileMenuOpen && (
-            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-slate-400 hover:text-slate-600">
+            <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-blue-100 hover:text-white">
               <X size={20} />
             </button>
           )}
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 scrollbar-thin scrollbar-thumb-slate-200">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 scrollbar-thin scrollbar-thumb-[#162d4a]">
           {navItems.map((item) => {
             const isActive = currentActive === item.id;
             return (
@@ -186,54 +190,59 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
                 onClick={() => handleNavClick(item.id, item.path)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 font-semibold text-[14px] ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                    : 'text-slate-600 hover:bg-blue-100/50 hover:text-blue-900'
+                    ? 'bg-white/20 text-white shadow-md font-bold'
+                    : 'text-slate-300 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <item.icon size={18} className={`shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} strokeWidth={isActive ? 2.5 : 2} />
                   <span className="whitespace-nowrap truncate">{item.label}</span>
                 </div>
+                {item.unreadCount > 0 && (
+                  <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
+                    {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
 
         {/* User Profile Footer */}
-        <div className="p-3 border-t border-blue-100/50">
-          <div className="flex flex-col gap-1 p-2.5 rounded-xl bg-white mb-2 border border-blue-100 shadow-sm">
+        <div className="p-3 border-t border-[#162d4a]">
+          <div className="flex flex-col gap-1 p-2.5 rounded-xl bg-[#162d4a] mb-2 border border-[#0f2035] shadow-sm">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+              <div className="w-9 h-9 rounded-full bg-white text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
                 {(displayData.name || 'User').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-extrabold text-slate-900 truncate">{displayData.name}</p>
-                <p className="text-[10px] text-slate-500 font-medium truncate capitalize">
+                <p className="text-xs font-extrabold text-white truncate">{displayData.name}</p>
+                <p className="text-[10px] text-slate-400 font-medium truncate capitalize">
                   {(displayData.role || 'GUEST').replace('_', ' ').toLowerCase()}
                 </p>
               </div>
             </div>
             
             {classAdvisorName && (
-              <div className="pt-1.5 mt-1 border-t border-slate-200">
+              <div className="pt-1.5 mt-1 border-t border-[#0f2035]">
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Class Advisor</p>
-                <p className="text-[11px] font-semibold text-slate-700 truncate">{classAdvisorName}</p>
+                <p className="text-[11px] font-semibold text-white truncate">{classAdvisorName}</p>
               </div>
             )}
             
             {isClassAdvisor && currentUser.assignedClasses && (
-              <div className="pt-1.5 mt-1 border-t border-slate-200">
+              <div className="pt-1.5 mt-1 border-t border-[#0f2035]">
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Assigned Class</p>
-                <p className="text-[11px] font-semibold text-slate-700 truncate">{currentUser.assignedClasses.join(', ')}</p>
+                <p className="text-[11px] font-semibold text-white truncate">{currentUser.assignedClasses.join(', ')}</p>
               </div>
             )}
           </div>
           
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-blue-200 bg-white text-slate-700 font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-100 transition-colors text-[13px]"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-white/20 bg-white/10 text-white font-bold hover:bg-red-500 hover:border-red-400 transition-colors text-[13px]"
           >
-            <LogOut size={16} className="text-slate-500" />
+            <LogOut size={16} className="text-white" />
             Log Out
           </button>
         </div>

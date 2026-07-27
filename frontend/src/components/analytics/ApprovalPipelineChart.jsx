@@ -33,12 +33,12 @@ const ApprovalPipelineChart = ({ events }) => {
   }, [events]);
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-80">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">Approval Pipeline</h3>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+    <div className="flex h-[360px] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-4"><h3 className="text-lg font-extrabold text-slate-800">Approval Pipeline</h3><p className="mt-1 text-sm text-slate-500">Workflow distribution across institutional approval stages.</p></div>
+      <div className="min-h-0 flex-1"><ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 58 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dy={10} angle={-30} textAnchor="end" />
+          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} dy={10} angle={-32} textAnchor="end" interval={0} />
           <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} dx={-10} />
           <Tooltip 
             cursor={{ fill: '#f8fafc' }}
@@ -50,7 +50,7 @@ const ApprovalPipelineChart = ({ events }) => {
             ))}
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
+      </ResponsiveContainer></div>
     </div>
   );
 };

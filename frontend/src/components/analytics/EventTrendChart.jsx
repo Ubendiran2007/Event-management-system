@@ -28,9 +28,9 @@ const EventTrendChart = ({ events }) => {
   }, [events]);
 
   return (
-    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-80">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">Monthly Event Trend</h3>
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="flex h-[360px] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="mb-4"><h3 className="text-lg font-extrabold text-slate-800">Monthly Event Trend</h3><p className="mt-1 text-sm text-slate-500">Events scheduled and completed over the reporting period.</p></div>
+      <div className="min-h-0 flex-1"><ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
           <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} dy={10} />
@@ -51,7 +51,7 @@ const EventTrendChart = ({ events }) => {
             </linearGradient>
           </defs>
         </AreaChart>
-      </ResponsiveContainer>
+      </ResponsiveContainer></div>
     </div>
   );
 };

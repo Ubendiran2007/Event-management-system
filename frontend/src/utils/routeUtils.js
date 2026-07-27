@@ -17,6 +17,8 @@ export const getRolePath = (role) => {
       return 'hr';
     case UserRole.AUDIO_TEAM:
       return 'audio';
+    case UserRole.PRINCIPAL:
+      return 'principal';
     case UserRole.SYSTEM_ADMIN:
       return 'admin';
     case UserRole.TRANSPORT_TEAM:
@@ -41,6 +43,7 @@ export const ROLE_PATHS = [
   'hr',
   'audio',
   'admin',
+  'principal',
   'transport',
   'warden/boys',
   'warden/girls',

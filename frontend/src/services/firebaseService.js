@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Status } from '../types';
+import { getAuthToken } from '../utils/api';
 
 export const where = (field, op, value) => {
   if (value === undefined) {
@@ -22,6 +23,85 @@ export const where = (field, op, value) => {
     return fsWhere(field, op, '__UNDEFINED_DATA_FLOW_ERROR__');
   }
   return fsWhere(field, op, value);
+};
+
+/**
+ * Robust Firestore snapshot listener that automatically reconnects on transient failures
+ * (like quota exhaustion or network unavailability) using exponential backoff with jitter.
+ */
+export const subscribeWithRetry = (queryOrRef, onNext, onError, options = {}) => {
+  const { maxRetries = 10, baseDelay = 1000, maxDelay = 30000, collectionName = 'Unknown' } = options;
+  
+  let isUnsubscribed = false;
+  let currentUnsubscribe = null;
+  let retryCount = 0;
+  let timeoutId = null;
+
+  const cleanupListener = () => {
+    if (currentUnsubscribe) {
+      currentUnsubscribe();
+      currentUnsubscribe = null;
+    }
+  };
+
+  const connect = () => {
+    if (isUnsubscribed) return;
+    cleanupListener();
+
+    currentUnsubscribe = onSnapshot(queryOrRef, (snapshot) => {
+      if (isUnsubscribed) return;
+      retryCount = 0; // Reset on success
+      onNext(snapshot);
+    }, (error) => {
+      cleanupListener();
+      if (isUnsubscribed) return;
+
+      const code = error.code;
+      const isTransient = 
+        code === 'resource-exhausted' || 
+        code === 'unavailable' || 
+        code === 'deadline-exceeded' || 
+        code === 'aborted';
+
+      if (isTransient) {
+        if (retryCount >= maxRetries) {
+          console.error(`[Firestore] Max retries (${maxRetries}) reached for ${collectionName}. Failing.`);
+          if (onError) onError(error);
+          return;
+        }
+
+        // Exponential backoff with jitter to prevent reconnect storms
+        const backoff = Math.min(maxDelay, baseDelay * Math.pow(2, retryCount));
+        const jitter = Math.random() * (backoff * 0.5); 
+        const delay = Math.floor(backoff + jitter);
+
+        // Audit/Log the retry
+        console.warn(`[Firestore] Snapshot Retry | Collection: ${collectionName} | Attempt: ${retryCount + 1} | Delay: ${delay}ms | Reason: ${code}`);
+
+        // Pass transient error to UI in case it wants to show a temporary warning
+        if (onError) onError({ ...error, isTransient: true, willRetryIn: delay });
+
+        retryCount++;
+        timeoutId = setTimeout(connect, delay);
+      } else {
+        // Fatal error (permission-denied, unauthenticated, etc)
+        console.error(`[Firestore] Fatal listener error on ${collectionName}:`, error);
+        if (onError) onError(error);
+      }
+    });
+  };
+
+  connect();
+
+  // Return a standard unsubscribe function
+  return () => {
+    isUnsubscribed = true;
+    cleanupListener();
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+  };
 };
 
 // ==================== MASTER COLLECTIONS ====================
@@ -350,10 +430,10 @@ export const subscribeToODRequests = (currentUser, callback) => {
     q = collection(db, 'odRequests');
   }
   
-  return onSnapshot(q, (snapshot) => {
+  return subscribeWithRetry(q, (snapshot) => {
     const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(requests);
-  });
+  }, (err) => console.error(err), { collectionName: 'odRequests' });
 };
 
 export const subscribeToEvents = (currentUser, callback) => {
@@ -368,10 +448,10 @@ export const subscribeToEvents = (currentUser, callback) => {
   // but this query cuts down reads if they mostly stay in their lane.
   // For safety, we can just fetch all and let AppContext filter until complex OR queries are added.
   
-  return onSnapshot(q, (snapshot) => {
+  return subscribeWithRetry(q, (snapshot) => {
     const events = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
     callback(events);
-  });
+  }, (err) => console.error(err), { collectionName: 'events' });
 };
 
 let studentsFetchPromise = null;
@@ -382,7 +462,7 @@ export const fetchStudentsDirect = async (currentUser) => {
   studentsFetchPromise = (async () => {
     try {
       console.log('Students API called');
-      const token = localStorage.getItem('sessionToken');
+      const token = getAuthToken();
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
       // Fetch with large limit for context (AppContext needs all students for HOD/IQAC)
       const res = await fetch(`${API_BASE}/api/students?limit=200`, {
@@ -432,7 +512,7 @@ export const fetchUsersDirect = async () => {
   usersFetchPromise = (async () => {
     try {
       console.log('Users API called');
-      const token = localStorage.getItem('sessionToken');
+      const token = getAuthToken();
       const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
       const res = await fetch(`${API_BASE}/api/users?limit=200`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -472,48 +552,48 @@ export const subscribeToUsers = (callback) => {
 // ==========================================
 
 export const subscribeToAcademicYears = (callback) => {
-  return onSnapshot(collection(db, 'academicYears'), (snapshot) => {
+  return subscribeWithRetry(collection(db, 'academicYears'), (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'academicYears' });
 };
 
 export const subscribeToSemesters = (callback) => {
-  return onSnapshot(collection(db, 'semesters'), (snapshot) => {
+  return subscribeWithRetry(collection(db, 'semesters'), (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'semesters' });
 };
 
 export const subscribeToHolidays = (callback) => {
-  return onSnapshot(collection(db, 'holidays'), (snapshot) => {
+  return subscribeWithRetry(collection(db, 'holidays'), (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'holidays' });
 };
 
 export const subscribeToExams = (callback) => {
-  return onSnapshot(collection(db, 'exams'), (snapshot) => {
+  return subscribeWithRetry(collection(db, 'exams'), (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'exams' });
 };
 
 export const subscribeToWorkingDays = (callback) => {
-  return onSnapshot(doc(db, 'settings', 'workingDays'), (docSnap) => {
+  return subscribeWithRetry(doc(db, 'settings', 'workingDays'), (docSnap) => {
     if (docSnap.exists()) {
       callback(docSnap.data());
     } else {
       callback({}); // Return empty if not configured
     }
-  });
+  }, (err) => console.error(err), { collectionName: 'workingDays' });
 };
 
 export const subscribeToDepartmentCalendar = (callback) => {
-  return onSnapshot(collection(db, 'departmentCalendar'), (snapshot) => {
+  return subscribeWithRetry(collection(db, 'departmentCalendar'), (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'departmentCalendar' });
 };
 
 export const subscribeToAcademicBatches = (callback) => {
   const q = query(collection(db, 'academicBatches'));
-  return onSnapshot(q, (snapshot) => {
+  return subscribeWithRetry(q, (snapshot) => {
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'events' });
 };

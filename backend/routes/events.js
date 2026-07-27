@@ -220,6 +220,16 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
     // Ownership constraints - explicitly override client values
     createdBy: req.user.id,
     organizerId: req.user.id,
+    organizer: {
+      id: req.user.id,
+      name: req.user.name || '',
+      email: req.user.email || '',
+      department: req.user.department || department,
+      class: req.user.className || null,
+      section: req.user.section || null,
+      batch: req.user.batch || null,
+      rollNo: req.user.rollNo || null
+    },
     department: req.user.department || department,
     // System fields
     status: eventData.status || 'PENDING_FACULTY',
@@ -417,25 +427,15 @@ router.get('/explore', async (req, res) => {
     const { pageSize = 20, lastEventId } = req.query;
     const limitCount = Math.min(parseInt(pageSize) || 20, 100); // Standardize: Max 100
 
-    // Only fetch valid explore states
-    const constraints = [
-      where('status', 'in', ['POSTED', 'POSTPONED', 'COMPLETED', 'CANCELLED'])
-    ];
-
-    // Note: Due to Firestore query limitations with 'in' and inequality filters,
-    // we fetch recently created/updated events and filter out hidden ones.
-    // In a fully optimized production setup, you'd use a dedicated search index (like Algolia or Typesense),
-    // but for 1200 students, this is far better than the previous client-side fetch-all approach.
-    constraints.push(orderBy('createdAt', 'desc'));
-
-    if (lastEventId) {
-      const lastDocSnap = await getDoc(doc(db, 'events', lastEventId));
-      if (lastDocSnap.exists()) {
-        constraints.push(startAfter(lastDocSnap));
-      }
+    // HR has cross-department oversight, so its Explore view includes events
+    // at every workflow stage. Other roles see public event states only.
+    const constraints = [];
+    if (req.user?.role !== 'HR_TEAM') {
+      constraints.push(where('status', 'in', ['POSTED', 'POSTPONED', 'COMPLETED', 'CANCELLED']));
     }
 
-    constraints.push(limit(limitCount * 2)); // Oversample to account for backend filtering
+    // Sort after retrieval because legacy documents do not consistently have
+    // `createdAt`; Firestore orderBy would omit those events from Explore.
 
     const snapshot = await getDocs(query(collection(db, 'events'), ...constraints));
 
@@ -463,8 +463,21 @@ router.get('/explore', async (req, res) => {
       return true;
     });
 
-    // Take exactly up to limitCount
-    const finalEvents = filteredEvents.slice(0, limitCount);
+    const getEventStartTime = (event) => {
+      const step = event.requisition?.step1 || {};
+      const date = step.eventStartDate || event.startDate || event.date;
+      const time = step.eventStartTime || event.startTime || '00:00';
+      const timestamp = date ? new Date(`${date}T${time}`).getTime() : 0;
+      return Number.isNaN(timestamp) ? 0 : timestamp;
+    };
+
+    const orderedEvents = [...filteredEvents].sort((a, b) => {
+      const byDate = getEventStartTime(b) - getEventStartTime(a);
+      return byDate || String(a.id).localeCompare(String(b.id));
+    });
+    const cursorIndex = lastEventId ? orderedEvents.findIndex(event => event.id === lastEventId) : -1;
+    const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+    const finalEvents = orderedEvents.slice(startIndex, startIndex + limitCount);
     
     // Add registration status
     const events = finalEvents.map(data => ({
@@ -473,7 +486,7 @@ router.get('/explore', async (req, res) => {
     }));
 
     const nextCursor = finalEvents.length > 0 ? finalEvents[finalEvents.length - 1].id : null;
-    const hasMore = allFetched.length > limitCount; // Approximation
+    const hasMore = startIndex + finalEvents.length < orderedEvents.length;
 
     return res.json({ success: true, count: events.length, events, nextCursor, hasMore });
   } catch (error) {
@@ -2327,7 +2340,11 @@ router.get('/:id/attendance-audit', requireRole(['IQAC_TEAM']), async (req, res)
       };
     });
     logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    return res.json({ success: true, logs });
+    const limitCount = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 100);
+    const offset = Math.max(parseInt(req.query.cursor, 10) || 0, 0);
+    const pageLogs = logs.slice(offset, offset + limitCount);
+    const nextCursor = offset + pageLogs.length < logs.length ? String(offset + pageLogs.length) : null;
+    return res.json({ success: true, logs: pageLogs, pagination: { hasMore: Boolean(nextCursor), nextCursor, count: pageLogs.length } });
   } catch (error) {
     console.error('[events/attendance-audit] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch audit logs' });

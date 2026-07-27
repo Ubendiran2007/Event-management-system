@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Users, ChevronRight, ChevronLeft, ShieldCheck, UserCheck, UserX, ArrowLeft, Search, Loader2,
-    Plus, Trash2, Edit, Upload, FileSpreadsheet, X, Building2
+    Plus, Trash2, Edit, Upload, FileSpreadsheet, X, Building2, SlidersHorizontal, ChevronDown
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { UserRole } from '../types';
+import { getAuthToken } from '../utils/api';
 import Layout from '../components/Layout';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { formatRollNo, formatStudentNameWithRoll } from '../utils/formatters';
@@ -37,15 +38,31 @@ const STAFF_ROLES = [
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
 
-const ManageStudents = () => {
-    const { currentUser, students, setStudents, staffUsers, setStaffUsers, loading, refreshStudents, refreshUsers, loadStudents, loadUsers } = useAppContext();
-    const navigate = useNavigate();
+const DirectoryFilterSelect = ({ value, onChange, options, className = '' }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const filterRef = useRef(null);
+    const selected = options.find((option) => option.value === value) || options[0];
 
     useEffect(() => {
-        loadStudents();
-        loadUsers();
-    }, [loadStudents, loadUsers]);
-    
+        const closeOnOutsideClick = (event) => {
+            if (filterRef.current && !filterRef.current.contains(event.target)) setIsOpen(false);
+        };
+        document.addEventListener('mousedown', closeOnOutsideClick);
+        return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+    }, []);
+
+    return <div ref={filterRef} className={`relative ${className}`}>
+        <button type="button" onClick={() => setIsOpen((open) => !open)} className="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-800 shadow-sm transition hover:bg-slate-50">
+            <span className="flex min-w-0 items-center gap-2"><SlidersHorizontal size={16} className="shrink-0 text-slate-600" /><span className="truncate">{selected?.label}</span></span><ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {isOpen && <><div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} /><div className="absolute right-0 z-50 mt-2 w-full min-w-48 overflow-hidden rounded-2xl border border-slate-100 bg-white py-1 shadow-xl"><div className="max-h-64 overflow-y-auto">{options.map((option) => <button key={option.value} type="button" onClick={() => { onChange(option.value); setIsOpen(false); }} className={`w-full px-4 py-2.5 text-left text-sm font-bold transition-colors ${value === option.value ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}>{option.label}</button>)}</div></div></>}
+    </div>;
+};
+
+const ManageStudents = () => {
+    const { currentUser, students, setStudents, staffUsers, setStaffUsers, loading, refreshStudents, refreshUsers } = useAppContext();
+    const navigate = useNavigate();
+
     // Tabs & View State
     const [openDropdownId, setOpenDropdownId] = useState(null);
     const [activeTab, setActiveTab] = useState('students'); // 'students' | 'staff'
@@ -92,6 +109,24 @@ const ManageStudents = () => {
     const [selectedBatch, setSelectedBatch] = useState('');
     const [filterBatch, setFilterBatch] = useState('');
     const [filterStatus, setFilterStatus] = useState('ACTIVE');
+    const [pagedStudents, setPagedStudents] = useState([]);
+    const [studentsNextCursor, setStudentsNextCursor] = useState(null);
+    const [studentsHasMore, setStudentsHasMore] = useState(false);
+    const [studentsPageLoading, setStudentsPageLoading] = useState(false);
+    const [studentsPageError, setStudentsPageError] = useState('');
+    const [pagedStaff, setPagedStaff] = useState([]);
+    const [staffNextCursor, setStaffNextCursor] = useState(null);
+    const [staffHasMore, setStaffHasMore] = useState(false);
+    const [staffPageLoading, setStaffPageLoading] = useState(false);
+    const [staffPageError, setStaffPageError] = useState('');
+    const studentPagesRef = useRef(new Map());
+    const staffPagesRef = useRef(new Map());
+    const directoryScrollRef = useRef(null);
+    const studentListRef = useRef(null);
+    const staffListRef = useRef(null);
+    // Keep the first request intentionally small; the next page is requested only
+    // when the user reaches the bottom of the directory viewport.
+    const pageSize = 5;
 
     useEffect(() => {
         const loadBatches = async () => {
@@ -177,8 +212,13 @@ const ManageStudents = () => {
         if (b === 'Unassigned') return -1;
         return a.localeCompare(b);
     });
+    // The directory can be opened before any student detail page has been cached.
+    // Keep the class navigation usable without downloading the entire student directory.
+    const visibleBatches = batchesPresent.length > 0 ? batchesPresent : ['All Students'];
 
-    const studentsInBatch = selectedBatchView ? (batchMap[selectedBatchView] || []) : accessibleStudents;
+    const studentsInBatch = selectedBatchView && selectedBatchView !== 'All Students'
+        ? (batchMap[selectedBatchView] || [])
+        : accessibleStudents;
 
     studentsInBatch.forEach(student => {
         // Normalize class name for mapping (e.g. "CSE B" -> "CSE-B")
@@ -256,6 +296,112 @@ const ManageStudents = () => {
         (s.role || '').toLowerCase().includes(staffSearchQuery.toLowerCase())
     );
 
+    const studentQueryKey = JSON.stringify({ className: selectedClass || '', batch: filterBatch || '', search: searchQuery.trim(), pageSize });
+    const staffQueryKey = JSON.stringify({ category: staffCategory || '', department: staffDepartment || '', search: staffSearchQuery.trim(), pageSize });
+
+    const fetchDirectoryPage = useCallback(async (type, { append = false } = {}) => {
+        const isStudentDirectory = type === 'students';
+        const key = isStudentDirectory ? studentQueryKey : staffQueryKey;
+        const cache = isStudentDirectory ? studentPagesRef.current : staffPagesRef.current;
+        const setRecords = isStudentDirectory ? setPagedStudents : setPagedStaff;
+        const setCursor = isStudentDirectory ? setStudentsNextCursor : setStaffNextCursor;
+        const setHasMore = isStudentDirectory ? setStudentsHasMore : setStaffHasMore;
+        const setPageLoading = isStudentDirectory ? setStudentsPageLoading : setStaffPageLoading;
+        const setPageError = isStudentDirectory ? setStudentsPageError : setStaffPageError;
+        const cursor = isStudentDirectory ? studentsNextCursor : staffNextCursor;
+
+        if (append && !cursor) return;
+        if (!append && cache.has(key) && (cache.get(key).records.length > 0 || cache.get(key).hasMore)) {
+            const cached = cache.get(key);
+            setRecords(cached.records);
+            setCursor(cached.nextCursor);
+            setHasMore(cached.hasMore);
+            return;
+        }
+
+        setPageLoading(true);
+        setPageError('');
+        try {
+            const params = new URLSearchParams({ limit: String(pageSize) });
+            if (append && cursor) params.set('cursor', cursor);
+            if (isStudentDirectory) {
+                const query = JSON.parse(key);
+                if (query.className) params.set('class', query.className);
+                if (query.batch) params.set('batch', query.batch);
+                if (query.search) params.set('search', query.search);
+            } else {
+                const query = JSON.parse(key);
+                if (query.category) params.set('category', query.category);
+                if (query.department) params.set('department', query.department);
+                if (query.search) params.set('search', query.search);
+            }
+            const endpoint = isStudentDirectory ? 'students' : 'users';
+            const response = await fetch(`${API_BASE}/api/${endpoint}?${params.toString()}`, {
+                headers: { Authorization: `Bearer ${getAuthToken()}` }
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) throw new Error(payload.message || 'Could not load directory records');
+
+            const received = payload.data || [];
+            const records = append ? [...(isStudentDirectory ? pagedStudents : pagedStaff), ...received] : received;
+            const pagination = payload.pagination || {};
+            cache.set(key, { records, nextCursor: pagination.nextCursor || null, hasMore: Boolean(pagination.hasMore) });
+            setRecords(records);
+            setCursor(pagination.nextCursor || null);
+            setHasMore(Boolean(pagination.hasMore));
+        } catch (error) {
+            console.error(`Failed to load ${type} directory page:`, error);
+            setPageError(error.message || `Unable to load ${type} records.`);
+        } finally {
+            setPageLoading(false);
+        }
+    }, [studentQueryKey, staffQueryKey, studentsNextCursor, staffNextCursor, pagedStudents, pagedStaff]);
+
+    useEffect(() => {
+        if (activeTab === 'students' && selectedClass) {
+            const timer = setTimeout(() => fetchDirectoryPage('students'), searchQuery ? 250 : 0);
+            return () => clearTimeout(timer);
+        }
+    }, [activeTab, selectedClass, filterBatch, searchQuery, fetchDirectoryPage]);
+
+    useEffect(() => {
+        const isStaffList = activeTab === 'staff' && (staffCategory === 'INCHARGE' || (staffCategory === 'FACULTY' && staffDepartment));
+        if (isStaffList) {
+            const timer = setTimeout(() => fetchDirectoryPage('staff'), staffSearchQuery ? 250 : 0);
+            return () => clearTimeout(timer);
+        }
+    }, [activeTab, staffCategory, staffDepartment, staffSearchQuery, fetchDirectoryPage]);
+
+    const handleDirectoryScroll = (event) => {
+        const element = event.currentTarget;
+        if (element.scrollHeight - element.scrollTop - element.clientHeight > 180) return;
+        if (activeTab === 'students' && selectedClass && studentsHasMore && !studentsPageLoading) fetchDirectoryPage('students', { append: true });
+        if (activeTab === 'staff' && staffHasMore && !staffPageLoading) fetchDirectoryPage('staff', { append: true });
+    };
+
+    // On large screens a first page can be shorter than its scroll viewport. Load
+    // only enough additional data to make that viewport scrollable, then revert to
+    // scroll-triggered loading for every later page.
+    useEffect(() => {
+        const panel = studentListRef.current;
+        if (activeTab === 'students' && selectedClass && panel && studentsHasMore && !studentsPageLoading && panel.scrollHeight <= panel.clientHeight + 1) {
+            fetchDirectoryPage('students', { append: true });
+        }
+    }, [activeTab, selectedClass, pagedStudents, studentsHasMore, studentsPageLoading, fetchDirectoryPage]);
+
+    useEffect(() => {
+        const isStaffList = activeTab === 'staff' && (staffCategory === 'INCHARGE' || (staffCategory === 'FACULTY' && staffDepartment));
+        const panel = staffListRef.current;
+        if (isStaffList && panel && staffHasMore && !staffPageLoading && panel.scrollHeight <= panel.clientHeight + 1) {
+            fetchDirectoryPage('staff', { append: true });
+        }
+    }, [activeTab, staffCategory, staffDepartment, pagedStaff, staffHasMore, staffPageLoading, fetchDirectoryPage]);
+
+    const displayedClassStudents = pagedStudents.filter(student =>
+        filterStatus === 'ALL' || (student.studentStatus || 'ACTIVE') === filterStatus
+    );
+    const displayedStaff = pagedStaff;
+
     // --- API Handlers ---
     const handleSaveStudent = async (e) => {
         e.preventDefault();
@@ -276,7 +422,7 @@ const ManageStudents = () => {
 
             const res = await fetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
@@ -301,7 +447,7 @@ const ManageStudents = () => {
         try {
             const res = await fetch(`${API_BASE}/api/academic-batches`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify(batchForm)
             });
             const data = await res.json();
@@ -327,7 +473,7 @@ const ManageStudents = () => {
             const className = deletingStudent.class.replace(/\s+/g, '-');
             const res = await fetch(`${API_BASE}/api/students/${deletingStudent.id}`, {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify({ className })
             });
             const data = await res.json();
@@ -360,7 +506,7 @@ const ManageStudents = () => {
             
             const res = await fetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
@@ -385,7 +531,7 @@ const ManageStudents = () => {
         try {
             const res = await fetch(`${API_BASE}/api/users/${deletingStaff.id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
+                headers: { 'Authorization': `Bearer ${getAuthToken()}` }
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.message);
@@ -548,7 +694,7 @@ const ManageStudents = () => {
             
             const res = await fetch(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify({ [payloadKey]: validRecords })
             });
             const data = await res.json();
@@ -592,7 +738,7 @@ const ManageStudents = () => {
         try {
             const res = await fetch(`${API_BASE}/api/students/reset-od-usage`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` }
             });
             const data = await res.json();
             if (data.success) {
@@ -611,18 +757,24 @@ const ManageStudents = () => {
         setTogglingId(student.id);
         const newRole = student.role === UserRole.STUDENT_ORGANIZER ? UserRole.STUDENT_GENERAL : UserRole.STUDENT_ORGANIZER;
         const className = (student.class || '').replace(/\s+/g, '-');
+        const updateOrganizerRole = (role) => {
+            setStudents?.((previous) => previous.map((item) => item.id === student.id ? { ...item, role } : item));
+            setPagedStudents((previous) => previous.map((item) => item.id === student.id ? { ...item, role } : item));
+            studentPagesRef.current.forEach((page, key) => {
+                studentPagesRef.current.set(key, { ...page, records: page.records.map((item) => item.id === student.id ? { ...item, role } : item) });
+            });
+        };
+        updateOrganizerRole(newRole);
         try {
-            await fetch(`${API_BASE}/api/students/${student.id}/role`, {
+            const response = await fetch(`${API_BASE}/api/students/${student.id}/role`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify({ role: newRole, className, isApprovedOrganizer: newRole === UserRole.STUDENT_ORGANIZER }),
             });
-            if (setStudents) {
-                setStudents(prev => prev.map(s => s.id === student.id ? { ...s, role: newRole } : s));
-            }
-            await refreshStudents();
+            if (!response.ok) throw new Error('Unable to update organizer role');
         } catch (err) {
             console.error(err);
+            updateOrganizerRole(student.role);
         } finally {
             setTogglingId(null);
         }
@@ -635,7 +787,7 @@ const ManageStudents = () => {
         try {
             await fetch(`${API_BASE}/api/students/${student.id}/od-stats`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                 body: JSON.stringify({ className, [field]: value }),
             });
             await refreshStudents();
@@ -736,7 +888,7 @@ const ManageStudents = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 pb-6">
+                <div ref={directoryScrollRef} className="flex-1 overflow-y-auto px-6 pb-6">
                     <div className={`max-w-6xl mx-auto w-full ${((activeTab === 'students' && selectedClass) || (activeTab === 'staff' && (staffCategory === 'INCHARGE' || (staffCategory === 'FACULTY' && staffDepartment)))) ? '' : 'pt-6'}`}>
                         {loading ? (
                             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-cse-accent" size={36} /></div>
@@ -765,7 +917,7 @@ const ManageStudents = () => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                         <div className="glass-panel p-4 rounded-2xl flex items-center gap-4">
                                             <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center"><Building2 size={20} /></div>
-                                            <div><p className="text-2xl font-bold text-slate-900">{batchesPresent.length}</p><p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Batches</p></div>
+                                            <div><p className="text-2xl font-bold text-slate-900">{batchesPresent.length || 'All'}</p><p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Batches</p></div>
                                         </div>
                                         <div className="glass-panel p-4 rounded-2xl flex items-center gap-4">
                                             <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center"><Users size={20} /></div>
@@ -773,11 +925,11 @@ const ManageStudents = () => {
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {batchesPresent.map(batch => (
+                                        {visibleBatches.map(batch => (
                                             <button key={batch} onClick={() => { setSelectedBatchView(batch); setSelectedDepartment(null); setSelectedClass(null); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
                                                 <div className="text-left">
-                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{batch !== 'Unassigned' ? `${batch} Batch` : 'Unassigned'}</h3>
-                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{batchMap[batch]?.length || 0}</span> students</p>
+                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{batch === 'All Students' ? 'Browse Students by Class' : batch !== 'Unassigned' ? `${batch} Batch` : 'Unassigned'}</h3>
+                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{batch === 'All Students' ? 'All' : batchMap[batch]?.length || 0}</span> students</p>
                                                 </div>
                                                 <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
                                             </button>
@@ -837,7 +989,7 @@ const ManageStudents = () => {
                             ) : (
                                 /* 3. Show Students for Selected Class */
                                 <>
-                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
+                                    <div className="sticky top-0 z-10 mb-6 flex items-center gap-4 rounded-2xl border border-slate-200 bg-[#f8fafc] px-4 pb-4 pt-6 shadow-sm">
                                         <button onClick={() => setSelectedClass(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
                                         <div className="flex flex-col">
                                             <h3 className="text-xl font-bold text-slate-900">{selectedClass}</h3>
@@ -854,27 +1006,15 @@ const ManageStudents = () => {
                                             })()}
                                         </div>
                                         <div className="relative flex-1 max-w-md ml-auto flex gap-3">
-                                            <select
-                                                value={filterStatus}
-                                                onChange={(e) => setFilterStatus(e.target.value)}
-                                                className="w-1/3 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
-                                            >
-                                                <option value="ALL">All Status</option>
-                                                <option value="ACTIVE">Active</option>
-                                                <option value="GRADUATED">Graduated</option>
-                                                <option value="INACTIVE">Inactive</option>
-                                            </select>
+                                            <DirectoryFilterSelect value={filterStatus} onChange={setFilterStatus} className="w-1/3" options={[
+                                                { value: 'ALL', label: 'All Statuses' }, { value: 'ACTIVE', label: 'Active' },
+                                                { value: 'GRADUATED', label: 'Graduated' }, { value: 'INACTIVE', label: 'Inactive' }
+                                            ]} />
                                             {academicBatches.length > 0 && (
-                                                <select
-                                                    value={filterBatch}
-                                                    onChange={(e) => setFilterBatch(e.target.value)}
-                                                    className="w-1/3 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all bg-white text-sm"
-                                                >
-                                                    <option value="">All Batches</option>
-                                                    {academicBatches.map(b => (
-                                                        <option key={b.id} value={b.name}>{b.name}</option>
-                                                    ))}
-                                                </select>
+                                                <DirectoryFilterSelect value={filterBatch} onChange={setFilterBatch} className="w-1/3" options={[
+                                                    { value: '', label: 'All Batches' },
+                                                    ...academicBatches.map((batch) => ({ value: batch.name, label: batch.name }))
+                                                ]} />
                                             )}
                                             <div className="relative flex-1">
                                                 <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -883,9 +1023,9 @@ const ManageStudents = () => {
                                         </div>
                                     </div>
                                     
-                                    <div className="glass-panel rounded-2xl overflow-hidden">
+                                    <div ref={studentListRef} onScroll={handleDirectoryScroll} className="glass-panel h-[calc(100vh-16rem)] min-h-[280px] overflow-y-auto rounded-2xl">
                                         <div className="divide-y divide-slate-100">
-                                            {filteredClassStudents.map(student => (
+                                            {displayedClassStudents.map(student => (
                                                 <div key={student.id} className="px-6 py-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
                                                     <div className="flex items-center gap-4 min-w-0">
                                                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0 border border-slate-200">{(student.name || '?').charAt(0)}</div>
@@ -952,9 +1092,13 @@ const ManageStudents = () => {
                                                     </div>
                                                 </div>
                                             ))}
-                                            {filteredClassStudents.length === 0 && (
-                                                <div className="p-8 text-center text-slate-500">No students found.</div>
+                                            {studentsPageLoading && displayedClassStudents.length === 0 && (
+                                                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-cse-accent" size={24} /></div>
                                             )}
+                                            {!studentsPageLoading && displayedClassStudents.length === 0 && (
+                                                <div className="p-8 text-center text-slate-500">{studentsPageError || 'No students found.'}</div>
+                                            )}
+                                            {studentsPageLoading && displayedClassStudents.length > 0 && <div className="flex justify-center p-4"><Loader2 className="animate-spin text-cse-accent" size={22} /></div>}
                                         </div>
                                     </div>
                                 </>
@@ -1012,17 +1156,17 @@ const ManageStudents = () => {
                             ) : (
                                 /* Level 2: Staff List (Faculty in Dept OR Incharges) */
                                 <>
-                                    <div className="sticky top-0 z-10 bg-[#f8fafc] pt-6 pb-4 mb-6 border-b border-slate-200 flex items-center gap-4">
-                                        <button onClick={() => staffCategory === 'FACULTY' ? setStaffDepartment(null) : setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
-                                        <h3 className="text-xl font-bold text-slate-900">{staffCategory === 'FACULTY' ? `${staffDepartment} Faculty` : 'Incharges'}</h3>
-                                        <div className="relative flex-1 max-w-md ml-auto">
+                                    <div className="sticky top-0 z-10 mb-6 grid gap-4 rounded-2xl border border-slate-200 bg-[#f8fafc] px-4 py-5 shadow-sm md:grid-cols-[minmax(0,1fr)_minmax(320px,560px)] md:items-center">
+                                        <div className="flex min-w-0 items-center gap-4"><button onClick={() => staffCategory === 'FACULTY' ? setStaffDepartment(null) : setStaffCategory(null)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"><ArrowLeft size={20} /></button>
+                                        <h3 className="truncate text-xl font-bold text-slate-900">{staffCategory === 'FACULTY' ? `${staffDepartment} Faculty` : 'Incharges'}</h3></div>
+                                        <div className="relative w-full">
                                             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                                             <input type="text" placeholder="Search staff..." value={staffSearchQuery} onChange={e => setStaffSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
                                         </div>
                                     </div>
-                                    <div className="glass-panel rounded-2xl overflow-hidden">
+                                    <div ref={staffListRef} onScroll={handleDirectoryScroll} className="glass-panel h-[calc(100vh-16rem)] min-h-[280px] overflow-y-auto rounded-2xl">
                                         <div className="divide-y divide-slate-100">
-                                            {filteredStaff.map(staff => (
+                                            {displayedStaff.map(staff => (
                                                 <div key={staff.id} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
                                                     <div className="flex items-center gap-4">
                                                         <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">{(staff.name || '?').charAt(0)}</div>
@@ -1039,9 +1183,13 @@ const ManageStudents = () => {
                                                     </div>
                                                 </div>
                                             ))}
-                                            {filteredStaff.length === 0 && (
-                                                <div className="p-8 text-center text-slate-500">No staff users found.</div>
+                                            {staffPageLoading && displayedStaff.length === 0 && (
+                                                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-cse-accent" size={24} /></div>
                                             )}
+                                            {!staffPageLoading && displayedStaff.length === 0 && (
+                                                <div className="p-8 text-center text-slate-500">{staffPageError || 'No staff users found.'}</div>
+                                            )}
+                                            {staffPageLoading && displayedStaff.length > 0 && <div className="flex justify-center p-4"><Loader2 className="animate-spin text-cse-accent" size={22} /></div>}
                                         </div>
                                     </div>
                                 </>
@@ -1085,7 +1233,7 @@ const ManageStudents = () => {
                                                                                 
                                                                                 fetch(`${API_BASE}/api/users/${f.id}`, {
                                                                                     method: 'PUT',
-                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                                                                                     body: JSON.stringify({ ...f, assignedClasses: updatedAssigned })
                                                                                 }).catch(e => console.error(e));
                                                                             } catch(e) { console.error(e); }
@@ -1129,7 +1277,7 @@ const ManageStudents = () => {
 
                                                                                                 fetch(`${API_BASE}/api/users/${fac.id}`, {
                                                                                                     method: 'PUT',
-                                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+                                                                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
                                                                                                     body: JSON.stringify({ ...fac, assignedClasses: updatedAssigned })
                                                                                                 }).catch(err => console.error(err));
                                                                                             }

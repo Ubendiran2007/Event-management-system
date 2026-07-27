@@ -35,14 +35,14 @@ function getRequestDetails(req) {
 
 async function logSecurityEvent(userObj, activity, status, reqDetails) {
   await setDoc(doc(collection(db, 'securityLogs')), {
-    userId: userObj.id || userObj.email,
-    email: userObj.email?.toLowerCase(),
+    userId: userObj.id || userObj.email || 'unknown-user',
+    email: userObj.email ? userObj.email.toLowerCase() : null,
     activity,
     status,
     timestamp: new Date().toISOString(),
-    browser: reqDetails.browser,
-    os: reqDetails.os,
-    ip: reqDetails.ip
+    browser: reqDetails.browser || 'Unknown Browser',
+    os: reqDetails.os || 'Unknown OS',
+    ip: reqDetails.ip || 'Unknown IP'
   });
 }
 
@@ -113,8 +113,28 @@ async function findAuthenticatedUser(user) {
       };
     }
   }
+
+  // 2. Global operational accounts (HR, Audio, Media, Wardens, Transport,
+  // ICTS) are stored as individual documents in `users`, not in staff groups.
+  const userDoc = await getDoc(doc(db, 'users', user.id));
+  const userExists = typeof userDoc?.exists === 'function' ? userDoc.exists() : Boolean(userDoc?.exists);
+  if (userExists) {
+    const data = (typeof userDoc.data === 'function' ? userDoc.data() : userDoc.data) || {};
+    return {
+      userObj: {
+        id: userDoc.id || user.id,
+        ...data,
+        email: data.email || user.email || '',
+        name: data.name || user.name || '',
+        password: undefined
+      },
+      storedPassword: data.password,
+      type: 'user',
+      ref: userDoc.ref
+    };
+  }
   
-  // 2. Fallback: Search all students by ID
+  // 3. Fallback: Search all students by ID
   const sectionDocs = await getAllSectionDocs();
   for (const secDoc of sectionDocs) {
     const arr = secDoc.data.students || [];
@@ -138,7 +158,7 @@ async function hashPassword(plain) {
 }
 
 async function verifyPassword(plain, stored) {
-  if (!stored) return false;
+  if (typeof stored !== 'string' || !stored) return false;
   if (stored.startsWith('$2a$') || stored.startsWith('$2b$')) {
     return bcrypt.compare(plain, stored);
   }
@@ -525,7 +545,11 @@ router.get('/login-history', requireAuth, async (req, res) => {
 router.get('/activity-timeline', requireAuth, async (req, res) => {
   try {
     const email = req.user.email.toLowerCase();
-    const limitCount = req.query.limit ? parseInt(req.query.limit) : 100;
+    const requestedLimit = parseInt(req.query.limit, 10);
+    const limitCount = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 5;
+    const requestedPage = parseInt(req.query.page, 10);
+    const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const filter = req.query.filter || 'All';
     
     // Fetch from activityLogs without orderBy to avoid index requirement
     const q = query(collection(db, 'activityLogs'), where('actor.userId', '==', email));
@@ -569,8 +593,32 @@ router.get('/activity-timeline', requireAuth, async (req, res) => {
     });
     
     allLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    
-    res.json({ success: true, logs: allLogs.slice(0, limitCount) });
+
+    const filteredLogs = filter === 'All' ? allLogs : allLogs.filter(log => {
+      const activity = (log.activity || '').toLowerCase();
+      if (filter === 'Login') return activity.includes('login');
+      if (filter === 'Password') return activity.includes('password') && !activity.includes('otp');
+      if (filter === 'OTP') return activity.includes('otp');
+      if (filter === 'Security Alerts') return log.status === 'WARNING' || log.status === 'FAILURE';
+      if (filter === 'Account Lock') return activity.includes('lock');
+      return true;
+    });
+    const totalPages = Math.max(1, Math.ceil(filteredLogs.length / limitCount));
+    const currentPage = Math.min(page, totalPages);
+    const start = (currentPage - 1) * limitCount;
+    const logs = filteredLogs.slice(start, start + limitCount);
+
+    res.json({
+      success: true,
+      logs,
+      pagination: {
+        page: currentPage,
+        limit: limitCount,
+        total: filteredLogs.length,
+        totalPages,
+        hasMore: currentPage < totalPages
+      }
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });
@@ -609,8 +657,23 @@ router.get('/iqac-audit', requireAuth, async (req, res) => {
       };
     });
     
-    logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    res.json({ success: true, logs });
+    const { role, status, time } = req.query;
+    let filtered = logs;
+    if (role && role !== 'All') filtered = filtered.filter((log) => log.role === role);
+    if (status && status !== 'All') filtered = filtered.filter((log) => log.status === status);
+    if (time && time !== 'All Time') {
+      const days = time === 'Last 24 Hours' ? 1 : time === 'Last 7 Days' ? 7 : time === 'Last 30 Days' ? 30 : null;
+      if (days) {
+        const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+        filtered = filtered.filter((log) => new Date(log.timestamp).getTime() >= cutoff);
+      }
+    }
+    filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const limitCount = Math.min(Math.max(parseInt(req.query.limit, 10) || 15, 1), 100);
+    const offset = Math.max(parseInt(req.query.cursor, 10) || 0, 0);
+    const pageLogs = filtered.slice(offset, offset + limitCount);
+    const nextCursor = offset + pageLogs.length < filtered.length ? String(offset + pageLogs.length) : null;
+    res.json({ success: true, logs: pageLogs, pagination: { hasMore: Boolean(nextCursor), nextCursor, count: pageLogs.length } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false });

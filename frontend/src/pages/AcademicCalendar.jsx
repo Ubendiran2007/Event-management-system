@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, Upload, Trash2, CheckCircle, Download, ArrowLeft, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import { getAuthToken } from '../utils/api';
 import { useAppContext } from '../context/AppContext';
 import { useCalendarEvents } from '../hooks/useCalendarEvents';
 import { useCalendarContext } from '../context/CalendarContext';
@@ -272,7 +273,7 @@ const IQACManagementTab = () => {
     setTimeout(() => setMessage(null), 5000);
   };
   
-  const token = localStorage.getItem('sessionToken');
+  const token = getAuthToken();
   const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
 
   const handleApi = async (endpoint, method, body) => {
@@ -741,7 +742,7 @@ const HODManagementTab = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', date: '', endDate: '', type: 'event' });
 
-  const token = localStorage.getItem('sessionToken');
+  const token = getAuthToken();
   const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
 
   const myDeptEvents = departmentCalendar.filter(d => d.department === currentUser.department);

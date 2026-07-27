@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Building2, Plus, Edit2, AlertCircle, Calendar, Wrench, Trash2, CheckCircle2, XCircle, Search, Filter, SlidersHorizontal, Clock, MapPin, Users, ShieldAlert, ChevronLeft, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { getAuthToken } from '../utils/api';
 import Layout from '../components/Layout';
 import DataTable from '../components/DataTable';
-import usePaginatedApi from '../hooks/usePaginatedApi';
+import { useWindowPageSize } from '../hooks/useWindowPageSize';
 import { UserRole } from '../types';
 
 const VENUE_TYPES = ['Auditorium', 'Seminar Hall', 'Conference Hall', 'Smart Classroom', 'Lab', 'Board Room', 'Studio', 'Other'];
+const venuePageCache = new Map();
 const BUILDINGS = ['Block A', 'Block B', 'Block C', 'IT Centre', 'Main Building', 'Admin Block', 'Other'];
 const COMMON_FACILITIES = ['Projector', 'AC', 'Smart Board', 'Sound System', 'Microphone', 'Wi-Fi', 'Recording Equipment', 'Podium', 'LED Display'];
 
@@ -60,6 +62,9 @@ const CustomFilterSelect = ({ value, onChange, options, className }) => {
 
 const VenueManagement = () => {
   const { currentUser } = useAppContext();
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+  const getToken = () => getAuthToken();
+
   const [activeTab, setActiveTab] = useState('venues'); // 'venues' or 'calendar'
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -90,6 +95,8 @@ const VenueManagement = () => {
   const [allVenues, setAllVenues] = useState([]);
   
   useEffect(() => {
+    if (activeTab !== 'calendar' || allVenues.length > 0) return;
+
     const fetchAll = async () => {
       try {
         const res = await fetch(`${backendUrl}/api/venues/all?limit=1000`, {
@@ -97,20 +104,12 @@ const VenueManagement = () => {
         });
         const data = await res.json();
         if (data.success) setAllVenues(data.data || []);
-      } catch (err) {}
+      } catch (err) {
+        console.warn('Failed to load venue options:', err);
+      }
     };
     fetchAll();
-  }, [backendUrl]);
-
-  const venuesApi = usePaginatedApi('/api/venues/all', 10, {
-    status: statusFilter !== 'ALL' ? statusFilter : undefined,
-    search: searchTerm || undefined
-  });
-
-  const historyApi = usePaginatedApi('/api/venues/reservations/history', 10, {
-    search: searchTerm || undefined
-  });
-
+  }, [activeTab, allVenues.length, backendUrl]);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -143,24 +142,19 @@ const VenueManagement = () => {
   // Search filter for venues list
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const venuesTableRef = useRef(null);
+  const venuesPageSize = useWindowPageSize(venuesTableRef, { hasToolbar: true, fallback: 5 });
 
   // Pagination state for venues
   const [venuesPagination, setVenuesPagination] = useState({ hasMore: false, nextCursor: null, count: 0 });
   const [venuesCursorHistory, setVenuesCursorHistory] = useState([]);
   const [venuesCursor, setVenuesCursor] = useState(null);
-  const VENUES_PAGE_LIMIT = 20;
-
   const isReadOnly = false;
   const canAccess = true;
 
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
-  const getToken = () => localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
-
   useEffect(() => {
-    if (canAccess) {
-      fetchVenues();
-    }
-  }, [currentUser]);
+    if (canAccess) fetchVenues();
+  }, [currentUser, statusFilter, venuesPageSize]);
 
   useEffect(() => {
     if ((activeTab === 'calendar' || activeTab === 'history') && canAccess) {
@@ -168,11 +162,21 @@ const VenueManagement = () => {
     }
   }, [activeTab, calDate, calEndDate, calBuilding, calVenueId, calStatus, calType]);
 
-  const fetchVenues = async (cursor = null) => {
+  const fetchVenues = async (cursor = null, append = false, force = false) => {
+    const cacheKey = `${statusFilter || 'ALL'}:${venuesPageSize}`;
+    const cachedPage = venuePageCache.get(cacheKey);
+
+    if (!force && !append && !cursor && cachedPage) {
+      setVenues(cachedPage.data);
+      setVenuesPagination(cachedPage.pagination);
+      setVenuesCursor(cachedPage.cursor);
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
-      const params = new URLSearchParams({ limit: VENUES_PAGE_LIMIT, sortBy: 'name', sortOrder: 'asc' });
+      const params = new URLSearchParams({ limit: venuesPageSize, sortBy: 'name', sortOrder: 'asc' });
       if (statusFilter && statusFilter !== 'ALL') params.append('status', statusFilter);
       if (cursor) params.append('cursor', cursor);
 
@@ -187,8 +191,12 @@ const VenueManagement = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setVenues(Array.isArray(data.data) ? data.data : []);
-        setVenuesPagination(data.pagination || { hasMore: false, nextCursor: null, count: 0 });
+        const pageVenues = Array.isArray(data.data) ? data.data : [];
+        const venueData = append ? [...(cachedPage?.data || []), ...pageVenues] : pageVenues;
+        const pagination = data.pagination || { hasMore: false, nextCursor: null, count: 0 };
+        venuePageCache.set(cacheKey, { data: venueData, pagination, cursor });
+        setVenues(venueData);
+        setVenuesPagination(pagination);
         setVenuesCursor(cursor);
       } else {
         setError(data.message || 'Failed to fetch venues');
@@ -203,7 +211,7 @@ const VenueManagement = () => {
   const handleVenuesNextPage = () => {
     if (venuesPagination.hasMore && venuesPagination.nextCursor) {
       setVenuesCursorHistory(prev => [...prev, venuesCursor]);
-      fetchVenues(venuesPagination.nextCursor);
+      fetchVenues(venuesPagination.nextCursor, true);
     }
   };
 
@@ -272,7 +280,7 @@ const VenueManagement = () => {
       facilities: ['Air Conditioning (AC)', 'HD Projector & Screen', 'High-Speed Wi-Fi'],
       status: 'ACTIVE'
     });
-    setActiveTab('crud');
+    setShowVenueModal(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -288,6 +296,7 @@ const VenueManagement = () => {
       status: v.status || 'ACTIVE'
     });
     setActiveTab('crud');
+    setShowVenueModal(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -342,7 +351,7 @@ const VenueManagement = () => {
       } else {
         setEditingVenue(null);
       }
-      fetchVenues();
+      fetchVenues(null, false, true);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       setError(err.message);
@@ -350,9 +359,6 @@ const VenueManagement = () => {
   };
 
   const handleArchiveVenue = async (v) => {
-    if (!window.confirm(`Are you sure you want to archive/disable "${v.name}"? This will prevent new bookings.`)) {
-      return;
-    }
     try {
       setError('');
       const res = await fetch(`${backendUrl}/api/venues/${v.id}`, {
@@ -364,7 +370,7 @@ const VenueManagement = () => {
         throw new Error(data.message || 'Failed to archive venue');
       }
       setSuccessMsg(`Venue "${v.name}" has been disabled/archived.`);
-      fetchVenues();
+      fetchVenues(null, false, true);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       setError(err.message);
@@ -390,7 +396,7 @@ const VenueManagement = () => {
       }
       setSuccessMsg('Maintenance scheduled successfully!');
       fetchMaintenanceForVenue(selectedVenueForMaint.id);
-      fetchVenues();
+      fetchVenues(null, false, true);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       setError(err.message);
@@ -399,7 +405,6 @@ const VenueManagement = () => {
 
   const handleCancelMaintenance = async (maintId) => {
     if (isReadOnly || !selectedVenueForMaint) return;
-    if (!window.confirm("Cancel this scheduled maintenance window?")) return;
     try {
       setError('');
       const res = await fetch(`${backendUrl}/api/venues/${selectedVenueForMaint.id}/maintenance/${maintId}`, {
@@ -412,7 +417,7 @@ const VenueManagement = () => {
       }
       setSuccessMsg('Maintenance cancelled.');
       fetchMaintenanceForVenue(selectedVenueForMaint.id);
-      fetchVenues();
+      fetchVenues(null, false, true);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err) {
       setError(err.message);
@@ -595,7 +600,8 @@ const VenueManagement = () => {
       )
     }
   ];
-\n  if (!canAccess) {
+
+  if (!canAccess) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[70vh]">
@@ -639,7 +645,7 @@ const VenueManagement = () => {
                     onClick={() => { setActiveTab('venues'); setIsDropdownOpen(false); }}
                     className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${activeTab === 'venues' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
                   >
-                    Venues Directory {venuesApi.pagination?.count > 0 ? `(${venuesApi.pagination.count})` : ''}
+                    Venues Directory {venuesPagination.count > 0 ? `(${venuesPagination.count})` : ''}
                   </button>
                   <button 
                     onClick={() => { setActiveTab('calendar'); setIsDropdownOpen(false); }}
@@ -733,9 +739,10 @@ const VenueManagement = () => {
 
             <div className="flex-1 min-h-0">
               <DataTable
+                containerRef={venuesTableRef}
                 columns={venueColumns}
-                data={venuesApi.items}
-                loading={venuesApi.loading}
+                data={filteredVenues}
+                loading={loading}
                 emptyState={
                   <div className="text-center py-16 px-4 space-y-3">
                     <Building2 size={48} className="mx-auto text-slate-300" />
@@ -744,13 +751,13 @@ const VenueManagement = () => {
                   </div>
                 }
                 pagination={{
-                  hasMore: venuesApi.hasMore,
-                  count: venuesApi.pagination?.count,
-                  onNext: venuesApi.loadNext,
-                  onPrevious: venuesApi.loadPrevious,
-                  cursorHistoryLength: venuesApi.cursorHistory.length,
-                  isLoading: venuesApi.loading
+                  hasMore: venuesPagination.hasMore,
+                  count: venuesPagination.count,
+                  hasPrevPage: venuesCursorHistory.length > 0
                 }}
+                onNextPage={handleVenuesNextPage}
+                onPrevPage={handleVenuesPrevPage}
+                hasPrevPage={venuesCursorHistory.length > 0}
               />
             </div>
           </div>
@@ -944,21 +951,13 @@ const VenueManagement = () => {
             <div className="flex-1 min-h-0">
               <DataTable
                 columns={reservationHistoryColumns}
-                data={historyApi.items}
-                loading={historyApi.loading}
+                data={[]}
+                loading={false}
                 emptyState={
                   <div className="p-8 text-center text-slate-400 font-bold">
                     No historical records found.
                   </div>
                 }
-                pagination={{
-                  hasMore: historyApi.hasMore,
-                  count: historyApi.pagination?.count,
-                  onNext: historyApi.loadNext,
-                  onPrevious: historyApi.loadPrevious,
-                  cursorHistoryLength: historyApi.cursorHistory.length,
-                  isLoading: historyApi.loading
-                }}
               />
             </div>
           </div>
@@ -982,6 +981,20 @@ const VenueManagement = () => {
                     className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all"
                   />
                 </div>
+                <div className="w-full sm:w-44">
+                  <CustomFilterSelect
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all cursor-pointer"
+                    options={[
+                      { value: 'ALL', label: 'All Statuses' },
+                      { value: 'ACTIVE', label: 'Active' },
+                      { value: 'MAINTENANCE', label: 'Maintenance' },
+                      { value: 'DISABLED', label: 'Disabled' },
+                      { value: 'ARCHIVED', label: 'Archived' }
+                    ]}
+                  />
+                </div>
                 {!isReadOnly && (
                   <button 
                     onClick={handleOpenAddModal}
@@ -996,22 +1009,23 @@ const VenueManagement = () => {
 
             <div className="flex-1 min-h-0 p-6 bg-slate-50/30">
               <DataTable
+                containerRef={venuesTableRef}
                 columns={venuesDirectoryColumns}
-                data={venuesApi.items}
-                loading={venuesApi.loading}
+                data={filteredVenues}
+                loading={loading}
                 emptyState={
                   <div className="p-8 text-center text-slate-400 font-bold">
                     No venues found.
                   </div>
                 }
                 pagination={{
-                  hasMore: venuesApi.hasMore,
-                  count: venuesApi.pagination?.count,
-                  onNext: venuesApi.loadNext,
-                  onPrevious: venuesApi.loadPrevious,
-                  cursorHistoryLength: venuesApi.cursorHistory.length,
-                  isLoading: venuesApi.loading
+                  hasMore: venuesPagination.hasMore,
+                  count: venuesPagination.count,
+                  hasPrevPage: venuesCursorHistory.length > 0
                 }}
+                onNextPage={handleVenuesNextPage}
+                onPrevPage={handleVenuesPrevPage}
+                hasPrevPage={venuesCursorHistory.length > 0}
               />
             </div>
           </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, UserCheck, AlertCircle, Search, CheckCircle2, XCircle } from 'lucide-react';
+import { getAuthToken } from '../utils/api';
 
 const REASON_PRESETS = [
   'QR Scanner Failure',
@@ -79,7 +80,7 @@ const ManualCorrectionModal = ({ event, odRequests = [], targetDate, onClose, on
       const newStatus = computeStatus();
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/attendance/correct`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify({
           rollNo: selectedStudent.rollNo,
           studentName: selectedStudent.studentName,

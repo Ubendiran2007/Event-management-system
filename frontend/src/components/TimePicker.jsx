@@ -208,6 +208,7 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
   const previewM   = MINUTES[draftMin] ?? '00';
   const previewKey = `${previewH}${previewM}${draftAmpm}`;
   const displayTime = formatTime12(value || '09:00');
+  const isFullWidth = String(className || '').includes('w-full');
 
   return (
     <div className="relative inline-block">
@@ -216,8 +217,8 @@ const TimePicker = ({ id, value, onChange, onBlur, className }) => {
         ref={triggerRef}
         type="button"
         onClick={handleOpen}
-        className={`${(className || '').replace(/w-full/g, '').trim()} inline-flex items-center gap-2 cursor-pointer select-none transition-colors`}
-        style={{ width: 'max-content', minWidth: 120 }}
+        className={`${className || ''} inline-flex items-center gap-2 cursor-pointer select-none transition-all hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100`}
+        style={{ width: isFullWidth ? '100%' : 'max-content', minWidth: 120 }}
       >
         <svg className="text-slate-400 shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

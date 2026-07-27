@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNotifications } from '../../hooks/useNotifications';
 import NotificationCard from '../../components/notifications/NotificationCard';
 import NotificationSkeleton from '../../components/notifications/NotificationSkeleton';
-import { Filter, Search, CheckCheck, Loader2 } from 'lucide-react';
+import Layout from '../../components/Layout';
+import { Bell, Search, CheckCheck, Loader2, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
 
 const CATEGORIES = ['EVENTS', 'REGISTRATIONS', 'OD', 'REPORTS', 'SYSTEM'];
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -23,6 +24,7 @@ export default function NotificationCenterPage() {
   const [activeCategory, setActiveCategory] = useState('');
   const [activePriority, setActivePriority] = useState('');
   const [activeStatus, setActiveStatus] = useState('');
+  const [openFilter, setOpenFilter] = useState(null);
 
   useEffect(() => {
     refreshNotifications({
@@ -63,113 +65,38 @@ export default function NotificationCenterPage() {
 
   const groupOrder = ['Today', 'Yesterday', 'This Week', 'Older'];
 
+  const hasActiveFilters = Boolean(searchTerm || activeCategory || activeStatus || activePriority);
+  const clearFilters = () => { setSearchTerm(''); setActiveCategory(''); setActivePriority(''); setActiveStatus(''); };
+  const filterLabel = (value, allLabel, status = false) => {
+    if (!value) return allLabel;
+    if (status && value === 'DELIVERED') return 'Unread';
+    return value[0] + value.slice(1).toLowerCase();
+  };
+  const renderFilterMenu = (key, value, allLabel, options, onChange, isStatus = false) => (
+    <div className="relative">
+      <button onClick={() => setOpenFilter(openFilter === key ? null : key)} className="flex min-w-[180px] items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-800 shadow-sm transition hover:bg-slate-50">
+        <span className="flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-slate-500" />{filterLabel(value, allLabel, isStatus)}</span><ChevronDown className="h-4 w-4 text-slate-500" />
+      </button>
+      {openFilter === key && <><div className="fixed inset-0 z-40" onClick={() => setOpenFilter(null)} /><div className="absolute right-0 z-50 mt-2 min-w-full overflow-hidden rounded-2xl border border-slate-100 bg-white py-1 shadow-xl">{[{ value: '', label: allLabel }, ...options.map((option) => ({ value: option, label: filterLabel(option, option, isStatus) }))].map((option) => <button key={option.value} onClick={() => { onChange(option.value); setOpenFilter(null); }} className={`block w-full px-4 py-2.5 text-left text-sm font-bold transition ${value === option.value ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>{option.label}</button>)}</div></>}
+    </div>
+  );
+
   return (
-    <div className="h-full flex flex-col min-h-0 bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Notification Center</h1>
-          <p className="text-sm text-slate-500 font-medium">Manage all your alerts and messages</p>
+    <Layout>
+    <div className="flex h-full min-h-0 flex-col bg-[#eef3fb]">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
+        <div className="mx-auto flex w-full max-w-6xl flex-col justify-between gap-4 lg:flex-row lg:items-center">
+          <div className="flex items-center gap-3"><span className="rounded-2xl bg-blue-50 p-3 text-blue-600"><Bell className="h-6 w-6" /></span><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Message inbox</p><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Notification Center</h1><p className="mt-0.5 text-sm text-slate-500">Manage your alerts, updates and institutional messages.</p></div></div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative min-w-0 sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="text" placeholder="Search notifications..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50" /></div><button onClick={markAllRead} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><CheckCheck className="h-4 w-4" /> Mark all read</button></div>
         </div>
-        
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <input 
-              type="text"
-              placeholder="Search notifications..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64"
-            />
-          </div>
-          <button 
-            onClick={markAllRead}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-semibold hover:bg-blue-100 transition-colors shrink-0"
-          >
-            <CheckCheck className="w-4 h-4" />
-            <span className="hidden sm:inline">Mark All Read</span>
-          </button>
-        </div>
-      </div>
+      </header>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-        {/* Filters Sidebar */}
-        <div className="w-full lg:w-64 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 p-4 shrink-0 overflow-y-auto">
-          <div className="flex items-center gap-2 font-bold text-slate-700 mb-4">
-            <Filter className="w-4 h-4" /> Filters
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Category</h3>
-              <div className="space-y-1">
-                <button
-                  onClick={() => setActiveCategory('')}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${!activeCategory ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  All Categories
-                </button>
-                {CATEGORIES.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm capitalize ${activeCategory === cat ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    {cat.toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Status</h3>
-              <div className="space-y-1">
-                <button
-                  onClick={() => setActiveStatus('')}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${!activeStatus ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  All Statuses
-                </button>
-                {STATUSES.map(status => (
-                  <button
-                    key={status}
-                    onClick={() => setActiveStatus(status)}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm capitalize ${activeStatus === status ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    {status === 'DELIVERED' ? 'Unread' : status.toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Priority</h3>
-              <div className="space-y-1">
-                <button
-                  onClick={() => setActivePriority('')}
-                  className={`w-full text-left px-3 py-1.5 rounded text-sm ${!activePriority ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                >
-                  All Priorities
-                </button>
-                {PRIORITIES.map(priority => (
-                  <button
-                    key={priority}
-                    onClick={() => setActivePriority(priority)}
-                    className={`w-full text-left px-3 py-1.5 rounded text-sm capitalize ${activePriority === priority ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    {priority.toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notifications List */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
-          <div className="max-w-3xl mx-auto space-y-8">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="mx-auto w-full max-w-6xl space-y-5">
+          <section className="flex flex-wrap items-center justify-end gap-2">{renderFilterMenu('category', activeCategory, 'All categories', CATEGORIES, setActiveCategory)}{renderFilterMenu('status', activeStatus, 'All statuses', STATUSES, setActiveStatus, true)}{renderFilterMenu('priority', activePriority, 'All priorities', PRIORITIES, setActivePriority)}</section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-5 flex items-center justify-between"><div><h2 className="font-extrabold text-slate-900">Recent notifications</h2><p className="mt-0.5 text-sm text-slate-500">{filteredNotifications.length} notification{filteredNotifications.length === 1 ? '' : 's'} in this view</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activeStatus === 'DELIVERED' ? 'Unread' : 'All messages'}</span></div>
+            <div className="mx-auto max-w-4xl space-y-7">
             
             {loading && notifications.length === 0 ? (
               <div className="space-y-3">
@@ -192,12 +119,7 @@ export default function NotificationCenterPage() {
                 </p>
                 {(searchTerm || activeCategory || activeStatus || activePriority) && (
                   <button 
-                    onClick={() => {
-                      setSearchTerm('');
-                      setActiveCategory('');
-                      setActivePriority('');
-                      setActiveStatus('');
-                    }}
+                    onClick={clearFilters}
                     className="mt-4 text-blue-600 font-semibold hover:underline"
                   >
                     Clear all filters
@@ -238,9 +160,11 @@ export default function NotificationCenterPage() {
                 )}
               </>
             )}
-          </div>
+            </div>
+          </section>
         </div>
-      </div>
+      </main>
     </div>
+    </Layout>
   );
 }

@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import DataTable from './DataTable';
 import { usePaginatedApi } from '../hooks/usePaginatedApi';
+import { useWindowPageSize } from '../hooks/useWindowPageSize';
 import StatusBadge from './StatusBadge';
 import { User, Calendar, Check, X, Loader2 } from 'lucide-react';
+import { getAuthToken } from '../utils/api';
 
 export default function RegistrationsTable({ currentUser, onRowClick }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const containerRef = useRef(null);
+  const pageSize = useWindowPageSize(containerRef, { hasToolbar: true });
   
   // Filter for requests assigned to this organizer that are pending (or we could show all and let them filter)
   const filters = {
@@ -13,7 +17,7 @@ export default function RegistrationsTable({ currentUser, onRowClick }) {
     // If you want to show only pending, add: status: 'PENDING_ORGANIZER'
   };
 
-  const { data, loading, pagination, actions } = usePaginatedApi('/api/od-requests', filters, { limit: 10, sortBy: 'createdAt', sortOrder: 'desc' });
+  const { data, loading, error, pagination, actions } = usePaginatedApi('/api/od-requests', filters, { limit: pageSize, sortBy: 'createdAt', sortOrder: 'desc' });
   const [processingId, setProcessingId] = useState(null);
 
   // We could implement handleApprove/Reject here, calling the same API endpoint.
@@ -21,7 +25,7 @@ export default function RegistrationsTable({ currentUser, onRowClick }) {
     e.stopPropagation();
     setProcessingId(req.id);
     try {
-      const token = localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
+      const token = getAuthToken();
       const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
       
       const res = await fetch(`${baseUrl}/api/od-requests/${req.id}/status`, {
@@ -133,9 +137,12 @@ export default function RegistrationsTable({ currentUser, onRowClick }) {
   return (
     <div className="flex-1 w-full min-h-0 h-full flex flex-col">
       <DataTable
+        containerRef={containerRef}
         columns={columns}
         data={displayData}
         loading={loading}
+        error={error}
+        onRetry={actions.reload}
         pagination={pagination}
         onNextPage={actions.nextPage}
         onPrevPage={actions.prevPage}

@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import { notificationService } from '../services/notificationService';
 import { useAppContext } from './AppContext';
 
@@ -16,6 +16,16 @@ export const NotificationProvider = ({ children }) => {
   
   // Current active filters
   const [filters, setFilters] = useState({});
+  const filtersRef = useRef(filters);
+  const notificationsRef = useRef(notifications);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   const userId = currentUser?.id;
 
@@ -44,14 +54,20 @@ export const NotificationProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
-      const currentFilters = { ...filters, ...newFilters };
+      const currentFilters = { ...filtersRef.current, ...newFilters };
       if (!isLoadMore) {
-        setFilters(currentFilters);
+        filtersRef.current = currentFilters;
+        setFilters((previous) => {
+          const previousKeys = Object.keys(previous);
+          const currentKeys = Object.keys(currentFilters);
+          const unchanged = previousKeys.length === currentKeys.length && currentKeys.every((key) => previous[key] === currentFilters[key]);
+          return unchanged ? previous : currentFilters;
+        });
       }
 
       let startAfter = null;
-      if (isLoadMore && notifications.length > 0) {
-        startAfter = notifications[notifications.length - 1].id;
+      if (isLoadMore && notificationsRef.current.length > 0) {
+        startAfter = notificationsRef.current[notificationsRef.current.length - 1].id;
       }
 
       const response = await notificationService.fetchNotifications(userId, {
@@ -61,11 +77,9 @@ export const NotificationProvider = ({ children }) => {
       });
 
       if (response.success) {
-        if (isLoadMore) {
-          setNotifications(prev => [...prev, ...response.data]);
-        } else {
-          setNotifications(response.data);
-        }
+        const nextNotifications = isLoadMore ? [...notificationsRef.current, ...response.data] : response.data;
+        notificationsRef.current = nextNotifications;
+        setNotifications(nextNotifications);
         setHasMore(response.data.length === 20);
       }
     } catch (err) {
@@ -73,7 +87,7 @@ export const NotificationProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId, filters, notifications]);
+  }, [userId]);
 
   const refreshNotifications = useCallback((newFilters) => {
     loadNotifications(newFilters, false);

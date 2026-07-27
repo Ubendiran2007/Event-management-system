@@ -1,6 +1,7 @@
-import { collection, getDocs, doc, getDoc, query, onSnapshot, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { where } from './firebaseService';
+import { where, subscribeWithRetry } from './firebaseService';
+import { getAuthToken } from '../utils/api';
 
 /**
  * EVENT OWNERSHIP MATRIX
@@ -32,7 +33,7 @@ const eventsCollection = collection(db, 'events');
 export const fetchExploreEvents = async (currentUser, cursor = null, pageSize = 20) => {
   const startTime = performance.now();
   try {
-    const token = localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
+    const token = getAuthToken();
     const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
     
     let url = `${baseUrl}/api/events/explore?pageSize=${pageSize}`;
@@ -150,10 +151,10 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
       eventsCollection,
       where('organizerId', '==', currentUser.id)
     );
-    return onSnapshot(q, (snapshot) => {
+    return subscribeWithRetry(q, (snapshot) => {
       logQuery(`Dashboard/Workflow (FACULTY:own)`, snapshot.size, true, startTime);
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    }, (err) => console.error(err), { collectionName: 'events' });
   }
 
   // HOD: only their department's events (scoped by department field)
@@ -167,10 +168,10 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
       where('department', '==', currentUser.department),
       where('status', 'in', deptStatuses)
     );
-    return onSnapshot(q, (snapshot) => {
+    return subscribeWithRetry(q, (snapshot) => {
       logQuery(`Dashboard/Workflow (HOD:${currentUser.department})`, snapshot.size, true, startTime);
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    }, (err) => console.error(err), { collectionName: 'events' });
   }
 
   // IQAC_TEAM, SYSTEM_ADMIN, and department officers (HR_TEAM, AUDIO_TEAM, etc.) 
@@ -195,10 +196,10 @@ export const subscribeToWorkflowEvents = (currentUser, callback) => {
   
   const q = query(eventsCollection, where('status', 'in', roleStatuses));
   
-  return onSnapshot(q, (snapshot) => {
+  return subscribeWithRetry(q, (snapshot) => {
     logQuery(`Dashboard/Workflow (${currentUser.role})`, snapshot.size, true, startTime);
     callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-  });
+  }, (err) => console.error(err), { collectionName: 'events' });
 };
 
 export const subscribeToOrganizerEvents = (currentUser, callback) => {
@@ -207,9 +208,9 @@ export const subscribeToOrganizerEvents = (currentUser, callback) => {
   const startTime = performance.now();
   const q = query(eventsCollection, where('organizerId', '==', currentUser.id));
   
-  return onSnapshot(q, (snapshot) => {
+  return subscribeWithRetry(q, (snapshot) => {
     logQuery('Organizer', snapshot.size, true, startTime);
     const events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(events);
-  });
+  }, (err) => console.error(err), { collectionName: 'events' });
 };

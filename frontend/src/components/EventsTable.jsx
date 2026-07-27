@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import DataTable from './DataTable';
 import { usePaginatedApi } from '../hooks/usePaginatedApi';
+import { useWindowPageSize } from '../hooks/useWindowPageSize';
 import { UserRole, EventStatus } from '../types';
 import StatusBadge from './StatusBadge';
 import { Calendar, MapPin, Search } from 'lucide-react';
@@ -8,6 +9,8 @@ import { formatEventRef, getEventStatus } from '../utils/formatters';
 
 export default function EventsTable({ currentUser, activeTab, filter, onRowClick }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const containerRef = useRef(null);
+  const pageSize = useWindowPageSize(containerRef, { hasToolbar: true });
 
   // Map the UI filter to actual API status query
   const queryParams = useMemo(() => {
@@ -45,7 +48,7 @@ export default function EventsTable({ currentUser, activeTab, filter, onRowClick
 
   // Use the appropriate endpoint
   const endpoint = activeTab === 'my-registrations' ? '/api/od-requests' : '/api/events';
-  const { data, loading, pagination, actions } = usePaginatedApi(endpoint, queryParams, { limit: 10, sortBy: 'createdAt', sortOrder: 'desc' });
+  const { data, loading, pagination, actions } = usePaginatedApi(endpoint, queryParams, { limit: pageSize, sortBy: 'createdAt', sortOrder: 'desc' });
 
   // For my-registrations, the data shape is ODRequests, else Events
   const columns = activeTab === 'my-registrations' ? [
@@ -152,6 +155,7 @@ export default function EventsTable({ currentUser, activeTab, filter, onRowClick
   return (
     <div className="flex-1 w-full min-h-0 h-full flex flex-col">
       <DataTable
+        containerRef={containerRef}
         columns={columns}
         data={data}
         loading={loading}

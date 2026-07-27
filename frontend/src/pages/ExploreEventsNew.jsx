@@ -1862,7 +1862,7 @@ const EventCard = ({
 export const ExploreEventsNew = () => {
   const { currentUser, setStudents, students } = useAppContext();
   const { odRequests } = useMyODs(currentUser?.id);
-  const { events: availableEvents, loading, hasMore, loadingMore, loadMore, refresh: refreshEvents } = useExploreEvents();
+  const { events: availableEvents, loading, loadingMore, loadMore, refresh: refreshEvents } = useExploreEvents();
   const [filter, setFilter] = useState('all');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -2193,7 +2193,13 @@ export const ExploreEventsNew = () => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div
+          className="flex-1 overflow-y-auto px-6 py-8"
+          onScroll={(event) => {
+            const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+            if (scrollHeight - scrollTop - clientHeight < 240) loadMore();
+          }}
+        >
           <div className="max-w-7xl mx-auto w-full">
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -2213,16 +2219,9 @@ export const ExploreEventsNew = () => {
             </div>
         )}
         
-        {hasMore && filteredEvents.length > 0 && filter === 'all' && (
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="px-6 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-full shadow hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {loadingMore ? <Loader2 size={16} className="animate-spin" /> : null}
-              {loadingMore ? 'Loading...' : 'Load More Events'}
-            </button>
+        {loadingMore && (
+          <div className="mt-8 flex justify-center text-sm font-semibold text-slate-500">
+            <Loader2 size={18} className="animate-spin text-blue-600 mr-2" /> Loading more events...
           </div>
         )}
           </div>

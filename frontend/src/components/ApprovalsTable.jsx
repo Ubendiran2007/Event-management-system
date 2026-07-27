@@ -1,22 +1,30 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import DataTable from './DataTable';
 import { usePaginatedApi } from '../hooks/usePaginatedApi';
+import { useWindowPageSize } from '../hooks/useWindowPageSize';
 import { UserRole, EventStatus } from '../types';
 import StatusBadge from './StatusBadge';
 import { Calendar } from 'lucide-react';
 import { formatEventRef } from '../utils/formatters';
 
 export default function ApprovalsTable({ currentUser, filter, onRowClick }) {
+  const containerRef = useRef(null);
+  const pageSize = useWindowPageSize(containerRef);
   // Map the UI filter to actual API status query
   const queryParams = useMemo(() => {
     const params = {};
     const role = currentUser?.role;
-    
+
     let pendingStatuses = [];
+
     if (role === UserRole.FACULTY) pendingStatuses = [EventStatus.PENDING_FACULTY];
     else if (role === UserRole.HOD) pendingStatuses = [EventStatus.PENDING_HOD];
     else if (role === UserRole.IQAC_TEAM) pendingStatuses = [EventStatus.PENDING_IQAC];
-    else pendingStatuses = [EventStatus.PENDING_FACULTY, EventStatus.PENDING_CLASS_ADVISOR, EventStatus.PENDING_HOD, EventStatus.PENDING_IQAC, 'PENDING_HR', 'PENDING_AUDIO', 'PENDING_TRANSPORT']; // For other roles
+    else if ([UserRole.HR_TEAM, UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN, UserRole.TRANSPORT_TEAM, UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN, UserRole.MEDIA].includes(role)) {
+      pendingStatuses = [EventStatus.PENDING_DEPARTMENTS];
+    } else {
+      pendingStatuses = [EventStatus.PENDING_FACULTY, EventStatus.PENDING_CLASS_ADVISOR, EventStatus.PENDING_HOD, EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC];
+    }
 
     const pastApprovedStatuses = ['APPROVED', 'POSTED', 'COMPLETED'];
     const modifiedStatuses = ['CANCELLED', 'POSTPONED'];
@@ -35,7 +43,7 @@ export default function ApprovalsTable({ currentUser, filter, onRowClick }) {
     return params;
   }, [currentUser, filter]);
 
-  const { data, loading, pagination, actions } = usePaginatedApi('/api/events', queryParams, { limit: 10, sortBy: 'createdAt', sortOrder: 'desc' });
+  const { data, loading, error, pagination, actions } = usePaginatedApi('/api/events', queryParams, { limit: pageSize, sortBy: 'createdAt', sortOrder: 'desc' });
 
   const columns = [
     {
@@ -48,7 +56,7 @@ export default function ApprovalsTable({ currentUser, filter, onRowClick }) {
           </div>
           <div className="flex-1 min-w-0">
              <div className="flex items-center gap-2 flex-wrap">
-               <p className="font-extrabold text-sm sm:text-base text-slate-900 truncate">
+               <p className="font-semibold text-sm sm:text-base text-slate-900 truncate">
                  {event.title || 'Untitled Event'}
                </p>
                {event.referenceId && (
@@ -120,9 +128,12 @@ export default function ApprovalsTable({ currentUser, filter, onRowClick }) {
   return (
     <div className="flex-1 w-full min-h-0 h-full flex flex-col">
       <DataTable
+        containerRef={containerRef}
         columns={columns}
         data={data}
         loading={loading}
+        error={error}
+        onRetry={actions.reload}
         pagination={pagination}
         onNextPage={actions.nextPage}
         onPrevPage={actions.prevPage}

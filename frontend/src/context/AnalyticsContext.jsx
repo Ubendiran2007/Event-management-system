@@ -171,7 +171,7 @@ export const AnalyticsProvider = ({ children }) => {
   }, [filteredEvents, students, staffUsers, odRequests, currentUser, academicYears, semesters, holidays, exams, departmentCalendar]);
 
   return (
-    <AnalyticsContext.Provider value={{ metrics, filters, setFilters, filteredEvents }}>
+    <AnalyticsContext.Provider value={{ metrics, filters, setFilters, filteredEvents, odRequests }}>
       {children}
     </AnalyticsContext.Provider>
   );

@@ -18,7 +18,7 @@ export const useExploreEvents = () => {
     }
     
     const currentCursor = isInitial ? null : cursor;
-    const data = await fetchExploreEvents(currentUser, currentCursor, 20);
+    const data = await fetchExploreEvents(currentUser, currentCursor, 6);
     
     if (isInitial) {
       setEvents(data.events);

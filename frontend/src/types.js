@@ -33,6 +33,7 @@ export const StudentStatus = {
 
 export const EventStatus = {
   DRAFT: 'DRAFT',
+  PENDING_FACULTY: 'PENDING_FACULTY',
   PENDING_CLASS_ADVISOR: 'PENDING_CLASS_ADVISOR',
   PENDING_HOD: 'PENDING_HOD',
   PENDING_DEPARTMENTS: 'PENDING_DEPARTMENTS',
@@ -43,7 +44,7 @@ export const EventStatus = {
   POSTPONED: 'POSTPONED',
   CANCELLED: 'CANCELLED',
   COMPLETED: 'COMPLETED',
-  POSTED: 'POSTED' // Legacy support if needed
+  POSTED: 'POSTED'
 };
 
 export const ODRequestStatus = {

@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar as CalendarIcon, Clock, Search, MapPin, Users, CheckCircle, AlertCircle, X, ChevronRight, Activity } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
+import { getAuthToken } from '../utils/api';
+import PremiumDatePicker from './PremiumDatePicker';
+import TimePicker from './TimePicker';
 
 const VenueSelectionModal = ({ isOpen, onClose, onVenueReserved }) => {
   const navigate = useNavigate();
@@ -60,7 +63,7 @@ const VenueSelectionModal = ({ isOpen, onClose, onVenueReserved }) => {
       // In a real implementation, we would query an endpoint like GET /api/venues/available?date=...
       // For this implementation, we will fetch all active venues and rely on the calendar/availability check.
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/venues`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       
@@ -87,7 +90,7 @@ const VenueSelectionModal = ({ isOpen, onClose, onVenueReserved }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({
           venueId: venue.id,
@@ -181,22 +184,19 @@ const VenueSelectionModal = ({ isOpen, onClose, onVenueReserved }) => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Event Date</label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cse-primary/20 outline-none" 
-                  />
+                  <PremiumDatePicker value={date} min={new Date().toISOString().slice(0, 10)} onChange={e => setDate(e.target.value)}
+                    className="w-full min-h-[50px] rounded-xl border-slate-200 px-4 py-3 shadow-sm focus:ring-cse-primary/20" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
-                    <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cse-primary/20 outline-none" 
-                    />
+                    <TimePicker id="venue-start-time" value={startTime} onChange={e => setStartTime(e.target.value)}
+                      className="w-full min-h-[50px] rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm focus:ring-2 focus:ring-cse-primary/20" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
-                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cse-primary/20 outline-none" 
-                    />
+                    <TimePicker id="venue-end-time" value={endTime} onChange={e => setEndTime(e.target.value)}
+                      className="w-full min-h-[50px] rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm focus:ring-2 focus:ring-cse-primary/20" />
                   </div>
                 </div>
               </div>

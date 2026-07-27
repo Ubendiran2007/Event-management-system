@@ -8,6 +8,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import Layout from '../components/Layout';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAuthToken } from '../utils/api';
 
 const VENUE_TYPES = ['Auditorium', 'Seminar Hall', 'Conference Hall', 'Smart Classroom', 'Lab', 'Board Room', 'Studio', 'Other'];
 const BUILDINGS = ['Block A', 'Block B', 'Block C', 'IT Centre', 'Main Building', 'Admin Block', 'Other'];
@@ -64,7 +65,7 @@ const VenueSelection = () => {
       setLoading(true);
       setError('');
       const res = await fetch(`${backendUrl}/api/venues`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       if (data.success) {
@@ -87,7 +88,7 @@ const VenueSelection = () => {
         endDate: dateStr
       });
       const res = await fetch(`${backendUrl}/api/venues/calendar/system?${params.toString()}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await res.json();
       if (data.success) {
@@ -178,7 +179,7 @@ const VenueSelection = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify(payload)
       });

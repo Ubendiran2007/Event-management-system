@@ -10,9 +10,23 @@
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
 
-function getToken() {
-  return localStorage.getItem('sessionToken') || '';
+/**
+ * Returns the current auth token from localStorage.
+ * Checks both 'sessionToken' (primary) and 'token' (legacy) keys so that any
+ * login flow that writes to either key will still authenticate correctly.
+ *
+ * Import this into any module that needs a Bearer token instead of reading
+ * localStorage directly, so the fallback logic lives in exactly one place.
+ */
+export function getAuthToken() {
+  return localStorage.getItem('sessionToken') || localStorage.getItem('token') || '';
 }
+
+// Keep the internal alias for backward-compat within this module
+function getToken() {
+  return getAuthToken();
+}
+
 
 function buildHeaders(extra = {}) {
   const token = getToken();

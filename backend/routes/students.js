@@ -59,7 +59,11 @@ router.get('/', async (req, res) => {
     if (batch) filtered = filtered.filter(s => s.academicBatch === batch);
     if (department) filtered = filtered.filter(s => s.department === department);
     if (section) filtered = filtered.filter(s => s.section === section);
-    if (classFilter) filtered = filtered.filter(s => s.class === classFilter);
+    if (classFilter) {
+      const normalizeClass = (value) => String(value || '').trim().replace(/\s+/g, '-').toUpperCase();
+      const requestedClass = normalizeClass(classFilter);
+      filtered = filtered.filter(s => normalizeClass(s.class || `${s.department || ''}-${s.section || ''}`) === requestedClass);
+    }
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter(s =>

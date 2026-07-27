@@ -100,7 +100,10 @@ async function syncStaffUserToFirestore(staffUser, password) {
     assignedClasses: (current.assignedClasses !== undefined && Array.isArray(current.assignedClasses)) 
       ? current.assignedClasses 
       : (staffUser.assignedClasses || []),
-    password: current.password || password,
+    // Repair legacy/malformed values while preserving valid changed passwords.
+    password: typeof current.password === 'string' && current.password.trim()
+      ? current.password
+      : password,
     updatedAt: new Date().toISOString(),
     createdAt: current.createdAt || new Date().toISOString(),
   }, { merge: true });

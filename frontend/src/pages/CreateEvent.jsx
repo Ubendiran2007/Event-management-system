@@ -37,6 +37,7 @@ import { EventStatus, UserRole } from '../types';
 import { validateUpload } from '../utils/fileValidation';
 import EventManagerSelector from '../components/EventManagerSelector';
 import VolunteerRequirementSelector from '../components/VolunteerRequirementSelector';
+import { getAuthToken } from '../utils/api';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Hackathon', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
@@ -278,7 +279,7 @@ const CreateEvent = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ reservationId: reservationState.reservationId })
       });
@@ -807,7 +808,7 @@ const CreateEvent = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${getAuthToken()}`
           },
           body: JSON.stringify({
             date: form.startDate,
@@ -1904,7 +1905,7 @@ const CreateEvent = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${getAuthToken()}`
           },
           body: JSON.stringify({
             reservationId: reservationState.reservationId,

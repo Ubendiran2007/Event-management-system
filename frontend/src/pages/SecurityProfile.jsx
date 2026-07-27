@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, KeyRound, Clock, Activity, AlertTriangle, Monitor, Globe, Mail, CheckCircle2, Eye, EyeOff, X, Search, Filter, SlidersHorizontal, ArrowLeft, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useAnalyticsEvents } from '../hooks/useAnalyticsEvents';
+import { useWindowPageSize } from '../hooks/useWindowPageSize';
+import { getAuthToken } from '../utils/api';
 import Layout from '../components/Layout';
 import AlertCard from '../components/AlertCard';
 import { formatStudentNameWithRoll, fallbackValue } from '../utils/formatters';
@@ -16,6 +18,9 @@ const SecurityProfile = () => {
   const [loginHistory, setLoginHistory] = useState([]);
   const [securityTimeline, setSecurityTimeline] = useState([]);
   const [iqacLogs, setIqacLogs] = useState([]);
+  const [iqacNextCursor, setIqacNextCursor] = useState(null);
+  const [iqacHasMore, setIqacHasMore] = useState(false);
+  const [isFetchingIqacLogs, setIsFetchingIqacLogs] = useState(false);
   
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -34,13 +39,17 @@ const SecurityProfile = () => {
   const [timelineFilter, setTimelineFilter] = useState('All');
   const [isTimelineFilterOpen, setIsTimelineFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 5;
+  const [timelinePagination, setTimelinePagination] = useState({ page: 1, totalPages: 1 });
+  const TIMELINE_PAGE_SIZE = 5;
 
+  const iqacTableRef = useRef(null);
+  const securityLogsUserRef = useRef(null);
+  const timelinePageCacheRef = useRef(new Map());
+  const IQAC_ITEMS_PER_PAGE = useWindowPageSize(iqacTableRef);
   const [iqacRoleFilter, setIqacRoleFilter] = useState('All');
   const [iqacStatusFilter, setIqacStatusFilter] = useState('All');
   const [iqacTimeFilter, setIqacTimeFilter] = useState('All Time');
   const [iqacPage, setIqacPage] = useState(1);
-  const IQAC_ITEMS_PER_PAGE = 10;
   const [isIqacRoleOpen, setIsIqacRoleOpen] = useState(false);
   const [isIqacStatusOpen, setIsIqacStatusOpen] = useState(false);
   const [isIqacTimeOpen, setIsIqacTimeOpen] = useState(false);
@@ -48,6 +57,8 @@ const SecurityProfile = () => {
   const [attendanceAuditEventId, setAttendanceAuditEventId] = useState('');
   const [eventSearchQuery, setEventSearchQuery] = useState('');
   const [attendanceAuditLogs, setAttendanceAuditLogs] = useState([]);
+  const [attendanceAuditNextCursor, setAttendanceAuditNextCursor] = useState(null);
+  const [attendanceAuditHasMore, setAttendanceAuditHasMore] = useState(false);
   const [fetchingAuditLogs, setFetchingAuditLogs] = useState(false);
   const [auditSearchQuery, setAuditSearchQuery] = useState('');
   const [auditSessionFilter, setAuditSessionFilter] = useState('All');
@@ -55,26 +66,28 @@ const SecurityProfile = () => {
   const [isEventSelectOpen, setIsEventSelectOpen] = useState(false);
   const [isAuditSessionOpen, setIsAuditSessionOpen] = useState(false);
   const [isAuditDateOpen, setIsAuditDateOpen] = useState(false);
+  const attendanceAuditTableRef = useRef(null);
+
+  const fetchAttendanceAuditLogs = async (append = false) => {
+    if (!attendanceAuditEventId || (append && (!attendanceAuditHasMore || fetchingAuditLogs))) return;
+    setFetchingAuditLogs(true);
+    try {
+      const params = new URLSearchParams({ limit: '15' });
+      if (append && attendanceAuditNextCursor) params.set('cursor', attendanceAuditNextCursor);
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${attendanceAuditEventId}/attendance-audit?${params}`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
+      const data = await res.json();
+      if (data.success) {
+        setAttendanceAuditLogs((previous) => append ? [...previous, ...(data.logs || [])] : (data.logs || []));
+        setAttendanceAuditNextCursor(data.pagination?.nextCursor || null);
+        setAttendanceAuditHasMore(Boolean(data.pagination?.hasMore));
+      }
+    } catch (error) { console.error('Failed to fetch attendance audit logs:', error); }
+    finally { setFetchingAuditLogs(false); }
+  };
 
   useEffect(() => {
-    if (activeTab === 'attendanceAudit' && attendanceAuditEventId) {
-      setFetchingAuditLogs(true);
-      fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${attendanceAuditEventId}/attendance-audit`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('sessionToken')}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setAttendanceAuditLogs(data.logs);
-        } else {
-          setAttendanceAuditLogs([]);
-        }
-      })
-      .catch(() => setAttendanceAuditLogs([]))
-      .finally(() => setFetchingAuditLogs(false));
-    } else {
-       setAttendanceAuditLogs([]);
-    }
+    if (activeTab === 'attendanceAudit' && attendanceAuditEventId) fetchAttendanceAuditLogs(false);
+    else { setAttendanceAuditLogs([]); setAttendanceAuditNextCursor(null); setAttendanceAuditHasMore(false); }
   }, [activeTab, attendanceAuditEventId]);
 
   const filteredAttendanceAuditLogs = React.useMemo(() => {
@@ -154,8 +167,6 @@ const SecurityProfile = () => {
     });
   }, [iqacLogs, iqacRoleFilter, iqacStatusFilter, iqacTimeFilter]);
 
-  const iqacTotalPages = Math.max(1, Math.ceil(filteredIqacLogs.length / IQAC_ITEMS_PER_PAGE));
-  const currentIqacPageLogs = filteredIqacLogs.slice((iqacPage - 1) * IQAC_ITEMS_PER_PAGE, iqacPage * IQAC_ITEMS_PER_PAGE);
 
   useEffect(() => {
     setIqacPage(1);
@@ -174,29 +185,53 @@ const SecurityProfile = () => {
     return () => clearInterval(interval);
   }, [activeTab, step, timer]);
 
+  const fetchTimelinePage = async (page = 1, filter = timelineFilter) => {
+    const cacheKey = `${filter}:${page}`;
+    const cachedPage = timelinePageCacheRef.current.get(cacheKey);
+
+    if (cachedPage) {
+      setSecurityTimeline(cachedPage.logs);
+      setTimelinePagination(cachedPage.pagination);
+      setCurrentPage(cachedPage.pagination.page);
+      return;
+    }
+
+    setIsFetchingLogs(true);
+    try {
+      const query = new URLSearchParams({ limit: TIMELINE_PAGE_SIZE, page, filter });
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/security/activity-timeline?${query}` , {
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        const pagination = data.pagination || { page, totalPages: 1 };
+        timelinePageCacheRef.current.set(cacheKey, { logs: data.logs || [], pagination });
+        setSecurityTimeline(data.logs || []);
+        setTimelinePagination(pagination);
+        setCurrentPage(pagination.page);
+      }
+    } catch (err) {
+      console.error('Error fetching security timeline:', err);
+    } finally {
+      setIsFetchingLogs(false);
+    }
+  };
+
   const fetchLogs = async () => {
     if (!currentUser) return;
     setIsFetchingLogs(true);
     try {
-      const token = localStorage.getItem('sessionToken');
+      const token = getAuthToken();
       const headers = { 'Authorization': `Bearer ${token}` };
       
-      const [loginRes, timelineRes] = await Promise.all([
-        fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/login-history', { headers }),
-        fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/activity-timeline', { headers })
-      ]);
+      const loginRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/login-history', { headers });
       
       const loginData = await loginRes.json();
-      const timelineData = await timelineRes.json();
       
       if (loginData.success) setLoginHistory(loginData.logs);
-      if (timelineData.success) setSecurityTimeline(timelineData.logs);
+      await fetchTimelinePage(1, 'All');
 
-      if (currentUser.role === 'IQAC_TEAM') {
-        const iqacRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/iqac-audit', { headers });
-        const iqacData = await iqacRes.json();
-        if (iqacData.success) setIqacLogs(iqacData.logs);
-      }
     } catch (err) {
       console.error('Error fetching security logs:', err);
     } finally {
@@ -205,23 +240,44 @@ const SecurityProfile = () => {
   };
 
   useEffect(() => {
+    if (!currentUser?.id || securityLogsUserRef.current === currentUser.id) return;
+    securityLogsUserRef.current = currentUser.id;
+    timelinePageCacheRef.current.clear();
+    setCurrentPage(1);
+    setTimelinePagination({ page: 1, totalPages: 1 });
     fetchLogs();
   }, [currentUser]);
 
+  const fetchIqacAuditLogs = async (append = false) => {
+    if (append && (!iqacHasMore || isFetchingIqacLogs)) return;
+    setIsFetchingIqacLogs(true);
+    try {
+      const params = new URLSearchParams({ limit: '15', role: iqacRoleFilter, status: iqacStatusFilter, time: iqacTimeFilter });
+      if (append && iqacNextCursor) params.set('cursor', iqacNextCursor);
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/security/iqac-audit?${params}`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
+      const data = await response.json();
+      if (data.success) {
+        setIqacLogs((previous) => append ? [...previous, ...(data.logs || [])] : (data.logs || []));
+        setIqacNextCursor(data.pagination?.nextCursor || null);
+        setIqacHasMore(Boolean(data.pagination?.hasMore));
+      }
+    } catch (error) { console.error('[IQAC Audit] error:', error); }
+    finally { setIsFetchingIqacLogs(false); }
+  };
+
   useEffect(() => {
-    if (activeTab === 'iqac' && currentUser?.role === 'IQAC_TEAM') {
-      const token = localStorage.getItem('sessionToken');
-      fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/iqac-audit', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) setIqacLogs(data.logs);
-          else console.warn('[IQAC Audit] fetch failed:', data);
-        })
-        .catch(err => console.error('[IQAC Audit] error:', err));
-    }
-  }, [activeTab, currentUser]);
+    if (activeTab === 'iqac' && currentUser?.role === 'IQAC_TEAM') fetchIqacAuditLogs(false);
+  }, [activeTab, currentUser?.role, iqacRoleFilter, iqacStatusFilter, iqacTimeFilter]);
+
+  const handleIqacAuditScroll = (event) => {
+    const element = event.currentTarget;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight < 140) fetchIqacAuditLogs(true);
+  };
+
+  const handleAttendanceAuditScroll = (event) => {
+    const element = event.currentTarget;
+    if (element.scrollHeight - element.scrollTop - element.clientHeight < 140) fetchAttendanceAuditLogs(true);
+  };
 
   const handleChangePasswordRequest = async (e) => {
     e.preventDefault();
@@ -232,7 +288,7 @@ const SecurityProfile = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ currentPassword })
       });
@@ -264,7 +320,7 @@ const SecurityProfile = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ identifier: currentUser.email, otp, type: 'CHANGE' })
       });
@@ -307,7 +363,7 @@ const SecurityProfile = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ otp, newPassword })
       });
@@ -332,40 +388,8 @@ const SecurityProfile = () => {
 
   if (!currentUser) return null;
 
-  const getProcessedTimeline = () => {
-    let filtered = securityTimeline;
-
-    if (timelineFilter !== 'All') {
-      filtered = filtered.filter(log => {
-        const act = log.activity.toLowerCase();
-        if (timelineFilter === 'Login') return act.includes('login');
-        if (timelineFilter === 'Password') return act.includes('password') && !act.includes('otp');
-        if (timelineFilter === 'OTP') return act.includes('otp');
-        if (timelineFilter === 'Security Alerts') return log.status === 'WARNING' || log.status === 'FAILURE';
-        if (timelineFilter === 'Account Lock') return act.includes('lock');
-        return true;
-      });
-    }
-
-    let grouped = [];
-    let currentGroup = null;
-    filtered.forEach(log => {
-      const isRepetitive = log.activity.includes('OTP');
-      if (currentGroup && currentGroup.activity === log.activity && currentGroup.status === log.status && isRepetitive) {
-        currentGroup.count = (currentGroup.count || 1) + 1;
-      } else {
-        if (currentGroup) grouped.push(currentGroup);
-        currentGroup = { ...log, count: 1 };
-      }
-    });
-    if (currentGroup) grouped.push(currentGroup);
-
-    return grouped;
-  };
-
-  const fullTimeline = getProcessedTimeline();
-  const totalPages = Math.ceil(fullTimeline.length / ITEMS_PER_PAGE) || 1;
-  const currentTimelinePage = fullTimeline.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const fullTimeline = securityTimeline;
+  const iqacTotalPages = Math.max(1, Math.ceil(filteredIqacLogs.length / IQAC_ITEMS_PER_PAGE));
 
   return (
     <Layout>
@@ -453,7 +477,11 @@ const SecurityProfile = () => {
                           {['All', 'Login', 'Password', 'OTP', 'Security Alerts', 'Account Lock'].map(f => (
                             <button
                               key={f}
-                              onClick={() => { setTimelineFilter(f); setCurrentPage(1); setIsTimelineFilterOpen(false); }}
+                              onClick={() => {
+                                setTimelineFilter(f);
+                                setIsTimelineFilterOpen(false);
+                                fetchTimelinePage(1, f);
+                              }}
                               className={`px-4 py-2.5 text-left text-[14px] font-bold transition-colors ${timelineFilter === f ? 'bg-indigo-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}
                             >
                               {f === 'All' ? 'All Logs' : f}
@@ -465,7 +493,7 @@ const SecurityProfile = () => {
                   </div>
                 </div>
               </div>
-              <div className="p-0 overflow-hidden rounded-b-2xl">
+              <div className="flex-1 min-h-0 overflow-auto no-scrollbar rounded-b-2xl">
                 <table className="w-full text-left border-collapse table-fixed">
                   <thead className="bg-slate-50 border-b border-slate-100">
                     <tr>
@@ -476,7 +504,7 @@ const SecurityProfile = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {currentTimelinePage.map((log) => (
+                    {fullTimeline.map((log) => (
                       <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-3 sm:px-6 py-3 sm:py-4 text-[10px] sm:text-sm text-slate-600 break-words">
                           {new Date(log.timestamp).toLocaleString()}
@@ -498,7 +526,7 @@ const SecurityProfile = () => {
                         </td>
                       </tr>
                     ))}
-                    {isFetchingLogs && (
+                    {isFetchingLogs && fullTimeline.length === 0 && (
                       <tr>
                         <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
                           <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3"></div>
@@ -506,7 +534,7 @@ const SecurityProfile = () => {
                         </td>
                       </tr>
                     )}
-                    {currentTimelinePage.length === 0 && !isFetchingLogs && (
+                    {fullTimeline.length === 0 && !isFetchingLogs && (
                       <tr>
                         <td colSpan="4" className="px-6 py-12 text-center text-slate-500">
                           <AlertTriangle size={32} className="mx-auto mb-3 text-slate-300" />
@@ -519,28 +547,31 @@ const SecurityProfile = () => {
                 </table>
               </div>
               
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl">
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                  >
-                    Previous
-                  </button>
-                  <span className="text-[11px] sm:text-sm font-medium text-slate-500 text-center">
-                    Page <span className="font-bold text-slate-800">{currentPage}</span> of {totalPages}
+              <div className="px-3 sm:px-6 py-3 sm:py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-2xl">
+                <button
+                  onClick={() => fetchTimelinePage(currentPage - 1)}
+                  disabled={currentPage <= 1 || isFetchingLogs}
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  Previous
+                </button>
+                {isFetchingLogs && fullTimeline.length > 0 ? (
+                  <span className="flex items-center gap-2 text-[11px] sm:text-sm font-medium text-slate-500 text-center">
+                    <Loader2 size={16} className="animate-spin text-indigo-600" /> Loading page...
                   </span>
-                  <button 
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <span className="text-[11px] sm:text-sm font-medium text-slate-500 text-center">
+                    Page <span className="font-bold text-slate-800">{currentPage}</span> of {timelinePagination.totalPages}
+                  </span>
+                )}
+                <button
+                  onClick={() => fetchTimelinePage(currentPage + 1)}
+                  disabled={currentPage >= timelinePagination.totalPages || isFetchingLogs}
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-[11px] sm:text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -691,7 +722,7 @@ const SecurityProfile = () => {
         )}
 
         {activeTab === 'iqac' && currentUser.role === 'IQAC_TEAM' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col flex-1 min-h-0" ref={iqacTableRef}>
             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <Globe size={18} className="text-indigo-500" />
@@ -783,7 +814,7 @@ const SecurityProfile = () => {
             </div>
 
 
-            <div className="flex-1 overflow-y-auto no-scrollbar relative">
+            <div className="flex-1 overflow-y-auto no-scrollbar relative" onScroll={handleIqacAuditScroll}>
               <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                   <tr>
@@ -795,7 +826,7 @@ const SecurityProfile = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {currentIqacPageLogs.map((log) => (
+                  {filteredIqacLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <p className="text-sm font-semibold text-slate-800">{formatStudentNameWithRoll(log.name, log.rollNo, log.userId)}</p>
@@ -821,7 +852,7 @@ const SecurityProfile = () => {
                       </td>
                     </tr>
                   ))}
-                  {currentIqacPageLogs.length === 0 && (
+                  {filteredIqacLogs.length === 0 && (
                     <tr>
                       <td colSpan="5" className="px-6 py-12 text-center text-slate-500">
                         <div className="flex flex-col items-center justify-center gap-3">
@@ -831,12 +862,15 @@ const SecurityProfile = () => {
                       </td>
                     </tr>
                   )}
+                  {isFetchingIqacLogs && filteredIqacLogs.length > 0 && (
+                    <tr><td colSpan="5" className="p-4 text-center"><Loader2 className="mx-auto animate-spin text-indigo-500" size={20} /></td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
 
             {/* Pagination Footer */}
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4 mt-auto shrink-0 rounded-b-2xl">
+            <div className="hidden">
               <div className="text-sm text-slate-500 font-medium">
                 {filteredIqacLogs.length > 0 ? (
                   <>Showing <span className="text-slate-800 font-semibold">{(iqacPage - 1) * IQAC_ITEMS_PER_PAGE + 1}–{Math.min(iqacPage * IQAC_ITEMS_PER_PAGE, filteredIqacLogs.length)}</span> of <span className="text-slate-800 font-semibold">{filteredIqacLogs.length}</span> records</>
@@ -1035,7 +1069,7 @@ const SecurityProfile = () => {
             </div>
 
             {attendanceAuditEventId ? (
-              <div className="flex-1 overflow-y-auto no-scrollbar relative">
+              <div ref={attendanceAuditTableRef} className="flex-1 overflow-y-auto no-scrollbar relative" onScroll={handleAttendanceAuditScroll}>
                 <table className="w-full text-left border-collapse min-w-[1000px]">
                   <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                     <tr>
@@ -1097,6 +1131,9 @@ const SecurityProfile = () => {
                           </td>
                         </tr>
                       ))
+                    )}
+                    {fetchingAuditLogs && filteredAttendanceAuditLogs.length > 0 && (
+                      <tr><td colSpan="7" className="p-4 text-center"><Loader2 className="mx-auto animate-spin text-indigo-500" size={20} /></td></tr>
                     )}
                   </tbody>
                 </table>

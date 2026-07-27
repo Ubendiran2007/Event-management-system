@@ -292,6 +292,59 @@ router.get('/', async (req, res) => {
 
     res.json(response);
   } catch (err) {
+    // Firestore requires a composite index for combinations such as
+    // organizerId + createdAt. Registration management must still be usable
+    // while that index is being created, so fall back to a server-side sort
+    // over the same filtered records. This does not alter any access or
+    // registration business rule; it only avoids surfacing an index error.
+    const isMissingIndex = err?.code === 9 || /index/i.test(String(err?.message || ''));
+    if (isMissingIndex) {
+      try {
+        const snapshot = await getDocs(collection(db, 'odRequests'));
+        const matchesFilters = (record) => {
+          if (eventId && record.eventId !== eventId) return false;
+          if (studentId && record.studentId !== studentId) return false;
+          if (organizerId && record.organizerId !== organizerId) return false;
+          if (status) {
+            const requestedStatuses = status.split(',');
+            if (!requestedStatuses.includes(record.status)) return false;
+          }
+          if (filterClass && compactClassSection(record.class) !== compactClassSection(filterClass)) return false;
+          return true;
+        };
+        const fallbackSortField = ['createdAt', 'eventDate'].includes(sortBy) ? sortBy : 'createdAt';
+        const sortValue = (record) => {
+          const value = record[fallbackSortField];
+          if (value?.toDate) return value.toDate().getTime();
+          const timestamp = new Date(value).getTime();
+          return Number.isNaN(timestamp) ? String(value || '') : timestamp;
+        };
+        const sortedDocs = snapshot.docs
+          .filter((docSnap) => matchesFilters(docSnap.data()))
+          .sort((left, right) => {
+            const leftValue = sortValue(left.data());
+            const rightValue = sortValue(right.data());
+            const primary = leftValue > rightValue ? 1 : leftValue < rightValue ? -1 : 0;
+            const direction = sortOrder === 'asc' ? primary : -primary;
+            return direction || left.id.localeCompare(right.id);
+          });
+        const decodedCursor = decodeCursor(cursor);
+        const cursorId = Array.isArray(decodedCursor) ? decodedCursor.at(-1) : null;
+        const cursorIndex = cursorId ? sortedDocs.findIndex((docSnap) => docSnap.id === cursorId) : -1;
+        const pageDocs = sortedDocs.slice(cursorIndex + 1, cursorIndex + 1 + limitCount + 1);
+        const sortFields = fallbackSortField !== '__name__' ? [fallbackSortField, '__name__'] : ['__name__'];
+        const response = formatPaginatedResponse(pageDocs, limitCount, sortFields, (d) => {
+          const record = { id: d.id, ...d.data() };
+          record.rollNo = normalizeRollNo(record.rollNo || record.studentId);
+          record.class = compactClassSection(record.class);
+          delete record.password;
+          return record;
+        });
+        return res.json(response);
+      } catch (fallbackError) {
+        console.error('OD request index fallback failed:', fallbackError);
+      }
+    }
     console.error('Error fetching OD requests:', err);
     res.status(500).json({ success: false, message: err.message });
   }

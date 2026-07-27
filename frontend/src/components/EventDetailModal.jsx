@@ -7,6 +7,7 @@ import {
   XCircle, Loader2, ClipboardList, Eye, Download, Users, Edit3, Save, PlayCircle, Plus, GraduationCap, Share2, Upload, MessageSquare
 } from 'lucide-react';
 import { uploadFileToStorage, deleteFileFromStorage, validateFile } from '../utils/storageService';
+import { getAuthToken } from '../utils/api';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -279,7 +280,7 @@ const EventDetailModal = ({ event, onClose }) => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ cancellationReason, confirmationText: cancelConfirmation })
       });
@@ -314,7 +315,7 @@ const EventDetailModal = ({ event, onClose }) => {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('sessionToken')}`
+          'Authorization': `Bearer ${getAuthToken()}`
         },
         body: JSON.stringify({ reason: postponeReason, newDate: postponeDate, newEndDate: postponeEndDate, newStartTime: postponeStartTime, newEndTime: postponeEndTime })
       });

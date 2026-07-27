@@ -1,6 +1,6 @@
-import { collection, getDocs, doc, getDoc, query, orderBy, onSnapshot, limit, startAfter, documentId } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, orderBy, limit, startAfter, documentId } from 'firebase/firestore';
 import { db } from '../firebase';
-import { where } from './firebaseService';
+import { where, subscribeWithRetry } from './firebaseService';
 import { ODRequestStatus, UserRole } from '../types';
 
 const logQuery = (name, docsCount, realtime, startTime) => {
@@ -123,11 +123,11 @@ export const subscribeToODWorkflows = (currentUser, callback) => {
     return () => {};
   }
 
-  const unsubscribe = onSnapshot(q, (snapshot) => {
+  const unsubscribe = subscribeWithRetry(q, (snapshot) => {
     const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     logQuery('subscribeToODWorkflows', requests.length, true, startTime);
     callback(requests);
-  });
+  }, (err) => console.error(err), { collectionName: 'odRequests' });
 
   return unsubscribe;
 };

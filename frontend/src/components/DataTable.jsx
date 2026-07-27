@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { Loader2, Search, AlertTriangle, RefreshCw } from 'lucide-react';
 
 /**
  * A highly reusable, purely presentational DataTable component supporting cursor pagination.
@@ -22,19 +22,37 @@ export default function DataTable({
   data = [],
   pagination = null,
   loading = false,
+  error = null,
+  onRetry,
   emptyState,
   onNextPage,
-  onPrevPage,
-  hasPrevPage,
   searchPlaceholder = "Search...",
   onSearch,
-  filters = null
+  filters = null,
+  containerRef = null
 }) {
-  const isEmpty = !loading && data.length === 0;
+  const tableViewportRef = useRef(null);
+  const isEmpty = !loading && !error && data.length === 0;
   const isLoading = loading && data.length === 0;
 
+  useEffect(() => {
+    const viewport = tableViewportRef.current;
+    const needsMoreRows = viewport && viewport.scrollHeight <= viewport.clientHeight + 96;
+
+    if (needsMoreRows && pagination?.hasMore && !loading) {
+      onNextPage?.();
+    }
+  }, [data.length, loading, onNextPage, pagination?.hasMore]);
+
+  const handleTableScroll = (event) => {
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 96 && pagination?.hasMore && !loading) {
+      onNextPage?.();
+    }
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-0 h-full">
+    <div ref={containerRef} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-0 h-full">
       {/* Toolbar: Search and Filters */}
       {(onSearch || filters) && (
         <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap gap-4 items-center justify-between shrink-0">
@@ -50,6 +68,29 @@ export default function DataTable({
             </div>
           )}
           {filters && <div className="flex items-center gap-3">{filters}</div>}
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && !loading && (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white min-h-0 p-8">
+          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-8 h-8 text-red-400" />
+          </div>
+          <p className="font-bold text-slate-700 text-base mb-1">Failed to load data</p>
+          <p className="text-sm text-slate-400 text-center max-w-xs mb-4">
+            {error.includes('quota') || error.includes('429') || error.includes('resource-exhausted')
+              ? 'Database quota exceeded. Please try again later or contact the administrator.'
+              : 'An error occurred while fetching data. Please try again.'}
+          </p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" /> Retry
+            </button>
+          )}
         </div>
       )}
 
@@ -79,8 +120,8 @@ export default function DataTable({
       )}
 
       {/* Table — only shown when data exists */}
-      {!isLoading && !isEmpty && (
-        <div className="overflow-x-auto flex-1 min-h-0">
+      {!isLoading && !isEmpty && !error && (
+        <div ref={tableViewportRef} onScroll={handleTableScroll} className="overflow-auto no-scrollbar flex-1 min-h-0">
           <table className="w-full text-left text-sm h-full">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 sticky top-0 z-10">
               <tr>
@@ -103,33 +144,15 @@ export default function DataTable({
               ))}
             </tbody>
           </table>
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-4 text-sm font-medium text-slate-500">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" /> Loading more...
+            </div>
+          )}
         </div>
       )}
 
       {/* Pagination Controls — always pinned to bottom */}
-      {pagination && (
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-          <span className="text-sm text-slate-500">
-            {loading ? 'Loading...' : `Showing ${pagination.count || data.length} items`}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={onPrevPage}
-              disabled={!hasPrevPage || loading}
-              className="px-3 py-1.5 border border-slate-300 rounded text-sm font-medium hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 bg-white"
-            >
-              <ChevronLeft className="w-4 h-4" /> Previous
-            </button>
-            <button
-              onClick={onNextPage}
-              disabled={!pagination.hasMore || loading}
-              className="px-3 py-1.5 border border-slate-300 rounded text-sm font-medium hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 bg-white"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
