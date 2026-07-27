@@ -1,0 +1,14 @@
+{activeTab === 'venues' ? 'Venues Directory' : activeTab === 'calendar' ? 'System Reservation Calendar' : activeTab === 'history' ? 'Reservation History' : 'Manage Venue'}
+              </button>
+              
+              {isDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 shadow-xl rounded-xl overflow-hidden z-50 flex flex-col">
+                  <button 
+                    onClick={() => { setActiveTab('venues'); setIsDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer ${activeTab === 'venues' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Venues Directory {venues.length > 0 ? `(${venues.length})` : ''}
+                  </button>
+                  <button 
+                    onClick={() => { setActiveTab('calendar'); setIsDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer $

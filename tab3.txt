@@ -1,0 +1,8 @@
+{activeTab === 'history' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    Reservation History
+                  </button>
+                  {!isReadOnly && (
+                    <button 
+                      onClick={() => { setActiveTab('crud'); setIsDropdownOpen(false); }}
+                      className={`w-full text-left px-4 py-3 text-sm font-bold transition-colors cursor-pointer $
