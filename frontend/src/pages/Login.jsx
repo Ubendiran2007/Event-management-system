@@ -72,9 +72,8 @@ const Login = () => {
         });
         const rolePrefix = getRolePath(userRole);
         
-        // Redirect to the originally requested URL, or fallback to the dashboard
-        const from = location.state?.from?.pathname || `/${rolePrefix}/dashboard`;
-        navigate(from, { replace: true });
+        // Always redirect to dashboard on login
+        navigate(`/${rolePrefix}/dashboard`, { replace: true });
 
       } else {
         if (data.message && (data.message.toLowerCase().includes('lock') || data.message.toLowerCase().includes('too many'))) {

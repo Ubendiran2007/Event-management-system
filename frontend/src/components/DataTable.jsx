@@ -122,7 +122,7 @@ export default function DataTable({
       {/* Table — only shown when data exists */}
       {!isLoading && !isEmpty && !error && (
         <div ref={tableViewportRef} onScroll={handleTableScroll} className="overflow-auto no-scrollbar flex-1 min-h-0">
-          <table className="w-full text-left text-sm h-full">
+          <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 sticky top-0 z-10">
               <tr>
                 {columns.map((col, idx) => (
