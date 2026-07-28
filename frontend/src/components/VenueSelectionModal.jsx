@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar as CalendarIcon, Clock, Search, MapPin, Users, CheckCircle, AlertCircle, X, ChevronRight, Activity } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Search, MapPin, Users, CheckCircle, AlertCircle, X, ChevronRight, Activity, SlidersHorizontal } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import { getAuthToken } from '../utils/api';
 import PremiumDatePicker from './PremiumDatePicker';

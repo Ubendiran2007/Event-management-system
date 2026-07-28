@@ -7,7 +7,9 @@ const DAYS_OF_WEEK = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 export default function PremiumDatePicker({ value, onChange, min, max, className, required, disabled }) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [openUpward, setOpenUpward] = useState(false);
   const popupRef = useRef(null);
+  const triggerRef = useRef(null);
 
   // Initialize currentMonth based on value
   useEffect(() => {
@@ -27,6 +29,17 @@ export default function PremiumDatePicker({ value, onChange, min, max, className
     if (isOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
+
+  // Determine whether to open upward or downward
+  const handleToggle = () => {
+    if (!isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // Calendar popup is ~320px tall; open upward if not enough space below
+      setOpenUpward(spaceBelow < 340);
+    }
+    setIsOpen((prev) => !prev);
+  };
 
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
@@ -60,26 +73,27 @@ export default function PremiumDatePicker({ value, onChange, min, max, className
   return (
     <div className="relative" ref={popupRef}>
       <button 
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         className={`flex items-center justify-between w-full px-3 py-2 text-left bg-white border border-slate-300 rounded-lg text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 hover:border-indigo-400 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${className || ''}`}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
       >
         <span className={value ? 'text-slate-800 font-medium' : 'text-slate-400'}>{formattedDisplay}</span>
         <CalendarIcon size={16} className="text-slate-400" />
       </button>
 
       {/* Hidden input for HTML form validation if required */}
-      {required && <input type="text" className="opacity-0 absolute bottom-0 left-1/2 -z-10 w-1 h-1" required={required} value={value || ''} onChange={() => {}} tabIndex={-1} />}
+      {required && <input type="text" className="opacity-0 absolute bottom-0 left-1/2 -z-10 w-1 h-1" required={required} readOnly value={value || ''} tabIndex={-1} />}
 
       <AnimatePresence>
         {isOpen && (
           <motion.div 
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            initial={{ opacity: 0, y: openUpward ? 10 : -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            exit={{ opacity: 0, y: openUpward ? 10 : -10, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute z-50 mt-1 p-4 bg-white/95 backdrop-blur-xl border border-slate-200/50 shadow-xl rounded-2xl w-[280px] left-0 origin-top-left"
+            className={`absolute z-50 p-4 bg-white/95 backdrop-blur-xl border border-slate-200/50 shadow-xl rounded-2xl w-[280px] left-0 ${openUpward ? 'bottom-full mb-1 origin-bottom-left' : 'top-full mt-1 origin-top-left'}`}
           >
             {/* Header */}
             <div className="flex justify-between items-center mb-4">
