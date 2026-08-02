@@ -75,11 +75,11 @@ export default function PremiumDatePicker({ value, onChange, min, max, className
       <AnimatePresence>
         {isOpen && (
           <motion.div 
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
+            initial={{ opacity: 0, y: 0, scale: 0.95 }}
+            animate={{ opacity: 1, y: -6, scale: 1 }}
+            exit={{ opacity: 0, y: 0, scale: 0.95 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute z-50 mt-1 p-4 bg-white/95 backdrop-blur-xl border border-slate-200/50 shadow-xl rounded-2xl w-[280px] left-0 origin-top-left"
+            className="absolute z-50 -mt-4 p-4 bg-white/95 backdrop-blur-xl border border-slate-200/50 shadow-xl rounded-2xl w-[280px] left-0 origin-top-left"
           >
             {/* Header */}
             <div className="flex justify-between items-center mb-4">
