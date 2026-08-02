@@ -62,7 +62,9 @@ async function findUserByIdentifier(identifier) {
     for (const data of arr) {
       if (
         (data.email && data.email.toLowerCase() === idLower) ||
-        (data.employeeId && data.employeeId.toUpperCase() === idUpper)
+        (data.employeeId && data.employeeId.toUpperCase() === idUpper) ||
+        (data.staffId && data.staffId.toLowerCase() === idLower) ||
+        (data.id && data.id.toLowerCase() === idLower)
       ) {
         return { 
           userObj: { id: data.id, ...data, password: undefined }, 
@@ -97,13 +99,20 @@ async function findUserByIdentifier(identifier) {
 }
 
 async function findAuthenticatedUser(user) {
-  if (!user || !user.id) return null;
-  
-  // 1. Check staffs collection
+  if (!user) return null;
+
+  // 1. Check staffs collection — match by id first, then fall back to email
   const staffDocs = await getAllStaffDocs();
   for (const sDoc of staffDocs) {
     const arr = sDoc.data.staffs || [];
-    const data = arr.find(s => s.id === user.id);
+    let data = null;
+    if (user.id) {
+      data = arr.find(s => s.id === user.id);
+    }
+    // Fallback: match by email (covers sessions with tokens issued before id-fix)
+    if (!data && user.email) {
+      data = arr.find(s => s.email && s.email.toLowerCase() === user.email.toLowerCase());
+    }
     if (data) {
       return { 
         userObj: { id: data.id, ...data, password: undefined }, 
@@ -114,31 +123,36 @@ async function findAuthenticatedUser(user) {
     }
   }
 
-  // 2. Global operational accounts (HR, Audio, Media, Wardens, Transport,
-  // ICTS) are stored as individual documents in `users`, not in staff groups.
-  const userDoc = await getDoc(doc(db, 'users', user.id));
-  const userExists = typeof userDoc?.exists === 'function' ? userDoc.exists() : Boolean(userDoc?.exists);
-  if (userExists) {
-    const data = (typeof userDoc.data === 'function' ? userDoc.data() : userDoc.data) || {};
-    return {
-      userObj: {
-        id: userDoc.id || user.id,
-        ...data,
-        email: data.email || user.email || '',
-        name: data.name || user.name || '',
-        password: undefined
-      },
-      storedPassword: data.password,
-      type: 'user',
-      ref: userDoc.ref
-    };
+  // 2. Global operational accounts in `users` collection
+  if (user.id) {
+    const userDoc = await getDoc(doc(db, 'users', user.id));
+    const userExists = typeof userDoc?.exists === 'function' ? userDoc.exists() : Boolean(userDoc?.exists);
+    if (userExists) {
+      const data = (typeof userDoc.data === 'function' ? userDoc.data() : userDoc.data) || {};
+      return {
+        userObj: {
+          id: userDoc.id || user.id,
+          ...data,
+          email: data.email || user.email || '',
+          name: data.name || user.name || '',
+          password: undefined
+        },
+        storedPassword: data.password,
+        type: 'user',
+        ref: userDoc.ref
+      };
+    }
   }
   
-  // 3. Fallback: Search all students by ID
+  // 3. Fallback: Search all students by id or email
   const sectionDocs = await getAllSectionDocs();
   for (const secDoc of sectionDocs) {
     const arr = secDoc.data.students || [];
-    const data = arr.find(s => s.id === user.id);
+    let data = null;
+    if (user.id) data = arr.find(s => s.id === user.id);
+    if (!data && user.email) {
+      data = arr.find(s => s.email && s.email.toLowerCase() === user.email.toLowerCase());
+    }
     if (data) {
       return { 
         userObj: { id: data.id, ...data, password: undefined, role: data.role || 'STUDENT_GENERAL' }, 
@@ -342,7 +356,36 @@ router.post('/reset-password', async (req, res) => {
     
     // Valid OTP - Reset Password
     const hashed = await hashPassword(newPassword);
-    await setDoc(found.ref, { password: hashed, updatedAt: new Date().toISOString() }, { merge: true });
+    if (found.type === 'staff') {
+      // Staff passwords live inside the staffs[] array on the document — update in-place
+      const snap = await getDoc(found.ref);
+      if (snap.exists()) {
+        const arr = snap.data().staffs || [];
+        const idx = arr.findIndex(s => s.id === found.userObj.id ||
+          (s.email && s.email.toLowerCase() === found.userObj.email?.toLowerCase()));
+        if (idx !== -1) {
+          arr[idx].password = hashed;
+          arr[idx].updatedAt = new Date().toISOString();
+          await updateDoc(found.ref, { staffs: arr });
+        }
+      }
+    } else if (found.type === 'student') {
+      // Student passwords live inside the students[] array on the section document
+      const snap = await getDoc(found.ref);
+      if (snap.exists()) {
+        const arr = snap.data().students || [];
+        const idx = arr.findIndex(s => s.id === found.userObj.id ||
+          (s.email && s.email.toLowerCase() === found.userObj.email?.toLowerCase()));
+        if (idx !== -1) {
+          arr[idx].password = hashed;
+          arr[idx].updatedAt = new Date().toISOString();
+          await updateDoc(found.ref, { students: arr });
+        }
+      }
+    } else {
+      // Individual user document (legacy `users` collection)
+      await setDoc(found.ref, { password: hashed, updatedAt: new Date().toISOString() }, { merge: true });
+    }
     await deleteDoc(otpRef);
     
     logSecurityEvent(found.userObj, 'Password Reset', 'SUCCESS', reqDetails).catch(err => console.error(err));

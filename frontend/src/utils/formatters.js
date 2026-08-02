@@ -121,26 +121,35 @@ export const getAttendanceMode = (event) => {
 };
 
 /**
- * Checks if an event's registration is locked based on Event Start Time or Registration Closing Time.
+ * Checks if an event's registration is locked based on structured lifecycle status,
+ * Event Start Time, or Registration Closing Time.
  */
 export const isRegistrationLocked = (event) => {
   if (!event) return true;
+
+  const reg = event?.registration || {};
+  if (reg.status === 'FINALIZED' || reg.status === 'CLOSED') return true;
+  if (reg.enabled === false) return true;
+  if (event?.registrationOpen === false) return true;
 
   const now = Date.now();
   const startDateStr = event?.requisition?.step1?.eventStartDate || event?.date;
   const startTimeStr = event?.requisition?.step1?.eventStartTime || event?.startTime || '00:00';
   
-  if (!startDateStr) return false;
+  if (!startDateStr) {
+    if (reg.currentDeadline) return now >= new Date(reg.currentDeadline).getTime();
+    return false;
+  }
 
-  // Compute Event Start Time
   const sDP = startDateStr.split('-');
   const sTP = startTimeStr.split(':');
   const startObj = new Date(parseInt(sDP[0]), parseInt(sDP[1])-1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1]));
   const eventStart = startObj.getTime();
 
-  // Registration Closing Time (if specified)
   let registrationCloseTime = Infinity;
-  if (event?.registrationClosingDate && event?.registrationClosingTime) {
+  if (reg.currentDeadline) {
+    registrationCloseTime = new Date(reg.currentDeadline).getTime();
+  } else if (event?.registrationClosingDate && event?.registrationClosingTime) {
       const rcDP = event.registrationClosingDate.split('-');
       const rcTP = event.registrationClosingTime.split(':');
       const rcObj = new Date(parseInt(rcDP[0]), parseInt(rcDP[1])-1, parseInt(rcDP[2]), parseInt(rcTP[0]), parseInt(rcTP[1]));

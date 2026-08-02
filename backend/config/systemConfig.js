@@ -7,12 +7,24 @@ const { getFirestore } = require('firebase-admin/firestore');
  */
 class SystemConfig {
   static DEFAULTS = {
-    venueReservationDuration: 60, // minutes
+    venueReservationDuration: 60, // legacy alias (minutes)
+    venueHoldDurationMinutes: 30, // canonical hold duration (10/15/30/45/60 allowed)
     draftExpiryDays: 30,
     managerInvitationExpiryDays: 7,
     maxManagersPerEvent: 10,
     allowVenueOverbooking: false,
-    maintenanceLeadTimeHours: 24
+    maintenanceLeadTimeHours: 24,
+    // Notification delivery modes: 'BCC_ORGANIZER' (default, privacy-first) | 'VISIBLE_TO_RECIPIENTS' (institution policy)
+    notificationDeliveryMode: 'BCC_ORGANIZER',
+    // Maximum recipients per email batch. Recipient lists exceeding this size
+    // are transparently split into multiple batches (e.g. SES ~50/100, Gmail ~99).
+    maxRecipientsPerEmailBatch: parseInt(process.env.MAX_RECIPIENTS_PER_EMAIL_BATCH, 10) || 100,
+    // Maximum retries for a single batch before moving on to the next one.
+    notificationBatchMaxRetries: 3,
+    // Default From address (falls back to EMAIL_FROM env var)
+    notificationFromEmail: process.env.EMAIL_FROM || process.env.EMAIL_USER || null,
+    // No-reply address used when the organizer doesn't have a confirmed contact email
+    notificationNoReplyEmail: process.env.NO_REPLY_EMAIL || process.env.EMAIL_FROM || process.env.EMAIL_USER || null
   };
 
   /**

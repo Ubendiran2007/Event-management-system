@@ -24,29 +24,25 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
 
   const rolePrefix = getRolePath(currentUser.role);
 
-  // Derive active tab logic from URL
+  // Derive active tab from URL — match on any segment, not just the last
   let currentActive = 'dashboard';
-  const feature = location.pathname.split('/').filter(Boolean).pop();
-  if (['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics', 'venue-management', 'notifications'].includes(feature)) {
-    currentActive = feature;
-  } else if (location.pathname.includes('/security')) {
-    currentActive = 'security';
-  } else if (location.pathname.includes('/manage-students')) {
-    currentActive = 'manage-students';
-  } else if (location.pathname.includes('/venue-management')) {
-    currentActive = 'venue-management';
-  } else if (feature === 'iqac') {
-    currentActive = 'approvals';
+  const pathSegments = location.pathname.split('/').filter(Boolean);
+  const knownFeatures = ['dashboard', 'events', 'approvals', 'registrations', 'modifications', 'available', 'my-registrations', 'tracking', 'academic-calendar', 'analytics', 'venue-management', 'notifications', 'manage-students', 'security'];
+  for (const seg of pathSegments) {
+    if (knownFeatures.includes(seg)) { currentActive = seg; break; }
+    if (seg === 'iqac') { currentActive = 'approvals'; break; }
   }
+  // Also match by pathname contains for multi-segment paths
+  if (location.pathname.includes('/security')) currentActive = 'security';
+  if (location.pathname.includes('/manage-students')) currentActive = 'manage-students';
+  if (location.pathname.includes('/venue-management')) currentActive = 'venue-management';
 
   const handleNavClick = (view, path) => {
-    if (setIsMobileMenuOpen) setIsMobileMenuOpen(false); // Close mobile menu on navigate
-    if (path) {
-      const cleanPath = path.startsWith('/') ? path.substring(1) : path;
-      navigate(`/${rolePrefix}/${cleanPath}`);
-    } else {
-      navigate(`/${rolePrefix}/${view}`);
-    }
+    if (setIsMobileMenuOpen) setIsMobileMenuOpen(false);
+    const target = path || `/${view}`;
+    // Strip leading slash then rebuild cleanly
+    const cleanPath = target.replace(/^\/+/, '');
+    navigate(`/${rolePrefix}/${cleanPath}`);
   };
 
 

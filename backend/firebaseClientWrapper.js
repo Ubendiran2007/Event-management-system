@@ -47,44 +47,31 @@ function collectionGroup(dbRef, col) {
 
 const wrapSnapshot = (snap) => {
   if (!snap) return snap;
-  // If it's a QuerySnapshot (has docs array)
+  // QuerySnapshot (has docs array)
   if (snap.docs) {
     return {
-      ...snap,
       docs: snap.docs.map(wrapSnapshot),
       empty: snap.empty,
       size: snap.size,
-      forEach: (cb) => snap.forEach((docSnap) => cb(wrapSnapshot(docSnap)))
+      forEach: (cb) => snap.docs.forEach((docSnap) => cb(wrapSnapshot(docSnap)))
     };
   }
-  // It's a DocumentSnapshot
+  // DocumentSnapshot
   return {
-    ...snap,
     id: snap.id,
     ref: snap.ref,
     data: () => snap.data(),
-    exists: () => snap.exists, // Web SDK compatibility!
+    exists: () => snap.exists,
     get: (field) => snap.get(field)
   };
 };
 
 const getDoc = async (ref) => {
-  if (process.env.EMAIL_TEST_MODE === 'true' && !process.env.USE_REAL_FIRESTORE) {
-    return wrapSnapshot({ exists: true, id: 'mock_id', data: () => ({ email: 'mock@test.com', role: 'IQAC_TEAM', name: 'Mock User' }) });
-  }
   const snap = await ref.get();
   return wrapSnapshot(snap);
 };
 
 const getDocs = async (queryRef) => {
-  if (process.env.EMAIL_TEST_MODE === 'true' && !process.env.USE_REAL_FIRESTORE) {
-    return wrapSnapshot({ docs: [{ id: 'mock_doc_1', data: () => ({
-      staffs: [
-        { email: 'hod@test.com', role: 'HOD', name: 'Mock HOD' },
-        { email: 'iqac@test.com', role: 'IQAC_TEAM', name: 'Mock IQAC' }
-      ]
-    }) }] });
-  }
   const snap = await queryRef.get();
   return wrapSnapshot(snap);
 };

@@ -1,12 +1,13 @@
 const express = require('express');
-const { requireAuth } = require('../middleware/auth');
+const crypto = require('crypto');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const router = express.Router();
 
 // Enforce authentication for all routes in this router
 router.use(requireAuth);
 
 const { dbAdmin } = require('../firebaseAdmin');
-const { collection, query, where, orderBy, limit, startAfter, getDocs, db } = require('../firebaseClientWrapper');
+const { collection, doc, getDoc, query, where, orderBy, limit, startAfter, getDocs, runTransaction, arrayUnion, db } = require('../firebaseClientWrapper');
 const { NOTIFICATION_STATUS } = require('../utils/notificationConstants');
 const analyticsService = require('../notifications/analytics/notificationAnalyticsService');
 
@@ -242,6 +243,190 @@ router.get('/dlq', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== GROUP / REGISTRATION FINALIZATION NOTIFICATION ADMIN ====================
+// These endpoints operate on the `eventNotifications` collection produced by
+// GroupNotificationDispatcher.dispatchFinalizeNotifications (per-event batch jobs).
+
+// GET /api/notifications/group
+// List event-level group notifications (admin/auditor/iqac/hod + organizer of the event).
+// Query params: eventId, status (PENDING|PROCESSING|PARTIAL|COMPLETED|FAILED), limit, pageToken.
+router.get('/group', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  try {
+    const limitNum = Math.max(1, Math.min(100, parseInt(req.query.limit) || 25));
+    const { eventId, status } = req.query;
+    const actingRole = req.user.role;
+    const constraints = [];
+
+    // Scope for non-admin/non-IQAC roles
+    if (!['SYSTEM_ADMIN', 'IQAC_TEAM'].includes(actingRole)) {
+      constraints.push(where('actor.uid', '==', String(req.user.id)));
+    }
+    if (eventId) constraints.push(where('eventId', '==', String(eventId)));
+    if (status) constraints.push(where('status', '==', String(status)));
+    constraints.push(orderBy('createdAt', 'desc'));
+    constraints.push(limit(limitNum));
+
+    const snap = await getDocs(query(collection(db, 'eventNotifications'), ...constraints));
+    const items = [];
+    snap.forEach(d => {
+      const data = d.data();
+      items.push({
+        id: d.id,
+        eventId: data.eventId,
+        status: data.status,
+        progress: data.progress || null,
+        summary: data.summary || null,
+        createdAt: data.createdAt,
+        finalizedAt: data.finalizedAt,
+        actor: data.actor || null,
+        mode: data.deliveryMode || null,
+        errors: (data.errors || []).slice(0, 25)
+      });
+    });
+    return res.json({ success: true, items, total: items.length });
+  } catch (error) {
+    console.error('[notifications/group] GET error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/notifications/group/:notificationId
+// Full detail including per-batch status and recipient list.
+router.get('/group/:notificationId', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const ref = doc(db, 'eventNotifications', notificationId);
+    const snap = await getDoc(ref);
+    if (!snap.exists) return res.status(404).json({ success: false, message: 'Notification not found' });
+    const data = snap.data();
+
+    // Scope check: non-admins can only view their own notifications
+    if (!['SYSTEM_ADMIN', 'IQAC_TEAM'].includes(req.user.role)) {
+      if (String(data.actor?.uid || '') !== String(req.user.id)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' });
+      }
+    }
+
+    const batches = (data.batches || []).map(b => ({
+      batchId: b.batchId,
+      groupType: b.groupType,
+      totalRecipients: b.totalRecipients,
+      status: b.status,
+      attemptCount: b.attemptCount || 0,
+      lastAttemptedAt: b.lastAttemptedAt || null,
+      completedAt: b.completedAt || null,
+      error: b.error || null,
+      recipientCount: (b.recipients || []).length
+    }));
+
+    return res.json({
+      success: true,
+      id: snap.id,
+      ...data,
+      batches
+    });
+  } catch (error) {
+    console.error('[notifications/group/:id] GET error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/notifications/group/:notificationId/resume
+// Resume a PARTIAL or PROCESSING notification: retries only FAILED|RETRYING batches.
+// Safe idempotency: completed batches inside the same notificationId are skipped.
+router.post('/group/:notificationId/resume', requireRole(['SYSTEM_ADMIN', 'IQAC_TEAM']), async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const notifRef = doc(db, 'eventNotifications', notificationId);
+    const nowIso = new Date().toISOString();
+
+    const result = await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(notifRef);
+      if (!snap.exists) throw new Error('NOT_FOUND:Notification not found');
+      const data = snap.data();
+      if (!['PROCESSING', 'PARTIAL', 'FAILED'].includes(data.status || '')) {
+        throw new Error(`BAD_REQUEST:Cannot resume a notification with status '${data.status}'. Only PROCESSING, PARTIAL, or FAILED can be retried.`);
+      }
+      const batches = Array.isArray(data.batches) ? data.batches : [];
+      const retryableBatches = batches.filter(b => ['FAILED', 'RETRYING'].includes(b.status) && (b.attemptCount || 0) < 10);
+      if (retryableBatches.length === 0) {
+        throw new Error(`NO_OP:No retryable batches. All batches completed or exceeded max retries.`);
+      }
+      const resetBatches = batches.map(b => {
+        const isRetryable = retryableBatches.find(r => r.batchId === b.batchId);
+        if (isRetryable) {
+          return { ...b, status: 'PENDING', error: null, nextRetryAfter: null };
+        }
+        return b;
+      });
+      const updatedProgress = {
+        ...(data.progress || {}),
+        state: 'RESUMED',
+        resumedAt: nowIso,
+        resumedBy: { uid: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department }
+      };
+      const updatedStatus = retryableBatches.length === batches.length
+        ? 'PENDING'
+        : (data.status === 'FAILED' ? 'FAILED' : 'PARTIAL'); // Will be progressed to PROCESSING by worker
+
+      transaction.update(notifRef, {
+        status: updatedStatus,
+        batches: resetBatches,
+        progress: updatedProgress,
+        resumeRequestedAt: nowIso,
+        resumeRequestedBy: { uid: req.user.id, name: req.user.name || req.user.email, role: req.user.role },
+        updatedAt: nowIso,
+        timeline: arrayUnion({
+          at: nowIso,
+          event: 'ADMIN_RESUME',
+          detail: `${retryableBatches.length} batch(es) reset to PENDING for retry.`,
+          by: { uid: req.user.id, name: req.user.name || req.user.email, role: req.user.role }
+        })
+      });
+      return { retryableCount: retryableBatches.length };
+    });
+
+    // Kick the scheduler immediately so retry doesn't wait 5 minutes
+    try {
+      const NotificationScheduler = require('../services/NotificationScheduler');
+      if (NotificationScheduler && typeof NotificationScheduler.resumeInterruptedNotifications === 'function') {
+        // Fire-and-forget; scheduler will pick up the PENDING batches next tick, but also try to
+        // run them inline asynchronously to improve latency.
+        setImmediate(() => NotificationScheduler.resumeInterruptedNotifications().catch(() => {}));
+      }
+    } catch (_) { /* ignore */ }
+
+    try {
+      const { logAudit } = require('../utils/logger');
+      await logAudit({
+        category: 'NOTIFICATION',
+        action: 'GROUP_NOTIFICATION_RESUME',
+        status: 'SUCCESS',
+        severity: 'HIGH',
+        correlationId: notificationId,
+        requestId: crypto.randomUUID(),
+        actor: { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department },
+        target: { entityType: 'EVENT_NOTIFICATION', entityId: notificationId },
+        details: { retryableBatches: result.retryableCount },
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+        userAgent: req.headers['user-agent'] || null
+      });
+    } catch (_) { /* swallow audit double-fault */ }
+
+    return res.json({
+      success: true,
+      message: `Resumed ${result.retryableCount} batch(es). Retry queue processing.`,
+      retryableCount: result.retryableCount
+    });
+  } catch (error) {
+    if (error.message.includes('NO_OP')) return res.status(200).json({ success: true, message: error.message.split(':')[1] });
+    if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, message: error.message.split(':')[1] });
+    console.error('[notifications/group/:id/resume] POST error:', error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 

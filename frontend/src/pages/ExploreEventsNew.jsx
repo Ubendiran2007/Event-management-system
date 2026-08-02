@@ -1,7 +1,7 @@
 import { fetchEvents } from '../services/firebaseService';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User, Lock, ChevronLeft } from 'lucide-react';
+import { Calendar, MapPin, Loader2, CheckCircle2, XCircle, Download, Eye, UserPlus, UserMinus, FileCheck, Clock, Users, MessageSquare, X, Star, ClipboardList, ExternalLink, Image, FileText, Link2, ScrollText, Building2, Mail, Linkedin, User, Lock, ChevronLeft, CalendarClock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppContext } from '../context/AppContext';
 import { formatRollNo, formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, isRegistrationLocked } from '../utils/formatters';
@@ -17,6 +17,7 @@ import EventReportModal from '../components/EventReportModal';
 import { sortEventsByEventDateDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
 import defaultPoster from '../assets/sece.avif';
 import { seceHeaderBase64 } from '../assets/seceHeaderBase64';
+import { computeRegistrationStatus, formatDeadlineLabel, getRegistrationMeta } from '../utils/registrationUtils';
 const formatTime12 = (t24) => {
   if (!t24) return "-";
   try {
@@ -1678,6 +1679,13 @@ const EventCard = ({
   const odReq = (odRequests || []).find(r => r && event?.id && r.eventId === event.id && r.studentId === currentUser?.id && r.status !== 'WITHDRAWN');
   const requestStatus = odReq ? odReq.status : null;
 
+  // Registration window status (for badges + register button gate)
+  const regStatus = computeRegistrationStatus(event);
+  const regMeta = getRegistrationMeta(event);
+  const isRegistrationOpen = regStatus === 'OPEN';
+  const isRegistrationClosed = regStatus === 'CLOSED' || regStatus === 'FINALIZED';
+  const regLocked = isRegistrationClosed || regStatus === 'NOT_OPEN_YET';
+
   return (
     <div
       onClick={() => (isCompleted && event.iqacSubmittedAt) && onOpenIQAC(event)}
@@ -1734,6 +1742,59 @@ const EventCard = ({
               {formatEventRef(event)}
             </span>
           </div>
+
+          {/* ── Registration status badges ───────────────────────────── */}
+          {isUpcoming && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              {regStatus === 'OPEN' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Registration Open
+                </span>
+              )}
+              {regStatus === 'NOT_OPEN_YET' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-50 text-sky-700 border border-sky-200">
+                  <Clock size={10} />
+                  Opens {regMeta?.opensAt ? new Date(regMeta.opensAt).toLocaleString() : 'Soon'}
+                </span>
+              )}
+              {regStatus === 'CLOSED' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
+                  <Lock size={10} />
+                  Registration Closed
+                </span>
+              )}
+              {regStatus === 'FULL' && regStatus !== 'CLOSED' && regStatus !== 'FINALIZED' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-50 text-orange-700 border border-orange-200">
+                  <Users size={10} />
+                  Capacity Reached
+                </span>
+              )}
+              {regStatus === 'FINALIZED' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                  <FileCheck size={10} />
+                  Finalized
+                </span>
+              )}
+              {(regMeta?.extensionCount || 0) > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  <CalendarClock size={10} />
+                  Extended {regMeta.extensionCount}×
+                </span>
+              )}
+              {regMeta?.currentDeadline && isRegistrationOpen && regStatus !== 'CLOSED' && regStatus !== 'FINALIZED' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-slate-600 border border-slate-200 bg-white/60">
+                  {formatDeadlineLabel(regMeta.currentDeadline)}
+                </span>
+              )}
+              {regMeta?.maxParticipants && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium text-slate-600 border border-slate-200 bg-white/60">
+                  <Users size={10} /> {regMeta.currentRegisteredCount != null ? `${regMeta.currentRegisteredCount} / ${regMeta.maxParticipants}` : `Capacity ${regMeta.maxParticipants}`}
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 text-sm text-slate-600">
             <Calendar size={14} />
             <span className="text-xs">
@@ -1765,12 +1826,21 @@ const EventCard = ({
         )}
 
         <div className="flex flex-wrap gap-2">
-          {/* Register — only upcoming, only non-organizers */}
-          {isStudent && !registered && isUpcoming && (event.organizerId !== currentUser?.id && event.organizerEmail !== currentUser?.email) && (
+          {/* Register — only upcoming, only non-organizers, only when registration is open */}
+          {isStudent && !registered && isUpcoming && !regLocked && (event.organizerId !== currentUser?.id && event.organizerEmail !== currentUser?.email) && (
             <button onClick={(e) => { e.stopPropagation(); onRegister(event.id); }} disabled={processing}
               className="flex items-center gap-1.5 px-3 py-2 bg-cse-accent text-white rounded-lg hover:bg-cse-accent/90 disabled:opacity-50 text-xs font-medium">
               {processing ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Register
             </button>
+          )}
+          {/* Informational banner: registration not currently accepting */}
+          {isStudent && !registered && isUpcoming && regLocked && (event.organizerId !== currentUser?.id && event.organizerEmail !== currentUser?.email) && (
+            <span className="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium bg-slate-100 text-slate-600 border-slate-200">
+              {regStatus === 'FINALIZED' ? (<><FileCheck size={14} /> Finalized — no registrations</>) :
+               regStatus === 'CLOSED'   ? (<><Lock size={14} /> Deadline Passed — Registration Closed</>) :
+               regStatus === 'NOT_OPEN_YET' ? (<><Clock size={14} /> Registration not open yet</>) :
+               (<><Lock size={14} /> Registration Unavailable</>)}
+            </span>
           )}
           {/* Withdraw & Registration Status */}
           {(() => {

@@ -11,7 +11,7 @@ const {
   getDoc, query, where, collectionGroup, db
 } = require('../firebaseClientWrapper');
 const { sendEmail } = require('../services/emailService');
-const { getAllSectionDocs } = require('../utils/studentHelper');
+const { findStudentInFirestore } = require('../utils/studentHelper');
 
 
 const normalizeRollNo = (value) =>
@@ -166,29 +166,20 @@ router.post('/', async (req, res) => {
   try {
     const now = new Date().toISOString();
     
-    // Fetch real-time student details from DB to ensure accuracy
+    // Fetch real-time student details using O(1) index lookup
     let dbRollNo = rollNo || '';
     let dbOdUsed = Number(currentOdUsed) || 0;
     let dbOdLimit = Number(currentOdLimit) || 0;
     let dbEmail = '';
-    let studentDocSnap = null;
+
     if (studentId) {
-      const sectionDocs = await getAllSectionDocs();
-      for (const secDoc of sectionDocs) {
-        const arr = secDoc.data.students || [];
-        const found = arr.find(s => s.rollNo === dbRollNo || s.id === studentId);
-        if (found) {
-          studentDocSnap = { data: () => found };
-          break;
-        }
+      const found = await findStudentInFirestore(studentId);
+      if (found) {
+        dbRollNo = found.rollNo || dbRollNo;
+        dbOdUsed = found.odUsed  !== undefined ? Number(found.odUsed)  : dbOdUsed;
+        dbOdLimit = found.odLimit !== undefined ? Number(found.odLimit) : dbOdLimit;
+        dbEmail   = found.email  || '';
       }
-    }
-    if (studentDocSnap) {
-        const studentData = studentDocSnap.data();
-        dbRollNo = studentData.rollNo || dbRollNo;
-        dbOdUsed = studentData.odUsed !== undefined ? Number(studentData.odUsed) : dbOdUsed;
-        dbOdLimit = studentData.odLimit !== undefined ? Number(studentData.odLimit) : dbOdLimit;
-        dbEmail = studentData.email || '';
     }
 
     const newRequest = {
@@ -215,12 +206,14 @@ router.post('/', async (req, res) => {
 
     const docRef = await addDoc(collection(db, 'correctionRequests'), newRequest);
 
-    // ── Email: Student confirmation ───────────────────────────────────────────
+    // ── Emails: student + faculty — fired in parallel, don't block response ──
     const facultyUsers = await getUsersByRole('FACULTY', department);
     const facultyNameStr = facultyUsers.map(f => f.name || f.email).join(', ') || 'Your Faculty Advisor';
 
+    const emailJobs = [];
+
     if (dbEmail) {
-      safeMail({
+      emailJobs.push(safeMail({
         to: dbEmail,
         subject: `OD Correction Request Submitted — Pending Faculty Verification`,
         html: buildEmailHtml({
@@ -245,12 +238,11 @@ router.post('/', async (req, res) => {
           </div>`,
         }),
         text: `OD Correction Request Submitted\nStatus: Pending Faculty Verification\nAssigned To: ${facultyNameStr}`,
-      });
+      }));
     }
 
-    // ── Email: Faculty notification ───────────────────────────────────────────
     for (const faculty of facultyUsers) {
-      safeMail({
+      emailJobs.push(safeMail({
         to: faculty.email,
         subject: `OD Correction Verification Required — ${studentName} (${dbRollNo})`,
         html: buildEmailHtml({
@@ -274,8 +266,11 @@ router.post('/', async (req, res) => {
           </div>`,
         }),
         text: `OD Correction Verification Required for ${studentName} (${dbRollNo}). Please log into the portal.`,
-      });
+      }));
     }
+
+    // Fire all emails concurrently without blocking the HTTP response
+    Promise.all(emailJobs).catch(err => console.error('[correctionRequests/POST] Email error:', err));
 
     res.json({ success: true, id: docRef.id });
   } catch (err) {
@@ -373,30 +368,17 @@ router.patch('/:id/status', requireRole(CORRECTION_ALLOWED_ROLES), async (req, r
           const actualApproved = odSnap.size;
           const newOffset = data.requestedCount - actualApproved;
 
-          let targetSecDoc = null;
-          let targetArr = null;
-          let studentIdx = -1;
+          // O(1) lookup via student_index
+          const studentRecord = await findStudentInFirestore(data.studentId);
           
-          const sectionDocs = await getAllSectionDocs();
-          for (const secDoc of sectionDocs) {
-            const arr = secDoc.data.students || [];
-            const idx = arr.findIndex(s => s.rollNo === data.rollNo || s.id === data.studentId);
-            if (idx !== -1) {
-              targetSecDoc = secDoc;
-              targetArr = arr;
-              studentIdx = idx;
-              break;
-            }
-          }
-          
-          if (targetSecDoc) {
-              targetArr[studentIdx].odUsed = data.requestedCount;
-              targetArr[studentIdx].odLimit = data.requestedLimit;
-              targetArr[studentIdx].odCorrectionOffset = newOffset;
-              targetArr[studentIdx].odResetTimestamp = now;
-              targetArr[studentIdx].updatedAt = now;
-              
-              await updateDoc(targetSecDoc.ref, { students: targetArr });
+          if (studentRecord) {
+              const targetArr = studentRecord.allStudents;
+              targetArr[studentRecord.studentIndex].odUsed = data.requestedCount;
+              targetArr[studentRecord.studentIndex].odLimit = data.requestedLimit;
+              targetArr[studentRecord.studentIndex].odCorrectionOffset = newOffset;
+              targetArr[studentRecord.studentIndex].odResetTimestamp = now;
+              targetArr[studentRecord.studentIndex].updatedAt = now;
+              await updateDoc(studentRecord.ref, { students: targetArr });
               updatedUsers = true;
           }
 

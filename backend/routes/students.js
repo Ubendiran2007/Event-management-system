@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { collection, getDocs, doc, getDoc, updateDoc, writeBatch, setDoc, deleteDoc, db } = require('../firebaseClientWrapper');
+const { collection, collectionGroup, getDocs, doc, getDoc, updateDoc, writeBatch, setDoc, deleteDoc, query, where, limit, db } = require('../firebaseClientWrapper');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { buildStudentData } = require('../services/userService');
 const { parsePaginationParams } = require('../utils/paginationHelper');
@@ -24,11 +24,83 @@ const { getAllSectionDocs, clearSectionDocsCache, syncStructureMetadata, findStu
 // --- CACHE IMPLEMENTATION ---
 let cachedStudents = null;
 
+// College-wide index cache (2-minute TTL) — busted on any write
+let _collegeIndexCache = null;
+let _collegeIndexExpiry = 0;
+const COLLEGE_INDEX_TTL = 2 * 60 * 1000;
+
 const invalidateCache = () => {
   cachedStudents = null;
+  _collegeIndexCache = null;
+  _collegeIndexExpiry = 0;
   clearSectionDocsCache();
 };
 // ----------------------------
+
+/**
+ * Build a college-wide index of rollNo → location and email → location
+ * by scanning BOTH storage paths:
+ *   1. students/{batch}/{dept}/{section}  (backend-created, students[] array)
+ *   2. students/{CLASS}/members/{id}      (frontend-seeded, individual docs)
+ * Returns:
+ *   rollNoMap  : Map<upperRollNo, { rollNo, name, email, class, department, section }>
+ *   emailMap   : Map<lowerEmail,  { rollNo, name, email, class, department, section }>
+ */
+async function buildCollegeWideStudentIndex() {
+  // Return cached result if still fresh
+  if (_collegeIndexCache && Date.now() < _collegeIndexExpiry) {
+    return _collegeIndexCache;
+  }
+
+  const rollNoMap = new Map();
+  const emailMap  = new Map();
+
+  // Path 1 — array-based section docs (via metadata-driven scan)
+  const sectionDocs = await getAllSectionDocs();
+  for (const secDoc of sectionDocs) {
+    for (const s of (secDoc.data.students || [])) {
+      const entry = {
+        rollNo: s.rollNo, name: s.name, email: s.email,
+        class: s.class || `${secDoc.dept}-${secDoc.sec}`,
+        department: secDoc.dept, section: secDoc.sec,
+        existsIn: 'array-doc',
+      };
+      if (s.rollNo) rollNoMap.set(s.rollNo.toUpperCase(), entry);
+      if (s.email)  emailMap.set(s.email.toLowerCase(), entry);
+    }
+  }
+
+  // Path 2 — legacy members subcollection (frontend seed)
+  try {
+    const classesSnap = await getDocs(collection(db, 'students'));
+    // Fire all member-subcollection reads in parallel
+    await Promise.all(classesSnap.docs.map(async (classDoc) => {
+      const membersSnap = await getDocs(collection(db, 'students', classDoc.id, 'members'));
+      for (const memberDoc of membersSnap.docs) {
+        const s = memberDoc.data();
+        if (!s.rollNo && !s.email) continue;
+        const entry = {
+          rollNo: s.rollNo, name: s.name, email: s.email,
+          class: classDoc.id,
+          department: s.department || classDoc.id.split(/[\s\-]+/)[0].toUpperCase(),
+          section: classDoc.id,
+          existsIn: 'members-subcollection',
+        };
+        if (s.rollNo && !rollNoMap.has(s.rollNo.toUpperCase()))
+          rollNoMap.set(s.rollNo.toUpperCase(), entry);
+        if (s.email && !emailMap.has(s.email.toLowerCase()))
+          emailMap.set(s.email.toLowerCase(), entry);
+      }
+    }));
+  } catch (err) {
+    console.warn('[students] Legacy members scan warning:', err.message);
+  }
+
+  const result = { rollNoMap, emailMap };
+  _collegeIndexCache  = result;
+  _collegeIndexExpiry = Date.now() + COLLEGE_INDEX_TTL;
+  return result;
+}
 
 // GET /api/students — fetch students with in-memory pagination
 router.get('/', async (req, res) => {
@@ -48,6 +120,10 @@ router.get('/', async (req, res) => {
         const studentsArray = secDoc.data.students || [];
         studentsArray.forEach(data => {
           const { password, ...safeData } = data;
+          // Infer department from class if missing (e.g. "CSE D" → "CSE")
+          if (!safeData.department && safeData.class) {
+            safeData.department = safeData.class.replace(/-/g, ' ').trim().split(' ')[0].toUpperCase();
+          }
           allStudents.push(safeData);
         });
       });
@@ -106,6 +182,41 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    // ── College-wide duplicate check (rollNo + email) ──────────────────────
+    const { rollNoMap, emailMap } = await buildCollegeWideStudentIndex();
+
+    const conflicts = [];
+    const rollNoUpper = rollNo.toUpperCase();
+    const emailLower  = email.toLowerCase();
+
+    if (rollNoMap.has(rollNoUpper)) {
+      const existing = rollNoMap.get(rollNoUpper);
+      conflicts.push({
+        field: 'rollNo',
+        value: rollNo,
+        message: `Roll No "${rollNo}" already belongs to ${existing.name || 'another student'} in class ${existing.class} (${existing.department})`,
+        existingStudent: existing,
+      });
+    }
+    if (emailMap.has(emailLower)) {
+      const existing = emailMap.get(emailLower);
+      conflicts.push({
+        field: 'email',
+        value: email,
+        message: `Email "${email}" is already registered to ${existing.name || 'another student'} (Roll No: ${existing.rollNo || 'N/A'}) in class ${existing.class}`,
+        existingStudent: existing,
+      });
+    }
+
+    if (conflicts.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Duplicate detected — student not added. ${conflicts.map(c => c.message).join(' | ')}`,
+        conflicts,
+      });
+    }
+
+    // ── Safe to insert ─────────────────────────────────────────────────────
     const { studentId, studentData } = await buildStudentData(req.body);
     studentData.id = studentId;
 
@@ -128,16 +239,11 @@ router.post('/', async (req, res) => {
       await updateDoc(studentRef, { students });
     }
     
-    // Phase 3B: Sync index and metadata
     const indexRef = doc(db, 'student_index', studentId);
     await setDoc(indexRef, {
-      studentId: studentId,
-      uid: null,
-      batch: academicBatch,
-      department: actualDept,
-      section: actualSection.toUpperCase(),
-      status: 'ACTIVE',
-      updatedAt: new Date().toISOString()
+      studentId, uid: null, batch: academicBatch,
+      department: actualDept, section: actualSection.toUpperCase(),
+      status: 'ACTIVE', updatedAt: new Date().toISOString()
     });
     await syncStructureMetadata(academicBatch, actualDept);
     
@@ -161,103 +267,110 @@ router.post('/bulk', async (req, res) => {
   try {
     const actorEmail = req.user?.email || 'SYSTEM';
 
-    // Pre-fetch all students to detect database duplicates
-    const existingEmails = new Set();
-    const existingRollNos = new Set();
-    
-    const sectionDocs = await getAllSectionDocs();
-    sectionDocs.forEach(secDoc => {
-      const arr = secDoc.data.students || [];
-      arr.forEach(s => {
-        if (s.rollNo) existingRollNos.add(s.rollNo.toUpperCase());
-        if (s.email) existingEmails.add(s.email.toLowerCase());
-      });
-    });
+    // ── College-wide duplicate index (both storage paths) ──────────────────
+    const { rollNoMap, emailMap } = await buildCollegeWideStudentIndex();
 
-    const validToImport = [];
-    const dbDuplicates = [];
+    const validToImport   = [];
+    const dbDuplicates    = []; // { student, conflicts: [{field, value, message, existingStudent}] }
+    const fileRollNos     = new Map(); // track within-file duplicates
+    const fileEmails      = new Map();
 
     for (const student of students) {
       const { rollNo, email, academicBatch, department } = student;
       const actualSection = student.section || student.className;
-      
       if (!academicBatch || !department || !actualSection) continue;
 
-      const isDup = (rollNo && existingRollNos.has(rollNo.toUpperCase())) || 
-                    (email && existingEmails.has(email.toLowerCase()));
-      
-      if (isDup) {
-        dbDuplicates.push(student);
+      const rollUpper  = rollNo  ? rollNo.toUpperCase()  : null;
+      const emailLower = email   ? email.toLowerCase()   : null;
+
+      const conflicts = [];
+
+      // DB duplicates
+      if (rollUpper && rollNoMap.has(rollUpper)) {
+        const ex = rollNoMap.get(rollUpper);
+        conflicts.push({
+          field: 'rollNo', value: rollNo,
+          message: `Roll No "${rollNo}" already exists — ${ex.name || ''} in ${ex.class} (${ex.department})`,
+          existingStudent: ex,
+        });
+      }
+      if (emailLower && emailMap.has(emailLower)) {
+        const ex = emailMap.get(emailLower);
+        conflicts.push({
+          field: 'email', value: email,
+          message: `Email "${email}" already exists — ${ex.name || ''} (${ex.rollNo || 'N/A'}) in ${ex.class}`,
+          existingStudent: ex,
+        });
+      }
+
+      // Within-file duplicates
+      if (rollUpper && fileRollNos.has(rollUpper)) {
+        conflicts.push({ field: 'rollNo', value: rollNo, message: `Roll No "${rollNo}" appears more than once in the uploaded file` });
+      }
+      if (emailLower && fileEmails.has(emailLower)) {
+        conflicts.push({ field: 'email', value: email, message: `Email "${email}" appears more than once in the uploaded file` });
+      }
+
+      if (conflicts.length > 0) {
+        dbDuplicates.push({ student, conflicts });
       } else {
         validToImport.push(student);
+        if (rollUpper)  fileRollNos.set(rollUpper, true);
+        if (emailLower) fileEmails.set(emailLower, true);
       }
     }
 
     if (validToImport.length === 0) {
       return res.json({ 
         success: true, 
-        message: 'No new students to import', 
+        message: 'No new students to import — all records are duplicates', 
         importedCount: 0, 
-        dbDuplicatesCount: dbDuplicates.length 
+        dbDuplicatesCount: dbDuplicates.length,
+        duplicateDetails: dbDuplicates,
       });
     }
 
-    // Group valid imports by section doc path
+    // ── Group valid imports by section doc path ────────────────────────────
     const importsByPath = {};
     const addedStudents = [];
 
-    for (let i = 0; i < validToImport.length; i++) {
-      const student = validToImport[i];
+    for (const student of validToImport) {
       const { studentId, studentData } = await buildStudentData(student);
       studentData.id = studentId;
-      
       const actualSection = student.section || student.className;
-      const actualDept = student.department.toUpperCase();
+      const actualDept    = student.department.toUpperCase();
       const path = `students/${student.academicBatch}/${actualDept}/${actualSection.toUpperCase()}`;
-      
       if (!importsByPath[path]) importsByPath[path] = { batch: student.academicBatch, dept: actualDept, sec: actualSection.toUpperCase(), students: [] };
       importsByPath[path].students.push(studentData);
       addedStudents.push(studentData);
     }
 
-    let writeBatchFirebase = writeBatch(db);
-    
+    let batchWrite = writeBatch(db);
     for (const path of Object.keys(importsByPath)) {
       const group = importsByPath[path];
-      const ref = doc(db, path.split('/')[0], path.split('/')[1], path.split('/')[2], path.split('/')[3]);
+      const parts = path.split('/');
+      const ref = doc(db, parts[0], parts[1], parts[2], parts[3]);
       const snap = await getDoc(ref);
-      
       if (snap.exists()) {
-        const existingArr = snap.data().students || [];
-        writeBatchFirebase.update(ref, { students: [...existingArr, ...group.students] });
+        const existing = snap.data().students || [];
+        batchWrite.update(ref, { students: [...existing, ...group.students] });
       } else {
-        writeBatchFirebase.set(ref, {
-          batch: group.batch,
-          department: group.dept,
-          section: group.sec,
-          students: group.students
-        });
+        batchWrite.set(ref, { batch: group.batch, department: group.dept, section: group.sec, students: group.students });
       }
     }
-    
-    await writeBatchFirebase.commit();
+    await batchWrite.commit();
 
-    // Phase 3B: Sync index and metadata for bulk
-    const indexBatch = writeBatch(db);
-    const uniqueMeta = new Set();
+    // ── Index + metadata ───────────────────────────────────────────────────
+    const indexBatch  = writeBatch(db);
+    const uniqueMeta  = new Set();
     for (const path of Object.keys(importsByPath)) {
       const group = importsByPath[path];
       uniqueMeta.add(`${group.batch}|${group.dept}`);
       for (const st of group.students) {
-        const indexRef = doc(db, 'student_index', st.id);
-        indexBatch.set(indexRef, {
-          studentId: st.id,
-          uid: null,
-          batch: group.batch,
-          department: group.dept,
-          section: group.sec,
-          status: 'ACTIVE',
-          updatedAt: new Date().toISOString()
+        indexBatch.set(doc(db, 'student_index', st.id), {
+          studentId: st.id, uid: null,
+          batch: group.batch, department: group.dept, section: group.sec,
+          status: 'ACTIVE', updatedAt: new Date().toISOString()
         });
       }
     }
@@ -269,14 +382,9 @@ router.post('/bulk', async (req, res) => {
 
     const { logActivity } = require('../utils/logger');
     logActivity({
-      category: 'USER_MANAGEMENT',
-      action: 'Bulk Import Students',
-      status: 'SUCCESS',
+      category: 'USER_MANAGEMENT', action: 'Bulk Import Students', status: 'SUCCESS',
       actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
-      details: { 
-        imported: addedStudents.length,
-        dbDuplicates: dbDuplicates.length
-      }
+      details: { imported: addedStudents.length, dbDuplicates: dbDuplicates.length }
     });
 
     invalidateCache();
@@ -286,6 +394,7 @@ router.post('/bulk', async (req, res) => {
       message: `Successfully added ${addedStudents.length} students`, 
       importedCount: addedStudents.length, 
       dbDuplicatesCount: dbDuplicates.length,
+      duplicateDetails: dbDuplicates,
       students: addedStudents 
     });
   } catch (err) {
@@ -394,31 +503,18 @@ router.put('/:id/role', async (req, res) => {
   }
 
   try {
-    const sectionDocs = await getAllSectionDocs();
-    let targetDoc = null;
-    let studentIndex = -1;
-    let studentsArray = [];
-
-    for (const secDoc of sectionDocs) {
-      const arr = secDoc.data.students || [];
-      const idx = arr.findIndex(s => s.id === id);
-      if (idx !== -1) {
-        targetDoc = secDoc;
-        studentIndex = idx;
-        studentsArray = arr;
-        break;
-      }
-    }
-
-    if (!targetDoc) {
+    // O(1) lookup via student_index instead of full section scan
+    const student = await findStudentInFirestore(id);
+    if (!student) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    studentsArray[studentIndex].role = role;
-    studentsArray[studentIndex].isApprovedOrganizer = Boolean(isApprovedOrganizer);
-    studentsArray[studentIndex].updatedAt = new Date().toISOString();
+    const studentsArray = student.allStudents;
+    studentsArray[student.studentIndex].role = role;
+    studentsArray[student.studentIndex].isApprovedOrganizer = Boolean(isApprovedOrganizer);
+    studentsArray[student.studentIndex].updatedAt = new Date().toISOString();
 
-    await updateDoc(targetDoc.ref, { students: studentsArray });
+    await updateDoc(student.ref, { students: studentsArray });
     invalidateCache();
     res.json({ success: true, message: 'Student role updated successfully', studentId: id, role });
   } catch (err) {
@@ -434,31 +530,18 @@ router.patch('/:id/od-stats', async (req, res) => {
   const { odUsed, odLimit } = req.body;
 
   try {
-    const sectionDocs = await getAllSectionDocs();
-    let targetDoc = null;
-    let studentIndex = -1;
-    let studentsArray = [];
-
-    for (const secDoc of sectionDocs) {
-      const arr = secDoc.data.students || [];
-      const idx = arr.findIndex(s => s.id === id);
-      if (idx !== -1) {
-        targetDoc = secDoc;
-        studentIndex = idx;
-        studentsArray = arr;
-        break;
-      }
-    }
-
-    if (!targetDoc) {
+    // O(1) lookup via student_index
+    const student = await findStudentInFirestore(id);
+    if (!student) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    if (odUsed !== undefined) studentsArray[studentIndex].odUsed = Number(odUsed);
-    if (odLimit !== undefined) studentsArray[studentIndex].odLimit = Number(odLimit);
-    studentsArray[studentIndex].updatedAt = new Date().toISOString();
+    const studentsArray = student.allStudents;
+    if (odUsed !== undefined) studentsArray[student.studentIndex].odUsed = Number(odUsed);
+    if (odLimit !== undefined) studentsArray[student.studentIndex].odLimit = Number(odLimit);
+    studentsArray[student.studentIndex].updatedAt = new Date().toISOString();
 
-    await updateDoc(targetDoc.ref, { students: studentsArray });
+    await updateDoc(student.ref, { students: studentsArray });
     invalidateCache();
     res.json({ success: true, message: 'Student OD stats updated successfully', studentId: id });
   } catch (err) {

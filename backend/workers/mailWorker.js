@@ -52,6 +52,8 @@ async function processMailQueue() {
         const mailOptions = {
           from: job.from,
           to: job.to,
+          cc: job.cc || undefined,
+          bcc: job.bcc || undefined,
           subject: job.subject,
           text: job.text,
           html: job.html,

@@ -8,7 +8,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import Layout from '../components/Layout';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getAuthToken } from '../utils/api';
+import { getAuthToken, venueApi } from '../utils/api';
 
 const VENUE_TYPES = ['Auditorium', 'Seminar Hall', 'Conference Hall', 'Smart Classroom', 'Lab', 'Board Room', 'Studio', 'Other'];
 const BUILDINGS = ['Block A', 'Block B', 'Block C', 'IT Centre', 'Main Building', 'Admin Block', 'Other'];
@@ -130,23 +130,25 @@ const VenueSelection = () => {
   // Helper to check if a specific time slot is occupied for a venue
   const getSlotStatus = (venueId, timeStr) => {
     const events = calendarData[venueId] || [];
-    // Convert timeStr like '09:00' to int 9
     const hour = parseInt(timeStr.split(':')[0], 10);
 
     for (const ev of events) {
       if (ev.type === 'MAINTENANCE') {
-        return { status: 'MAINTENANCE', label: ev.reason || 'Under Maintenance' };
+        return { status: 'MAINTENANCE', label: ev.reason || 'Venue Unavailable' };
       }
       if (ev.startTime && ev.endTime) {
         const startH = parseInt(ev.startTime.split(':')[0], 10);
         const endH = parseInt(ev.endTime.split(':')[0], 10);
         if (hour >= startH && hour < endH) {
-          if (ev.type === 'EVENT') return { status: 'BOOKED', label: ev.title || 'Booked Event' };
-          if (ev.type === 'RESERVATION') return { status: 'HOLD', label: 'Draft Hold (10m)' };
+          if (ev.type === 'EVENT') return { status: 'BOOKED', label: ev.title || 'Confirmed Booking' };
+          if (ev.type === 'RESERVATION') {
+            const isExpired = ev.status === 'EXPIRED' || (ev.expiresAt && new Date(ev.expiresAt).getTime() < Date.now());
+            return { status: isExpired ? 'EXPIRED' : 'HOLD', label: isExpired ? 'Expired Hold' : 'Temporary Draft Hold' };
+          }
         }
       }
     }
-    return { status: 'FREE', label: 'Available' };
+    return { status: 'FREE', label: 'Slot Available' };
   };
 
   const handleSelectVenueSlot = (venue, defaultStart = '09:00', defaultEnd = '11:00') => {
@@ -168,42 +170,69 @@ const VenueSelection = () => {
     try {
       setReserving(true);
       setError('');
-      const payload = {
-        venueId: selectedVenue.id,
-        date: selectedDate,
-        startTime,
-        endTime
+      const venueId = selectedVenue.id || selectedVenue.venueId || selectedVenue.venue_id;
+
+      const legacyFallback = async () => {
+        try {
+          return await venueApi.reserveVenue({
+            venueId,
+            date: selectedDate,
+            startTime,
+            endTime
+          });
+        } catch (_e) {
+          return { success: false, message: _e?.message || 'Legacy reserve failed.' };
+        }
       };
 
-      const res = await fetch(`${backendUrl}/api/venues/reserve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-
-      if (!data.success) {
-        throw new Error(data.message || 'This venue slot is already booked or currently under maintenance.');
+      let result = null;
+      try {
+        result = await venueApi.holdVenue(venueId, {
+          date: selectedDate,
+          startTime,
+          endTime
+        });
+      } catch (_e) {
+        result = await legacyFallback();
       }
 
+      // If enterprise endpoint is 404/missing (returns success:false with 404 message),
+      // fall back to the legacy reserve endpoint that has always been present.
+      if (!result || !result.success) {
+        const reason = String(result?.message || '').toLowerCase();
+        const needsFallback = !result
+          || /404|not found|endpoint/i.test(reason)
+          || /responded with status instead of json/i.test(reason)
+          || /non-json/i.test(reason);
+        if (needsFallback) {
+          result = await legacyFallback();
+        }
+      }
+
+      if (!result || !result.success) {
+        const earliest = result?.earliestAvailable || result?.data?.earliestAvailable;
+        const suffix = earliest ? ` Available after ${new Date(earliest).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : '';
+        throw new Error((result?.message || 'This venue slot is already booked or currently under maintenance.') + suffix);
+      }
+
+      const payload = result.reservation || result.data || {};
       const holdData = {
-        reservationId: data.data.reservationId,
-        expiresAt: data.data.expiresAt,
+        reservationId: payload.reservationId,
+        expiresAt: payload.expiresAt,
+        holdDurationMinutes: payload.holdDurationMinutes || null,
         date: selectedDate,
         startTime,
         endTime
       };
+      if (!holdData.reservationId || !holdData.expiresAt) {
+        throw new Error(result.message || 'Server did not return a valid venue hold. Please refresh and try again.');
+      }
 
-      // Store hold in sessionStorage as backup for route protection
       sessionStorage.setItem('currentVenueHold', JSON.stringify({
         venue: selectedVenue,
         reservation: holdData
       }));
 
-      // Navigate to event creation details page
       navigate('/create-event/details', {
         state: {
           venue: selectedVenue,
@@ -212,7 +241,6 @@ const VenueSelection = () => {
       });
     } catch (err) {
       setError(err.message);
-      // Refresh calendar to reflect new bookings if any
       fetchCalendarForDate(selectedDate);
     } finally {
       setReserving(false);
@@ -399,10 +427,11 @@ const VenueSelection = () => {
                   💡 Tip: Click and drag across adjacent free slots to select range!
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-xs font-extrabold">
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-emerald-500 border border-emerald-600 inline-block" /> Free / Available</span>
+              <div className="flex items-center gap-3 sm:gap-4 text-xs font-extrabold flex-wrap">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-emerald-500 border border-emerald-600 inline-block" /> Available</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-amber-400 border border-amber-500 inline-block" /> Draft Hold</span>
-                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-rose-500 border border-rose-600 inline-block" /> Booked / Maintenance</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-rose-500 border border-rose-600 inline-block" /> Booked Event</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-md bg-slate-300 border border-slate-400 inline-block" /> Expired / Unavailable</span>
               </div>
             </div>
 
@@ -468,7 +497,7 @@ const VenueSelection = () => {
                                 const { status, label } = getSlotStatus(venue.id, slot);
                                 const isFree = status === 'FREE';
                                 const isHold = status === 'HOLD';
-                                const isBooked = status === 'BOOKED' || status === 'MAINTENANCE';
+                                const isExpired = status === 'EXPIRED';
 
                                 const isDraggingThis = dragRange && dragRange.venueId === venue.id && 
                                   idx >= Math.min(dragRange.startIdx, dragRange.endIdx) && 
@@ -507,10 +536,11 @@ const VenueSelection = () => {
                                         isDraggingThis ? 'bg-blue-600 text-white border-2 border-blue-700 scale-105 shadow-md z-10' :
                                         isFree ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-500 hover:text-white hover:border-emerald-600 hover:scale-105 cursor-pointer' :
                                         isHold ? 'bg-amber-100 text-amber-900 border border-amber-300 cursor-not-allowed animate-pulse' :
+                                        isExpired ? 'bg-slate-200 text-slate-600 border border-slate-300 cursor-not-allowed opacity-70 line-through' :
                                         'bg-rose-100 text-rose-900 border border-rose-300 cursor-not-allowed opacity-80'
                                       }`}
                                     >
-                                      <span>{isFree ? 'Free' : isHold ? 'Hold' : 'Busy'}</span>
+                                      <span>{isFree ? 'Available' : isHold ? 'Hold' : isExpired ? 'Expired' : 'Booked'}</span>
                                       <span className="text-[9px] opacity-75 font-mono">{slot}</span>
                                     </button>
                                   </td>

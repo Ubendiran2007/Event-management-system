@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -324,6 +325,10 @@ router.post('/login/seed-staff-users', async (req, res) => {
 
 // POST /api/login — authenticate a user
 router.post('/login', async (req, res, next) => {
+  // Prevent any proxy/browser from caching login responses
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+
   const { email, password } = req.body;
   const reqDetails = getRequestDetails(req);
 
@@ -341,171 +346,103 @@ router.post('/login', async (req, res, next) => {
     let foundUserObj = null;
     let foundStoredPassword = null;
     let isStudent = false;
-    let studentRefPath = null;
+    const lowerEmail = email.toLowerCase();
 
-    // ── 1. Check the top-level "users" collection (Module 2 Architecture) ──
-    const usersQuery = query(
-      collection(db, 'users'),
-      where('email', '==', email.toLowerCase()),
-      limit(1)
-    );
-    const usersSnapshot = await getDocs(usersQuery);
-    console.log('[DEBUG AUTH]', `Looking for ${email.toLowerCase()} in users collection. Found docs:`, usersSnapshot.docs.length);
-    if (!usersSnapshot.empty) {
-      const userDoc = usersSnapshot.docs[0];
-      const userData = userDoc.data();
-      
-      // Lifecycle check
-      if (userData.status && userData.status !== 'ACTIVE' && userData.status !== 'GRADUATED') {
-         return res.status(403).json({ success: false, message: `Account is ${userData.status}` });
-      }
+    // ── Run student and staff lookups in parallel ─────────────────────────
+    // Student: single collectionGroup query across ALL students/{CLASS}/members
+    // Staff:   scan staffs collection docs
+    // Both fire simultaneously — login resolves as soon as one finds a match.
 
-      foundStoredPassword = userData.password;
-      const { password: _pw, ...safeData } = userData;
-      foundUserObj = { id: userDoc.id, ...safeData };
-
-      // Fetch Profile Data (Student or Staff)
-      if (userData.role && userData.role.includes('STUDENT')) {
-         const profileSnap = await getDoc(doc(db, 'students', userDoc.id));
-         if (profileSnap.exists()) {
-             const profileData = profileSnap.data();
-             foundUserObj = { 
-                ...foundUserObj, 
-                ...profileData,
-                className: profileData.sectionId || profileData.className // Ensure backwards compatibility for UI
-             };
-         }
-         isStudent = true;
-      } else {
-         const profileSnap = await getDoc(doc(db, 'staff', userDoc.id));
-         if (profileSnap.exists()) {
-             foundUserObj = { ...foundUserObj, ...profileSnap.data() };
-         }
-      }
-    }
-
-    // ── 2. Check Default staff credentials (fallback) ──────────────────────
-    if (!foundUserObj) {
-      const matchedStaff = Object.values(STAFF_CREDENTIALS).find(
-        (cred) => cred.username.toLowerCase() === String(email).toLowerCase()
-      );
-      if (matchedStaff) {
-        foundStoredPassword = matchedStaff.password;
-        
-        // Try to get their LIVE data from Firestore to catch any HOD assignments
-        try {
-          const liveDoc = await getDoc(doc(db, 'users', matchedStaff.user.id));
-          if (liveDoc.exists()) {
-            const liveData = liveDoc.data();
-            const { password: _pw, ...safeData } = liveData;
-            foundUserObj = { 
-               ...matchedStaff.user, // fallback for any missing critical fields
-               ...safeData,
-               role: safeData.role || matchedStaff.user.role // ensure role is never lost
-            };
-          } else {
-            foundUserObj = matchedStaff.user;
-          }
-        } catch (e) {
-          foundUserObj = matchedStaff.user;
-        }
-
-        // Optionally sync them
-        syncStaffUserToFirestore(matchedStaff.user, matchedStaff.password).catch(() => {});
-      }
-    }
-
-
-      // ── 3. Fall back to students array structure ─────────────
-      if (!foundUserObj) {
-        const { getAllSectionDocs } = require('../utils/studentHelper');
-        const allSections = await getAllSectionDocs();
-        
-        let foundStudent = null;
-        let foundSectionRef = null;
-        const lowerEmail = email.toLowerCase();
-        
-        for (const sec of allSections) {
-          const studentsArr = sec.data.students || [];
-          const student = studentsArr.find(s => 
-             (s.email && s.email.toLowerCase() === lowerEmail) || 
-             (s.username && s.username.toLowerCase() === lowerEmail)
-          );
-          if (student) {
-            foundStudent = student;
-            foundSectionRef = sec.ref;
-            break;
-          }
-        }
-        
-        if (foundStudent) {
-          foundStoredPassword = foundStudent.password;
-          foundUserObj = {
-            id: foundStudent.id || foundStudent.rollNo || foundStudent.password,
-            email: foundStudent.email || foundStudent.username,
-            name: foundStudent.name || null,
-            role: (foundStudent.role || 'STUDENT_GENERAL').toUpperCase(),
-            department: foundStudent.department || 'CSE',
-            rollNo: foundStudent.rollNo || foundStudent.password,
-            isApprovedOrganizer: foundStudent.isApprovedOrganizer || false,
-            odUsed: foundStudent.odUsed || 0,
-            odLimit: foundStudent.odLimit || 7,
-            className: foundSectionRef.id,
+    const studentLookup = (async () => {
+      try {
+        const snap = await getDocs(
+          query(
+            collectionGroup(db, 'members'),
+            where('email', '==', lowerEmail),
+            limit(1)
+          )
+        );
+        if (!snap.empty) {
+          const memberDoc = snap.docs[0];
+          const memberData = memberDoc.data();
+          const classId = memberDoc.ref.parent.parent.id; // e.g. "CSE-D"
+          const inferredDept = classId.split(/[\s\-]+/)[0].toUpperCase();
+          const { password: _pw, ...safeData } = memberData;
+          const obj = {
+            id: memberDoc.id,
+            ...safeData,
+            email: lowerEmail,
+            role: (safeData.role || 'STUDENT_GENERAL').toUpperCase(),
+            department: safeData.department || inferredDept,
+            class: safeData.class || classId,
+            section: safeData.section || classId,
+            className: classId,
+            rollNo: safeData.rollNo || memberDoc.id,
+            odUsed: safeData.odUsed || 0,
+            odLimit: safeData.odLimit !== undefined ? safeData.odLimit : 7,
+            isApprovedOrganizer: safeData.isApprovedOrganizer || false,
           };
-          isStudent = true;
-          studentRefPath = { col1: 'students', doc1: foundSectionRef.parent.parent.id, col2: foundSectionRef.parent.id, doc2: foundSectionRef.id };
+          const pwd = memberData.password ||
+            (safeData.rollNo || memberDoc.id.replace('student_', '').toUpperCase());
+          return { obj, pwd };
         }
+      } catch (err) {
+        console.error('[auth] collectionGroup student lookup error:', err);
       }
+      return null;
+    })();
 
-      // ── 3.5 Check staffs collection for new staff or live HOD assignedClasses updates ──
+    const staffLookup = (async () => {
       try {
         const { getAllStaffDocs } = require('../utils/staffHelper');
         const allStaffDocs = await getAllStaffDocs();
-        let foundInStaffs = null;
-        const lowerEmail = String(email).toLowerCase();
-
         for (const sDoc of allStaffDocs) {
           const arr = sDoc.data.staffs || [];
-          for (const s of arr) {
-            if (foundUserObj && (s.id === foundUserObj.id || (s.email && s.email.toLowerCase() === foundUserObj.email?.toLowerCase() && s.name === foundUserObj.name))) {
-              foundInStaffs = s;
-              break;
-            } else if (!foundUserObj && ((s.email && s.email.toLowerCase() === lowerEmail) || (s.username && s.username.toLowerCase() === lowerEmail) || (s.id && s.id.toLowerCase() === lowerEmail))) {
-              foundInStaffs = s;
-              break;
-            }
-          }
-          if (foundInStaffs) break;
-        }
-
-        if (foundInStaffs) {
-          if (!foundUserObj) {
-            foundStoredPassword = foundInStaffs.password;
-            const { password: _pw, ...safeData } = foundInStaffs;
-            foundUserObj = {
-              id: foundInStaffs.id,
-              ...safeData,
-              role: String(safeData.role || 'FACULTY').toUpperCase(),
+          const match = arr.find(s =>
+            (s.email && s.email.toLowerCase() === lowerEmail) ||
+            (s.username && s.username.toLowerCase() === lowerEmail) ||
+            (s.id && s.id.toLowerCase() === lowerEmail)
+          );
+          if (match) {
+            console.log(`[AUTH] Matched staff: ${match.name} with role: ${match.role} in category: ${sDoc.category}`);
+            const { password: _pw, ...safeData } = match;
+            const finalRole = String(safeData.role || 'FACULTY').toUpperCase();
+            console.log(`[AUTH] Resolved role for ${match.name}: ${finalRole}`);
+            return {
+              obj: { id: match.id, ...safeData, role: finalRole },
+              pwd: match.password || null,
             };
-          } else if (!isStudent && foundUserObj.role !== 'STUDENT_GENERAL' && foundUserObj.role !== 'STUDENT_ORGANIZER') {
-            if (foundInStaffs.assignedClasses && Array.isArray(foundInStaffs.assignedClasses)) {
-              foundUserObj.assignedClasses = foundInStaffs.assignedClasses;
-            }
-            if (foundInStaffs.department) {
-              foundUserObj.department = foundInStaffs.department;
-            }
-            if (foundInStaffs.role) {
-              foundUserObj.role = String(foundInStaffs.role).toUpperCase();
-            }
-            try {
-              const { password: _pw, ...safeData } = foundInStaffs;
-              await setDoc(doc(db, 'users', foundUserObj.id), { ...foundUserObj, ...safeData, updatedAt: new Date().toISOString() }, { merge: true });
-            } catch (e) { /* ignore */ }
           }
         }
-      } catch (staffErr) {
-        console.error('[auth] Error checking staffs collection during login:', staffErr);
+      } catch (err) {
+        console.error('[auth] staffs lookup error:', err);
       }
+      return null;
+    })();
+
+    const [studentResult, staffResult] = await Promise.all([studentLookup, staffLookup]);
+
+    if (studentResult) {
+      foundUserObj = studentResult.obj;
+      foundStoredPassword = studentResult.pwd;
+      isStudent = true;
+      console.log(`[AUTH] Found student via collectionGroup: ${foundUserObj.id} (${foundUserObj.className})`);
+    } else if (staffResult) {
+      foundUserObj = staffResult.obj;
+      foundStoredPassword = staffResult.pwd;
+      console.log(`[AUTH] Found staff in staffs collection: ${foundUserObj.id}`);
+    } else {
+      // ── Last resort: hardcoded demo STAFF_CREDENTIALS ──────────────────
+      const matchedStaff = Object.values(STAFF_CREDENTIALS).find(
+        (cred) => cred.username.toLowerCase() === lowerEmail
+      );
+      if (matchedStaff) {
+        foundStoredPassword = matchedStaff.password;
+        foundUserObj = { ...matchedStaff.user };
+        console.log(`[AUTH] Found staff in STAFF_CREDENTIALS: ${matchedStaff.user.id}`);
+        syncStaffUserToFirestore(matchedStaff.user, matchedStaff.password).catch(() => {});
+      }
+    }
 
     if (!foundUserObj) {
       recordFailedLogin(email, null, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));
@@ -527,15 +464,23 @@ router.post('/login', async (req, res, next) => {
     // Login Success - run heavy tasks in the background to speed up response
     handleLoginSuccess(foundUserObj, reqDetails).catch(err => console.error('[auth] Login success handler error:', err));
 
-    // Optional: Upgrade password to hash if it's currently plain text (in background)
+    // Optional: Upgrade plain-text password to bcrypt hash in the background
     if (foundStoredPassword && !foundStoredPassword.startsWith('$2')) {
       hashPassword(password)
         .then(async (hashed) => {
-          if (isStudent && studentRefPath) {
-            await setDoc(doc(db, studentRefPath.col1, studentRefPath.doc1, studentRefPath.col2, studentRefPath.doc2), { password: hashed }, { merge: true });
-          } else {
-            await setDoc(doc(db, 'users', foundUserObj.id), { password: hashed }, { merge: true });
+          if (isStudent) {
+            // Update the members subcollection doc
+            const classesSnap = await getDocs(collection(db, 'students'));
+            for (const classDoc of classesSnap.docs) {
+              const memberRef = doc(db, 'students', classDoc.id, 'members', foundUserObj.id);
+              const snap = await getDoc(memberRef);
+              if (snap.exists()) {
+                await setDoc(memberRef, { password: hashed }, { merge: true });
+                break;
+              }
+            }
           }
+          // Staff password upgrades are not needed — staffs array docs use plain text by design
         })
         .catch(err => console.error('[auth] Password upgrade error:', err));
     }
@@ -545,6 +490,17 @@ router.post('/login', async (req, res, next) => {
     if (!finalRole) {
       console.error(`[AUTH FATAL] Profile resolved without a role for ${email}`);
       return res.status(500).json({ success: false, message: 'CRITICAL: Profile resolved without a role.' });
+    }
+
+    // ── Infer department for students whose seed data omits it ──
+    // Class names like "CSE B", "CSE-B", "ECE A" → take the first token before any space or dash.
+    if (!foundUserObj.department && (finalRole === 'STUDENT_GENERAL' || finalRole === 'STUDENT_ORGANIZER')) {
+      const classOrSection = foundUserObj.class || foundUserObj.section || foundUserObj.className || '';
+      const inferred = classOrSection.trim().split(/[\s\-]+/)[0].toUpperCase();
+      if (inferred) {
+        foundUserObj.department = inferred;
+        console.log(`[AUTH] Inferred department "${inferred}" from class "${classOrSection}" for ${email}`);
+      }
     }
 
     const deptRoles = ['FACULTY', 'HOD', 'STUDENT_GENERAL', 'STUDENT_ORGANIZER'];

@@ -6,14 +6,14 @@ const bcrypt = require('bcryptjs');
 const { parsePaginationParams } = require('../utils/paginationHelper');
 
 const { buildStaffData } = require('../services/userService');
-const { getAllStaffDocs } = require('../utils/staffHelper');
+const { getAllStaffDocs, clearStaffDocsCache } = require('../utils/staffHelper');
 
 // Protect all Manage Users APIs
 router.use(requireAuth);
 // Protect manage routes later
 
 const INCHARGE_ROLES = [
-  'HR', 'TRANSPORT_MANAGER', 'WARDEN', 'IQAC_TEAM', 
+  'HR', 'TRANSPORT_MANAGER', 'WARDEN', 'IQAC_TEAM',
   'ICTS', 'AUDIO_VISUAL', 'MEDIA_MANAGER', 'PRINCIPAL'
 ];
 
@@ -30,6 +30,7 @@ let cachedUsers = null;
 
 const invalidateCache = () => {
   cachedUsers = null;
+  clearStaffDocsCache(); // also bust the underlying staffs cache
 };
 // ----------------------------
 
@@ -98,29 +99,49 @@ router.use(requireRole(['IQAC_TEAM', 'HOD'])); // IQAC and HOD can manage staff
 // POST /api/users — add a new staff member
 router.post('/', async (req, res) => {
   if (checkDb(res)) return;
-  const { name, email, role, department, password, assignedClasses } = req.body;
+  const { name, email, role, department, password, assignedClasses, staffId } = req.body;
 
-  if (!name || !email || !role || !password) {
-    return res.status(400).json({ success: false, message: 'Name, email, role, and password are required' });
+  if (!name || !email || !role) {
+    return res.status(400).json({ success: false, message: 'Name, email, and role are required' });
   }
 
   try {
     const allStaffDocs = await getAllStaffDocs();
-    
-    // Check if user already exists
-    let existingUser = false;
+
+    // ── Derive stable staffId (same logic as buildStaffData) ──────────────
+    const derivedStaffId = staffId ? String(staffId).toLowerCase().replace(/[^a-z0-9]/g, '_') : email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const candidateId = `staff_${derivedStaffId}`;
+
+    // ── College-wide duplicate check (staffId + email) ─────────────────────
+    const conflicts = [];
     for (const sDoc of allStaffDocs) {
-      const arr = sDoc.data.staffs || [];
-      if (arr.some(s => s.email?.toLowerCase() === email.toLowerCase())) {
-        existingUser = true;
-        break;
+      for (const s of (sDoc.data.staffs || [])) {
+        if (s.email && s.email.toLowerCase() === email.toLowerCase()) {
+          conflicts.push({
+            field: 'email', value: email,
+            message: `Email "${email}" is already registered to ${s.name || 'another staff'} (${s.role || ''}) in category "${sDoc.category}"`,
+            existing: { id: s.id, name: s.name, role: s.role, department: s.department, category: sDoc.category },
+          });
+        }
+        if (s.id && s.id === candidateId) {
+          conflicts.push({
+            field: 'staffId', value: candidateId,
+            message: `A staff with this email-derived ID ("${candidateId}") already exists as ${s.name || 'another staff'} in category "${sDoc.category}"`,
+            existing: { id: s.id, name: s.name, role: s.role, department: s.department, category: sDoc.category },
+          });
+        }
       }
     }
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User with this email already exists' });
+
+    if (conflicts.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Duplicate detected — staff not added. ${conflicts.map(c => c.message).join(' | ')}`,
+        conflicts,
+      });
     }
 
-    const { userId, userData } = await buildStaffData({ name, email, role, department, password, assignedClasses });
+    const { userId, userData } = await buildStaffData({ name, email, role, department, password, assignedClasses, staffId: staffId || derivedStaffId });
 
     const category = INCHARGE_ROLES.includes(role.toUpperCase()) ? 'Incharges' : (department || 'Unknown').toUpperCase();
     
@@ -289,99 +310,113 @@ router.post('/bulk', async (req, res) => {
   try {
     const actorEmail = req.user?.email || 'SYSTEM';
 
-    // Pre-fetch all staffs
+    // ── Build college-wide staff index ─────────────────────────────────────
     const allStaffDocs = await getAllStaffDocs();
-    const existingEmails = new Set();
-    const existingIds = new Set();
-    
+    const existingEmails = new Map(); // lowerEmail → { name, role, department, category }
+    const existingIds    = new Map(); // id         → { name, role, department, category }
+
     allStaffDocs.forEach(sDoc => {
-      const arr = sDoc.data.staffs || [];
-      arr.forEach(s => {
-        if (s.id) existingIds.add(s.id);
-        if (s.email) existingEmails.add(s.email.toLowerCase());
+      (sDoc.data.staffs || []).forEach(s => {
+        if (s.email) existingEmails.set(s.email.toLowerCase(), { name: s.name, role: s.role, department: s.department, category: sDoc.category });
+        if (s.id)    existingIds.set(s.id, { name: s.name, role: s.role, department: s.department, category: sDoc.category });
       });
     });
 
-    const validToImport = [];
-    const dbDuplicates = [];
+    const validToImport  = [];
+    const dbDuplicates   = []; // { user, conflicts[] }
+    const fileEmails     = new Map();
+    const fileIds        = new Map();
 
     for (const user of newUsers) {
       const { staffId, email } = user;
-      const docId = staffId ? `staff_${staffId}` : null;
-      
-      if ((docId && existingIds.has(docId)) || (email && existingEmails.has(email.toLowerCase()))) {
-        dbDuplicates.push(user);
+      const docId      = staffId ? `staff_${staffId}` : null;
+      const emailLower = email   ? email.toLowerCase() : null;
+      const conflicts  = [];
+
+      // DB duplicates
+      if (emailLower && existingEmails.has(emailLower)) {
+        const ex = existingEmails.get(emailLower);
+        conflicts.push({
+          field: 'email', value: email,
+          message: `Email "${email}" already belongs to ${ex.name || 'another staff'} (${ex.role || ''}) in category "${ex.category}"`,
+          existing: ex,
+        });
+      }
+      if (docId && existingIds.has(docId)) {
+        const ex = existingIds.get(docId);
+        conflicts.push({
+          field: 'staffId', value: staffId,
+          message: `Staff ID "${staffId}" already exists as ${ex.name || 'another staff'} (${ex.role || ''}) in category "${ex.category}"`,
+          existing: ex,
+        });
+      }
+
+      // Within-file duplicates
+      if (emailLower && fileEmails.has(emailLower)) {
+        conflicts.push({ field: 'email', value: email, message: `Email "${email}" appears more than once in the uploaded file` });
+      }
+      if (docId && fileIds.has(docId)) {
+        conflicts.push({ field: 'staffId', value: staffId, message: `Staff ID "${staffId}" appears more than once in the uploaded file` });
+      }
+
+      if (conflicts.length > 0) {
+        dbDuplicates.push({ user, conflicts });
       } else {
         validToImport.push(user);
+        if (emailLower) fileEmails.set(emailLower, true);
+        if (docId)      fileIds.set(docId, true);
       }
     }
 
     if (validToImport.length === 0) {
-      return res.json({ 
-        success: true, 
-        message: 'No new users to import', 
-        importedCount: 0, 
-        dbDuplicatesCount: dbDuplicates.length 
+      return res.json({
+        success: true,
+        message: 'No new staff to import — all records are duplicates',
+        importedCount: 0,
+        dbDuplicatesCount: dbDuplicates.length,
+        duplicateDetails: dbDuplicates,
       });
     }
 
     let totalImported = 0;
-    const addedUsers = [];
-    
-    // Group new users by category to write them correctly
+    const addedUsers  = [];
     const categoryMap = {};
 
-    for (let i = 0; i < validToImport.length; i++) {
-      const user = validToImport[i];
+    for (const user of validToImport) {
       const { userId, userData } = await buildStaffData(user);
-      
       const category = INCHARGE_ROLES.includes(userData.role.toUpperCase()) ? 'Incharges' : (userData.department || 'Unknown').toUpperCase();
-      
-      if (!categoryMap[category]) {
-        categoryMap[category] = [];
-      }
+      if (!categoryMap[category]) categoryMap[category] = [];
       categoryMap[category].push(userData);
-      
       addedUsers.push({ id: userId, ...userData });
       totalImported++;
     }
 
-    // Write to DB
     for (const category of Object.keys(categoryMap)) {
       const categoryDoc = allStaffDocs.find(d => d.category === category);
       if (categoryDoc) {
-        const arr = categoryDoc.data.staffs || [];
-        const newArr = arr.concat(categoryMap[category]);
-        await updateDoc(categoryDoc.ref, { staffs: newArr });
+        await updateDoc(categoryDoc.ref, { staffs: [...(categoryDoc.data.staffs || []), ...categoryMap[category]] });
       } else {
-        const newRef = doc(db, 'staffs', category);
-        await setDoc(newRef, { category, staffs: categoryMap[category] });
+        await setDoc(doc(db, 'staffs', category), { category, staffs: categoryMap[category] });
       }
     }
 
-    // Log Activity for full success
     const { logActivity } = require('../utils/logger');
     logActivity({
-      category: 'USER_MANAGEMENT',
-      action: 'Bulk Import Staff',
-      status: 'SUCCESS',
+      category: 'USER_MANAGEMENT', action: 'Bulk Import Staff', status: 'SUCCESS',
       actor: { userId: actorEmail, email: actorEmail, name: req.user?.name || 'System', role: req.user?.role || 'SYSTEM' },
-      details: { 
-        imported: totalImported,
-        dbDuplicates: dbDuplicates.length
-      }
+      details: { imported: totalImported, dbDuplicates: dbDuplicates.length }
     });
 
     invalidateCache();
 
-    res.json({ 
-      success: true, 
-      message: `Successfully added ${totalImported} staff members`, 
-      importedCount: totalImported, 
+    res.json({
+      success: true,
+      message: `Successfully added ${totalImported} staff members`,
+      importedCount: totalImported,
       dbDuplicatesCount: dbDuplicates.length,
-      users: addedUsers.map(u => { const { password, ...rest } = u; return rest; }) 
+      duplicateDetails: dbDuplicates,
+      users: addedUsers.map(u => { const { password, ...rest } = u; return rest; }),
     });
-
   } catch (err) {
     console.error('Error bulk adding users:', err);
     res.status(500).json({ success: false, message: err.message });
@@ -389,3 +424,4 @@ router.post('/bulk', async (req, res) => {
 });
 
 module.exports = router;
+

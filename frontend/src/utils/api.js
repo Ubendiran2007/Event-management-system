@@ -8,7 +8,7 @@
  *   - 401 responses (expired/invalid token) are handled globally
  */
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
 
 /**
  * Returns the current auth token from localStorage.
@@ -39,14 +39,34 @@ function buildHeaders(extra = {}) {
 
 async function handleResponse(res) {
   if (res.status === 401) {
-    // Token expired or invalid — clear storage and redirect to login
     console.warn('[API] Unauthorized — clearing session and redirecting to login');
     localStorage.removeItem('sessionToken');
     localStorage.removeItem('user');
     window.location.href = '/login';
-    return;
+    return { success: false, message: 'Session expired. Please log in again.' };
   }
-  return res.json();
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    let text = '';
+    try {
+      text = await res.text();
+    } catch (_e) { /* ignore */ }
+    const snippet = (text || '').slice(0, 200);
+    const defaultMsg = `Backend responded with status ${res.status} instead of JSON. Please try again in a moment.`;
+    console.warn('[API] Non-JSON response received:', res.status, contentType, snippet);
+    if (res.status >= 500) return { success: false, message: `Server error (${res.status}). ${defaultMsg}` };
+    if (res.status === 404) return { success: false, message: `Endpoint not found (404). ${defaultMsg}` };
+    if (res.status >= 400) return { success: false, message: `Request failed (${res.status}). ${defaultMsg}` };
+    return { success: false, message: defaultMsg };
+  }
+
+  try {
+    return await res.json();
+  } catch (parseErr) {
+    console.warn('[API] JSON parse failed:', parseErr.message);
+    return { success: false, message: 'Server response was not valid JSON. Please try again.' };
+  }
 }
 
 export const api = {
@@ -61,6 +81,7 @@ export const api = {
       method: 'POST',
       headers: buildHeaders(),
       body: JSON.stringify(body),
+      cache: 'no-store',
     }).then(handleResponse),
 
   patch: (path, body) =>
@@ -68,6 +89,7 @@ export const api = {
       method: 'PATCH',
       headers: buildHeaders(),
       body: JSON.stringify(body),
+      cache: 'no-store',
     }).then(handleResponse),
 
   put: (path, body) =>
@@ -75,11 +97,127 @@ export const api = {
       method: 'PUT',
       headers: buildHeaders(),
       body: JSON.stringify(body),
+      cache: 'no-store',
     }).then(handleResponse),
 
   delete: (path) =>
     fetch(`${API_BASE}${path}`, {
       method: 'DELETE',
       headers: buildHeaders(),
+      cache: 'no-store',
     }).then(handleResponse),
+};
+
+/**
+ * Registration lifecycle domain helpers — one-to-one mapping to the new
+ * backend endpoints in backend/routes/events.js. All calls go through the
+ * central api.* wrapper above, so session tokens and 401 handling are automatic.
+ */
+export const registrationApi = {
+  list: (eventId, options = {}) =>
+    api.get(`/api/events/${eventId}/registrations`, {
+      status: options.status || '',
+      limit: options.limit || 100,
+      offset: options.offset || 0
+    }),
+
+  history: (eventId) => api.get(`/api/events/${eventId}/registration/history`),
+
+  extendDeadline: (eventId, { newDeadline, reason }) =>
+    api.patch(`/api/events/${eventId}/registration/deadline`, { newDeadline, reason }),
+
+  bulkApprove: (eventId, ids = []) =>
+    api.post(`/api/events/${eventId}/registration/bulk-approve`, { ids }),
+
+  bulkReject: (eventId, ids = [], reason = '') =>
+    api.post(`/api/events/${eventId}/registration/bulk-reject`, { ids, reason }),
+
+  finalize: (eventId, confirm = true) =>
+    api.post(`/api/events/${eventId}/registration/finalize`, { confirm }),
+
+  finalizeWithOptions: (eventId, options) =>
+    api.post(`/api/events/${eventId}/registration/finalize`, options || { confirm: true }),
+
+  setStatus: (eventId, userId, status) =>
+    api.patch(`/api/events/${eventId}/registrations/${userId}/status`, { status })
+};
+
+/**
+ * Venue Reservation Lifecycle domain helpers — one-to-one mapping to the new
+ * backend endpoints in backend/routes/venues.js. All calls go through the
+ * central api.* wrapper above, so session tokens and 401 handling are automatic.
+ */
+export const venueApi = {
+  listActive: () => api.get('/api/venues'),
+
+  listAll: (params = {}) => api.get('/api/venues/all', params),
+
+  getHoldDurationOptions: () => api.get('/api/venues/hold-duration-options'),
+
+  /**
+   * Stage 1: Create a temporary HELD venue reservation.
+   * Body fields: date, startTime, endTime, eventDraftId?, coordinatorName?
+   */
+  holdVenue: (venueId, payload = {}) =>
+    api.post(`/api/venues/${venueId}/hold`, payload),
+
+  /**
+   * Release a HELD reservation explicitly (organizer cancels drafting).
+   */
+  releaseHold: (venueId, reservationId) =>
+    api.post(`/api/venues/${venueId}/release`, { reservationId }),
+
+  /**
+   * Extend a currently active HELD reservation.
+   * addMinutes: one of [10, 15, 30, 45, 60]
+   */
+  extendHold: (venueId, reservationId, addMinutes) =>
+    api.post(`/api/venues/${venueId}/extend-hold`, { reservationId, addMinutes }),
+
+  /**
+   * Admin-only: Force convert a HELD reservation → BOOKED (bypasses event creation).
+   */
+  bookVenue: (venueId, reservationId, eventId = null) =>
+    api.post(`/api/venues/${venueId}/book`, { reservationId, eventId }),
+
+  /**
+   * Get availability of a specific venue slot for given date/startTime/endTime.
+   * Returns { available, status: 'AVAILABLE'|'HELD'|'BOOKED'|'UNAVAILABLE', earliestAvailable?, conflictingReservation? }
+   */
+  getSlotStatus: (venueId, { date, startTime, endTime, skipReservationId, skipEventId }) =>
+    api.get(`/api/venues/${venueId}/status`, { date, startTime, endTime, skipReservationId: skipReservationId || '', skipEventId: skipEventId || '' }),
+
+  /**
+   * List active HELD reservations (scoped by role).
+   */
+  listHolds: (params = {}) => api.get('/api/venues/holds', params),
+
+  /**
+   * List BOOKED reservations (scoped by role).
+   */
+  listBookings: (params = {}) => api.get('/api/venues/bookings', params),
+
+  /**
+   * Get venue calendar (events + holds + maintenance) for a date range.
+   */
+  getCalendar: (venueId, startDate, endDate) =>
+    api.get(`/api/venues/${venueId}/calendar`, { startDate, endDate }),
+
+  /**
+   * Legacy reserve alias — still returns hold info (maps to holdVenue internally in backend).
+   */
+  reserveVenue: (payload = {}) =>
+    api.post('/api/venues/reserve', payload),
+
+  /**
+   * Validate a hold right before event submission.
+   */
+  validateHold: (payload = {}) =>
+    api.post('/api/venues/validate-hold', payload),
+
+  /**
+   * Admin overrides: force_release | force_expire | force_reassign (newVenueId).
+   */
+  adminOverride: (reservationId, action, payload = {}) =>
+    api.post(`/api/venues/reservations/${reservationId}/admin/${action}`, payload)
 };

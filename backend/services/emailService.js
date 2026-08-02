@@ -140,34 +140,68 @@ async function sendMailWithFallback(mailOptions) {
     mailOptions.to = [...new Set(mailOptions.to.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
   }
 
+  if (Array.isArray(mailOptions.bcc)) {
+    mailOptions.bcc = [...new Set(mailOptions.bcc)].join(', ');
+  } else if (typeof mailOptions.bcc === 'string') {
+    mailOptions.bcc = [...new Set(mailOptions.bcc.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
+  }
+  if (!mailOptions.bcc) delete mailOptions.bcc;
+
+  if (Array.isArray(mailOptions.cc)) {
+    mailOptions.cc = [...new Set(mailOptions.cc)].join(', ');
+  } else if (typeof mailOptions.cc === 'string') {
+    mailOptions.cc = [...new Set(mailOptions.cc.split(',').map(e => e.trim()).filter(Boolean))].join(', ');
+  }
+  if (!mailOptions.cc) delete mailOptions.cc;
+
   if (process.env.EMAIL_TEST_MODE === 'true') {
     const testRecipient = process.env.EMAIL_TEST_RECIPIENT || 'ubendirankumar@gmail.com';
     console.log(`[Email Service] ⚠️  TEST MODE: Redirecting email for "${mailOptions.to}" → ${testRecipient}`);
     mailOptions._originalTo = mailOptions.to;
+    mailOptions._originalBcc = mailOptions.bcc || null;
+    mailOptions._originalCc = mailOptions.cc || null;
     mailOptions.to = testRecipient;
+    delete mailOptions.bcc;
+    delete mailOptions.cc;
   }
 
   try {
     // Priority Fix: Decoupling Email Sending
     // Write email task to the Firestore mailQueue collection for async processing by worker
-    const docRef = await addDoc(collection(db, 'mailQueue'), {
+    const payload = {
       to: mailOptions.to,
       from: mailOptions.from,
       subject: mailOptions.subject,
       html: mailOptions.html,
       text: mailOptions.text,
       attachments: mailOptions.attachments || null,
+      bcc: mailOptions.bcc || null,
+      cc: mailOptions.cc || null,
       status: 'PENDING',
       attempts: 0,
       createdAt: new Date().toISOString(),
       originalTo: mailOptions._originalTo || null,
+      originalBcc: mailOptions._originalBcc || null,
+      originalCc: mailOptions._originalCc || null,
       eventTitle: mailOptions.eventTitle || null,
       eventId: mailOptions.eventId || null,
-      emailType: mailOptions.emailType || 'GENERAL'
-    });
-    
+      emailType: mailOptions.emailType || 'GENERAL',
+      batchId: mailOptions.batchId || null,
+      batchIndex: typeof mailOptions.batchIndex === 'number' ? mailOptions.batchIndex : null,
+      recipientGroup: mailOptions.recipientGroup || null,
+      idempotencyKey: mailOptions.idempotencyKey || null,
+      notificationId: mailOptions.notificationId || null
+    };
+    const docRef = await addDoc(collection(db, 'mailQueue'), payload);
+
     console.log(`[Email Service] Email task enqueued to mailQueue with ID: ${docRef.id}`);
-    await logEmailAudit(mailOptions, 'SUCCESS', '', docRef.id, { messageId: docRef.id });
+    await logEmailAudit(mailOptions, 'SUCCESS', '', docRef.id, {
+      messageId: docRef.id,
+      batchId: payload.batchId,
+      batchIndex: payload.batchIndex,
+      recipientGroup: payload.recipientGroup,
+      notificationId: payload.notificationId
+    });
     return { messageId: docRef.id };
   } catch (error) {
     console.error('[Email Service] Failed to enqueue email to mailQueue:', error);
@@ -755,9 +789,19 @@ module.exports = {
         mailOptions = {
           from: getSenderAddress(),
           to: optionsOrTo.to,
+          cc: optionsOrTo.cc || undefined,
+          bcc: optionsOrTo.bcc || undefined,
           subject: optionsOrTo.subject,
           text: optionsOrTo.text,
-          html: optionsOrTo.html || (optionsOrTo.text ? optionsOrTo.text.replace(/\n/g, '<br/>') : '')
+          html: optionsOrTo.html || (optionsOrTo.text ? optionsOrTo.text.replace(/\n/g, '<br/>') : ''),
+          eventId: optionsOrTo.eventId || null,
+          eventTitle: optionsOrTo.eventTitle || null,
+          emailType: optionsOrTo.emailType || 'GENERAL',
+          batchId: optionsOrTo.batchId || null,
+          batchIndex: typeof optionsOrTo.batchIndex === 'number' ? optionsOrTo.batchIndex : null,
+          recipientGroup: optionsOrTo.recipientGroup || null,
+          idempotencyKey: optionsOrTo.idempotencyKey || null,
+          notificationId: optionsOrTo.notificationId || null
         };
       } else {
         mailOptions = {

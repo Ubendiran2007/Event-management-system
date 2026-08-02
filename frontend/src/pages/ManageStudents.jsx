@@ -38,25 +38,95 @@ const STAFF_ROLES = [
 
 const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
 
-const DirectoryFilterSelect = ({ value, onChange, options, className = '' }) => {
+const DirectoryFilterSelect = ({ value, onChange, options, className = '', dropUp = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const filterRef = useRef(null);
-    const selected = options.find((option) => option.value === value) || options[0];
+    const buttonRef = useRef(null);
+    const [menuStyle, setMenuStyle] = useState({});
+
+    const isPlaceholder = value === '' || value == null;
+    const selected = isPlaceholder
+        ? null
+        : options.find((o) => o.value === value);
+    const displayLabel = selected ? selected.label : (options[0]?.label ?? 'Select');
 
     useEffect(() => {
         const closeOnOutsideClick = (event) => {
             if (filterRef.current && !filterRef.current.contains(event.target)) setIsOpen(false);
         };
         document.addEventListener('mousedown', closeOnOutsideClick);
-        return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+        // Close on unmount to prevent orphaned fixed overlay
+        return () => {
+            document.removeEventListener('mousedown', closeOnOutsideClick);
+            setIsOpen(false);
+        };
     }, []);
 
-    return <div ref={filterRef} className={`relative ${className}`}>
-        <button type="button" onClick={() => setIsOpen((open) => !open)} className="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-800 shadow-sm transition hover:bg-slate-50">
-            <span className="flex min-w-0 items-center gap-2"><SlidersHorizontal size={16} className="shrink-0 text-slate-600" /><span className="truncate">{selected?.label}</span></span><ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-        {isOpen && <><div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} /><div className="absolute right-0 z-50 mt-2 w-full min-w-48 overflow-hidden rounded-2xl border border-slate-100 bg-white py-1 shadow-xl"><div className="max-h-64 overflow-y-auto">{options.map((option) => <button key={option.value} type="button" onClick={() => { onChange(option.value); setIsOpen(false); }} className={`w-full px-4 py-2.5 text-left text-sm font-bold transition-colors ${value === option.value ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-slate-50'}`}>{option.label}</button>)}</div></div></>}
-    </div>;
+    const handleOpen = () => {
+        if (!isOpen && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            const openUpward = dropUp || spaceBelow < 220 && spaceAbove > spaceBelow;
+            if (openUpward) {
+                setMenuStyle({ bottom: window.innerHeight - rect.top + 6, left: rect.left, width: rect.width, position: 'fixed' });
+            } else {
+                setMenuStyle({ top: rect.bottom + 6, left: rect.left, width: rect.width, position: 'fixed' });
+            }
+        }
+        setIsOpen((o) => !o);
+    };
+
+    return (
+        <div ref={filterRef} className={`relative ${className}`}>
+            <button
+                ref={buttonRef}
+                type="button"
+                onClick={handleOpen}
+                className="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm shadow-sm transition hover:bg-slate-50"
+            >
+                <span className="flex min-w-0 items-center gap-2">
+                    {!isPlaceholder && <SlidersHorizontal size={16} className="shrink-0 text-slate-600" />}
+                    <span className={`truncate font-extrabold ${isPlaceholder ? 'text-slate-400' : 'text-slate-800'}`}>
+                        {displayLabel}
+                    </span>
+                </span>
+                <ChevronDown size={16} className={`shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
+                    <div
+                        className="z-[70] overflow-hidden rounded-2xl border border-slate-100 bg-white py-1 shadow-xl"
+                        style={menuStyle}
+                    >
+                        <div className="max-h-64 overflow-y-auto">
+                            {options.map((option) => {
+                                const isOpt = option.value === '' || option.value == null;
+                                const isSelected = !isOpt && option.value === value;
+                                return (
+                                    <button
+                                        key={String(option.value)}
+                                        type="button"
+                                        onClick={() => { if (!isOpt) onChange(option.value); setIsOpen(false); }}
+                                        className={`w-full px-4 py-2.5 text-left text-sm font-bold transition-colors
+                                            ${isOpt
+                                                ? 'text-slate-400 bg-slate-50 cursor-default'
+                                                : isSelected
+                                                    ? 'bg-blue-600 text-white'
+                                                    : 'text-slate-800 hover:bg-slate-50'
+                                            }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
 };
 
 const ManageStudents = () => {
@@ -82,14 +152,17 @@ const ManageStudents = () => {
     const [showBulkModal, setShowBulkModal] = useState(false);
     const [showStaffModal, setShowStaffModal] = useState(false);
     const [editingStaff, setEditingStaff] = useState(null);
+    const [conflictReport, setConflictReport] = useState(null); // { type: 'student'|'staff', conflicts: [] }
     
     const [deletingStudent, setDeletingStudent] = useState(null);
     const [deletingStaff, setDeletingStaff] = useState(null);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+    // Bulk selection state
+    const [bulkStatusProcessing, setBulkStatusProcessing] = useState(false);
     // Form States
     const [studentForm, setStudentForm] = useState({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '' });
-    const [staffForm, setStaffForm] = useState({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] });
+    const [staffForm, setStaffForm] = useState({ name: '', staffId: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] });
     
     // Bulk Import State
     const [importStep, setImportStep] = useState('upload'); // 'upload' | 'report' | 'preview' | 'importing' | 'summary'
@@ -107,8 +180,7 @@ const ManageStudents = () => {
     // Academic Batch State
     const [academicBatches, setAcademicBatches] = useState([]);
     const [selectedBatch, setSelectedBatch] = useState('');
-    const [filterBatch, setFilterBatch] = useState('');
-    const [filterStatus, setFilterStatus] = useState('ACTIVE');
+    const [filterStatus, setFilterStatus] = useState('ALL');
     const [pagedStudents, setPagedStudents] = useState([]);
     const [studentsNextCursor, setStudentsNextCursor] = useState(null);
     const [studentsHasMore, setStudentsHasMore] = useState(false);
@@ -254,11 +326,8 @@ const ManageStudents = () => {
         const matchesSearch = (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                               formatRollNo(s.rollNo, s.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
                               (s.email || '').toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesBatch = filterBatch ? (s.academicBatch === filterBatch) : true;
-        // Assume default status is ACTIVE if undefined (for old records)
-        const sStatus = s.studentStatus || 'ACTIVE';
-        const matchesStatus = filterStatus === 'ALL' ? true : (sStatus === filterStatus);
-        return matchesSearch && matchesBatch && matchesStatus;
+        const matchesStatus = filterStatus === 'ALL' ? true : (s.studentStatus || 'ACTIVE') === filterStatus;
+        return matchesSearch && matchesStatus;
     });
 
     // --- Staff Logic ---
@@ -296,7 +365,7 @@ const ManageStudents = () => {
         (s.role || '').toLowerCase().includes(staffSearchQuery.toLowerCase())
     );
 
-    const studentQueryKey = JSON.stringify({ className: selectedClass || '', batch: filterBatch || '', search: searchQuery.trim(), pageSize });
+    const studentQueryKey = JSON.stringify({ className: selectedClass || '', search: searchQuery.trim(), pageSize });
     const staffQueryKey = JSON.stringify({ category: staffCategory || '', department: staffDepartment || '', search: staffSearchQuery.trim(), pageSize });
 
     const fetchDirectoryPage = useCallback(async (type, { append = false } = {}) => {
@@ -362,7 +431,7 @@ const ManageStudents = () => {
             const timer = setTimeout(() => fetchDirectoryPage('students'), searchQuery ? 250 : 0);
             return () => clearTimeout(timer);
         }
-    }, [activeTab, selectedClass, filterBatch, searchQuery, fetchDirectoryPage]);
+    }, [activeTab, selectedClass, searchQuery, fetchDirectoryPage]);
 
     useEffect(() => {
         const isStaffList = activeTab === 'staff' && (staffCategory === 'INCHARGE' || (staffCategory === 'FACULTY' && staffDepartment));
@@ -397,15 +466,14 @@ const ManageStudents = () => {
         }
     }, [activeTab, staffCategory, staffDepartment, pagedStaff, staffHasMore, staffPageLoading, fetchDirectoryPage]);
 
-    const displayedClassStudents = pagedStudents.filter(student =>
-        filterStatus === 'ALL' || (student.studentStatus || 'ACTIVE') === filterStatus
-    );
+    const displayedClassStudents = filteredClassStudents;
     const displayedStaff = pagedStaff;
 
     // --- API Handlers ---
     const handleSaveStudent = async (e) => {
         e.preventDefault();
         setIsProcessing(true);
+        setConflictReport(null);
         try {
             const url = editingStudent 
                 ? `${API_BASE}/api/students/${editingStudent.id}`
@@ -426,10 +494,15 @@ const ManageStudents = () => {
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
+
+            // 409 = duplicate detected — show inline conflict report instead of alert
+            if (res.status === 409 && data.conflicts) {
+                setConflictReport({ type: 'student', conflicts: data.conflicts });
+                return;
+            }
             if (!data.success) throw new Error(data.message);
             
             await refreshStudents();
-            
             setShowStudentModal(false);
             setEditingStudent(null);
             setStudentForm({ name: '', rollNo: '', email: '', class: '', section: '', department: '', phone: '', password: '', odLimit: '' });
@@ -492,6 +565,7 @@ const ManageStudents = () => {
     const handleSaveStaff = async (e) => {
         e.preventDefault();
         setIsProcessing(true);
+        setConflictReport(null);
         try {
             const url = editingStaff 
                 ? `${API_BASE}/api/users/${editingStaff.id}`
@@ -510,13 +584,18 @@ const ManageStudents = () => {
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
+
+            // 409 = duplicate detected
+            if (res.status === 409 && data.conflicts) {
+                setConflictReport({ type: 'staff', conflicts: data.conflicts });
+                return;
+            }
             if (!data.success) throw new Error(data.message);
             
             await refreshUsers();
-            
             setShowStaffModal(false);
             setEditingStaff(null);
-            setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] });
+            setStaffForm({ name: '', staffId: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] });
         } catch (err) {
             console.error(err);
             alert('Failed to save staff: ' + err.message);
@@ -554,10 +633,29 @@ const ManageStudents = () => {
         reader.onload = (evt) => {
             try {
                 const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wb = XLSX.read(bstr, { type: 'array', cellDates: true });
                 const wsname = wb.SheetNames[0];
+                if (!wsname) throw new Error('No sheets found in the file.');
                 const ws = wb.Sheets[wsname];
-                const data = XLSX.utils.sheet_to_json(ws);
+
+                // Try header-based parse first; fall back to raw array parse
+                let data = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+
+                // Fallback: if header-based returns nothing, try reading as array of arrays
+                // and treat first row as headers
+                if (data.length === 0) {
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+                    if (rows.length >= 2) {
+                        const headers = rows[0].map(h => String(h).trim());
+                        data = rows.slice(1)
+                            .filter(row => row.some(cell => String(cell).trim() !== ''))
+                            .map(row => {
+                                const obj = {};
+                                headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ''; });
+                                return obj;
+                            });
+                    }
+                }
                 
                 const valid = [];
                 const invalid = [];
@@ -634,15 +732,23 @@ const ManageStudents = () => {
                             const name = lowerRow.name || '';
                             const staffId = String(lowerRow.staffid || lowerRow['staff id'] || '').trim();
                             const email = String(lowerRow.email || '').trim();
-                            const department = String(lowerRow.department || '').trim().toUpperCase();
+                            const rawDept = String(lowerRow.department || '').trim().toUpperCase();
                             const role = String(lowerRow.role || '').trim().toUpperCase();
                             const password = String(lowerRow.password || staffId);
+                            // Department is only required for FACULTY and HOD
+                            const deptRequired = ['FACULTY', 'HOD'].includes(role);
+                            const department = (rawDept === 'N/A' || rawDept === 'NA' || rawDept === 'NO') ? '' : rawDept;
                             
-                            if (!name || !staffId || !email || !department || !role) {
-                                return invalid.push({ row: rowNum, reason: 'Missing required fields', data: row });
+                            if (!name || !staffId || !email || !role) {
+                                return invalid.push({ row: rowNum, reason: 'Missing required fields (Name, StaffId, Email, Role)', data: row });
+                            }
+                            if (deptRequired && !department) {
+                                return invalid.push({ row: rowNum, reason: `Department is required for role ${role}`, data: row });
+                            }
+                            if (deptRequired && !validDepts.includes(department)) {
+                                return invalid.push({ row: rowNum, reason: `Department "${department}" not in configured list (${validDepts.join(', ')})`, data: row });
                             }
                             if (!emailRegex.test(email)) return invalid.push({ row: rowNum, reason: 'Invalid email format', data: row });
-                            if (!validDepts.includes(department)) return invalid.push({ row: rowNum, reason: `Department not in configured list (${validDepts.join(', ')})`, data: row });
                             if (!STAFF_ROLES.includes(role)) return invalid.push({ row: rowNum, reason: `Role must be one of: ${STAFF_ROLES.join(', ')}`, data: row });
                             
                             const idUpper = staffId.toUpperCase();
@@ -664,7 +770,17 @@ const ManageStudents = () => {
                         }
                 });
                 
-                if (data.length === 0) throw new Error('File is empty.');
+                if (data.length === 0) {
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+                    const firstRowCells = rows[0] || [];
+                    // Detect HTML/corrupted file — headers contain HTML entities or tags
+                    const looksLikeHtml = firstRowCells.some(c => String(c).includes('<') || String(c).includes('&lt;') || String(c).includes('&#'));
+                    if (looksLikeHtml) {
+                        throw new Error('The uploaded file appears to be an HTML page or a corrupted file, not a real Excel/CSV file. Please use the "Download Sample CSV" button to get the correct template, fill in your data, and upload that file.');
+                    }
+                    const foundHeaders = firstRowCells.map(h => String(h)).filter(Boolean).join(', ');
+                    throw new Error(`No data rows found. Headers detected: [${foundHeaders || 'none'}]. Make sure the file has a header row in row 1 followed by at least one data row.`);
+                }
                 
                 setValidRecords(valid);
                 setInvalidRecords(invalid);
@@ -681,7 +797,7 @@ const ManageStudents = () => {
                 setBulkError('Failed to parse file: ' + err.message);
             }
         };
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
     };
 
     const handleBulkSubmit = async () => {
@@ -704,6 +820,7 @@ const ManageStudents = () => {
                 setImportSummary({
                     imported: data.importedCount,
                     dbDuplicates: data.dbDuplicatesCount || 0,
+                    duplicateDetails: data.duplicateDetails || [],
                     fileDuplicates: bulkValidationReport.fileDuplicates,
                     invalid: invalidRecords.length,
                     failed: data.failedCount
@@ -714,6 +831,7 @@ const ManageStudents = () => {
                 setImportSummary({
                     imported: data.importedCount,
                     dbDuplicates: data.dbDuplicatesCount || 0,
+                    duplicateDetails: data.duplicateDetails || [],
                     fileDuplicates: bulkValidationReport.fileDuplicates,
                     invalid: invalidRecords.length,
                     failed: 0
@@ -732,7 +850,87 @@ const ManageStudents = () => {
         }
     };
 
-    const handleResetODUsage = () => setShowResetConfirm(true);
+    const handleUpdateStudentStatus = async (student, newStatus) => {
+        setTogglingId(`${student.id}-status`);
+        // Optimistic update in local students list
+        setStudents?.(prev => prev.map(s => s.id === student.id
+            ? { ...s, studentStatus: newStatus, role: newStatus === 'GRADUATED' ? 'ALUMNI' : (s.role === 'ALUMNI' ? 'STUDENT_GENERAL' : s.role) }
+            : s
+        ));
+        try {
+            const res = await fetch(`${API_BASE}/api/students/${student.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
+                body: JSON.stringify({
+                    studentStatus: newStatus,
+                    role: newStatus === 'GRADUATED' ? 'ALUMNI' : (student.role === 'ALUMNI' ? 'STUDENT_GENERAL' : student.role),
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to update student status: ' + err.message);
+            // Revert optimistic update on failure
+            await refreshStudents();
+        } finally {
+            setTogglingId(null);
+        }
+    };
+
+    const handleGraduateBatch = async (batchId, batchName) => {
+        if (!window.confirm(`Graduate entire batch "${batchName}"?\n\nThis will mark ALL students in this batch as Graduated/Alumni. This cannot be undone easily.`)) return;
+        setIsProcessing(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/academic-batches/${batchId}/graduate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message);
+            await refreshStudents();
+            const batches = await fetchAcademicBatches();
+            setAcademicBatches(batches);
+            alert(data.message);
+        } catch (err) {
+            console.error(err);
+            alert('Failed to graduate batch: ' + err.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleBulkStatusUpdate = async (newStatus) => {
+        const targets = displayedClassStudents;
+        if (targets.length === 0) return;
+        setBulkStatusProcessing(true);
+        // Optimistic update
+        const targetIds = new Set(targets.map(s => s.id));
+        setStudents?.(prev => prev.map(s => targetIds.has(s.id)
+            ? { ...s, studentStatus: newStatus, role: newStatus === 'GRADUATED' ? 'ALUMNI' : (s.role === 'ALUMNI' ? 'STUDENT_GENERAL' : s.role) }
+            : s
+        ));
+        try {
+            await Promise.all(targets.map(student =>
+                fetch(`${API_BASE}/api/students/${student.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
+                    body: JSON.stringify({
+                        studentStatus: newStatus,
+                        role: newStatus === 'GRADUATED' ? 'ALUMNI'
+                            : (student?.role === 'ALUMNI' ? 'STUDENT_GENERAL' : student?.role),
+                    }),
+                })
+            ));
+        } catch (err) {
+            console.error(err);
+            alert('Status update failed: ' + err.message);
+            await refreshStudents();
+        } finally {
+            setBulkStatusProcessing(false);
+        }
+    };
+
     const confirmResetODUsage = async () => {
         setIsProcessing(true);
         try {
@@ -801,7 +999,7 @@ const ManageStudents = () => {
     return (
     <Layout>
       <div className="flex-1 flex flex-col min-h-0 relative">
-                <div className="bg-[#f8fafc] border-b border-slate-200 px-6 pt-6 z-30 shrink-0">
+                <div className="bg-[#f8fafc] border-b border-slate-200 px-6 pt-6 relative z-30 shrink-0">
                     <div className="max-w-6xl mx-auto w-full">
                         <div className="flex flex-row items-center justify-between gap-4 mb-4">
                             <div>
@@ -828,7 +1026,7 @@ const ManageStudents = () => {
                                 )}
                                 {isIQAC && activeTab === 'staff' && (
                                     <>
-                                        <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] }); setShowStaffModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
+                                        <button onClick={() => { setEditingStaff(null); setStaffForm({ name: '', staffId: '', email: '', role: 'FACULTY', department: '', password: '', assignedClasses: [] }); setShowStaffModal(true); }} className="px-4 py-2 bg-cse-accent text-white rounded-xl font-bold text-sm hover:bg-cse-accent/90 transition-all flex items-center gap-2">
                                             <Plus size={16} /> Add Staff
                                         </button>
                                         <button onClick={() => { setImportType('staff'); setImportStep('upload'); setBulkValidationReport({ total: 0, valid: 0, invalid: 0, fileDuplicates: 0 }); setValidRecords([]); setInvalidRecords([]); setImportSummary(null); setShowBulkModal(true); }} className="px-4 py-2 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-all flex items-center gap-2">
@@ -853,6 +1051,7 @@ const ManageStudents = () => {
                                         setSelectedDepartment(null);
                                         setSelectedClass(null);
                                         setSearchQuery('');
+                                        setFilterStatus('ALL');
                                     }}
                                     className={`pb-3 whitespace-nowrap font-semibold text-sm transition-colors relative ${activeTab === 'students' ? 'text-cse-accent' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
@@ -925,15 +1124,37 @@ const ManageStudents = () => {
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {visibleBatches.map(batch => (
-                                            <button key={batch} onClick={() => { setSelectedBatchView(batch); setSelectedDepartment(null); setSelectedClass(null); }} className="glass-panel p-6 rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group flex items-start justify-between">
-                                                <div className="text-left">
-                                                    <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">{batch === 'All Students' ? 'Browse Students by Class' : batch !== 'Unassigned' ? `${batch} Batch` : 'Unassigned'}</h3>
-                                                    <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{batch === 'All Students' ? 'All' : batchMap[batch]?.length || 0}</span> students</p>
+                                        {visibleBatches.map(batch => {
+                                            const batchObj = academicBatches.find(b => b.name === batch);
+                                            const isGraduated = batchObj?.status === 'GRADUATED';
+                                            return (
+                                                <div key={batch} className="glass-panel rounded-2xl hover:bg-slate-50/80 transition-all hover:shadow-md group">
+                                                    <button onClick={() => { setSelectedBatchView(batch); setSelectedDepartment(null); setSelectedClass(null); }} className="w-full p-6 flex items-start justify-between text-left">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h3 className="font-bold text-lg text-slate-900 group-hover:text-cse-accent transition-colors">
+                                                                    {batch === 'All Students' ? 'Browse Students by Class' : batch !== 'Unassigned' ? `${batch} Batch` : 'Unassigned'}
+                                                                </h3>
+                                                                {isGraduated && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">GRADUATED</span>}
+                                                            </div>
+                                                            <p className="text-sm text-slate-600 mt-1"><span className="font-semibold">{batch === 'All Students' ? 'All' : batchMap[batch]?.length || 0}</span> students</p>
+                                                        </div>
+                                                        <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors shrink-0" />
+                                                    </button>
+                                                    {isIQAC && batchObj && !isGraduated && batch !== 'All Students' && batch !== 'Unassigned' && (
+                                                        <div className="px-6 pb-4">
+                                                            <button
+                                                                onClick={() => handleGraduateBatch(batchObj.id, batch)}
+                                                                disabled={isProcessing}
+                                                                className="w-full py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold transition-colors flex items-center justify-center gap-2 border border-purple-100 disabled:opacity-50"
+                                                            >
+                                                                🎓 Graduate this Batch
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <ChevronRight size={24} className="text-slate-300 group-hover:text-cse-accent transition-colors" />
-                                            </button>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </>
                             ) : !effectiveDepartment && !isClassAdvisor ? (
@@ -1005,20 +1226,31 @@ const ManageStudents = () => {
                                                 return <p className="text-sm font-medium text-slate-500 mt-0.5 flex items-center gap-1.5"><UserX size={14} /> No Class Advisor Assigned</p>;
                                             })()}
                                         </div>
-                                        <div className="relative flex-1 max-w-md ml-auto flex gap-3">
-                                            <DirectoryFilterSelect value={filterStatus} onChange={setFilterStatus} className="w-1/3" options={[
-                                                { value: 'ALL', label: 'All Statuses' }, { value: 'ACTIVE', label: 'Active' },
-                                                { value: 'GRADUATED', label: 'Graduated' }, { value: 'INACTIVE', label: 'Inactive' }
-                                            ]} />
-                                            {academicBatches.length > 0 && (
-                                                <DirectoryFilterSelect value={filterBatch} onChange={setFilterBatch} className="w-1/3" options={[
-                                                    { value: '', label: 'All Batches' },
-                                                    ...academicBatches.map((batch) => ({ value: batch.name, label: batch.name }))
-                                                ]} />
+                                        <div className="relative flex-1 max-w-xl ml-auto flex gap-2 flex-wrap items-center">
+                                            {isIQAC && (
+                                                <DirectoryFilterSelect
+                                                    key={`set-status-${selectedClass}`}
+                                                    value=""
+                                                    onChange={val => val && handleBulkStatusUpdate(val)}
+                                                    options={[
+                                                        { value: '', label: 'Set All Status' },
+                                                        { value: 'ACTIVE', label: '● Active' },
+                                                        { value: 'GRADUATED', label: '🎓 Graduated' },
+                                                        { value: 'INACTIVE', label: '○ Inactive' },
+                                                    ]}
+                                                />
                                             )}
-                                            <div className="relative flex-1">
-                                                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                <input type="text" placeholder="Search students..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all" />
+                                            <DirectoryFilterSelect
+                                                key={`filter-status-${selectedClass}`}
+                                                value={filterStatus} onChange={setFilterStatus} className="w-1/4" options={[
+                                                { value: 'ALL', label: 'All Statuses' },
+                                                { value: 'ACTIVE', label: '● Active' },
+                                                { value: 'GRADUATED', label: '🎓 Graduated' },
+                                                { value: 'INACTIVE', label: '○ Inactive' },
+                                            ]} />
+                                            <div className="relative min-w-[160px] flex-1">
+                                                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                <input type="text" placeholder="Search by name, roll no..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-cse-accent/30 focus:border-cse-accent transition-all text-sm" />
                                             </div>
                                         </div>
                                     </div>
@@ -1031,10 +1263,10 @@ const ManageStudents = () => {
                                                         <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm shrink-0 border border-slate-200">{(student.name || '?').charAt(0)}</div>
                                                         <div className="flex-1 min-w-0">
                                                             <p className="font-bold text-slate-900 text-sm truncate">{formatStudentNameWithRoll(student.name, student.rollNo, student.id)}</p>
-                                                            <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{student.email} · {student.department || 'No Dept'} {student.section && `· Sec: ${student.section}`}</p>
+                                                            <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{student.email} · {student.department || (student.class ? student.class.replace(/-/g, ' ').split(' ')[0].toUpperCase() : 'No Dept')} {student.section && `· Sec: ${student.section}`}</p>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-4">
+                                                    <div className="flex items-center gap-3 flex-wrap">
                                                         {isIQAC && (
                                                             <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 p-1.5 shadow-sm">
                                                                 <div className="px-2 py-0.5 text-center relative">
@@ -1051,40 +1283,43 @@ const ManageStudents = () => {
                                                         <span className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 ${student.role === UserRole.STUDENT_ORGANIZER ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                                             {student.role === UserRole.STUDENT_ORGANIZER ? <><ShieldCheck size={12}/> Organizer</> : 'General'}
                                                         </span>
-                                                        <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase ${
-                                                            (student.studentStatus || 'ACTIVE') === 'ACTIVE' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                                                            student.studentStatus === 'GRADUATED' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
-                                                            'bg-slate-50 text-slate-600 border border-slate-100'
-                                                        }`}>
-                                                            {student.studentStatus || 'ACTIVE'}
-                                                        </span>
+
+                                                        {/* Inline status selector */}
+                                                        {isIQAC ? (
+                                                            <select
+                                                                value={student.studentStatus || 'ACTIVE'}
+                                                                disabled={togglingId === `${student.id}-status`}
+                                                                onChange={e => handleUpdateStudentStatus(student, e.target.value)}
+                                                                className={`text-[11px] font-bold rounded-full px-3 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors
+                                                                    ${(student.studentStatus || 'ACTIVE') === 'ACTIVE' ? 'bg-blue-50 text-blue-600 border-blue-100 focus:ring-blue-300' :
+                                                                    student.studentStatus === 'GRADUATED' ? 'bg-purple-50 text-purple-600 border-purple-100 focus:ring-purple-300' :
+                                                                    'bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-300'}`}
+                                                            >
+                                                                <option value="ACTIVE">Active</option>
+                                                                <option value="GRADUATED">Graduated</option>
+                                                                <option value="INACTIVE">Inactive</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase ${
+                                                                (student.studentStatus || 'ACTIVE') === 'ACTIVE' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                                                student.studentStatus === 'GRADUATED' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                                                                'bg-slate-50 text-slate-600 border border-slate-100'
+                                                            }`}>{student.studentStatus || 'ACTIVE'}</span>
+                                                        )}
+
                                                         <button onClick={() => handleToggleOrganizer(student)} disabled={togglingId === student.id} className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
                                                             {student.role === UserRole.STUDENT_ORGANIZER ? <UserX size={16} /> : <UserCheck size={16} />}
                                                         </button>
                                                         {isIQAC && (
                                                             <>
-                                                                <button onClick={() => { 
+                                                                <button onClick={() => {
                                                                     setEditingStudent(student);
-                                                                    
                                                                     const parsedDept = student.department || (student.class ? student.class.split(/[\s-]/)[0].toUpperCase() : '');
                                                                     let parsedSec = student.section || '';
-                                                                    
-                                                                    if (parsedSec.toUpperCase() === (student.class || '').toUpperCase()) {
-                                                                        parsedSec = parsedSec.split(/[\s-]/).pop();
-                                                                    }
-                                                                    if (parsedSec.toUpperCase().startsWith(parsedDept + ' ') || parsedSec.toUpperCase().startsWith(parsedDept + '-')) {
-                                                                        parsedSec = parsedSec.substring(parsedDept.length + 1).trim();
-                                                                    }
-                                                                    
-                                                                    setStudentForm({ 
-                                                                        ...student, 
-                                                                        class: student.class || selectedClass, 
-                                                                        section: parsedSec,
-                                                                        department: parsedDept,
-                                                                        password: '', 
-                                                                        odLimit: student.odLimit || 7 
-                                                                    }); 
-                                                                    setShowStudentModal(true); 
+                                                                    if (parsedSec.toUpperCase() === (student.class || '').toUpperCase()) parsedSec = parsedSec.split(/[\s-]/).pop();
+                                                                    if (parsedSec.toUpperCase().startsWith(parsedDept + ' ') || parsedSec.toUpperCase().startsWith(parsedDept + '-')) parsedSec = parsedSec.substring(parsedDept.length + 1).trim();
+                                                                    setStudentForm({ ...student, class: student.class || selectedClass, section: parsedSec, department: parsedDept, password: '', odLimit: student.odLimit || 7 });
+                                                                    setShowStudentModal(true);
                                                                 }} className="p-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Edit size={16}/></button>
                                                                 <button onClick={() => setDeletingStudent(student)} className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"><Trash2 size={16}/></button>
                                                             </>
@@ -1330,21 +1565,63 @@ const ManageStudents = () => {
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Phone *</label><input required value={studentForm.phone} onChange={e=>setStudentForm({...studentForm, phone: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                             </div>
                             <div className="grid grid-cols-4 gap-4">
-                                <div><label className="block text-xs font-bold text-slate-500 mb-1">Class *</label><input required placeholder="e.g. CSE-B" value={studentForm.class} onChange={e=>setStudentForm({...studentForm, class: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 mb-1">Class *</label><input required placeholder="e.g. CSE-B" value={studentForm.class} onChange={e=>{ setStudentForm({...studentForm, class: e.target.value.toUpperCase()}); setConflictReport(null); }} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Section *</label><input required value={studentForm.section} onChange={e=>setStudentForm({...studentForm, section: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Department *</label><input required value={studentForm.department} onChange={e=>setStudentForm({...studentForm, department: e.target.value.toUpperCase()})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Batch *</label>
-                                    <select required value={studentForm.academicBatch} onChange={e=>setStudentForm({...studentForm, academicBatch: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent">
-                                        <option value="" disabled>Select</option>
-                                        {academicBatches.map(b => (
-                                            <option key={b.id} value={b.name}>{b.name || b.id}</option>
-                                        ))}
-                                    </select>
+                                    <DirectoryFilterSelect
+                                        dropUp
+                                        value={studentForm.academicBatch || ''}
+                                        onChange={val => setStudentForm({...studentForm, academicBatch: val})}
+                                        options={[
+                                            { value: '', label: 'Select Batch' },
+                                            ...academicBatches.map(b => ({ value: b.name, label: b.name || b.id }))
+                                        ]}
+                                    />
                                 </div>
                             </div>
+
+                            {/* Status — only shown when editing an existing student (IQAC only) */}
+                            {editingStudent && isIQAC && (
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 mb-1">Student Status</label>
+                                    <select
+                                        value={studentForm.studentStatus || 'ACTIVE'}
+                                        onChange={e => setStudentForm({ ...studentForm, studentStatus: e.target.value, role: e.target.value === 'GRADUATED' ? 'ALUMNI' : (studentForm.role === 'ALUMNI' ? 'STUDENT_GENERAL' : studentForm.role) })}
+                                        className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent text-sm font-medium"
+                                    >
+                                        <option value="ACTIVE">Active</option>
+                                        <option value="GRADUATED">Graduated / Alumni</option>
+                                        <option value="INACTIVE">Inactive</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Conflict report — shown when backend returns 409 */}
+                            {conflictReport && (conflictReport.type === 'student') && (
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-rose-600 font-bold text-sm">⚠ Duplicate Detected — Student Not Added</span>
+                                    </div>
+                                    <ul className="space-y-2">
+                                        {conflictReport.conflicts.map((c, i) => (
+                                            <li key={i} className="text-xs text-rose-700 font-medium">
+                                                <span className="inline-block bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded mr-1 uppercase">{c.field}</span>
+                                                {c.message}
+                                                {c.existingStudent && (
+                                                    <div className="mt-1 ml-1 text-rose-500">
+                                                        Existing: {c.existingStudent.name || '—'} · Class {c.existingStudent.class} · Dept {c.existingStudent.department}
+                                                    </div>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button type="button" onClick={() => setConflictReport(null)} className="mt-3 text-xs text-rose-500 hover:text-rose-700 font-bold underline">Dismiss</button>
+                                </div>
+                            )}
                             
                             <div className="pt-4 flex justify-end gap-3 sticky bottom-0 bg-white">
-                                <button type="button" onClick={() => setShowStudentModal(false)} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+                                <button type="button" onClick={() => { setShowStudentModal(false); setConflictReport(null); }} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
                                 <button type="submit" disabled={isProcessing} className="px-6 py-2 bg-cse-accent text-white rounded-lg font-bold hover:bg-cse-accent/90 disabled:opacity-50">{isProcessing ? <Loader2 className="animate-spin" /> : 'Save'}</button>
                             </div>
                         </form>
@@ -1396,16 +1673,14 @@ const ManageStudents = () => {
                                             {academicBatches.length === 0 ? (
                                                 <p className="text-sm text-red-600 font-medium">No Academic Batches available. Please create an Academic Batch first.</p>
                                             ) : (
-                                                <select
+                                                <DirectoryFilterSelect
                                                     value={selectedBatch}
-                                                    onChange={(e) => setSelectedBatch(e.target.value)}
-                                                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-cse-accent/50 focus:border-cse-accent transition-all bg-white"
-                                                >
-                                                    <option value="" disabled>-- Select Academic Batch --</option>
-                                                    {academicBatches.map(b => (
-                                                        <option key={b.id} value={b.name}>{b.name || b.id}</option>
-                                                    ))}
-                                                </select>
+                                                    onChange={val => setSelectedBatch(val)}
+                                                    options={[
+                                                        { value: '', label: '-- Select Academic Batch --' },
+                                                        ...academicBatches.map(b => ({ value: b.name, label: b.name || b.id }))
+                                                    ]}
+                                                />
                                             )}
                                         </div>
                                     )}
@@ -1414,12 +1689,139 @@ const ManageStudents = () => {
                                         <p className="font-bold text-slate-700 mb-1">Upload Excel (.xlsx) or CSV file</p>
                                         <p className="text-xs text-slate-500 mb-4">
                                             {importType === 'students' 
-                                                ? 'Required columns: Name, RollNo, Email, Department, Year, Semester, Section.' 
-                                                : 'Required columns: Name, StaffId, Email, Department, Role.'}
+                                                ? 'Required columns: Name, RollNo, Email, Department, Year, Semester, Section, Phone.' 
+                                                : 'Required columns: Name, StaffId, Email, Department, Role. (Password optional — defaults to StaffId)'}
                                         </p>
                                         <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} ref={fileInputRef} className={`absolute inset-0 w-full h-full opacity-0 ${importType === 'students' && !selectedBatch ? 'cursor-not-allowed hidden' : 'cursor-pointer'}`} disabled={importType === 'students' && !selectedBatch} />
                                         <button disabled={importType === 'students' && !selectedBatch} className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-600 disabled:text-slate-400">Select File</button>
                                     </div>
+
+                                    {/* Sample reference table */}
+                                    <div className="mt-5 rounded-xl border border-slate-200 bg-white">
+                                        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200 rounded-t-xl">
+                                            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                                                {importType === 'students' ? 'Sample Student Row' : 'Sample Staff Row'}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const studentHeaders = ['Name','RollNo','Email','Department','Year','Semester','Section','Phone'];
+                                                    const studentSample  = ['UBENDIRAN L','24CS257','ubendiran.l2024cse@sece.ac.in','CSE','1','1','D','9876543210'];
+                                                    const staffHeaders   = ['Name','StaffId','Email','Department','Role'];
+                                                    const staffSample    = ['Dr. Arul Kumar','STAFF001','arul.kumar@sece.ac.in','CSE','FACULTY'];
+                                                    const headers = importType === 'students' ? studentHeaders : staffHeaders;
+                                                    const sample  = importType === 'students' ? studentSample  : staffSample;
+                                                    const csv = headers.join(',') + '\n' + sample.join(',');
+                                                    const blob = new Blob([csv], { type: 'text/csv' });
+                                                    const url  = URL.createObjectURL(blob);
+                                                    const a    = document.createElement('a');
+                                                    a.href     = url;
+                                                    a.download = importType === 'students' ? 'sample_students.csv' : 'sample_staff.csv';
+                                                    a.click();
+                                                    URL.revokeObjectURL(url);
+                                                }}
+                                                className="flex items-center gap-1.5 text-xs font-bold text-cse-accent hover:text-cse-accent/80 transition-colors"
+                                            >
+                                                <Upload size={12} /> Download Sample CSV
+                                            </button>
+                                        </div>
+                                        <div className="overflow-x-auto rounded-b-xl">
+                                            {importType === 'students' ? (
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-slate-50/80">
+                                                        <tr>
+                                                            {['Name','RollNo','Email','Department','Year','Semester','Section','Phone'].map(h => (
+                                                                <th key={h} className="px-3 py-2 font-bold text-slate-500 whitespace-nowrap">{h}</th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr className="border-t border-slate-100">
+                                                            <td className="px-3 py-2 text-slate-700 font-medium whitespace-nowrap">UBENDIRAN L</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">24CS257</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">ubendiran.l2024cse@sece.ac.in</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">CSE</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">1</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">1</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">D</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">9876543210</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            ) : (
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-slate-50/80">
+                                                        <tr>
+                                                            {['Name','StaffId','Email','Department','Role'].map(h => (
+                                                                <th key={h} className="px-3 py-2 font-bold text-slate-500 whitespace-nowrap">{h}</th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr className="border-t border-slate-100">
+                                                            <td className="px-3 py-2 text-slate-700 font-medium whitespace-nowrap">Dr. Arul Kumar</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">STAFF001</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">arul.kumar@sece.ac.in</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">CSE</td>
+                                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">FACULTY</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {importType === 'students' && (
+                                        <p className="mt-3 text-xs text-slate-500 flex items-center gap-1.5">
+                                            <span className="inline-block w-2 h-2 rounded-full bg-blue-400 shrink-0"></span>
+                                            Default password for all imported students is their <span className="font-bold text-slate-700 mx-1">Roll Number</span> (e.g. <span className="font-mono font-bold text-slate-700">24CS257</span>). Students can change it after first login.
+                                        </p>
+                                    )}
+                                    {importType === 'staff' && (
+                                        <p className="mt-3 text-xs text-slate-500 flex items-center gap-1.5">
+                                            <span className="inline-block w-2 h-2 rounded-full bg-indigo-400 shrink-0"></span>
+                                            Default password for all imported staff is their <span className="font-bold text-slate-700 mx-1">Staff ID</span> (e.g. <span className="font-mono font-bold text-slate-700">STAFF001</span>). Staff can change it after first login.
+                                        </p>
+                                    )}
+                                    {importType === 'staff' && (
+                                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                                            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200">
+                                                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Valid Role Values</span>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-slate-50">
+                                                        <tr>
+                                                            <th className="px-3 py-2 font-bold text-slate-500">Role Value (use exactly)</th>
+                                                            <th className="px-3 py-2 font-bold text-slate-500">Description</th>
+                                                            <th className="px-3 py-2 font-bold text-slate-500">Dept Required?</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {[
+                                                            ['FACULTY',        'Teaching Faculty',         'Yes (e.g. CSE, ECE)'],
+                                                            ['HOD',            'Head of Department',       'Yes (e.g. CSE, ECE)'],
+                                                            ['HR_TEAM',        'HR Department',            'Leave blank or N/A'],
+                                                            ['AUDIO_TEAM',     'Audio / AV Section',       'Leave blank or N/A'],
+                                                            ['SYSTEM_ADMIN',   'ICTS / System Admin',      'Leave blank or N/A'],
+                                                            ['TRANSPORT_TEAM', 'Transport Office',         'Leave blank or N/A'],
+                                                            ['BOYS_WARDEN',    'Boys Hostel Warden',       'Leave blank or N/A'],
+                                                            ['GIRLS_WARDEN',   'Girls Hostel Warden',      'Leave blank or N/A'],
+                                                            ['MEDIA',          'Media Team',               'Leave blank or N/A'],
+                                                            ['IQAC_TEAM',      'IQAC / Quality Cell',      'Leave blank or N/A'],
+                                                        ].map(([role, desc, dept]) => (
+                                                            <tr key={role} className="hover:bg-slate-50">
+                                                                <td className="px-3 py-2 font-mono font-bold text-indigo-700 whitespace-nowrap">{role}</td>
+                                                                <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{desc}</td>
+                                                                <td className="px-3 py-2 whitespace-nowrap">
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${dept === 'No' ? 'bg-slate-100 text-slate-500' : 'bg-blue-50 text-blue-700'}`}>{dept}</span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
                                     {bulkError && <p className="mt-4 text-sm text-red-600 font-medium bg-red-50 p-3 rounded-lg">{bulkError}</p>}
                                 </div>
                             )}
@@ -1590,6 +1992,47 @@ const ManageStudents = () => {
                                             )}
                                         </ul>
                                     </div>
+
+                                    {/* DB duplicate detail list */}
+                                    {importSummary.duplicateDetails && importSummary.duplicateDetails.length > 0 && (
+                                        <div className="mb-6">
+                                            <h4 className="font-bold text-slate-800 text-sm mb-3">
+                                                Database Conflicts ({importSummary.duplicateDetails.length} records skipped)
+                                            </h4>
+                                            <div className="max-h-52 overflow-y-auto border border-rose-100 rounded-xl bg-rose-50/40">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="bg-rose-100/60 text-rose-800 sticky top-0">
+                                                        <tr>
+                                                            <th className="px-3 py-2 font-bold">Name</th>
+                                                            <th className="px-3 py-2 font-bold">ID / Roll No</th>
+                                                            <th className="px-3 py-2 font-bold">Conflict</th>
+                                                            <th className="px-3 py-2 font-bold">Existing Record</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-rose-100/50">
+                                                        {importSummary.duplicateDetails.map((d, i) => {
+                                                            const rec = d.student || d.user || {};
+                                                            return d.conflicts.map((c, j) => (
+                                                                <tr key={`${i}-${j}`}>
+                                                                    {j === 0 && <td className="px-3 py-2 font-medium text-slate-700" rowSpan={d.conflicts.length}>{rec.name || '—'}</td>}
+                                                                    {j === 0 && <td className="px-3 py-2 text-slate-500" rowSpan={d.conflicts.length}>{rec.rollNo || rec.staffId || '—'}</td>}
+                                                                    <td className="px-3 py-2">
+                                                                        <span className="inline-block bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded uppercase text-[10px] mr-1">{c.field}</span>
+                                                                        <span className="text-rose-700 font-medium">{c.value}</span>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-slate-500">
+                                                                        {(c.existingStudent || c.existing)
+                                                                            ? `${(c.existingStudent || c.existing).name || '—'} · ${(c.existingStudent || c.existing).class || (c.existingStudent || c.existing).category || ''} · ${(c.existingStudent || c.existing).department || ''}`
+                                                                            : c.message}
+                                                                    </td>
+                                                                </tr>
+                                                            ));
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
                                     
                                     <div className="flex justify-center">
                                         <button onClick={() => setShowBulkModal(false)} className="px-8 py-2 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700">Done</button>
@@ -1607,11 +2050,12 @@ const ManageStudents = () => {
                     <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-scale-in">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                             <h3 className="font-bold text-lg text-slate-800">{editingStaff ? 'Edit Staff' : 'Add Staff'}</h3>
-                            <button onClick={() => setShowStaffModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                            <button onClick={() => { setShowStaffModal(false); setConflictReport(null); }} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
                         </div>
                         <form onSubmit={handleSaveStaff} className="p-6 space-y-4">
                             <div><label className="block text-xs font-bold text-slate-500 mb-1">Name *</label><input required value={staffForm.name} onChange={e=>setStaffForm({...staffForm, name: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
-                            <div><label className="block text-xs font-bold text-slate-500 mb-1">Email *</label><input required type="email" value={staffForm.email} onChange={e=>setStaffForm({...staffForm, email: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 mb-1">Staff ID *</label><input required value={staffForm.staffId} onChange={e=>{ setStaffForm({...staffForm, staffId: e.target.value}); setConflictReport(null); }} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                            <div><label className="block text-xs font-bold text-slate-500 mb-1">Email *</label><input required type="email" value={staffForm.email} onChange={e=>{ setStaffForm({...staffForm, email: e.target.value}); setConflictReport(null); }} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div><label className="block text-xs font-bold text-slate-500 mb-1">Profession *</label>
                                     <select required value={staffForm.role} onChange={e=>setStaffForm({...staffForm, role: e.target.value, department: ['FACULTY', 'HOD'].includes(e.target.value) ? staffForm.department : ''})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent">
@@ -1622,9 +2066,44 @@ const ManageStudents = () => {
                                     <div><label className="block text-xs font-bold text-slate-500 mb-1">Department *</label><input required value={staffForm.department} onChange={e=>setStaffForm({...staffForm, department: e.target.value.toUpperCase()})} placeholder="e.g. CSE" className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
                                 )}
                             </div>
-                            <div><label className="block text-xs font-bold text-slate-500 mb-1">Password {editingStaff && '(leave blank to keep current)'} *</label><input required={!editingStaff} type="password" value={staffForm.password} onChange={e=>setStaffForm({...staffForm, password: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent" /></div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">
+                                    Password {editingStaff ? '(leave blank to keep current)' : '(leave blank to use Staff ID as default)'}
+                                </label>
+                                <input
+                                    type="password"
+                                    value={staffForm.password}
+                                    onChange={e => setStaffForm({...staffForm, password: e.target.value})}
+                                    placeholder={editingStaff ? '' : 'Default: Staff ID'}
+                                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-cse-accent"
+                                />
+                            </div>
+
+                            {/* Conflict report — shown when backend returns 409 */}
+                            {conflictReport && (conflictReport.type === 'staff') && (
+                                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-rose-600 font-bold text-sm">⚠ Duplicate Detected — Staff Not Added</span>
+                                    </div>
+                                    <ul className="space-y-2">
+                                        {conflictReport.conflicts.map((c, i) => (
+                                            <li key={i} className="text-xs text-rose-700 font-medium">
+                                                <span className="inline-block bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded mr-1 uppercase">{c.field}</span>
+                                                {c.message}
+                                                {c.existing && (
+                                                    <div className="mt-1 ml-1 text-rose-500">
+                                                        Existing: {c.existing.name || '—'} · {c.existing.role} · Category "{c.existing.category}"
+                                                    </div>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <button type="button" onClick={() => setConflictReport(null)} className="mt-3 text-xs text-rose-500 hover:text-rose-700 font-bold underline">Dismiss</button>
+                                </div>
+                            )}
+
                             <div className="pt-4 flex justify-end gap-3">
-                                <button type="button" onClick={() => setShowStaffModal(false)} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+                                <button type="button" onClick={() => { setShowStaffModal(false); setConflictReport(null); }} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
                                 <button type="submit" disabled={isProcessing} className="px-6 py-2 bg-cse-accent text-white rounded-lg font-bold hover:bg-cse-accent/90 disabled:opacity-50">{isProcessing ? <Loader2 className="animate-spin" /> : 'Save'}</button>
                             </div>
                         </form>

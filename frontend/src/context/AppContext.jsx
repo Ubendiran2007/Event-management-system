@@ -122,8 +122,16 @@ export const AppProvider = ({ children }) => {
     const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
     if (isStudent) return;
 
-    const myStaffData = staffUsers.find(u => u.id === currentUser.id || (u.email && u.email.toLowerCase() === currentUser.email?.toLowerCase() && u.name === currentUser.name));
-    if (!myStaffData) return;
+    // Guard: only match if we have a real, non-empty id to avoid undefined===undefined false positives
+    const myStaffData = staffUsers.find(u => {
+      if (currentUser.id && u.id) return u.id === currentUser.id;
+      // Fallback: match by email AND name, but only if both sides have a non-empty role
+      return u.email &&
+        u.email.toLowerCase() === currentUser.email?.toLowerCase() &&
+        u.name === currentUser.name &&
+        !!u.role;
+    });
+    if (!myStaffData || !myStaffData.role) return;
 
     const staffChanged =
       JSON.stringify(myStaffData.assignedClasses || []) !== JSON.stringify(currentUser.assignedClasses || []) ||
@@ -134,7 +142,8 @@ export const AppProvider = ({ children }) => {
       const patched = {
         ...currentUser,
         assignedClasses: myStaffData.assignedClasses || [],
-        role: myStaffData.role || currentUser.role,
+        // Only overwrite role if the DB has a defined, non-empty value
+        role: myStaffData.role ? String(myStaffData.role).toUpperCase() : currentUser.role,
         department: myStaffData.department || currentUser.department,
       };
       setCurrentUser(patched);

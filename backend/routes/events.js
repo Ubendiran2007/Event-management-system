@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const {
   collection,
   doc,
@@ -50,11 +51,11 @@ const {
   executeBackgroundNotification
 } = require('../services/emailHandler');
 const { requireAuth, requireRole, assertDeptMatch } = require('../middleware/auth');
-const { computeRegistrationStatus } = require('../utils/eventHelpers');
+const { computeRegistrationStatus, getRegistrationMeta, INDIVIDUAL_REGISTRATION_STATUSES, EXTENSION_POLICY, isExtensionAllowed, isRoleAllowedToExtend } = require('../utils/eventHelpers');
 const { validateEvent } = require('../middleware/validators');
 const asyncHandler = require('../utils/asyncHandler');
 const { getUserId } = require('../utils/authHelper');
-const { logActivity } = require('../utils/logger');
+const { logActivity, logAudit } = require('../utils/logger');
 const eventPublisher = require('../events/publishers/eventPublisher');
 const ScheduleService = require('../services/ScheduleService');
 const RegistrationConflictService = require('../services/RegistrationConflictService');
@@ -198,6 +199,7 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
   if (!checkDb(res)) return;
 
   const eventData = req.body;
+  const actingRole = req.user.role;
 
   const { parseEventStartDateTime } = require('../services/eventAutoRejectionService');
   const startDateTime = parseEventStartDateTime(eventData);
@@ -277,21 +279,71 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
     }
   }
 
-  let docRef;
-  if (eventData.id) {
-    docRef = doc(db, 'events', eventData.id);
-    await setDoc(docRef, payload);
-  } else {
-    docRef = await addDoc(collection(db, 'events'), payload);
-  }
+  const VenueAvailabilityService = require('../services/venueAvailabilityService');
+  const { logAudit } = require('../utils/logger');
+  const reservationId = eventData.reservationId && String(eventData.reservationId).trim() ? String(eventData.reservationId).trim() : null;
 
-  // Consume Venue Reservation if present
-  if (eventData.reservationId) {
+  // Stage 4 transaction: Verify Hold → Create Event → Convert HELD→BOOKED → Link → Audit
+  let docRef;
+  let eventId;
+  await runTransaction(db, async (transaction) => {
+    // Step 1: if reservationId provided, validate and prepare HOLD→BOOKED (atomic w/ event create)
+    if (reservationId) {
+      await VenueAvailabilityService.consumeReservation(reservationId, {
+        t: transaction,
+        eventId: eventData.id || null, // will be updated below for new events
+        userId: req.user.id, userName: req.user.name || req.user.email,
+        bookedBy: { uid: req.user.id, name: req.user.name || req.user.email, role: actingRole }
+      });
+    }
+
+    // Step 2: Create/Update event document inside same transaction
+    if (eventData.id) {
+      docRef = doc(db, 'events', eventData.id);
+      transaction.set(docRef, payload);
+      eventId = eventData.id;
+    } else {
+      docRef = doc(collection(db, 'events')); // auto-id inside tx
+      eventId = docRef.id;
+      transaction.set(docRef, payload);
+    }
+
+    // Step 3: Link the final eventId onto the reservation (if it was a new id it's docRef.id)
+    if (reservationId) {
+      transaction.set(doc(db, 'venueReservations', reservationId), {
+        eventId,
+        eventName: payload.title || payload.eventName || null,
+        eventDepartment: payload.department || null,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+  });
+
+  // Post-transaction: audit logs for venue booking
+  if (reservationId) {
     try {
-      const VenueAvailabilityService = require('../services/venueAvailabilityService');
-      await VenueAvailabilityService.consumeReservation(eventData.reservationId);
-    } catch (e) {
-      console.warn('[events] Failed to consume reservation:', e.message);
+      const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: actingRole, department: req.user.department };
+      const target = { entityType: 'VENUE_RESERVATION', entityId: reservationId, venueId: payload.venueId || eventData.venueId || null, eventId };
+      await logAudit({
+        category: 'VENUE',
+        action: 'VENUE_BOOKED',
+        status: 'SUCCESS',
+        severity: 'HIGH',
+        correlationId: eventId,
+        requestId: crypto.randomUUID(),
+        actor, target,
+        details: {
+          date: payload.requisition?.step1?.eventStartDate || payload.date,
+          startTime: payload.requisition?.step1?.eventStartTime || payload.startTime,
+          endTime: payload.requisition?.step1?.eventEndTime || payload.endTime,
+          reservationId,
+          eventId
+        },
+        ipAddress: req.ip || (req.headers && req.headers['x-forwarded-for']) || null,
+        userAgent: (req.headers && req.headers['user-agent']) || null
+      });
+    } catch (auditErr) {
+      console.warn('[events] Venue booking audit double-fault (ignored):', auditErr.message);
     }
   }
 
@@ -931,6 +983,51 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
           await odBatch.commit();
         }
       }
+
+      // Release booked venue on cancellation — idempotent, non-blocking failure
+      try {
+        const VenueAvailabilityService = require('../services/venueAvailabilityService');
+        const venueId = rawEventData.venueId || rawEventData.requisition?.step1?.venueId || null;
+        const venueResult = await VenueAvailabilityService.releaseBookedVenue(
+          { eventId: req.params.id, venueId },
+          {
+            id: req.user.id, uid: req.user.id,
+            name: actingName || req.user.email,
+            role: actingRole,
+            department: actingDept || rawEventData.department
+          }
+        );
+        if (venueResult?.released) {
+          logAudit({
+            category: 'VENUE',
+            action: 'VENUE_BOOKING_CANCELLED',
+            status: 'SUCCESS',
+            severity: 'HIGH',
+            correlationId: req.params.id,
+            requestId: crypto.randomUUID(),
+            actor: {
+              userId: req.user.id,
+              name: actingName || req.user.email,
+              role: actingRole,
+              department: actingDept
+            },
+            target: {
+              entityType: 'VENUE_RESERVATION',
+              entityId: venueResult.reservationId || 'n/a',
+              venueId: venueResult.venueId || venueId,
+              eventId: req.params.id
+            },
+            details: {
+              reason: 'Event Cancelled',
+              cancellationReason: rawEventData.modificationRequest?.reason || updatePayload.cancellationReason || null
+            },
+            ipAddress: req.ip || (req.headers && req.headers['x-forwarded-for']) || null,
+            userAgent: (req.headers && req.headers['user-agent']) || null
+          }).catch(() => {});
+        }
+      } catch (venueErr) {
+        console.warn('[events/status CANCELLED] Failed to release venue booking (non-blocking):', venueErr.message);
+      }
     }
 
     // ── Background Notifications (centralized handler) ──────────────────────
@@ -1291,7 +1388,8 @@ router.post('/:id/register', async (req, res) => {
       userYear: userYear || '',
       rollNo: rollNo || '',
       userClass: userClass || '',
-      status: 'REGISTERED',
+      status: 'PENDING',
+      registrationStatus: 'PENDING',
       registeredAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1306,6 +1404,7 @@ router.post('/:id/register', async (req, res) => {
       }
 
       eventData = eventSnap.data();
+      const regMeta = getRegistrationMeta(eventData);
 
       if (eventData.status !== 'POSTED') {
         throw new Error('BAD_REQUEST:Cannot register for an event that is not approved and posted.');
@@ -1316,12 +1415,22 @@ router.post('/:id/register', async (req, res) => {
         throw new Error('BAD_REQUEST:Organizers cannot register for their own events.');
       }
 
+      if (!regMeta.enabled) {
+        throw new Error('BAD_REQUEST:Registration is not enabled for this event.');
+      }
+      if (regMeta.status === 'FINALIZED') {
+        throw new Error('BAD_REQUEST:Registration has been finalized and is now closed.');
+      }
+      if (regMeta.status === 'CLOSED') {
+        throw new Error('BAD_REQUEST:Registration is closed. The deadline has passed.');
+      }
+      if (regMeta.opensAt && Date.now() < new Date(regMeta.opensAt).getTime()) {
+        throw new Error('BAD_REQUEST:Registration is not open yet.');
+      }
+
       const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
       const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
-      
-      let effectiveDeadlineTimestamp = null;
       let eventStartTimestamp = null;
-
       try {
         if (startDateStr) {
           const sDP = startDateStr.split('-');
@@ -1330,16 +1439,8 @@ router.post('/:id/register', async (req, res) => {
         }
       } catch (err) {}
 
-      // Calculate effective deadline
-      if (eventData.registrationDeadline) {
-        effectiveDeadlineTimestamp = new Date(eventData.registrationDeadline).getTime();
-      } else if (eventStartTimestamp) {
-        effectiveDeadlineTimestamp = eventStartTimestamp;
-      }
+      const effectiveDeadlineTimestamp = regMeta.currentDeadline ? new Date(regMeta.currentDeadline).getTime() : eventStartTimestamp;
 
-      if (eventData.registrationOpen === false) {
-        throw new Error('BAD_REQUEST:Registration is closed for this event.');
-      }
       if (eventStartTimestamp && Date.now() >= eventStartTimestamp - 30 * 60 * 1000) {
         throw new Error('BAD_REQUEST:Registration is closed. Registrations automatically close 30 minutes before the event starts.');
       }
@@ -1356,13 +1457,15 @@ router.post('/:id/register', async (req, res) => {
       // Check capacity
       const stats = eventData.stats || {};
       const currentRegisteredCount = stats.registeredCount || 0;
-      if (eventData.capacity && currentRegisteredCount >= eventData.capacity) {
+      const maxParticipants = regMeta.maxParticipants || eventData.capacity;
+      if (maxParticipants && currentRegisteredCount >= maxParticipants) {
         throw new Error('BAD_REQUEST:Registration is closed. Maximum capacity reached.');
       }
 
-      // Handle conditional approval
+      // Backward compat: legacy requiresRegistrationApproval still honored (but all are PENDING now)
       if (eventData.requiresRegistrationApproval) {
-        newEntry.status = 'PENDING_APPROVAL';
+        newEntry.status = 'PENDING';
+        newEntry.registrationStatus = 'PENDING';
       }
 
       const regSnap = await transaction.get(registrationRef);
@@ -1425,8 +1528,9 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
 
   try {
     const { status } = req.body;
-    if (!['REGISTERED', 'REJECTED'].includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status. Must be REGISTERED or REJECTED.' });
+    const validStatuses = ['PENDING', 'APPROVED', 'REJECTED', 'WAITLISTED', 'REGISTERED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
     }
 
     const eventId = req.params.id;
@@ -1442,6 +1546,12 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
       }
 
       const eventData = eventSnap.data();
+      const regMeta = getRegistrationMeta(eventData);
+
+      // Cannot change individual registration statuses once finalized
+      if (regMeta.status === 'FINALIZED') {
+        throw new Error('BAD_REQUEST:Registration has been finalized. No further changes allowed.');
+      }
 
       // Authorization Check
       const actingRole = req.user.role;
@@ -1452,6 +1562,8 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
         if (eventData.organizerId === req.user.id) isAuthorized = true;
       } else if (['FACULTY', 'HOD'].includes(actingRole)) {
         if (actingDept.toUpperCase() === (eventData.department || '').toUpperCase()) isAuthorized = true;
+      } else if (['IQAC_TEAM', 'SYSTEM_ADMIN'].includes(actingRole)) {
+        isAuthorized = true;
       }
 
       if (!isAuthorized) {
@@ -1466,14 +1578,18 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
       const regData = regSnap.data();
 
       if (regData.status === status) {
-        // Idempotent success without side effects
         throw new Error(`NO_OP:Already ${status}`);
       }
-      if (regData.status !== 'PENDING_APPROVAL') {
-         throw new Error('BAD_REQUEST:Only pending registrations can be approved or rejected.');
+
+      // Allow transition from legacy PENDING_APPROVAL or current PENDING or any status
+      const allowedFromLegacy = ['PENDING', 'PENDING_APPROVAL', 'REGISTERED', 'REJECTED', 'WAITLISTED'];
+      if (!allowedFromLegacy.includes(regData.status) && regData.registrationStatus !== 'PENDING_APPROVAL') {
+        if (status !== 'PENDING' && status !== 'REGISTERED') {
+          // Still allow it — more permissive for backward compat — just record reviewedAt
+        }
       }
 
-      // Calculate scheduled notification time (30 mins before event start)
+      // Calculate scheduled notification time (30 mins before event start) — reminder only sent for APPROVED later
       const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
       const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
       let eventStartTimestamp = 0;
@@ -1487,22 +1603,25 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
       const scheduledAt = eventStartTimestamp ? new Date(eventStartTimestamp - 30 * 60 * 1000).toISOString() : new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
       // Update registration document
+      const normalisedStatus = status === 'REGISTERED' ? 'APPROVED' : status;
       transaction.update(registrationRef, {
-        status: status,
-        registrationStatus: status === 'REGISTERED' ? 'APPROVED' : status,
-        notificationPending: true,
+        status: normalisedStatus,
+        registrationStatus: normalisedStatus,
+        notificationPending: normalisedStatus === 'APPROVED' ? true : (regData.notificationPending || false),
         notificationSent: false,
         notificationScheduledAt: scheduledAt,
         eventId: eventId,
         studentId: studentId,
         updatedAt: new Date().toISOString(),
         reviewedBy: req.user.id,
+        reviewedByName: req.user.name || req.user.email,
+        reviewedByRole: actingRole,
         reviewedAt: new Date().toISOString()
       });
 
       // Maintain legacy array sync
       const registeredStudents = eventData.registeredStudents || [];
-      const updatedList = registeredStudents.map(s => s.userId === studentId ? { ...s, status } : s);
+      const updatedList = registeredStudents.map(s => s.userId === studentId ? { ...s, status: normalisedStatus } : s);
       transaction.update(eventRef, {
         registeredStudents: updatedList,
         updatedAt: new Date().toISOString()
@@ -1512,21 +1631,25 @@ router.patch('/:id/registrations/:userId/status', requireRole(['STUDENT_ORGANIZE
     // Generate audit log for the approval action
     await logAudit({
       category: 'REGISTRATION',
-      action: status === 'REGISTERED' ? 'REGISTRATION_APPROVED' : 'REGISTRATION_REJECTED',
+      action: status === 'REJECTED' ? 'REGISTRATION_REJECTED' : (status === 'WAITLISTED' ? 'REGISTRATION_WAITLISTED' : 'REGISTRATION_APPROVED'),
       status: 'SUCCESS',
+      severity: 'INFO',
       actor: {
         userId: req.user.id,
         name: req.user.name || req.user.email,
         role: req.user.role,
         department: req.user.department
       },
-      targetId: studentId,
-      eventId: eventId,
-      metadata: {
+      target: { entityType: 'REGISTRATION', entityId: studentId },
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      details: {
         registrationId,
-        previousStatus: 'PENDING_APPROVAL',
-        newStatus: status
-      }
+        previousStatus: 'PENDING/PENDING_APPROVAL',
+        newStatus: status === 'REGISTERED' ? 'APPROVED' : status
+      },
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      userAgent: req.headers['user-agent'] || null
     });
 
     return res.status(200).json({ success: true, message: `Registration successfully updated to ${status}` });
@@ -1644,6 +1767,24 @@ router.delete('/:id', async (req, res) => {
 
     // Clean up Firebase Storage files associated with this event
     await deleteStorageFolder(`events/${req.params.id}`);
+
+    // Release booked venue (best effort, non-blocking)
+    try {
+      const eventData = eventSnap.data();
+      const VenueAvailabilityService = require('../services/venueAvailabilityService');
+      const venueId = eventData.venueId || eventData.requisition?.step1?.venueId || null;
+      await VenueAvailabilityService.releaseBookedVenue(
+        { eventId: req.params.id, venueId },
+        {
+          id: req.user.id, uid: req.user.id,
+          name: req.user.name || req.user.email,
+          role: req.user.role,
+          department: req.user.department
+        }
+      );
+    } catch (venueErr) {
+      console.warn('[events/delete] Failed to release venue booking (non-blocking):', venueErr.message);
+    }
 
     return res.json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {
@@ -2709,6 +2850,663 @@ router.patch('/:id/attendance/correct', requireRole(['STUDENT_ORGANIZER', 'FACUL
     return res.json({ success: true, message: 'Attendance corrected successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── GET /api/events/:id/registrations ────────────────────────────────────────
+// List event registrations with optional status filter + pagination
+router.get('/:id/registrations', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  if (!checkDb(res)) return;
+
+  try {
+    const eventId = req.params.id;
+    const { status } = req.query;
+    const limitCount = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    const eventRef = doc(db, 'events', eventId);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+
+    const eventData = eventSnap.data();
+    const organizerId = eventData.organizerId || eventData.createdBy;
+    const actingRole = req.user.role;
+    const actingDept = req.user.department;
+
+    let authorized = false;
+    if (['IQAC_TEAM', 'SYSTEM_ADMIN'].includes(actingRole)) authorized = true;
+    else if (actingRole === 'STUDENT_ORGANIZER' && String(organizerId) === String(req.user.id)) authorized = true;
+    else if (['FACULTY', 'HOD'].includes(actingRole) && actingDept.toUpperCase() === (eventData.department || '').toUpperCase()) authorized = true;
+
+    if (!authorized) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const regMeta = getRegistrationMeta(eventData);
+
+    // Query root eventRegistrations collection
+    const baseConstraints = [where('eventId', '==', eventId)];
+    if (status && status !== 'ALL') {
+      baseConstraints.push(where('status', 'in', Array.isArray(status) ? status : status.split(',')));
+    }
+    baseConstraints.push(orderBy('registeredAt', 'desc'));
+    baseConstraints.push(limit(limitCount + 1));
+
+    const regSnap = await getDocs(query(collection(db, 'eventRegistrations'), ...baseConstraints));
+    const all = regSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const items = all.slice(0, limitCount);
+    const hasMore = all.length > limitCount;
+
+    // Counts per status (independent query for speed: use stats or compute)
+    const countSnap = await getDocs(query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId)));
+    const counts = { PENDING: 0, APPROVED: 0, REJECTED: 0, WAITLISTED: 0, WITHDRAWN: 0 };
+    countSnap.forEach(d => {
+      const s = d.data().status || 'PENDING';
+      if (s === 'PENDING_APPROVAL') counts.PENDING++;
+      else counts[s] = (counts[s] || 0) + 1;
+    });
+    counts.TOTAL = countSnap.size;
+
+    return res.json({
+      success: true,
+      count: items.length,
+      items,
+      hasMore,
+      counts,
+      meta: regMeta,
+      eventTitle: eventData.title || eventData.eventName
+    });
+  } catch (error) {
+    console.error('[events/registrations/list] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to list registrations', error: error.message });
+  }
+});
+
+// ─── GET /api/events/:id/registration/history ─────────────────────────────────
+// Full deadline extension timeline + registration version history
+router.get('/:id/registration/history', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const eventId = req.params.id;
+    const eventRef = doc(db, 'events', eventId);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    const eventData = eventSnap.data();
+    const regMeta = getRegistrationMeta(eventData);
+
+    // Build timeline
+    const timeline = [];
+    if (regMeta.originalDeadline) {
+      timeline.push({
+        version: 'Original',
+        deadline: regMeta.originalDeadline,
+        changedBy: { id: 'SYSTEM', name: 'System', role: 'SYSTEM' },
+        reason: 'Initial schedule',
+        timestamp: eventData.createdAt || null,
+        registrationCount: 0
+      });
+    }
+    (regMeta.extensions || []).forEach((ext, idx) => {
+      timeline.push({
+        version: `Extension #${idx + 1}`,
+        oldDeadline: ext.oldDeadline,
+        deadline: ext.newDeadline,
+        changedBy: ext.extendedBy || { id: 'Unknown' },
+        reason: ext.reason,
+        timestamp: ext.extendedAt,
+        registrationCount: ext.registrationCount || 0
+      });
+    });
+    if (regMeta.status === 'CLOSED') {
+      timeline.push({
+        version: 'Registration Closed',
+        deadline: regMeta.currentDeadline,
+        changedBy: { id: regMeta.closedBy || 'SYSTEM', name: regMeta.closedBy || 'System', role: 'SYSTEM' },
+        reason: 'Deadline reached',
+        timestamp: regMeta.autoClosedAt || null
+      });
+    }
+    if (regMeta.status === 'FINALIZED') {
+      timeline.push({
+        version: 'Registration Finalized',
+        changedBy: regMeta.finalizedBy || { id: 'Unknown' },
+        reason: 'Participant list locked + notifications queued',
+        timestamp: regMeta.finalizedAt,
+        notificationSent: regMeta.notificationSent,
+        notificationSentAt: regMeta.notificationSentAt
+      });
+    }
+
+    return res.json({ success: true, meta: regMeta, timeline, extensions: regMeta.extensions || [] });
+  } catch (error) {
+    console.error('[events/registration/history] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch history', error: error.message });
+  }
+});
+
+// ─── PATCH /api/events/:id/registration/deadline ──────────────────────────────
+// Extend registration deadline (with mandatory reason)
+router.patch('/:id/registration/deadline', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const eventId = req.params.id;
+    const { newDeadline, reason } = req.body;
+    const reasonStr = String(reason || '').trim();
+
+    if (!newDeadline) return res.status(400).json({ success: false, message: 'newDeadline is required.' });
+    if (!reasonStr) return res.status(400).json({ success: false, message: 'Reason is mandatory when extending the registration deadline.' });
+    const newDeadlineTs = new Date(newDeadline).getTime();
+    if (Number.isNaN(newDeadlineTs)) return res.status(400).json({ success: false, message: 'Invalid newDeadline timestamp.' });
+
+    const eventRef = doc(db, 'events', eventId);
+    let eventData;
+    let regMeta;
+    let registrationCount = 0;
+
+    await runTransaction(db, async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (!eventSnap.exists()) throw new Error('NOT_FOUND:Event not found');
+      eventData = eventSnap.data();
+      regMeta = getRegistrationMeta(eventData);
+
+      // Role check
+      if (!isRoleAllowedToExtend(req.user.role, eventData, req.user.id)) {
+        throw new Error('FORBIDDEN:Your role is not allowed to extend this registration deadline.');
+      }
+
+      // Policy check
+      const check = isExtensionAllowed(eventData, req.user.role);
+      if (!check.allowed) throw new Error(`BAD_REQUEST:${check.reason}`);
+
+      // Event hasn't started
+      const startDateStr = eventData.requisition?.step1?.eventStartDate || eventData.date;
+      const startTimeStr = eventData.requisition?.step1?.eventStartTime || eventData.startTime || '23:59';
+      let eventStartTs = null;
+      try {
+        const sDP = startDateStr.split('-'); const sTP = startTimeStr.split(':');
+        eventStartTs = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+      } catch {}
+      if (eventStartTs && newDeadlineTs >= eventStartTs) {
+        throw new Error('BAD_REQUEST:New deadline must be before the event start time.');
+      }
+
+      // Max duration check
+      const oldDeadlineTs = regMeta.currentDeadline ? new Date(regMeta.currentDeadline).getTime() : Date.now();
+      const maxExtensionMs = EXTENSION_POLICY.MAX_EXTENSION_DAYS * 24 * 60 * 60 * 1000;
+      const diffMs = newDeadlineTs - (oldDeadlineTs > Date.now() ? oldDeadlineTs : Date.now());
+      if (diffMs > maxExtensionMs && !['IQAC_TEAM', 'SYSTEM_ADMIN'].includes(req.user.role)) {
+        throw new Error(`BAD_REQUEST:Extension cannot exceed ${EXTENSION_POLICY.MAX_EXTENSION_DAYS} days. Admin override required.`);
+      }
+
+      // Count registrations at time of extension
+      const countSnap = await getDocs(query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId)));
+      registrationCount = countSnap.size;
+
+      // Build new registration object (preserves original deadline immutably)
+      const existingReg = eventData.registration || {};
+      const originalDeadline = existingReg.originalDeadline || regMeta.originalDeadline || eventData.registrationDeadline || regMeta.currentDeadline;
+      const extensionRecord = {
+        oldDeadline: regMeta.currentDeadline || null,
+        newDeadline: new Date(newDeadline).toISOString(),
+        reason: reasonStr,
+        extendedBy: {
+          uid: req.user.id,
+          name: req.user.name || req.user.email,
+          role: req.user.role,
+          department: req.user.department
+        },
+        extendedAt: new Date().toISOString(),
+        registrationCount
+      };
+
+      const extensions = Array.isArray(existingReg.extensions) ? existingReg.extensions : [];
+      const wasClosed = existingReg.status === 'CLOSED';
+      const newStatus = wasClosed ? 'OPEN' : (existingReg.status || 'OPEN');
+
+      const newRegObj = {
+        ...existingReg,
+        enabled: true,
+        originalDeadline,
+        currentDeadline: extensionRecord.newDeadline,
+        status: newStatus,
+        reopened: wasClosed ? true : (existingReg.reopened || false),
+        extensionCount: (existingReg.extensionCount || 0) + 1,
+        extensions: [...extensions, extensionRecord]
+      };
+
+      transaction.update(eventRef, {
+        registration: newRegObj,
+        updatedAt: new Date().toISOString()
+      });
+
+      eventData = { ...eventData, registration: newRegObj };
+      regMeta = getRegistrationMeta(eventData);
+    });
+
+    // Audit log
+    await logAudit({
+      category: 'REGISTRATION',
+      action: 'REGISTRATION_DEADLINE_EXTENDED',
+      status: 'SUCCESS',
+      severity: 'INFO',
+      actor: {
+        userId: req.user.id,
+        name: req.user.name || req.user.email,
+        role: req.user.role,
+        department: req.user.department
+      },
+      target: { entityType: 'EVENT', entityId: eventId },
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      details: {
+        oldDeadline: regMeta.extensions?.slice(-1)[0]?.oldDeadline || null,
+        newDeadline: regMeta.currentDeadline,
+        reason: reasonStr,
+        registrationCount,
+        newStatus: regMeta.status
+      },
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      userAgent: req.headers['user-agent'] || null
+    });
+
+    logActivity({
+      category: 'REGISTRATION',
+      action: 'REGISTRATION_DEADLINE_EXTENDED',
+      status: 'SUCCESS',
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      actor: { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role },
+      target: { entityType: 'EVENT', entityId: eventId },
+      details: { newDeadline: regMeta.currentDeadline, reason: reasonStr }
+    });
+
+    return res.json({
+      success: true,
+      message: `Registration deadline extended successfully. New status: ${regMeta.status}.`,
+      meta: regMeta,
+      extensionCount: regMeta.extensionCount
+    });
+
+  } catch (error) {
+    if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('FORBIDDEN')) return res.status(403).json({ success: false, message: error.message.split(':')[1] });
+    console.error('[events/registration/deadline] Error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to extend deadline', error: error.message });
+  }
+});
+
+// ─── POST /api/events/:id/registration/bulk-approve ──────────────────────────
+router.post('/:id/registration/bulk-approve', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const eventId = req.params.id;
+    const { ids = [] } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'ids (array of studentIds) is required.' });
+    }
+
+    const eventRef = doc(db, 'events', eventId);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    const eventData = eventSnap.data();
+    const regMeta = getRegistrationMeta(eventData);
+    if (regMeta.status === 'FINALIZED') return res.status(400).json({ success: false, message: 'Registration already finalized; bulk changes not permitted.' });
+
+    // Authz
+    const actingRole = req.user.role; const actingDept = req.user.department;
+    const organizerId = eventData.organizerId || eventData.createdBy;
+    let authed = false;
+    if (['IQAC_TEAM', 'SYSTEM_ADMIN'].includes(actingRole)) authed = true;
+    else if (actingRole === 'STUDENT_ORGANIZER' && String(organizerId) === String(req.user.id)) authed = true;
+    else if (['FACULTY', 'HOD'].includes(actingRole) && actingDept.toUpperCase() === (eventData.department || '').toUpperCase()) authed = true;
+    if (!authed) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const nowIso = new Date().toISOString();
+    let applied = 0;
+    const BATCH_LIMIT = 500;
+    for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
+      const chunk = ids.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      for (const studentId of chunk) {
+        const regId = `${eventId}_${studentId}`;
+        const regRef = doc(db, 'eventRegistrations', regId);
+        batch.update(regRef, {
+          status: 'APPROVED',
+          registrationStatus: 'APPROVED',
+          notificationSent: false,
+          reviewedBy: req.user.id,
+          reviewedByName: req.user.name || req.user.email,
+          reviewedByRole: actingRole,
+          reviewedAt: nowIso,
+          updatedAt: nowIso
+        });
+        applied++;
+      }
+      await batch.commit();
+    }
+
+    await logAudit({
+      category: 'REGISTRATION',
+      action: 'REGISTRATION_BULK_APPROVED',
+      status: 'SUCCESS',
+      severity: 'INFO',
+      actor: { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department },
+      target: { entityType: 'EVENT', entityId: eventId },
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      details: { count: applied, ids },
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      userAgent: req.headers['user-agent'] || null
+    });
+
+    return res.json({ success: true, message: `Bulk approved ${applied} registration(s).`, count: applied });
+  } catch (error) {
+    console.error('[events/registration/bulk-approve] Error:', error);
+    return res.status(500).json({ success: false, message: 'Bulk approve failed', error: error.message });
+  }
+});
+
+// ─── POST /api/events/:id/registration/bulk-reject ──────────────────────────
+router.post('/:id/registration/bulk-reject', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const eventId = req.params.id;
+    const { ids = [], reason = '' } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'ids (array of studentIds) is required.' });
+    }
+
+    const eventRef = doc(db, 'events', eventId);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return res.status(404).json({ success: false, message: 'Event not found' });
+    const eventData = eventSnap.data();
+    const regMeta = getRegistrationMeta(eventData);
+    if (regMeta.status === 'FINALIZED') return res.status(400).json({ success: false, message: 'Registration already finalized; bulk changes not permitted.' });
+
+    const actingRole = req.user.role; const actingDept = req.user.department;
+    const organizerId = eventData.organizerId || eventData.createdBy;
+    let authed = false;
+    if (['IQAC_TEAM', 'SYSTEM_ADMIN'].includes(actingRole)) authed = true;
+    else if (actingRole === 'STUDENT_ORGANIZER' && String(organizerId) === String(req.user.id)) authed = true;
+    else if (['FACULTY', 'HOD'].includes(actingRole) && actingDept.toUpperCase() === (eventData.department || '').toUpperCase()) authed = true;
+    if (!authed) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const nowIso = new Date().toISOString();
+    let applied = 0;
+    const BATCH_LIMIT = 500;
+    for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
+      const chunk = ids.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      for (const studentId of chunk) {
+        const regId = `${eventId}_${studentId}`;
+        const regRef = doc(db, 'eventRegistrations', regId);
+        batch.update(regRef, {
+          status: 'REJECTED',
+          registrationStatus: 'REJECTED',
+          rejectionReason: reason || undefined,
+          notificationSent: false,
+          reviewedBy: req.user.id,
+          reviewedByName: req.user.name || req.user.email,
+          reviewedByRole: actingRole,
+          reviewedAt: nowIso,
+          updatedAt: nowIso
+        });
+        applied++;
+      }
+      await batch.commit();
+    }
+
+    await logAudit({
+      category: 'REGISTRATION',
+      action: 'REGISTRATION_BULK_REJECTED',
+      status: 'SUCCESS',
+      severity: 'INFO',
+      actor: { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department },
+      target: { entityType: 'EVENT', entityId: eventId },
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      details: { count: applied, ids, reason: reason || null },
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      userAgent: req.headers['user-agent'] || null
+    });
+
+    return res.json({ success: true, message: `Bulk rejected ${applied} registration(s).`, count: applied });
+  } catch (error) {
+    console.error('[events/registration/bulk-reject] Error:', error);
+    return res.status(500).json({ success: false, message: 'Bulk reject failed', error: error.message });
+  }
+});
+
+// ─── POST /api/events/:id/registration/finalize ──────────────────────────────
+// Locks registration list, queues batch notifications (approved / rejected / waitlisted).
+// If pending registrations remain, the client must explicitly pass either
+// autoRejectPending:true (with optional pendingRejectionReason) OR acknowledgePending:true
+// to deliberately leave them unresolved (they will receive NO email).
+router.post('/:id/registration/finalize', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  if (!checkDb(res)) return;
+  try {
+    const eventId = req.params.id;
+    const { confirm, autoRejectPending, acknowledgePending, pendingRejectionReason } = req.body;
+    if (confirm !== true) {
+      return res.status(400).json({ success: false, message: 'Finalization confirmation is required. Pass confirm: true to lock the registration list and send emails.' });
+    }
+
+    const eventRef = doc(db, 'events', eventId);
+    let approvedList = [];
+    let rejectedList = [];
+    let waitlistedList = [];
+    let pendingList = [];
+    let autoRejectedCount = 0;
+    let pendingLeftUnresolved = 0;
+    const actingRole = req.user.role;
+    const nowIso = new Date().toISOString();
+    const defaultPendingReason = 'Not selected after registration review';
+
+    await runTransaction(db, async (transaction) => {
+      const eventSnap = await transaction.get(eventRef);
+      if (!eventSnap.exists()) throw new Error('NOT_FOUND:Event not found');
+      const eventData = eventSnap.data();
+      const regMeta = getRegistrationMeta(eventData);
+
+      if (regMeta.status === 'FINALIZED') throw new Error(`NO_OP:Already finalized.`);
+      if (regMeta.notificationSent) throw new Error(`BAD_REQUEST:Notification emails have already been sent.`);
+
+      // Authz
+      const actingDept = req.user.department;
+      const organizerId = eventData.organizerId || eventData.createdBy;
+      let authed = false;
+      if (['IQAC_TEAM', 'SYSTEM_ADMIN'].includes(actingRole)) authed = true;
+      else if (actingRole === 'STUDENT_ORGANIZER' && String(organizerId) === String(req.user.id)) authed = true;
+      else if (['FACULTY', 'HOD'].includes(actingRole) && actingDept.toUpperCase() === (eventData.department || '').toUpperCase()) authed = true;
+      if (!authed) throw new Error('FORBIDDEN:Not authorized to finalize this registration.');
+
+      // Pre-scan to find PENDING before any writes so we can validate gating
+      const regSnap = await getDocs(query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId)));
+      const pendingDocs = [];
+      regSnap.forEach(d => {
+        const r = d.data();
+        const st = r.status === 'PENDING_APPROVAL' ? 'PENDING' : (r.status || 'PENDING');
+        if (st === 'PENDING') pendingDocs.push({ id: d.id, data: r });
+      });
+
+      const hasPending = pendingDocs.length > 0;
+      if (hasPending && !autoRejectPending && !acknowledgePending) {
+        throw new Error(`BAD_REQUEST:${pendingDocs.length} registration(s) are still PENDING. Pass autoRejectPending:true to reject them, or acknowledgePending:true to leave them unresolved.`);
+      }
+      if (hasPending && autoRejectPending) {
+        const BATCH_LIMIT = 500;
+        for (let i = 0; i < pendingDocs.length; i += BATCH_LIMIT) {
+          const chunk = pendingDocs.slice(i, i + BATCH_LIMIT);
+          // Note: we are already inside a transaction; direct writes go via the transaction
+          for (const p of chunk) {
+            const regRef = doc(db, 'eventRegistrations', p.id);
+            const rejectionText = String(pendingRejectionReason || defaultPendingReason).trim() || defaultPendingReason;
+            transaction.update(regRef, {
+              status: 'REJECTED',
+              registrationStatus: 'REJECTED',
+              rejectionReason: rejectionText,
+              autoRejectedAtFinalize: true,
+              notificationSent: false,
+              reviewedBy: req.user.id,
+              reviewedByName: req.user.name || req.user.email,
+              reviewedByRole: actingRole,
+              reviewedAt: nowIso,
+              updatedAt: nowIso
+            });
+          }
+        }
+        autoRejectedCount = pendingDocs.length;
+      } else if (hasPending && acknowledgePending) {
+        pendingLeftUnresolved = pendingDocs.length;
+      }
+
+      // Finalize: lock status
+      const existingReg = eventData.registration || {};
+      transaction.update(eventRef, {
+        registration: {
+          ...existingReg,
+          status: 'FINALIZED',
+          finalizedAt: nowIso,
+          finalizedBy: { uid: req.user.id, name: req.user.name || req.user.email, role: actingRole, department: req.user.department },
+          notificationSent: false,
+          pendingAtFinalize: {
+            total: pendingDocs.length,
+            autoRejected: autoRejectedCount,
+            unresolved: pendingLeftUnresolved,
+            autoRejectReason: autoRejectedCount > 0
+              ? (String(pendingRejectionReason || defaultPendingReason).trim() || defaultPendingReason)
+              : null
+          }
+        },
+        updatedAt: nowIso
+      });
+
+      // Categorize again (post auto-reject writes) for notification batches
+      const regSnap2 = await getDocs(query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId)));
+      regSnap2.forEach(d => {
+        const r = d.data();
+        const st = r.status === 'PENDING_APPROVAL' ? 'PENDING' : (r.status || 'PENDING');
+        if (st === 'APPROVED') approvedList.push(r);
+        else if (st === 'REJECTED') rejectedList.push(r);
+        else if (st === 'WAITLISTED') waitlistedList.push(r);
+        else pendingList.push(r);
+      });
+    });
+
+    // ── Queue Group Batch Notifications in background ───────────────────
+    // IMPORTANT: No emails are ever sent on auto-close, deadline extension,
+    // individual review, or bulk-approve/reject. This executeBackgroundNotification
+    // call is the ONLY place participant emails are generated and dispatched.
+    // GroupNotificationDispatcher handles batching, BCC/TO modes, retries,
+    // idempotency, per-batch status, notification history doc, and all audits.
+    executeBackgroundNotification(`events/${eventId}/registration/finalize`, async () => {
+      try {
+        const GroupNotificationDispatcher = require('../services/GroupNotificationDispatcher');
+        const eventSnap2 = await getDoc(eventRef);
+        const eventData2 = eventSnap2.exists ? eventSnap2.data() : {};
+        const fullEvent = { id: eventId, ...eventData2 };
+        const finalizedAt = (eventData2.registration && eventData2.registration.finalizedAt) || nowIso;
+        const actor = {
+          uid: req.user.id,
+          name: req.user.name || req.user.email,
+          role: actingRole,
+          department: req.user.department
+        };
+        await GroupNotificationDispatcher.dispatchFinalizeNotifications(
+          fullEvent,
+          { approvedList, rejectedList, waitlistedList },
+          actor,
+          finalizedAt
+        );
+      } catch (err) {
+        console.error('[finalize] GroupNotificationDispatcher dispatch failed:', err.message);
+        try {
+          await logAudit({
+            category: 'REGISTRATION',
+            action: 'GROUP_NOTIFICATION_COMPLETED',
+            status: 'FAILED',
+            severity: 'ERROR',
+            source: 'events.route/finalize',
+            correlationId: eventId,
+            requestId: crypto.randomUUID(),
+            actor: { userId: req.user.id, name: req.user.name || req.user.email, role: actingRole, department: req.user.department },
+            target: { entityType: 'EVENT', entityId: eventId },
+            details: {
+              approvedCount: approvedList.length,
+              rejectedCount: rejectedList.length,
+              waitlistedCount: waitlistedList.length,
+              error: err.message
+            },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+            userAgent: req.headers['user-agent'] || null
+          });
+        } catch (_) { /* swallow double-fault */ }
+      }
+    });
+
+    // Audit
+    await logAudit({
+      category: 'REGISTRATION',
+      action: 'REGISTRATION_FINALIZED',
+      status: 'SUCCESS',
+      severity: 'HIGH',
+      actor: { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department },
+      target: { entityType: 'EVENT', entityId: eventId },
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      details: {
+        approvedCount: approvedList.length,
+        rejectedCount: rejectedList.length,
+        waitlistedCount: waitlistedList.length,
+        pendingAutoRejectedCount: autoRejectedCount,
+        pendingLeftUnresolved: pendingLeftUnresolved,
+        autoRejectReason: autoRejectedCount > 0
+          ? (String(pendingRejectionReason || defaultPendingReason).trim() || defaultPendingReason)
+          : null,
+        notificationStatus: 'QUEUED'
+      },
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+      userAgent: req.headers['user-agent'] || null
+    });
+
+    logActivity({
+      category: 'REGISTRATION',
+      action: 'REGISTRATION_FINALIZED',
+      status: 'SUCCESS',
+      correlationId: eventId,
+      requestId: crypto.randomUUID(),
+      actor: { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role },
+      target: { entityType: 'EVENT', entityId: eventId },
+      details: {
+        approvedCount: approvedList.length,
+        rejectedCount: rejectedList.length,
+        waitlistedCount: waitlistedList.length,
+        pendingAutoRejectedCount: autoRejectedCount,
+        pendingLeftUnresolved: pendingLeftUnresolved
+      }
+    });
+
+    return res.json({
+      success: true,
+      message: 'Registration finalized. Notification emails have been queued.',
+      counts: {
+        approved: approvedList.length,
+        rejected: rejectedList.length,
+        waitlisted: waitlistedList.length,
+        pending: pendingList.length,
+        pendingAutoRejected: autoRejectedCount,
+        pendingLeftUnresolved: pendingLeftUnresolved
+      },
+      notificationStatus: 'QUEUED'
+    });
+
+  } catch (error) {
+    if (error.message.includes('NO_OP')) return res.status(200).json({ success: true, message: error.message.split(':')[1] });
+    if (error.message.includes('NOT_FOUND')) return res.status(404).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('BAD_REQUEST')) return res.status(400).json({ success: false, message: error.message.split(':')[1] });
+    if (error.message.includes('FORBIDDEN')) return res.status(403).json({ success: false, message: error.message.split(':')[1] });
+    console.error('[events/registration/finalize] Error:', error);
+    return res.status(500).json({ success: false, message: 'Finalization failed', error: error.message });
   }
 });
 

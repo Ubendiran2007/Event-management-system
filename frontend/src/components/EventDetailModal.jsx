@@ -721,7 +721,14 @@ const EventDetailModal = ({ event, onClose }) => {
           {/* Content */}
           <div className="p-6 space-y-6 overflow-y-auto">
             
-            {activeTab === 'Registration' && <RegistrationsTab event={event} odRequests={odRequests} />}
+            {activeTab === 'Registration' && (
+              <RegistrationsTab
+                event={event}
+                odRequests={odRequests}
+                currentUser={currentUser}
+                onRefreshEvent={() => setSelectedEvent(event)}
+              />
+            )}
             {activeTab === 'Attendance' && <AttendanceTab event={event} />}
 
             {activeTab === 'Overview' && (

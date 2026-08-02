@@ -13,7 +13,7 @@ import AlertCard from '../components/AlertCard';
 
 
 const Login = () => {
-  const { handleLogin } = useAppContext();
+  const { handleLogin, currentUser } = useAppContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [username, setUsername] = useState('');
@@ -24,6 +24,15 @@ const Login = () => {
   const [unlockInputs, setUnlockInputs] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const alertRef = useRef(null);
+
+  // If already logged in, redirect to dashboard immediately
+  useEffect(() => {
+    if (currentUser) {
+      const rolePrefix = getRolePath(currentUser.role);
+      const from = location.state?.from?.pathname || (rolePrefix ? `/${rolePrefix}/dashboard` : '/');
+      navigate(from, { replace: true });
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -70,11 +79,8 @@ const Login = () => {
           role: userRole,
           isApprovedOrganizer: data.user.isApprovedOrganizer || false,
         });
-        const rolePrefix = getRolePath(userRole);
-        
-        // Redirect to the originally requested URL, or fallback to the dashboard
-        const from = location.state?.from?.pathname || `/${rolePrefix}/dashboard`;
-        navigate(from, { replace: true });
+        // Navigation is handled by the useEffect that watches currentUser
+        // to ensure React state has fully updated before navigating.
 
       } else {
         if (data.message && (data.message.toLowerCase().includes('lock') || data.message.toLowerCase().includes('too many'))) {
@@ -87,7 +93,7 @@ const Login = () => {
           setAlert({
             type: 'error',
             title: 'Authentication Failed',
-            message: 'The email or password entered is incorrect.\nPlease verify your credentials and try again.'
+            message: data.message || 'The email or password entered is incorrect.\nPlease verify your credentials and try again.'
           });
         }
       }

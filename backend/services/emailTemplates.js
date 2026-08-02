@@ -952,5 +952,73 @@ module.exports = {
         eventReferenceId: eventData?.referenceId || null
       });
     }
+  },
+
+  registrationApprovedFinalizedTemplate: (student, eventData) => {
+    const safeName = safeVal(student?.name, 'Student');
+    const eventId = eventData?.id || eventData?.eventId || '';
+    return buildBaseTemplate({
+      title: 'Registration Confirmed',
+      subtitle: safeVal(eventData?.title, 'Event'),
+      headerBg: 'linear-gradient(135deg, #10b981 0%, #064e3b 100%)',
+      preheader: `Congratulations! Your registration for ${safeVal(eventData?.title, 'the event')} has been confirmed.`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${safeName}</strong>,</p>
+        <div class="alert-box alert-success" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">🎉 Registration Confirmed</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Congratulations! Your registration for the event has been officially approved and finalized.</p>
+        </div>
+        ${getEventDetailsHtml(eventData || {})}
+        <p style="margin: 24px 0 0; line-height: 1.6; font-size: 15px; color: #0f172a; font-weight: 600;">See you there.</p>
+      `,
+      actionUrl: portalLinks.registration(eventId),
+      eventReferenceId: getEventRef(eventData || {})
+    });
+  },
+
+  registrationRejectedFinalizedTemplate: (student, eventData, customReason) => {
+    const safeName = safeVal(student?.name, 'Student');
+    const eventId = eventData?.id || eventData?.eventId || '';
+    const reason = safeVal(customReason, 'Unfortunately, due to limited seats and the high volume of applications received, your registration could not be accommodated at this time.');
+    return buildBaseTemplate({
+      title: 'Registration Update',
+      subtitle: safeVal(eventData?.title, 'Event'),
+      headerBg: 'linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)',
+      preheader: `Update regarding your registration for ${safeVal(eventData?.title, 'the event')}.`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${safeName}</strong>,</p>
+        <p style="margin: 0 0 24px; line-height: 1.6; font-size: 15px; color: #334155;">We regret to inform you that your registration for <strong>"${safeVal(eventData?.title, 'the event')}"</strong> has not been approved.</p>
+        <div class="alert-box alert-error" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 14px; font-weight: 600; margin-bottom: 8px;">Registration Status Update</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">${reason}</p>
+        </div>
+        ${getEventDetailsHtml(eventData || {})}
+        <p style="margin: 24px 0 0; line-height: 1.6; font-size: 15px; color: #334155;">Thank you for applying. We encourage you to explore other upcoming events on the portal and wish you the best in future opportunities.</p>
+      `,
+      actionUrl: portalLinks.registration(eventId),
+      eventReferenceId: getEventRef(eventData || {})
+    });
+  },
+
+  registrationWaitlistedFinalizedTemplate: (student, eventData, waitlistPosition) => {
+    const safeName = safeVal(student?.name, 'Student');
+    const eventId = eventData?.id || eventData?.eventId || '';
+    return buildBaseTemplate({
+      title: 'Registration Waitlist Update',
+      subtitle: safeVal(eventData?.title, 'Event'),
+      headerBg: 'linear-gradient(135deg, #f59e0b 0%, #78350f 100%)',
+      preheader: `You are on the waitlist for ${safeVal(eventData?.title, 'the event')}.`,
+      contentHtml: `
+        <p style="margin: 0 0 16px; font-size: 16px; color: #0f172a;">Dear <strong>${safeName}</strong>,</p>
+        <div class="alert-box alert-warning" style="margin-bottom: 24px;">
+          <p style="margin: 0; font-size: 15px; font-weight: 600; margin-bottom: 8px;">📋 You Are on the Waitlist</p>
+          <p style="margin: 0; font-size: 14px; line-height: 1.5;">Your current waitlist position is: <strong style="font-size: 18px; color: #92400e;">#${safeVal(waitlistPosition, 'N/A')}</strong></p>
+        </div>
+        ${getEventDetailsHtml(eventData || {})}
+        <p style="margin: 24px 0 0; line-height: 1.6; font-size: 15px; color: #334155;">If a seat opens up due to a cancellation, you will be notified immediately via email. We appreciate your patience and interest in this event.</p>
+      `,
+      actionUrl: portalLinks.registration(eventId),
+      eventReferenceId: getEventRef(eventData || {})
+    });
   }
 };

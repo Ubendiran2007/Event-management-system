@@ -1,69 +1,135 @@
 /**
  * RegistrationAutoCloseJob
- * Closes registration at the configured registration deadline. This runs without
- * a logged-in user and keeps legacy registrationOpen fields in sync.
+ * Automatically closes event registrations when their deadline has passed.
+ * Uses Firestore writeBatch for bulk updates (500 per batch limit) with
+ * distributed lock coordination via NotificationScheduler.
  */
 
-const { collection, query, where, getDocs, doc, updateDoc, db } = require('../../firebaseClientWrapper');
+const { collection, query, where, getDocs, updateDoc, doc, db, writeBatch } = require('../../firebaseClientWrapper');
+
+function checkDb() {
+  if (!db) {
+    console.error('[RegistrationAutoCloseJob] Firebase is not configured. Aborting.');
+    return false;
+  }
+  return true;
+}
 
 class RegistrationAutoCloseJob {
   static async run() {
-    let closedCount = 0;
+    if (!checkDb()) {
+      return { closedCount: 0, matchedCount: 0, batchesCommitted: 0 };
+    }
+
+    const now = Date.now();
+    const nowIso = new Date().toISOString();
+    const metrics = {
+      matchedCount: 0,
+      closedCount: 0,
+      batchesCommitted: 0,
+      duration: '0.0 s'
+    };
+    const startTime = Date.now();
+
     try {
-      // Get events that have an explicitly open registration window.
-      const eventsQuery = query(
+      console.log(`[RegistrationAutoCloseJob] Starting scan at ${nowIso}`);
+
+      const postedQuery = query(
         collection(db, 'events'),
-        where('registrationOpen', '==', true)
+        where('status', '==', 'POSTED')
       );
-      const snap = await getDocs(eventsQuery);
-      
-      if (!snap || !snap.docs) return { closedCount };
+      const snap = await getDocs(postedQuery);
 
-      const now = Date.now();
-      for (const d of snap.docs) {
-        const data = d.data();
-        const startDateStr = data.requisition?.step1?.eventStartDate || data.date;
-        const startTimeStr = data.requisition?.step1?.eventStartTime || data.startTime || '00:00';
-        
-        let eventStartTimestamp = 0;
-        try {
-          if (startDateStr) {
-            const sDP = startDateStr.split('-');
-            const sTP = startTimeStr.split(':');
-            eventStartTimestamp = new Date(parseInt(sDP[0]), parseInt(sDP[1]) - 1, parseInt(sDP[2]), parseInt(sTP[0]), parseInt(sTP[1])).getTime();
+      const candidates = [];
+      if (snap && snap.forEach) {
+        snap.forEach(d => {
+          const data = d.data();
+          const reg = data.registration || {};
+          const regStatus = reg.status;
+          const statusExists = typeof regStatus !== 'undefined' && regStatus !== null;
+          const statusNotClosed = !statusExists || !['CLOSED', 'FINALIZED'].includes(regStatus);
+          const hasDeadline = typeof reg.currentDeadline !== 'undefined' && reg.currentDeadline !== null ||
+                              typeof data.registrationDeadline !== 'undefined' && data.registrationDeadline !== null;
+
+          if (statusNotClosed && hasDeadline) {
+            const effectiveDeadline = reg.currentDeadline || data.registrationDeadline;
+            const deadlineTs = new Date(effectiveDeadline).getTime();
+            if (!Number.isNaN(deadlineTs)) {
+              candidates.push({
+                id: d.id,
+                ref: doc(db, 'events', d.id),
+                data,
+                registration: reg,
+                effectiveDeadline,
+                deadlineTs
+              });
+            }
           }
-        } catch (e) {}
+        });
+      }
 
-        const registration = data.registration || {};
-        const deadlineValue = registration.currentDeadline || registration.originalDeadline || data.registrationDeadline;
-        const deadlineTimestamp = deadlineValue ? new Date(deadlineValue).getTime() : 0;
-        const shouldClose = (deadlineTimestamp > 0 && now >= deadlineTimestamp) ||
-          (!deadlineTimestamp && eventStartTimestamp > 0 && now >= eventStartTimestamp - (30 * 60 * 1000));
+      metrics.matchedCount = candidates.length;
+      console.log(`[RegistrationAutoCloseJob] Found ${candidates.length} POSTED events with open registration + deadline`);
 
-        if (shouldClose) {
-          try {
-            const closedAt = new Date().toISOString();
-            await updateDoc(doc(db, 'events', d.id), {
-              registrationOpen: false,
-              autoClosedAt: closedAt,
-              registration: {
-                ...registration,
-                enabled: registration.enabled !== false,
-                status: 'CLOSED',
-                closedAt
-              }
-            });
-            closedCount++;
-          } catch (err) {
-            console.error(`[RegistrationAutoCloseJob] Failed to close event ${d.id}:`, err.message);
-          }
+      const toClose = [];
+      for (const c of candidates) {
+        if (now >= c.deadlineTs) {
+          toClose.push(c);
+          const title = c.data.title || c.data.eventName || '(untitled)';
+          console.log(`[RegistrationAutoCloseJob] Closing event ${c.id} (${title}): deadline ${c.effectiveDeadline} <= now`);
         }
       }
+
+      if (toClose.length === 0) {
+        console.log('[RegistrationAutoCloseJob] No events past deadline. Nothing to do.');
+        metrics.duration = ((Date.now() - startTime) / 1000).toFixed(1) + ' s';
+        return metrics;
+      }
+
+      const BATCH_LIMIT = 500;
+      for (let i = 0; i < toClose.length; i += BATCH_LIMIT) {
+        const batchChunk = toClose.slice(i, i + BATCH_LIMIT);
+        const batch = writeBatch(db);
+
+        for (const c of batchChunk) {
+          const existingReg = c.registration || {};
+          batch.update(c.ref, {
+            updatedAt: nowIso,
+            registration: {
+              ...existingReg,
+              status: 'CLOSED',
+              autoClosedAt: nowIso,
+              closedBy: 'SYSTEM'
+            }
+          });
+        }
+
+        await batch.commit();
+        metrics.batchesCommitted++;
+        metrics.closedCount += batchChunk.length;
+        console.log(`[RegistrationAutoCloseJob] Batch ${metrics.batchesCommitted} committed: ${batchChunk.length} events closed`);
+      }
+
+      console.log(`[RegistrationAutoCloseJob] Complete: ${metrics.closedCount}/${metrics.matchedCount} events closed in ${metrics.batchesCommitted} batch(es)`);
     } catch (err) {
-      console.error('[RegistrationAutoCloseJob] Error checking auto-close registrations:', err);
+      console.error('[RegistrationAutoCloseJob] Fatal error during run():', err);
+      throw err;
+    } finally {
+      metrics.duration = ((Date.now() - startTime) / 1000).toFixed(1) + ' s';
     }
-    return { closedCount };
+
+    return metrics;
+  }
+}
+
+async function scheduledRun() {
+  try {
+    return await RegistrationAutoCloseJob.run();
+  } catch (err) {
+    console.error('[RegistrationAutoCloseJob] scheduledRun() caught error (non-breaking):', err);
+    return { closedCount: 0, matchedCount: 0, batchesCommitted: 0, error: err.message };
   }
 }
 
 module.exports = RegistrationAutoCloseJob;
+module.exports.scheduledRun = scheduledRun;

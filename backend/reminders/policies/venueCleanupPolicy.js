@@ -10,7 +10,7 @@ class VenueCleanupPolicy extends BasePolicy {
     this.cronSchedule = '0 * * * *';
   }
 
-  async execute() {
+  async evaluate() {
     console.log(`[VenueCleanupPolicy] Starting background sweep for abandoned reservations...`);
     const db = getFirestore();
     const now = new Date();
@@ -24,7 +24,7 @@ class VenueCleanupPolicy extends BasePolicy {
 
       if (snapshot.empty) {
         console.log(`[VenueCleanupPolicy] No expired reservations found.`);
-        return;
+        return [];
       }
 
       const batch = db.batch();
@@ -38,6 +38,7 @@ class VenueCleanupPolicy extends BasePolicy {
 
       await batch.commit();
       console.log(`[VenueCleanupPolicy] Successfully cleaned up ${snapshot.size} expired venue reservations.`);
+      return [];
     } catch (error) {
       console.error(`[VenueCleanupPolicy] Error during cleanup:`, error);
       throw error;

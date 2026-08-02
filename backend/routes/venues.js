@@ -1,13 +1,65 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const PermissionEngine = require('../utils/permissions');
 const VenueAvailabilityService = require('../services/venueAvailabilityService');
 const { parsePaginationParams } = require('../utils/paginationHelper');
+const { logAudit, logActivity } = require('../utils/logger');
 
 const db = getFirestore();
+
+const VENUE_HOLD_DURATION_OPTIONS = Object.freeze([10, 15, 30, 45, 60]);
+
+function _writeVenueAudit(action, status, actor, target, details, req) {
+  try {
+    const now = new Date().toISOString();
+    logAudit({
+      category: 'VENUE',
+      action,
+      status: status || 'SUCCESS',
+      severity: action.startsWith('VENUE_BOOKING') || action.endsWith('_EXPIRED') ? 'HIGH' : 'INFO',
+      actor,
+      target,
+      correlationId: target?.entityId || crypto.randomUUID(),
+      requestId: crypto.randomUUID(),
+      details: details || {},
+      ipAddress: req && (req.ip || (req.headers && req.headers['x-forwarded-for']) || null),
+      userAgent: req && req.headers && req.headers['user-agent'] || null,
+      timestamp: now
+    }).catch(() => {}); // non-blocking
+  } catch (_) { /* swallow audit fault */ }
+}
+
+function _handleServiceError(res, err, prefix = 'VENUE_OP') {
+  const msg = String(err.message || 'An error occurred');
+  if (msg.startsWith('NOT_FOUND:')) {
+    return res.status(404).json({ success: false, message: msg.split(':')[1] || 'Not found', code: 'NOT_FOUND' });
+  }
+  if (msg.startsWith('BAD_REQUEST:')) {
+    return res.status(400).json({ success: false, message: msg.split(':')[1] || msg, code: 'BAD_REQUEST' });
+  }
+  if (msg.startsWith('FORBIDDEN:')) {
+    return res.status(403).json({ success: false, message: msg.split(':')[1] || msg, code: 'FORBIDDEN' });
+  }
+  if (msg.startsWith('VALIDATION:')) {
+    return res.status(400).json({ success: false, message: msg.split(':')[1] || msg, code: 'VALIDATION' });
+  }
+  if (msg.startsWith('CONFLICT:')) {
+    const code = (err.status === 409 || true) ? 409 : 409;
+    const body = { success: false, message: msg.split(':')[1] || msg, code: 'CONFLICT' };
+    if (err.earliestAvailable) body.earliestAvailable = err.earliestAvailable;
+    if (err.conflictingReservation) body.conflictingReservation = err.conflictingReservation;
+    return res.status(code).json(body);
+  }
+  if (msg.startsWith('NO_OP:')) {
+    return res.status(200).json({ success: true, message: msg.split(':')[1] || 'No-op', noOp: true });
+  }
+  console.error(`[venues.js][${prefix}] Error:`, err.stack || msg);
+  return res.status(500).json({ success: false, message: msg, code: prefix + '_ERROR' });
+}
 
 /**
  * @route   GET /api/venues
@@ -466,6 +518,221 @@ router.delete('/:id/maintenance/:maintenanceId', authenticateToken, async (req, 
   } catch (err) {
     console.error('Error cancelling maintenance:', err);
     return errorResponse(res, err.message, 'CANCEL_MAINTENANCE_ERROR');
+  }
+});
+
+// ============================================================
+// Enterprise Venue Reservation Lifecycle Endpoints (Master Prompt)
+// ============================================================
+
+/**
+ * @route   GET /api/venues/hold-duration-options
+ * @desc    Return allowed hold durations (10/15/30/45/60 min) + currently configured default.
+ */
+router.get('/hold-duration-options', authenticateToken, async (req, res) => {
+  try {
+    const SystemConfig = require('../config/systemConfig');
+    const cfg = await SystemConfig.loadAll();
+    let configuredDefault = parseInt(cfg.venueHoldDurationMinutes || cfg.venueReservationDuration, 10);
+    if (!VENUE_HOLD_DURATION_OPTIONS.includes(configuredDefault)) configuredDefault = 30;
+    return res.json({
+      success: true,
+      options: VENUE_HOLD_DURATION_OPTIONS.slice(),
+      defaultMinutes: configuredDefault,
+      currentSystemDefault: configuredDefault,
+      canAdminChange: PermissionEngine.canManageVenue(req.user)
+    });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_HOLD_OPTS');
+  }
+});
+
+/**
+ * @route   POST /api/venues/:id/hold
+ * @desc    Stage 1: Create a temporary HELD venue reservation.
+ *          Body: { date, startTime, endTime, eventDraftId, coordinatorName }
+ */
+router.post('/:id/hold', authenticateToken, async (req, res) => {
+  try {
+    const venueId = req.params.id;
+    const { date, startTime, endTime, eventDraftId, coordinatorName } = req.body;
+    if (!date || !startTime || !endTime) {
+      return res.status(400).json({ success: false, message: 'date, startTime, and endTime are required.', code: 'VALIDATION' });
+    }
+    const holdOpts = {
+      organizerName: req.user.name || req.user.email,
+      department: req.user.department || null,
+      eventDraftId: eventDraftId || null,
+      coordinatorName: coordinatorName || null,
+      userName: req.user.name || req.user.email
+    };
+    const result = await VenueAvailabilityService.holdVenue(
+      venueId, String(req.user.id), date, startTime, endTime, holdOpts
+    );
+    const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department };
+    const target = { entityType: 'VENUE_RESERVATION', entityId: result.reservationId, venueId, eventDraftId: eventDraftId || null };
+    _writeVenueAudit('VENUE_HELD', 'SUCCESS', actor, target, { date, startTime, endTime, expiresAt: result.expiresAt, holdDurationMinutes: result.holdDurationMinutes }, req);
+    logActivity({
+      category: 'VENUE', action: 'VENUE_HELD', status: 'SUCCESS', correlationId: target.entityId,
+      requestId: crypto.randomUUID(), actor, target,
+      details: { venueId, date, startTime, endTime, expiresAt: result.expiresAt }
+    });
+    return res.status(201).json({ success: true, reservation: result, message: 'Venue held. Complete event creation before the hold expires.' });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_HOLD');
+  }
+});
+
+/**
+ * @route   POST /api/venues/:id/extend-hold
+ * @desc    Extend a currently active HELD reservation by a valid duration.
+ *          Body: { reservationId, addMinutes }
+ */
+router.post('/:id/extend-hold', authenticateToken, async (req, res) => {
+  try {
+    const { reservationId, addMinutes } = req.body;
+    if (!reservationId) return res.status(400).json({ success: false, message: 'reservationId required.', code: 'VALIDATION' });
+    const result = await VenueAvailabilityService.extendHold(reservationId, String(req.user.id), req.user, addMinutes);
+    const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department };
+    const target = { entityType: 'VENUE_RESERVATION', entityId: reservationId, venueId: req.params.id };
+    _writeVenueAudit('VENUE_HOLD_EXTENDED', 'SUCCESS', actor, target, { addedMinutes: result.addedMinutes, newExpiresAt: result.expiresAt, totalDurationMinutes: result.totalDurationMinutes }, req);
+    return res.json({ success: true, ...result, message: 'Hold extended successfully.' });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_EXTEND_HOLD');
+  }
+});
+
+/**
+ * @route   POST /api/venues/:id/release
+ * @desc    Explicitly release a HELD reservation (organizer cancels drafting).
+ *          Body: { reservationId }
+ */
+router.post('/:id/release', authenticateToken, async (req, res) => {
+  try {
+    const { reservationId } = req.body;
+    if (!reservationId) return res.status(400).json({ success: false, message: 'reservationId required.', code: 'VALIDATION' });
+    await VenueAvailabilityService.releaseReservation(reservationId, String(req.user.id), req.user);
+    const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department };
+    const target = { entityType: 'VENUE_RESERVATION', entityId: reservationId, venueId: req.params.id };
+    _writeVenueAudit('VENUE_RELEASED', 'SUCCESS', actor, target, { previousStatus: 'HELD' }, req);
+    return res.json({ success: true, message: 'Venue hold released successfully.' });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_RELEASE');
+  }
+});
+
+/**
+ * @route   POST /api/venues/:id/book
+ * @desc    Convert a HELD reservation to BOOKED. Exposed so Admin workflows
+ *          can force-book venues without event creation. For the normal
+ *          booking path, events.js POST route calls consumeReservation().
+ *          Body: { reservationId, eventId }
+ */
+router.post('/:id/book', requireRole(['FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  try {
+    const { reservationId, eventId } = req.body;
+    if (!reservationId) return res.status(400).json({ success: false, message: 'reservationId required.', code: 'VALIDATION' });
+    await VenueAvailabilityService.bookVenue(reservationId, {
+      eventId: eventId || null,
+      userId: req.user.id, userName: req.user.name || req.user.email,
+      bookedBy: { uid: req.user.id, name: req.user.name || req.user.email, role: req.user.role }
+    });
+    const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department };
+    const target = { entityType: 'VENUE_RESERVATION', entityId: reservationId, venueId: req.params.id, eventId: eventId || null };
+    _writeVenueAudit('VENUE_BOOKED', 'SUCCESS', actor, target, { eventId: eventId || null }, req);
+    return res.json({ success: true, message: 'Venue booking confirmed.' });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_BOOK');
+  }
+});
+
+/**
+ * @route   GET /api/venues/:id/status
+ * @desc    Fetch availability of a specific venue slot.
+ *          Query: date, startTime, endTime, skipReservationId, skipEventId
+ */
+router.get('/:id/status', authenticateToken, async (req, res) => {
+  try {
+    const { date, startTime, endTime, skipReservationId, skipEventId } = req.query;
+    if (!date || !startTime || !endTime) {
+      return res.status(400).json({ success: false, message: 'date, startTime, endTime query params required.', code: 'VALIDATION' });
+    }
+    const status = await VenueAvailabilityService.getVenueSlotStatus(
+      req.params.id, date, startTime, endTime,
+      { skipReservationId: skipReservationId || null, skipEventId: skipEventId || null }
+    );
+    return res.json({ success: true, venueId: req.params.id, date, startTime, endTime, ...status });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_STATUS');
+  }
+});
+
+/**
+ * @route   GET /api/venues/holds
+ * @desc    List active HELD reservations (scoped by role).
+ */
+router.get('/holds', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  try {
+    const { venueId, organizerId, dateFrom, dateTo, limit } = req.query;
+    const docs = await VenueAvailabilityService.listReservations(req.user, {
+      type: 'HOLDS', venueId, organizerId, dateFrom, dateTo,
+      limit: limit ? parseInt(limit, 10) : undefined
+    });
+    return res.json({ success: true, total: docs.length, items: docs });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_LIST_HOLDS');
+  }
+});
+
+/**
+ * @route   GET /api/venues/bookings
+ * @desc    List BOOKED reservations (scoped).
+ */
+router.get('/bookings', requireRole(['STUDENT_ORGANIZER', 'FACULTY', 'HOD', 'IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  try {
+    const { venueId, organizerId, dateFrom, dateTo, limit } = req.query;
+    const docs = await VenueAvailabilityService.listReservations(req.user, {
+      type: 'BOOKINGS', venueId, organizerId, dateFrom, dateTo,
+      limit: limit ? parseInt(limit, 10) : undefined
+    });
+    return res.json({ success: true, total: docs.length, items: docs });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_LIST_BOOKINGS');
+  }
+});
+
+// ============================================================
+// Admin Override Endpoints — System Admin / IQAC only
+// ============================================================
+
+/**
+ * @route   POST /api/venues/reservations/:reservationId/admin/:action
+ * @desc    IQAC/SYSTEM_ADMIN overrides: force_release | force_expire | force_reassign
+ *          For force_reassign: body { newVenueId }
+ */
+router.post('/reservations/:reservationId/admin/:action', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
+  try {
+    const { reservationId, action } = req.params;
+    let svcAction;
+    switch (action) {
+      case 'force_release': svcAction = 'FORCE_RELEASE'; break;
+      case 'force_expire': svcAction = 'FORCE_EXPIRE'; break;
+      case 'force_reassign':
+        if (!req.body?.newVenueId) return res.status(400).json({ success: false, message: 'newVenueId is required.', code: 'VALIDATION' });
+        svcAction = { newVenueId: req.body.newVenueId };
+        break;
+      default:
+        return res.status(400).json({ success: false, message: 'Unknown admin action.', code: 'VALIDATION' });
+    }
+    const result = await VenueAvailabilityService.adminOverride(reservationId, svcAction, req.user);
+    const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: req.user.role, department: req.user.department };
+    const target = { entityType: 'VENUE_RESERVATION', entityId: reservationId };
+    const auditName = action === 'force_release' ? 'VENUE_FORCE_RELEASED'
+      : action === 'force_expire' ? 'VENUE_FORCE_EXPIRED' : 'VENUE_REBOOKED';
+    _writeVenueAudit(auditName, 'SUCCESS', actor, target, { byAdmin: true, action, params: req.body || {} }, req);
+    return res.json({ success: true, ...result, message: 'Admin override applied successfully.' });
+  } catch (err) {
+    return _handleServiceError(res, err, 'VENUE_ADMIN_OVERRIDE');
   }
 });
 

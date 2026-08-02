@@ -7,11 +7,18 @@ const bcrypt = require('bcryptjs');
  */
 const buildStaffData = async ({ name, email, role, department, password, assignedClasses, staffId }) => {
   const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
-
-  const userId = staffId ? `staff_${staffId}` : `staff_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  // Derive a stable staffId from the provided staffId, or fall back to email-based
+  const derivedStaffId = staffId
+    ? String(staffId).toLowerCase().replace(/[^a-z0-9]/g, '_')
+    : email.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const userId = `staff_${derivedStaffId}`;
+  // Default password is staffId if none provided
+  const plainPassword = password && password.trim() ? password.trim() : (staffId || derivedStaffId);
+  const hashedPassword = await bcrypt.hash(plainPassword, salt);
   
   const userData = {
+    id: userId,
+    staffId: staffId || derivedStaffId,
     name,
     email: email.toLowerCase(),
     role: role.toUpperCase(),

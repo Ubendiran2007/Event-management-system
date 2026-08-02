@@ -54,54 +54,46 @@ router.get('/events', async (req, res) => {
 
     const events = snapshotToArray(snapshot);
     
-    // Evaluate Postponement Expirations Dynamically
+    // ── Respond immediately — expire stale postponements in background ────────
     const nowTime = new Date();
-    
-    for (let ev of events) {
-      if (ev.postponementRequest && (ev.postponementRequest.status === 'PENDING_FACULTY' || ev.postponementRequest.status === 'PENDING_HOD' || ev.postponementRequest.status === 'PENDING_IQAC')) {
-        const eventDateStr = ev.requisition?.step1?.eventStartDate || ev.date;
+    const toExpire = [];
+
+    for (const ev of events) {
+      if (ev.postponementRequest && ['PENDING_FACULTY','PENDING_HOD','PENDING_IQAC'].includes(ev.postponementRequest.status)) {
+        const eventDateStr     = ev.requisition?.step1?.eventStartDate || ev.date;
         const eventStartTimeStr = ev.requisition?.step1?.eventStartTime || ev.startTime || '00:00';
-        
         if (eventDateStr) {
-          const createDate = (dateStr, timeStr) => {
-            const [h, m] = String(timeStr).split(':').map(Number);
-            const d = new Date(dateStr);
-            d.setHours(h, m, 0, 0);
-            return d;
-          };
-          
-          const eventStart = createDate(eventDateStr, eventStartTimeStr);
-          
-          if (nowTime.getTime() > eventStart.getTime()) {
-             // EXPIRED!
-             ev.postponementRequest.status = 'EXPIRED';
-             ev.postponementRequest.expiredAt = nowTime.toISOString();
-             ev.postponementRequest.expiryReason = 'Original event start time has already been reached.';
-             
-             const updatePayload = {
-               'postponementRequest.status': 'EXPIRED',
-               'postponementRequest.expiredAt': ev.postponementRequest.expiredAt,
-               'postponementRequest.expiryReason': ev.postponementRequest.expiryReason,
-               'eventActions': [...(ev.eventActions || []), {
-                  action: 'POSTPONEMENT_EXPIRED',
-                  timestamp: nowTime.toISOString(),
-                  reason: 'Original event start time reached before approval.'
-               }]
-             };
-             
-             // Update Firestore asynchronously
-             updateDoc(doc(db, 'events', ev.id), updatePayload).catch(err => {
-                console.error('[dashboard/events] Failed to expire postponement for event', ev.id, err);
-             });
-             
-             // Note: Email notifications for expiry would go here (Rule 4 & 5).
-             console.log(`[dashboard/events] Event ${ev.id} postponement request automatically expired.`);
+          const [h, m] = String(eventStartTimeStr).split(':').map(Number);
+          const eventStart = new Date(eventDateStr);
+          eventStart.setHours(h, m, 0, 0);
+          if (nowTime > eventStart) {
+            ev.postponementRequest.status    = 'EXPIRED';
+            ev.postponementRequest.expiredAt = nowTime.toISOString();
+            ev.postponementRequest.expiryReason = 'Original event start time has already been reached.';
+            toExpire.push({ id: ev.id, eventActions: ev.eventActions || [] });
           }
         }
       }
     }
 
-    return res.json({ success: true, count: events.length, events });
+    // Send response before doing any Firestore writes
+    res.json({ success: true, count: events.length, events });
+
+    // Background batch — fire-and-forget, no await
+    if (toExpire.length > 0) {
+      Promise.all(toExpire.map(ev =>
+        updateDoc(doc(db, 'events', ev.id), {
+          'postponementRequest.status':      'EXPIRED',
+          'postponementRequest.expiredAt':   nowTime.toISOString(),
+          'postponementRequest.expiryReason':'Original event start time has already been reached.',
+          eventActions: [...ev.eventActions, {
+            action: 'POSTPONEMENT_EXPIRED',
+            timestamp: nowTime.toISOString(),
+            reason: 'Original event start time reached before approval.'
+          }]
+        })
+      )).catch(err => console.error('[dashboard/events] Expiry batch error:', err));
+    }
   } catch (error) {
     console.error('[dashboard/events] Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch events', error: error.message });

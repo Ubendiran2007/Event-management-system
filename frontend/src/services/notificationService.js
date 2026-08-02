@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+import { api } from '../utils/api';
 
 /**
  * Service for Notification API calls
@@ -11,10 +11,9 @@ export const notificationService = {
    */
   async fetchNotifications(userId, filters = {}) {
     try {
-      const queryParams = new URLSearchParams({ userId, ...filters });
-      const res = await fetch(`${API_BASE}/api/notifications?${queryParams.toString()}`);
-      if (!res.ok) throw new Error('Failed to fetch notifications');
-      return await res.json();
+      const res = await api.get('/api/notifications', { userId, ...filters });
+      if (res && res.success === false) throw new Error(res.message || 'Failed to fetch notifications');
+      return res;
     } catch (error) {
       console.error('[notificationService] fetchNotifications error:', error);
       throw error;
@@ -27,9 +26,9 @@ export const notificationService = {
    */
   async fetchUnreadSummary(userId) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/unread?userId=${userId}`);
-      if (!res.ok) throw new Error('Failed to fetch unread summary');
-      return await res.json();
+      const res = await api.get('/api/notifications/unread', { userId });
+      if (res && res.success === false) throw new Error(res.message || 'Failed to fetch unread summary');
+      return res;
     } catch (error) {
       console.error('[notificationService] fetchUnreadSummary error:', error);
       throw error;
@@ -42,11 +41,9 @@ export const notificationService = {
    */
   async markAsRead(notificationId) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/${notificationId}/read`, {
-        method: 'PATCH'
-      });
-      if (!res.ok) throw new Error('Failed to mark as read');
-      return await res.json();
+      const res = await api.patch(`/api/notifications/${notificationId}/read`, {});
+      if (res && res.success === false) throw new Error(res.message || 'Failed to mark as read');
+      return res;
     } catch (error) {
       console.error('[notificationService] markAsRead error:', error);
       throw error;
@@ -59,13 +56,9 @@ export const notificationService = {
    */
   async markAllAsRead(userId) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/read-all`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
-      });
-      if (!res.ok) throw new Error('Failed to mark all as read');
-      return await res.json();
+      const res = await api.patch('/api/notifications/read-all', { userId });
+      if (res && res.success === false) throw new Error(res.message || 'Failed to mark all as read');
+      return res;
     } catch (error) {
       console.error('[notificationService] markAllAsRead error:', error);
       throw error;
@@ -78,11 +71,9 @@ export const notificationService = {
    */
   async archiveNotification(notificationId) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/${notificationId}/archive`, {
-        method: 'PATCH'
-      });
-      if (!res.ok) throw new Error('Failed to archive');
-      return await res.json();
+      const res = await api.patch(`/api/notifications/${notificationId}/archive`, {});
+      if (res && res.success === false) throw new Error(res.message || 'Failed to archive');
+      return res;
     } catch (error) {
       console.error('[notificationService] archiveNotification error:', error);
       throw error;
@@ -95,11 +86,9 @@ export const notificationService = {
    */
   async deleteNotification(notificationId) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/${notificationId}`, {
-        method: 'DELETE'
-      });
-      if (!res.ok) throw new Error('Failed to delete');
-      return await res.json();
+      const res = await api.delete(`/api/notifications/${notificationId}`);
+      if (res && res.success === false) throw new Error(res.message || 'Failed to delete');
+      return res;
     } catch (error) {
       console.error('[notificationService] deleteNotification error:', error);
       throw error;
@@ -112,9 +101,9 @@ export const notificationService = {
    */
   async fetchPreferences(userId) {
     try {
-      const res = await fetch(`${API_BASE}/api/preferences?userId=${userId}`);
-      if (!res.ok) throw new Error('Failed to fetch preferences');
-      return await res.json();
+      const res = await api.get('/api/preferences', { userId });
+      if (res && res.success === false) throw new Error(res.message || 'Failed to fetch preferences');
+      return res;
     } catch (error) {
       console.error('[notificationService] fetchPreferences error:', error);
       throw error;
@@ -128,13 +117,9 @@ export const notificationService = {
    */
   async updatePreferences(userId, preferences) {
     try {
-      const res = await fetch(`${API_BASE}/api/preferences`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, ...preferences })
-      });
-      if (!res.ok) throw new Error('Failed to update preferences');
-      return await res.json();
+      const res = await api.put('/api/preferences', { userId, ...preferences });
+      if (res && res.success === false) throw new Error(res.message || 'Failed to update preferences');
+      return res;
     } catch (error) {
       console.error('[notificationService] updatePreferences error:', error);
       throw error;
@@ -145,12 +130,9 @@ export const notificationService = {
 
   async sendTestNotification(userId, payload) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, ...payload })
-      });
-      return await res.json();
+      const res = await api.post('/api/notifications/test', { userId, ...payload });
+      if (res && res.success === false) throw new Error(res.message || 'Failed to send test notification');
+      return res;
     } catch (error) {
       console.error('Test notification error:', error);
       throw error;
@@ -159,12 +141,9 @@ export const notificationService = {
 
   async sendBroadcast(payload) {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/broadcast`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      return await res.json();
+      const res = await api.post('/api/notifications/broadcast', payload);
+      if (res && res.success === false) throw new Error(res.message || 'Failed to send broadcast');
+      return res;
     } catch (error) {
       console.error('Broadcast error:', error);
       throw error;
@@ -173,8 +152,9 @@ export const notificationService = {
 
   async getQueueStatus() {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/queue-status`);
-      return await res.json();
+      const res = await api.get('/api/notifications/queue-status');
+      if (res && res.success === false) throw new Error(res.message || 'Failed to get queue status');
+      return res;
     } catch (error) {
       console.error('Queue status error:', error);
       throw error;
@@ -183,8 +163,9 @@ export const notificationService = {
 
   async getDLQ() {
     try {
-      const res = await fetch(`${API_BASE}/api/notifications/dlq`);
-      return await res.json();
+      const res = await api.get('/api/notifications/dlq');
+      if (res && res.success === false) throw new Error(res.message || 'Failed to get DLQ');
+      return res;
     } catch (error) {
       console.error('DLQ error:', error);
       throw error;

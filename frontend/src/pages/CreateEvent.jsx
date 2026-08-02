@@ -22,6 +22,7 @@ import {
   Globe,
   AlertTriangle,
   ShieldAlert,
+  AlertCircle,
 } from 'lucide-react';
 import { formatEventRef, fallbackValue } from '../utils/formatters';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -37,7 +38,7 @@ import { EventStatus, UserRole } from '../types';
 import { validateUpload } from '../utils/fileValidation';
 import EventManagerSelector from '../components/EventManagerSelector';
 import VolunteerRequirementSelector from '../components/VolunteerRequirementSelector';
-import { getAuthToken } from '../utils/api';
+import { getAuthToken, venueApi } from '../utils/api';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Hackathon', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
@@ -270,27 +271,70 @@ const CreateEvent = () => {
   };
 
   const handleReReserve = async () => {
-    if (!reservationState?.reservationId) return;
+    if (!lockedVenue?.id) return;
     try {
       setReReserving(true);
       setReReserveError('');
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
-      const res = await fetch(`${backendUrl}/api/venues/re-reserve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`
-        },
-        body: JSON.stringify({ reservationId: reservationState.reservationId })
-      });
-      const data = await res.json();
-      if (!data.success) {
-        throw new Error(data.message || 'Slot is no longer available.');
+      const holdDate = reservationState?.date || form?.startDate;
+      const holdStart = reservationState?.startTime || form?.startTime;
+      const holdEnd = reservationState?.endTime || form?.endTime;
+      if (!holdDate || !holdStart || !holdEnd) {
+        throw new Error('Missing date/time information. Please return to Venue Selection and pick a new slot.');
+      }
+      const venueId = lockedVenue.id || lockedVenue.venueId || lockedVenue.venue_id;
+
+      const legacyFallback = async () => {
+        try {
+          return await venueApi.reserveVenue({
+            venueId,
+            date: holdDate,
+            startTime: holdStart,
+            endTime: holdEnd
+          });
+        } catch (e) {
+          return { success: false, message: e?.message || 'Legacy reserve failed.' };
+        }
+      };
+
+      let result = null;
+      try {
+        result = await venueApi.holdVenue(venueId, {
+          date: holdDate,
+          startTime: holdStart,
+          endTime: holdEnd,
+          eventDraftId: isResubmissionEdit && editingEvent?.id ? editingEvent.id : null
+        });
+      } catch (_e) {
+        result = await legacyFallback();
+      }
+
+      // If enterprise endpoint returns success:false with 404/missing message -> fallback legacy
+      if (!result || !result.success) {
+        const reason = String(result?.message || '').toLowerCase();
+        const needsFallback = !result
+          || /404|not found|endpoint/i.test(reason)
+          || /responded with status instead of json/i.test(reason)
+          || /non-json/i.test(reason);
+        if (needsFallback) {
+          result = await legacyFallback();
+        }
+      }
+
+      if (!result || !result.success) {
+        throw new Error(result?.message || 'Slot is no longer available.');
+      }
+      const payload = result.reservation || result.data || {};
+      if (!payload.reservationId || !payload.expiresAt) {
+        throw new Error(result.message || 'Server did not return a valid venue hold. Please return to Venue Selection and pick a new slot.');
       }
       const newRes = {
         ...reservationState,
-        reservationId: data.data.reservationId,
-        expiresAt: data.data.expiresAt
+        reservationId: payload.reservationId,
+        expiresAt: payload.expiresAt,
+        holdDurationMinutes: payload.holdDurationMinutes || reservationState?.holdDurationMinutes || null,
+        date: holdDate,
+        startTime: holdStart,
+        endTime: holdEnd
       };
       setReservationState(newRes);
       sessionStorage.setItem('currentVenueHold', JSON.stringify({
@@ -389,6 +433,12 @@ const CreateEvent = () => {
     schedule: [
       { id: Date.now(), time: '09:00', agenda: 'Inauguration', speaker: '' }
     ],
+
+    // ── Registration lifecycle defaults
+    capacity: null,
+    registrationOpensAt: '',
+    registrationDeadline: '',
+    requiresRegistrationApproval: false,
 
     // Requirement toggles
     venueRequired: true,
@@ -1821,6 +1871,29 @@ const CreateEvent = () => {
           : null,
         annexureVI_media: form.mediaRequired ? form.media : null,
       },
+
+      // ── Registration lifecycle ────────────────────────────────────────
+      // Dual-write flat legacy fields + structured registration object
+      capacity: form.capacity || null,
+      registrationDeadline: form.registrationDeadline ? new Date(form.registrationDeadline).toISOString() : null,
+      requiresRegistrationApproval: !!form.requiresRegistrationApproval,
+      registration: (() => {
+        const opensAt = form.registrationOpensAt ? new Date(form.registrationOpensAt).toISOString() : null;
+        const currentDeadline = form.registrationDeadline ? new Date(form.registrationDeadline).toISOString() : null;
+        return {
+          enabled: true,
+          status: 'OPEN',
+          opensAt,
+          originalDeadline: currentDeadline,
+          currentDeadline,
+          maxParticipants: form.capacity || null,
+          requiresApproval: !!form.requiresRegistrationApproval,
+          extensions: [],
+          extensionCount: 0,
+          reopened: false,
+          notificationSent: false
+        };
+      })(),
     };
   };
 
@@ -1880,6 +1953,11 @@ const CreateEvent = () => {
   };
 
   const handleSubmit = async () => {
+    if (isExpired && !isResubmissionEdit) {
+      setSubmitError('Your venue reservation has expired. Please reserve the venue again before submitting.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     for (let i = 0; i < steps.length; i += 1) {
       const key = steps[i].key;
       if (key === STEP_KEYS.REVIEW) continue;
@@ -1900,22 +1978,14 @@ const CreateEvent = () => {
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      if (reservationState?.reservationId && lockedVenue) {
-        const valRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/venues/validate-hold', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getAuthToken()}`
-          },
-          body: JSON.stringify({
-            reservationId: reservationState.reservationId,
-            venueId: lockedVenue.id,
-            date: form.startDate,
-            startTime: form.startTime,
-            endTime: form.endTime
-          })
+      if (reservationState?.reservationId && lockedVenue && !isResubmissionEdit) {
+        const valData = await venueApi.validateHold({
+          reservationId: reservationState.reservationId,
+          venueId: lockedVenue.id,
+          date: form.startDate,
+          startTime: form.startTime,
+          endTime: form.endTime
         });
-        const valData = await valRes.json();
         if (!valData.success) {
           throw new Error(valData.message || 'Venue hold validation failed. The reservation may have expired or entered maintenance.');
         }
@@ -2589,6 +2659,19 @@ const CreateEvent = () => {
                   <p className="text-xs text-slate-500">Maximum number of students who can register</p>
                 </div>
                 <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Registration Opens</label>
+                  <input
+                    type="datetime-local"
+                    className={inputClass}
+                    value={form.registrationOpensAt || ''}
+                    min={eventStartMinDate ? `${eventStartMinDate}T00:00` : ''}
+                    onChange={(e) => setField('registrationOpensAt', e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Students will not be able to register before this time (optional — defaults to now)
+                  </p>
+                </div>
+                <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Registration Deadline</label>
                   <input
                     type="datetime-local"
@@ -2604,7 +2687,7 @@ const CreateEvent = () => {
                     value={form.requiresRegistrationApproval || false} 
                     onChange={(val) => setField('requiresRegistrationApproval', val)} 
                   />
-                  <p className="text-xs text-slate-500 mt-1">If enabled, students will be 'PENDING_APPROVAL' until manually approved by you.</p>
+                  <p className="text-xs text-slate-500 mt-1">If enabled, students will be 'PENDING' until manually approved, rejected, or waitlisted by you.</p>
                 </div>
               </div>
             </div>
@@ -3951,7 +4034,7 @@ const CreateEvent = () => {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (isExpired && !isResubmissionEdit)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-60"
                 >
                   {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}

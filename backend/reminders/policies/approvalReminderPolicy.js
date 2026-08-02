@@ -14,7 +14,7 @@ class ApprovalReminderPolicy extends BaseReminderPolicy {
     const eligibleItems = [];
     try {
       // Find events pending HOD approval (status = 'PENDING_HOD' etc.)
-      const db = dbAdmin.firestore();
+      const db = dbAdmin;
       const eventsRef = db.collection('events');
       
       // In a real database, we'd want indexes for this.
