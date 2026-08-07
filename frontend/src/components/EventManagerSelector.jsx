@@ -9,7 +9,8 @@ const EventManagerSelector = ({
   date = '', 
   startTime = '', 
   endTime = '', 
-  department = '' 
+  department = '',
+  currentUser = null
 }) => {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,27 +20,45 @@ const EventManagerSelector = ({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const dropdownRef = useRef(null);
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
 
+  const [loadingSearch, setLoadingSearch] = useState(false);
+
+  // Fetch candidates whenever the search term changes (debounced, server-side search)
   useEffect(() => {
-    // Fetch all users for autocomplete
-    const fetchUsers = async () => {
+    if (!searchTerm.trim()) {
+      setUsers([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoadingSearch(true);
       try {
-        const response = await fetch(`${backendUrl}/api/users`, {
-          headers: {
-            'Authorization': `Bearer ${getAuthToken()}`
-          }
+        const params = new URLSearchParams({ search: searchTerm.trim(), limit: '30' });
+        if (department) params.set('department', department);
+
+        const res = await fetch(`${backendUrl}/api/students?${params}`, {
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
         });
-        const data = await response.json();
-        if (data.success && data.users) {
-          setUsers(data.users);
+        const data = await res.json();
+        let fetchedUsers = data.success && data.data ? data.data : [];
+        
+        // Ensure event creator cannot be added as a manager
+        if (currentUser) {
+          fetchedUsers = fetchedUsers.filter(u => u.id !== currentUser.id && u.userId !== currentUser.id);
         }
+        
+        setUsers(fetchedUsers);
       } catch (err) {
-        console.error('Failed to fetch users:', err);
+        console.error('Failed to fetch students:', err);
+        setUsers([]);
+      } finally {
+        setLoadingSearch(false);
       }
-    };
-    fetchUsers();
-  }, [backendUrl]);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, department, backendUrl]);
 
   // Check real-time availability of currently selected managers when date/time/list changes
   useEffect(() => {
@@ -126,9 +145,10 @@ const EventManagerSelector = ({
     const userId = user.id || user.userId;
     if (!selectedManagers.find(m => m.userId === userId)) {
       onChange([...selectedManagers, {
-        userId: userId,
+        userId,
         name: user.name,
         email: user.email,
+        rollNo: user.rollNo || user.regNo || '',
         department: user.department,
         status: 'INVITED'
       }]);
@@ -141,63 +161,48 @@ const EventManagerSelector = ({
     onChange(selectedManagers.filter(m => m.userId !== userId));
   };
 
-  const filteredUsers = users.filter(u => 
-    (u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-     u.email?.toLowerCase().includes(searchTerm.toLowerCase())) &&
-    !selectedManagers.find(m => m.userId === u.id)
-  );
+  // filteredUsers: already server-filtered, just exclude already-selected ones
+  const filteredUsers = users.filter(u => {
+    const notSelected = !selectedManagers.find(m => m.userId === (u.id || u.userId));
+    return notSelected;
+  });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-          Event Managers
-          {managerConflicts.length > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 animate-pulse">
-              <ShieldAlert size={12} /> {managerConflicts.length} Conflict{managerConflicts.length > 1 ? 's' : ''} Detected
-            </span>
-          )}
-        </label>
-        {date && (
-          <button
-            type="button"
-            onClick={fetchSuggestions}
-            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm hover:from-purple-700 hover:to-indigo-700 transition-all transform active:scale-95"
-          >
-            <Sparkles size={13} className="animate-spin-slow" />
-            Smart Suggestions
-          </button>
-        )}
-      </div>
-      
+    <div className="space-y-3">
+      {/* Conflict badge */}
+      {managerConflicts.length > 0 && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 animate-pulse">
+          <ShieldAlert size={12} /> {managerConflicts.length} Conflict{managerConflicts.length > 1 ? 's' : ''} Detected
+        </span>
+      )}
+
       <div className="relative" ref={dropdownRef}>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
             type="text"
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm transition-all"
-            placeholder="Search student managers by name or email..."
+            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm transition-all"
+            placeholder={`Search by name, email or roll no${department ? ` (${department})` : ''}…`}
             value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setIsDropdownOpen(true);
-            }}
+            onChange={(e) => { setSearchTerm(e.target.value); setIsDropdownOpen(true); }}
             onFocus={() => setIsDropdownOpen(true)}
           />
         </div>
-        
-        {isDropdownOpen && searchTerm.length > 1 && (
-          <div className="absolute z-50 w-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-            {filteredUsers.length > 0 ? (
-              filteredUsers.map(user => (
-                <div 
-                  key={user.id} 
+
+        {isDropdownOpen && searchTerm.length > 0 && (
+          <div className="absolute z-50 w-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
+            {loadingSearch ? (
+              <div className="px-4 py-3 text-xs text-slate-400 text-center">Searching…</div>
+            ) : filteredUsers.length > 0 ? (
+              filteredUsers.slice(0, 20).map(user => (
+                <div
+                  key={user.id}
                   className="px-4 py-2.5 hover:bg-purple-50/50 cursor-pointer flex justify-between items-center transition-colors"
                   onClick={() => handleSelect(user)}
                 >
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{user.name}</p>
-                    <p className="text-xs text-slate-500">{user.email}</p>
+                    <p className="text-xs text-slate-500">{user.rollNo || user.regNo || user.studentId || user.email}</p>
                   </div>
                   <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
                     {user.department || 'Staff'}
@@ -205,11 +210,18 @@ const EventManagerSelector = ({
                 </div>
               ))
             ) : (
-              <div className="px-4 py-3 text-sm text-slate-500 text-center">No users found matching "{searchTerm}"</div>
+              <div className="px-4 py-3 text-sm text-slate-400 text-center">No people found in <strong>{department || 'this department'}</strong> matching "{searchTerm}"</div>
             )}
           </div>
         )}
       </div>
+
+      {/* At-least-1 notice */}
+      {selectedManagers.length === 0 && (
+        <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
+          <AlertTriangle size={12} /> At least 1 event manager is required.
+        </p>
+      )}
 
       {/* Selected Managers List with Real-time Conflict & Availability Badges */}
       {selectedManagers.length > 0 && (
@@ -276,8 +288,8 @@ const EventManagerSelector = ({
         </div>
       )}
 
-      {/* Smart Suggestions Panel */}
-      {showSuggestions && (
+      {/* Smart Suggestions Panel — hidden */}
+      {false && showSuggestions && (
         <div className="mt-4 p-4 bg-gradient-to-br from-purple-50 to-indigo-50/50 border border-purple-100 rounded-2xl shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">

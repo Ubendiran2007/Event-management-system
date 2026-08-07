@@ -208,7 +208,7 @@ const formatTime12 = (t24) => {
 const RequirementToggle = ({ label, checked, onToggle }) => (
   <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3 cursor-pointer bg-white">
     <span className="text-sm font-medium text-slate-700">{label}</span>
-    <PremiumDatePicker  type="checkbox" checked={checked} onChange={onToggle} className="w-4 h-4" />
+    <input  type="checkbox" checked={checked} onChange={onToggle} className="w-4 h-4" />
   </label>
 );
 
@@ -228,23 +228,83 @@ const CreateEvent = () => {
   const [reservationState, setReservationState] = useState(() => location.state?.reservation || storedHold?.reservation || null);
   const [lockedVenue, setLockedVenue] = useState(() => location.state?.venue || storedHold?.venue || null);
 
-  // If editing a rejected event for resubmission
-  const isResubmissionEdit = location.state?.editMode === true;
+  // Distinguish between continuing a draft vs editing a rejected event
+  const isDraftEdit = location.state?.editMode === true && location.state?.editingEvent?.status === 'DRAFT';
+  const isResubmissionEdit = location.state?.editMode === true && !isDraftEdit;
 
   // Route protection
   useEffect(() => {
-    if (!isResubmissionEdit && (!reservationState || !lockedVenue)) {
-      navigate('/create-event', { replace: true });
+    if (!isResubmissionEdit && !isDraftEdit && (!reservationState || !lockedVenue)) {
+      navigate('/dashboard', { replace: true });
     }
-  }, [isResubmissionEdit, reservationState, lockedVenue, navigate]);
+  }, [isResubmissionEdit, isDraftEdit, reservationState, lockedVenue, navigate]);
 
   // Hold Timer state
   const [timeLeftSec, setTimeLeftSec] = useState(600);
   const [isExpired, setIsExpired] = useState(false);
   const [reReserving, setReReserving] = useState(false);
   const [reReserveError, setReReserveError] = useState('');
+  const [showExpireModal, setShowExpireModal] = useState(false);
+  // Resubmission/edit venue availability state (no active HELD; checking previously booked venue)
+  const [editVenueCheckLoading, setEditVenueCheckLoading] = useState(false);
+  const [editVenueCheckResult, setEditVenueCheckResult] = useState(null);
+  // Auto venue re-hold state for edit/resubmission
+  const [autoHoldingVenue, setAutoHoldingVenue] = useState(false);
+  const [autoHoldError, setAutoHoldError] = useState('');
+  const [autoHoldAttempted, setAutoHoldAttempted] = useState(false);
+
+  // Resolve the venue ID/name for draft/resubmission edit:
+  // - For normal create: use lockedVenue
+  // - For DRAFT edit: use editingEvent.venue (draft string name) or fall through form
+  // - For RESUBMISSION edit: look through step1.venueId → event.venueId → HR selections → Audio annex venue
+  const resolveEditingVenueId = () => {
+    if (lockedVenue?.id) return String(lockedVenue.id);
+    if (lockedVenue?.name) return String(lockedVenue.name);
+    if (!editingEvent) return null;
+    if (editingEvent.venueId || editingEvent.venue_id) return String(editingEvent.venueId || editingEvent.venue_id);
+    const step1 = editingEvent.requisition?.step1;
+    if (step1?.venueId) return String(step1.venueId);
+    const hrSelected = Object.entries(editingEvent.requisition?.annexureI_venue?.venueSelection || {})
+      .filter(([, v]) => v && v.selected).map(([k]) => k);
+    if (hrSelected[0]) return hrSelected[0];
+    if (form.venueSelection) {
+      const formHrSelected = Object.entries(form.venueSelection).find(([, v]) => v && v.selected);
+      if (formHrSelected) return formHrSelected[0];
+    }
+    const audioName = editingEvent.requisition?.annexureII_audio?.venueName;
+    if (audioName) return String(audioName);
+    if (form.audioVenueName) return String(form.audioVenueName);
+    if (editingEvent.venue) return String(editingEvent.venue);
+    return null;
+  };
+
+  const resolveEditingVenueName = () => {
+    if (lockedVenue?.name) return lockedVenue.name;
+    if (!editingEvent) return null;
+    const hrSelected = Object.entries(editingEvent.requisition?.annexureI_venue?.venueSelection || {})
+      .filter(([, v]) => v && v.selected).map(([k]) => k);
+    if (hrSelected[0]) return hrSelected[0];
+    if (form.venueSelection) {
+      const formHrSelected = Object.entries(form.venueSelection).find(([, v]) => v && v.selected);
+      if (formHrSelected) return formHrSelected[0];
+    }
+    const audioName = editingEvent.requisition?.annexureII_audio?.venueName || form.audioVenueName;
+    if (audioName) return audioName;
+    if (editingEvent.venue) return editingEvent.venue;
+    return resolveEditingVenueId();
+  };
+
+  // ── Pop the expiration dialog the moment the hold becomes expired ──
+  useEffect(() => {
+    if (isExpired && !isDraftEdit && !isResubmissionEdit) {
+      setShowExpireModal(true);
+    } else if (!isExpired) {
+      setShowExpireModal(false);
+    }
+  }, [isExpired, isDraftEdit, isResubmissionEdit]);
 
   useEffect(() => {
+    // Run expiry timer for ANY mode that has an active reservation (new events, resubmits with fresh auto-hold, draft edits with fresh hold)
     if (!reservationState?.expiresAt) return;
     const target = new Date(reservationState.expiresAt).getTime();
     
@@ -275,9 +335,9 @@ const CreateEvent = () => {
     try {
       setReReserving(true);
       setReReserveError('');
-      const holdDate = reservationState?.date || form?.startDate;
-      const holdStart = reservationState?.startTime || form?.startTime;
-      const holdEnd = reservationState?.endTime || form?.endTime;
+      const holdDate = form?.startDate || reservationState?.date;
+      const holdStart = form?.startTime || reservationState?.startTime;
+      const holdEnd = form?.endTime || reservationState?.endTime;
       if (!holdDate || !holdStart || !holdEnd) {
         throw new Error('Missing date/time information. Please return to Venue Selection and pick a new slot.');
       }
@@ -355,6 +415,7 @@ const CreateEvent = () => {
   const [submitError, setSubmitError] = useState('');
   const [stepError, setStepError] = useState('');
   const [editImpact, setEditImpact] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null); // null = not uploading, 0-100 = %
   const [checkingImpact, setCheckingImpact] = useState(false);
   // Per-field inline error messages
   const [fieldErrors, setFieldErrors] = useState({});
@@ -376,7 +437,7 @@ const CreateEvent = () => {
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
-        const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events/coordinators/list');
+        const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/events/coordinators/list');
         const data = await response.json();
         if (data.success && data.coordinators) {
           const depts = [...new Set(data.coordinators.map(c => c.department).filter(Boolean))].sort();
@@ -414,8 +475,8 @@ const CreateEvent = () => {
     isIIC: 'No',
     audienceScope: 'Open To All',
     selectedDepartments: [],
-    startDate: location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.date || '',
-    endDate: location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.date || '',
+    startDate: location.state?.reservation?.startDate || location.state?.startDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.startDate || storedHold?.reservation?.date || '',
+    endDate: location.state?.reservation?.endDate || location.state?.endDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.endDate || storedHold?.reservation?.date || '',
     startTime: location.state?.reservation?.startTime || location.state?.startTime || storedHold?.reservation?.startTime || '09:00',
     endTime: location.state?.reservation?.endTime || location.state?.endTime || storedHold?.reservation?.endTime || '17:00',
     organizerName: currentUser?.name || '',
@@ -456,16 +517,24 @@ const CreateEvent = () => {
     bouquet: { selected: false, qty: '' },
 
     // Step 2: Venue
-    numberOfVenuesRequired: '',
-    venueSelection: createQtyMap(VENUE_OPTIONS),
+    numberOfVenuesRequired: location.state?.venue || storedHold?.venue ? '1' : '',
+    venueSelection: (() => {
+      const v = location.state?.venue || storedHold?.venue;
+      const initialMap = createQtyMap(VENUE_OPTIONS);
+      if (v) {
+        const match = VENUE_OPTIONS.find(opt => opt.toLowerCase() === (v.name || '').toLowerCase());
+        if (match) initialMap[match] = { selected: true, qty: 1 };
+      }
+      return initialMap;
+    })(),
     hallRequirements: createQtyMap(HALL_REQUIREMENTS),
     venueSpecialRequest: '',
 
     // Step 3: Audio
-    audioDate: '',
-    audioStartTime: '',
-    audioEndTime: '',
-    audioVenueName: '',
+    audioDate: location.state?.reservation?.startDate || location.state?.startDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.startDate || storedHold?.reservation?.date || '',
+    audioStartTime: location.state?.reservation?.startTime || location.state?.startTime || storedHold?.reservation?.startTime || '09:00',
+    audioEndTime: location.state?.reservation?.endTime || location.state?.endTime || storedHold?.reservation?.endTime || '17:00',
+    audioVenueName: location.state?.venue?.name || storedHold?.venue?.name || '',
     audioEquipment: createAudioQtyMap(AUDIO_EQUIPMENT),
     audioSpecialRequest: '',
 
@@ -843,6 +912,10 @@ const CreateEvent = () => {
       accommodation: accommodationAnnex || prev.accommodation,
       media: mediaAnnex || prev.media,
       schedule: editingEvent.requisition?.step1?.schedule || editingEvent.schedule || [{ id: Date.now(), time: '09:00', agenda: 'Inauguration', speaker: '' }],
+      capacity: editingEvent.maxParticipants ?? null,
+      registrationOpensAt: editingEvent.registrationOpensAt || '',
+      registrationDeadline: editingEvent.registrationDeadline || '',
+      requiresRegistrationApproval: editingEvent.requiresRegistrationApproval || false,
     }));
   }, [editingEvent, currentUser]);
 
@@ -854,7 +927,7 @@ const CreateEvent = () => {
     const checkImpact = async () => {
       setCheckingImpact(true);
       try {
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${editingEvent.id}/check-edit-impact`, {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${editingEvent.id}/check-edit-impact`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -880,6 +953,195 @@ const CreateEvent = () => {
     const timer = setTimeout(checkImpact, 600);
     return () => clearTimeout(timer);
   }, [isResubmissionEdit, editingEvent, form.startDate, form.startTime, form.endTime, form.managers]);
+
+  // ── Resubmission/Edit Mode Venue Availability Re-Check ──
+  // Re-runs when date/time or venue selections change; skips own event's existing booking via skipEventId
+  useEffect(() => {
+    if (!isResubmissionEdit && !isDraftEdit) return;
+    const editingVenueId = resolveEditingVenueId();
+    if (!editingVenueId || !form.startDate || !form.startTime || !form.endTime) {
+      setEditVenueCheckResult(null);
+      return;
+    }
+    if (form.startDate > form.endDate) { setEditVenueCheckResult(null); return; }
+    if (form.startDate === form.endDate && form.startTime >= form.endTime) { setEditVenueCheckResult(null); return; }
+
+    let cancelled = false;
+    const runCheck = async () => {
+      try {
+        setEditVenueCheckLoading(true);
+        const startDp = new Date(form.startDate);
+        const endDp = new Date(form.endDate);
+        const totalDays = Math.max(1, Math.round((endDp - startDp) / (1000 * 60 * 60 * 24)) + 1);
+        let firstConflict = null;
+        for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 1) {
+          const cur = new Date(startDp.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+          const y = cur.getFullYear();
+          const m = String(cur.getMonth() + 1).padStart(2, '0');
+          const d = String(cur.getDate()).padStart(2, '0');
+          const curStr = `${y}-${m}-${d}`;
+          const dayStart = dayOffset === 0 ? form.startTime : '00:01';
+          const dayEnd = dayOffset === totalDays - 1 ? form.endTime : '23:59';
+          const slot = await venueApi.getSlotStatus(editingVenueId, {
+            date: curStr,
+            startTime: dayStart,
+            endTime: dayEnd,
+            skipEventId: editingEvent?.id || null,
+            skipReservationId: editingEvent?.reservationId || editingEvent?.venueReservationId || null
+          });
+          if (slot && slot.available === false) {
+            firstConflict = slot;
+            break;
+          }
+        }
+        if (cancelled) return;
+        setEditVenueCheckResult(
+          firstConflict || { available: true, status: 'AVAILABLE', venueName: resolveEditingVenueName() }
+        );
+      } catch (err) {
+        if (cancelled) return;
+        setEditVenueCheckResult({ available: false, status: 'ERROR', message: err?.message || 'Availability check failed' });
+      } finally {
+        if (!cancelled) setEditVenueCheckLoading(false);
+      }
+    };
+    const t = setTimeout(runCheck, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [
+    isResubmissionEdit, isDraftEdit, editingEvent?.id, editingEvent?.reservationId, editingEvent?.venueReservationId,
+    form.startDate, form.endDate, form.startTime, form.endTime,
+    form.venueSelection, form.audioVenueName, lockedVenue?.id, lockedVenue?.name
+  ]);
+
+  const editVenueIsAvailable = editVenueCheckResult && (editVenueCheckResult.available === true || editVenueCheckResult.status === 'AVAILABLE');
+  const editVenueIsConflict = editVenueCheckResult && editVenueCheckResult.available === false && editVenueCheckResult.status !== 'ERROR' && editVenueCheckResult.status !== 'UNKNOWN';
+  const editVenueEarliest = editVenueCheckResult?.earliestAvailable;
+
+  // ── Auto venue re-hold for edit/resubmission mode ──
+  // When the previously used venue becomes available, automatically place a HOLD on it.
+  useEffect(() => {
+    if (!isResubmissionEdit && !isDraftEdit) return;
+    if (!editVenueIsAvailable) return;
+    if (lockedVenue?.id || reservationState?.reservationId) return;
+    if (autoHoldingVenue || autoHoldAttempted) return;
+
+    const editingVenueId = resolveEditingVenueId();
+    if (!editingVenueId || !form.startDate || !form.startTime || !form.endTime) return;
+
+    let cancelled = false;
+    const runAutoHold = async () => {
+      try {
+        setAutoHoldingVenue(true);
+        setAutoHoldError('');
+
+        const legacyFallback = async () => {
+          try {
+            return await venueApi.reserveVenue({
+              venueId: editingVenueId,
+              date: form.startDate,
+              startDate: form.startDate,
+              endDate: form.endDate,
+              startTime: form.startTime,
+              endTime: form.endTime,
+            });
+          } catch (e) {
+            return { success: false, message: e?.message || 'Legacy reserve failed.' };
+          }
+        };
+
+        let result = null;
+        try {
+          result = await venueApi.holdVenue(editingVenueId, {
+            date: form.startDate,
+            startDate: form.startDate,
+            endDate: form.endDate,
+            startTime: form.startTime,
+            endTime: form.endTime,
+            eventDraftId: editingEvent?.id || null,
+          });
+        } catch (_e) {
+          result = await legacyFallback();
+        }
+
+        if (!result || !result.success) {
+          const reason = String(result?.message || '').toLowerCase();
+          const needsFallback = !result
+            || /404|not found|endpoint/i.test(reason)
+            || /responded with status instead of json/i.test(reason)
+            || /non-json/i.test(reason);
+          if (needsFallback) {
+            result = await legacyFallback();
+          }
+        }
+
+        if (cancelled) return;
+
+        if (result?.success) {
+          const payload = result.reservation || result.data || {};
+          if (payload.reservationId && payload.expiresAt) {
+            const venueName = resolveEditingVenueName() || (editVenueCheckResult?.venueName) || editingVenueId;
+            const newRes = {
+              reservationId: payload.reservationId,
+              expiresAt: payload.expiresAt,
+              holdDurationMinutes: payload.holdDurationMinutes || null,
+              date: form.startDate,
+              startDate: form.startDate,
+              endDate: form.endDate,
+              startTime: form.startTime,
+              endTime: form.endTime,
+            };
+            const newVenue = {
+              id: editingVenueId,
+              name: venueName,
+              building: lockedVenue?.building || '',
+              floor: lockedVenue?.floor || '',
+              capacity: lockedVenue?.capacity || 0,
+            };
+            setReservationState(newRes);
+            setLockedVenue(newVenue);
+            sessionStorage.setItem('currentVenueHold', JSON.stringify({
+              venue: newVenue,
+              reservation: newRes,
+            }));
+          }
+          setAutoHoldError('');
+        } else {
+          setAutoHoldError(result?.message || 'Venue slot was just reserved by someone else.');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAutoHoldError(err?.message || 'Failed to automatically re-allocate venue.');
+        }
+      } finally {
+        if (!cancelled) {
+          setAutoHoldingVenue(false);
+          setAutoHoldAttempted(true);
+        }
+      }
+    };
+
+    const t = setTimeout(runAutoHold, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [
+    isResubmissionEdit, isDraftEdit,
+    editVenueIsAvailable, editVenueCheckResult,
+    lockedVenue, reservationState,
+    autoHoldingVenue, autoHoldAttempted,
+    form.startDate, form.endDate, form.startTime, form.endTime,
+    editingEvent?.id,
+  ]);
+
+  // Helper: navigate to venue selection page (for "choose another venue" actions)
+  const goToVenueSelection = () => {
+    sessionStorage.removeItem('currentVenueHold');
+    const rolePrefix = location.pathname.split('/')[1];
+    navigate(`/${rolePrefix}/create-event`);
+  };
+
+  const retryAutoHold = () => {
+    setAutoHoldAttempted(false);
+    setAutoHoldError('');
+  };
 
   const renderEditImpactBanner = () => {
     if (checkingImpact) {
@@ -950,6 +1212,215 @@ const CreateEvent = () => {
     );
   };
 
+  // ── Render venue status banner for edit/resubmission mode ──
+  const renderVenueStatusBanner = () => {
+    if (!isResubmissionEdit && !isDraftEdit) return null;
+    if (!form.venueRequired) return null;
+    const venueName = resolveEditingVenueName() || 'previously selected venue';
+    const venueId = resolveEditingVenueId();
+
+    // CASE 1: Auto-hold in progress
+    if (autoHoldingVenue) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center gap-3 text-sm text-blue-800 animate-pulse">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h5 className="font-bold">Re-allocating your previous venue…</h5>
+            <p className="text-xs mt-0.5 opacity-90">
+              Attempting to reserve <strong className="font-extrabold">{venueName}</strong> for the updated schedule.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 2: Successfully re-held the venue (lockedVenue is set)
+    if (lockedVenue?.id && reservationState?.reservationId) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-emerald-50/90 border border-emerald-300 text-emerald-900 transition-all shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-emerald-600">✓</div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Venue Automatically Re-Allocated</h5>
+              <p className="text-xs mt-0.5 font-medium opacity-90">
+                <strong>{lockedVenue.name}</strong> is reserved for <strong>{form.startDate}{form.startDate !== form.endDate ? ` – ${form.endDate}` : ''}</strong> from <strong>{form.startTime}</strong> to <strong>{form.endTime}</strong>.
+              </p>
+              {reservationState.expiresAt && (
+                <p className="text-[11px] mt-1.5 text-emerald-700 font-semibold">
+                  ⏱ 10-minute hold expires at {new Date(reservationState.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — complete your submission before then.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={goToVenueSelection}
+              className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg bg-white/80 hover:bg-white text-emerald-800 border border-emerald-300 transition-colors"
+            >
+              Change Venue
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 3: Availability check still loading
+    if (editVenueCheckLoading && !editVenueCheckResult) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-sm text-slate-600">
+          <div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin shrink-0" />
+          <div>
+            <h5 className="font-bold">Checking venue availability…</h5>
+            <p className="text-xs mt-0.5 opacity-80">Verifying if <strong>{venueName}</strong> is free for your updated times.</p>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 4: Venue is UNAVAILABLE (conflict/BOOKED)
+    if (editVenueIsConflict) {
+      const conflictInfo = editVenueCheckResult;
+      const earliest = conflictInfo.earliestAvailable
+        ? new Date(conflictInfo.earliestAvailable).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-rose-50/95 border border-rose-300 text-rose-900 transition-all shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-rose-600">!</div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">⚠ Previous Venue is No Longer Available</h5>
+              <p className="text-xs mt-1 font-medium opacity-95">
+                <strong>{venueName}</strong> is currently {conflictInfo.status === 'BOOKED' ? 'booked for another event' : 'held by another user'} during{' '}
+                <strong>{form.startDate}{form.startDate !== form.endDate ? ` – ${form.endDate}` : ''}</strong> from <strong>{form.startTime}</strong> to <strong>{form.endTime}</strong>.
+              </p>
+              {earliest && (
+                <p className="text-[11px] mt-1.5 text-rose-800 font-semibold">
+                  Next available slot after: {earliest}
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={goToVenueSelection}
+                  className="text-xs font-black px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm active:scale-[.98] transition-all flex items-center gap-1.5"
+                >
+                  🚀 Choose Another Venue
+                </button>
+                {form.startDate && form.endDate && form.startTime && form.endTime && (
+                  <button
+                    type="button"
+                    onClick={retryAutoHold}
+                    className="text-xs font-bold px-3 py-2 rounded-lg bg-white/80 hover:bg-white text-rose-800 border border-rose-300 transition-colors"
+                  >
+                    ↻ Recheck Availability
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 5: Auto-hold failed but venue is available
+    if (editVenueIsAvailable && autoHoldError && !lockedVenue?.id) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-amber-50/95 border border-amber-300 text-amber-900 transition-all shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-amber-600">!</div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Venue is Free but Auto-Reservation Failed</h5>
+              <p className="text-xs mt-1 font-medium opacity-95">
+                <strong>{venueName}</strong> is available, but we couldn't reserve it automatically: <em>{autoHoldError}</em>
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={retryAutoHold}
+                  className="text-xs font-black px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm active:scale-[.98] transition-all flex items-center gap-1.5"
+                >
+                  ↻ Retry Auto-Reservation
+                </button>
+                <button
+                  type="button"
+                  onClick={goToVenueSelection}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white/80 hover:bg-white text-amber-800 border border-amber-300 transition-colors"
+                >
+                  Choose Another Venue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 6: Availability check had an error
+    if (editVenueCheckResult?.status === 'ERROR') {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-slate-100 border border-slate-300 text-slate-800">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="shrink-0 text-slate-500 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Couldn't Verify Venue Availability</h5>
+              <p className="text-xs mt-0.5 opacity-85">{editVenueCheckResult?.message || 'Availability check failed.'}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setEditVenueCheckResult(null); setAutoHoldAttempted(false); }}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-800 text-white shadow-sm transition-colors"
+                >
+                  ↻ Retry Check
+                </button>
+                <button
+                  type="button"
+                  onClick={goToVenueSelection}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 transition-colors"
+                >
+                  Pick a Venue Manually
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 7: Venue is available but auto-hold hasn't triggered yet (edge case)
+    if (editVenueIsAvailable && !lockedVenue?.id && !autoHoldingVenue) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-800">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 size={20} className="shrink-0 text-blue-600 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Venue is Available</h5>
+              <p className="text-xs mt-0.5 opacity-90">
+                <strong>{venueName}</strong> is free for your selected date/time. Reservation will be placed automatically, or you can:
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={retryAutoHold}
+                  className="text-xs font-black px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
+                >
+                  Reserve Now
+                </button>
+                <button
+                  type="button"
+                  onClick={goToVenueSelection}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white hover:bg-blue-50 text-blue-800 border border-blue-200 transition-colors"
+                >
+                  Pick Different Venue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const advanceStep = (prev, stepsLen) => {
     const next = Math.min(prev + 1, stepsLen - 1);
     setMaxReachedIndex((m) => Math.max(m, next));
@@ -974,11 +1445,18 @@ const CreateEvent = () => {
   const setField = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
 
   const clearPoster = () => {
+    // Revoke the object URL to free memory before clearing
+    if (form.posterPreviewUrl) {
+      URL.revokeObjectURL(form.posterPreviewUrl);
+    }
     setForm((prev) => ({
       ...prev,
+      posterFile: null,
+      posterPreviewUrl: '',
       posterDataUrl: '',
       posterFileName: '',
       posterMimeType: '',
+      posterStorage: null,
     }));
   };
 
@@ -1427,13 +1905,15 @@ const CreateEvent = () => {
         return false;
       }
 
-      if (!form.requirePoster && !form.posterDataUrl) {
-        setStepError('You must upload an event poster if you are not requesting one from the Media team.');
-        return false;
-      }
+      // Poster is optional — just a soft hint, not a hard block
 
       if (form.audienceScope === 'Selected Departments' && form.selectedDepartments.length === 0) {
         setStepError('Please select at least one eligible department.');
+        return false;
+      }
+
+      if (!form.managers || form.managers.length === 0) {
+        setStepError('At least 1 event manager must be added.');
         return false;
       }
     }
@@ -1475,7 +1955,25 @@ const CreateEvent = () => {
         return false;
       }
       
-      if (!lockedVenue) {
+      const hasHeldVenue = lockedVenue && (reservationState?.reservationId || isResubmissionEdit || isDraftEdit);
+      const hasDraftVenue = isDraftEdit && editingEvent?.venue;
+      const venueConflict = (isResubmissionEdit || isDraftEdit) && editVenueIsConflict;
+      const holdInProgress = (isResubmissionEdit || isDraftEdit) && autoHoldingVenue;
+      const holdFailed = (isResubmissionEdit || isDraftEdit) && autoHoldError && !hasHeldVenue;
+      
+      if (!hasHeldVenue && !hasDraftVenue) {
+        if (venueConflict) {
+          setStepError('Previous venue is not available for the selected date/time. Please click "Choose Another Venue" above to pick a different venue.');
+          return false;
+        }
+        if (holdInProgress) {
+          setStepError('Venue is being reserved automatically. Please wait a moment and try again.');
+          return false;
+        }
+        if (holdFailed) {
+          setStepError('Venue auto-reservation failed. Click "Retry Auto-Reservation" or "Choose Another Venue" above.');
+          return false;
+        }
         setStepError('No venue reserved. Please return to Venue Selection to reserve a venue.');
         return false;
       }
@@ -1535,22 +2033,30 @@ const CreateEvent = () => {
     }
 
     if (stepKey === STEP_KEYS.TRANSPORT && form.transportRequired) {
-      if (!form.externalTransport.rollNo && !form.internalTransport.indenterName) {
+      const tt = form.transportType;
+      const needsExt = tt === 'external' || tt === 'both';
+      const needsInt = tt === 'internal' || tt === 'both';
+
+      if (needsExt && !form.externalTransport.guestName) {
         setStepError('Please complete key Transport fields.');
         return false;
       }
-      
-      if (form.externalTransport.rollNo) {
-        if (!form.externalTransport.contactNumber) {
-          setStepError('Please complete key Transport fields (Contact number for external).');
+      if (needsInt && !form.internalTransport.indenterName) {
+        setStepError('Please complete key Transport fields.');
+        return false;
+      }
+
+      if (needsExt && form.externalTransport.guestName) {
+        if (!form.externalTransport.guestContact) {
+          setStepError('Please enter the Guest Contact Number for External Transport.');
           return false;
         }
-        if (form.externalTransport.contactNumber && !isValidPhone(form.externalTransport.contactNumber)) {
-          setStepError('External Transport contact number must be exactly 10 digits.');
+        if (!isValidPhone(form.externalTransport.guestContact)) {
+          setStepError('External Transport guest contact number must be exactly 10 digits.');
           return false;
         }
-        if (form.externalTransport.emailId && !isValidEmail(form.externalTransport.emailId)) {
-          setStepError('External Transport email must contain @ and be all lowercase.');
+        if (form.externalTransport.guestEmail && !isValidEmail(form.externalTransport.guestEmail)) {
+          setStepError('External Transport guest email must contain @ and be all lowercase.');
           return false;
         }
         if (form.externalTransport.facultyAccompanying) {
@@ -1565,7 +2071,7 @@ const CreateEvent = () => {
         }
       }
 
-      if (form.internalTransport.indenterName) {
+      if (needsInt && form.internalTransport.indenterName) {
         if (!form.internalTransport.contactNumber) {
           setStepError('Please complete key Transport fields (Contact number for internal).');
           return false;
@@ -1646,11 +2152,12 @@ const CreateEvent = () => {
     } else if (stepKey === STEP_KEYS.ICTS && form.ictsRequired) {
       check('expectedInternetUsers', form.expectedInternetUsers);
     } else if (stepKey === STEP_KEYS.TRANSPORT && form.transportRequired) {
-      if (form.externalTransport.rollNo) {
-        check('ext_contactNumber', form.externalTransport.contactNumber);
-        check('ext_emailId', form.externalTransport.emailId);
+      const tt = form.transportType;
+      if ((tt === 'external' || tt === 'both') && form.externalTransport.guestName) {
+        check('ext_guestContact', form.externalTransport.guestContact);
+        check('ext_guestEmail', form.externalTransport.guestEmail);
       }
-      if (form.internalTransport.indenterName) {
+      if ((tt === 'internal' || tt === 'both') && form.internalTransport.indenterName) {
         check('int_contactNumber', form.internalTransport.contactNumber);
         check('int_emailId', form.internalTransport.emailId);
         check('int_numberOfVehicles', form.internalTransport.numberOfVehicles);
@@ -1692,6 +2199,7 @@ const CreateEvent = () => {
     
     setStepSubmitAttempted(false);
     setQtyErrorsVisible(false);
+    setSubmitError('');
     setCurrentStepIndex((prev) => advanceStep(prev, steps.length));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1699,14 +2207,13 @@ const CreateEvent = () => {
   const goPrev = () => {
     setStepSubmitAttempted(false);
     setQtyErrorsVisible(false);
+    setSubmitError('');
     setCurrentStepIndex((i) => Math.max(i - 1, 0));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const buildPayload = (statusOverride) => {
-    const initialStatus = statusOverride || (currentUser?.role === UserRole.FACULTY
-      ? EventStatus.PENDING_HOD
-      : EventStatus.PENDING_FACULTY);
+    const initialStatus = statusOverride || EventStatus.PENDING_MANAGERS;
     let posterWorkflow = {
       requested: false,
       status: 'NOT_REQUIRED',
@@ -1769,7 +2276,7 @@ const CreateEvent = () => {
       createdAt: new Date().toISOString(),
       posterWorkflow,
       posterRequired: form.requirePoster || false,
-      posterStatus: form.requirePoster ? 'AWAITING_MEDIA_UPLOAD' : (form.posterDataUrl ? 'UPLOADED' : 'NOT_REQUIRED'),
+      posterStatus: form.requirePoster ? 'AWAITING_MEDIA_UPLOAD' : ((form.posterDataUrl || form.posterFile || form.posterStorage) ? 'UPLOADED' : 'NOT_REQUIRED'),
       posterDataUrl: form.posterDataUrl || null,
       posterFileName: form.posterFileName || null,
       posterMimeType: form.posterMimeType || null,
@@ -1903,7 +2410,7 @@ const CreateEvent = () => {
     try {
       const payload = buildPayload(EventStatus.DRAFT);
       
-      let eventId = isResubmissionEdit ? editingEvent.id : null;
+      let eventId = (isResubmissionEdit || isDraftEdit) ? editingEvent.id : null;
       if (!eventId) {
         const eventRef = doc(collection(db, 'events'));
         eventId = eventRef.id;
@@ -1912,27 +2419,36 @@ const CreateEvent = () => {
 
       if (form.posterFile) {
         try {
-          const metadata = await uploadFileToStorage(
-            form.posterFile, 
-            `events/${eventId}/poster_${Date.now()}.jpg`
+          setUploadProgress(0);
+          const fd = new FormData();
+          fd.append('poster', form.posterFile);
+          fd.append('eventId', eventId);
+          const uploadRes = await fetch(
+            `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/upload-poster`,
+            { method: 'POST', headers: { 'Authorization': `Bearer ${getAuthToken()}` }, body: fd }
           );
-          payload.posterStorage = metadata;
+          const uploadData = await uploadRes.json();
+          if (!uploadRes.ok || !uploadData.success) throw new Error(uploadData.message || 'Upload failed');
+          payload.posterStorage = { storagePath: uploadData.storagePath, downloadURL: uploadData.downloadURL, fileName: uploadData.fileName, fileType: uploadData.fileType, fileSize: uploadData.fileSize, uploadedAt: uploadData.uploadedAt };
           payload.posterDataUrl = null;
+          setUploadProgress(null);
         } catch (uploadErr) {
-          throw new Error(`Poster upload failed: ${uploadErr.message}`);
+          // Non-blocking: log but don't stop draft save
+          console.warn('[poster-upload] Draft save: poster upload failed, continuing without poster:', uploadErr.message);
+          setUploadProgress(null);
         }
       } else if (form.posterStorage) {
          payload.posterStorage = form.posterStorage;
       }
 
-      const endpoint = isResubmissionEdit
-        ? `${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${editingEvent.id}/resubmit-edit`
-        : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events';
-      const method = isResubmissionEdit ? 'PUT' : 'POST';
+      const endpoint = (isResubmissionEdit || isDraftEdit)
+        ? `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${editingEvent.id}/resubmit-edit`
+        : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/events';
+      const method = (isResubmissionEdit || isDraftEdit) ? 'PUT' : 'POST';
 
       const response = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify(payload),
       });
       const data = await response.json();
@@ -1953,8 +2469,15 @@ const CreateEvent = () => {
   };
 
   const handleSubmit = async () => {
-    if (isExpired && !isResubmissionEdit) {
-      setSubmitError('Your venue reservation has expired. Please reserve the venue again before submitting.');
+    // Expiry check: applies to ANY mode where we have an active reservation (new, resubmit, draft)
+    if (isExpired && reservationState?.reservationId) {
+      setSubmitError('Your venue reservation has expired. Please re-check availability or choose another venue before submitting.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    // For edit/resubmission mode: fail early if venue is in conflict state (user hasn't chosen another)
+    if ((isResubmissionEdit || isDraftEdit) && form.venueRequired && editVenueIsConflict && !reservationState?.reservationId) {
+      setSubmitError('Previous venue is not available. Please click "Choose Another Venue" in the banner above to select a different venue before resubmitting.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -1978,15 +2501,19 @@ const CreateEvent = () => {
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      if (reservationState?.reservationId && lockedVenue && !isResubmissionEdit) {
+      // Validate hold: applies to new events AND edit/resubmission events that acquired a fresh reservation
+      if (reservationState?.reservationId && lockedVenue) {
         const valData = await venueApi.validateHold({
           reservationId: reservationState.reservationId,
           venueId: lockedVenue.id,
           date: form.startDate,
+          startDate: form.startDate,
+          endDate: form.endDate,
           startTime: form.startTime,
           endTime: form.endTime
         });
         if (!valData.success) {
+          setIsExpired(true);
           throw new Error(valData.message || 'Venue hold validation failed. The reservation may have expired or entered maintenance.');
         }
       }
@@ -1994,39 +2521,49 @@ const CreateEvent = () => {
       const payload = buildPayload();
       
       // Determine Event ID
-      let eventId = isResubmissionEdit ? editingEvent.id : null;
+      // Determine Event ID
+      let eventId = (isResubmissionEdit || isDraftEdit) ? editingEvent.id : null;
       if (!eventId) {
         const eventRef = doc(collection(db, 'events'));
         eventId = eventRef.id;
       }
       payload.id = eventId;
 
-      // Handle Poster Upload to Firebase Storage
+      // Handle Poster Upload via backend (Admin SDK bypasses storage auth rules)
       if (form.posterFile) {
         try {
-          const metadata = await uploadFileToStorage(
-            form.posterFile, 
-            `events/${eventId}/poster_${Date.now()}.jpg`
+          setUploadProgress(0);
+          const fd = new FormData();
+          fd.append('poster', form.posterFile);
+          fd.append('eventId', eventId);
+          const uploadRes = await fetch(
+            `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/upload-poster`,
+            { method: 'POST', headers: { 'Authorization': `Bearer ${getAuthToken()}` }, body: fd }
           );
-          payload.posterStorage = metadata;
+          const uploadData = await uploadRes.json();
+          if (!uploadRes.ok || !uploadData.success) throw new Error(uploadData.message || 'Upload failed');
+          payload.posterStorage = { storagePath: uploadData.storagePath, downloadURL: uploadData.downloadURL, fileName: uploadData.fileName, fileType: uploadData.fileType, fileSize: uploadData.fileSize, uploadedAt: uploadData.uploadedAt };
           // Clean up legacy field if it was replaced
           payload.posterDataUrl = null;
+          setUploadProgress(null);
         } catch (uploadErr) {
-          throw new Error(`Poster upload failed: ${uploadErr.message}`);
+          // Non-blocking: log but don't stop submission
+          console.warn('[poster-upload] Submit: poster upload failed, continuing without poster:', uploadErr.message);
+          setUploadProgress(null);
         }
       } else if (form.posterStorage) {
          // Keep existing storage metadata if editing and not replacing
          payload.posterStorage = form.posterStorage;
       }
 
-      const endpoint = isResubmissionEdit
-        ? `${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${editingEvent.id}/resubmit-edit`
-        : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events';
-      const method = isResubmissionEdit ? 'PUT' : 'POST';
+      const endpoint = (isResubmissionEdit || isDraftEdit)
+        ? `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${editingEvent.id}/resubmit-edit`
+        : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/events';
+      const method = (isResubmissionEdit || isDraftEdit) ? 'PUT' : 'POST';
 
       const response = await fetch(endpoint, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
         body: JSON.stringify(payload),
       });
       const data = await response.json();
@@ -2042,6 +2579,7 @@ const CreateEvent = () => {
       navigate('/dashboard');
     } catch (err) {
       setSubmitError(err.message || 'Failed to submit event');
+      setUploadProgress(null);
       setIsSubmitting(false);
     }
   };
@@ -2066,6 +2604,7 @@ const CreateEvent = () => {
       return (
         <Card title="Step 1 - Event Requisition (Basic Event Information)" icon={ClipboardList}>
           {isResubmissionEdit && renderEditImpactBanner()}
+          {renderVenueStatusBanner()}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1 md:col-span-2">
               <Lbl required>Event Name</Lbl>
@@ -2139,7 +2678,7 @@ const CreateEvent = () => {
                       checked={form.requirePoster || false}
                       onChange={e => setForm(prev => ({ ...prev, requirePoster: e.target.checked }))}
                       id="requirePosterCheckbox"
-                      disabled={isResubmissionEdit || (!!form.posterDataUrl && !form.requirePoster)}
+                      disabled={isResubmissionEdit || (!!(form.posterDataUrl || form.posterFile || form.posterStorage) && !form.requirePoster)}
                     />
                     <label 
                       htmlFor="requirePosterCheckbox" 
@@ -2190,7 +2729,7 @@ const CreateEvent = () => {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-500">Upload an image poster to show on the Explore Events cards. If 'Require Poster' is checked, poster will be created by Media team.</p>
+                    <p className="text-xs text-slate-500">Poster is optional — you can upload one now, request one from the Media team, or skip and add it later.</p>
                   )}
                 </div>
               </div>
@@ -2298,6 +2837,7 @@ const CreateEvent = () => {
             <div className="space-y-1">
               <Lbl required>Event Start Date</Lbl>
               <input
+                type="date"
                 id="startDate"
                  
                 min={eventStartMinDate}
@@ -2314,7 +2854,7 @@ const CreateEvent = () => {
 
             <div className="space-y-1">
               <Lbl required>Event End Date</Lbl>
-              <PremiumDatePicker 
+              <input type="date"
                 id="endDate"
                  
                 min={eventEndMinDate}
@@ -2359,7 +2899,7 @@ const CreateEvent = () => {
 
             <div className="space-y-1">
               <Lbl>Number of Days</Lbl>
-              <PremiumDatePicker  readOnly className={`${inputClass} bg-slate-100`} value={numberOfDays || ''} placeholder="Auto calculated" />
+              <input  readOnly className={`${inputClass} bg-slate-100`} value={numberOfDays || ''} placeholder="Auto calculated" />
               <p className="field-hint">Auto-calculated from dates</p>
             </div>
 
@@ -2425,12 +2965,26 @@ const CreateEvent = () => {
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3">Participants</h4>
               {lockedVenue && ((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
-                <div className="p-4 bg-rose-50 border-2 border-rose-400 rounded-2xl text-rose-900 shadow-sm animate-pulse flex items-center gap-3.5 mb-4">
-                  <ShieldAlert className="text-rose-600 shrink-0" size={24} />
-                  <div className="space-y-0.5">
+                <div className="p-4 bg-rose-50 border-2 border-rose-400 rounded-2xl text-rose-900 shadow-sm flex items-start gap-3.5 mb-4">
+                  <ShieldAlert className="text-rose-600 shrink-0 mt-0.5" size={24} />
+                  <div className="space-y-1 flex-1">
                     <span className="font-extrabold text-sm block text-rose-950">⚠️ Seating Capacity Warning</span>
                     <p className="text-xs font-semibold text-rose-800 leading-relaxed">
-                      Total expected participants (<strong className="font-mono text-rose-950">{Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)}</strong>) or maximum registration limit exceeds the reserved venue's seating capacity of <strong className="underline font-black">{lockedVenue.capacity} seats</strong>. Please ensure seating arrangements are sufficient or select a larger hall in Step 1.
+                      {(Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity && (
+                        <span className="block">Participants total (<strong className="font-mono">{Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)}</strong>) exceeds venue capacity of <strong className="underline">{lockedVenue.capacity} seats</strong>. Reduce participant counts or select a larger hall.</span>
+                      )}
+                      {form.capacity && form.capacity > lockedVenue.capacity && (
+                        <span className="flex items-center gap-2 mt-1">
+                          <span>Maximum registration limit (<strong className="font-mono">{form.capacity}</strong>) exceeds venue capacity of <strong className="underline">{lockedVenue.capacity} seats</strong>.</span>
+                          <button
+                            type="button"
+                            onClick={() => setField('capacity', null)}
+                            className="ml-1 underline text-rose-700 hover:text-rose-900 font-bold whitespace-nowrap"
+                          >
+                            Clear it
+                          </button>
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -2479,6 +3033,7 @@ const CreateEvent = () => {
                 startTime={form.startTime || '00:00'}
                 endTime={form.endTime || '23:59'}
                 department={form.department || ''}
+                currentUser={currentUser}
               />
             </div>
 
@@ -2718,6 +3273,7 @@ const CreateEvent = () => {
               Venue requirement is marked as Not Required in Step 1. You can still fill this section if needed.
             </div>
           )}
+          {renderVenueStatusBanner()}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <Lbl>Event Date</Lbl>
@@ -2725,7 +3281,7 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>Number of Venues Required</Lbl>
-              <PremiumDatePicker 
+              <input 
                 id="numberOfVenuesRequired"
                 type="text"
                 inputMode="numeric"
@@ -2743,17 +3299,47 @@ const CreateEvent = () => {
               <h4 className="font-semibold text-slate-800 mb-1">Reserved Venue</h4>
               {lockedVenue ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                    <div>
+                  <div className={`flex items-center justify-between p-4 rounded-xl border ${
+                    (isResubmissionEdit || isDraftEdit) && reservationState?.reservationId
+                      ? 'bg-emerald-50/80 border-emerald-200'
+                      : 'bg-slate-50 border-slate-200'
+                  }`}>
+                    <div className="space-y-1">
                       <p className="font-bold text-slate-900">{lockedVenue.name}</p>
-                      <p className="text-sm text-slate-500">{lockedVenue.building} - Floor {lockedVenue.floor}</p>
+                      <p className="text-sm text-slate-500">
+                        {lockedVenue.building ? `${lockedVenue.building}${lockedVenue.floor ? ` · Floor ${lockedVenue.floor}` : ''}` : 'Auto-reallocated venue slot'}
+                        {lockedVenue.capacity ? ` · ${lockedVenue.capacity} Seats` : ''}
+                      </p>
+                      {(isResubmissionEdit || isDraftEdit) && reservationState?.expiresAt && (
+                        <p className="text-[11px] font-semibold text-emerald-700">
+                          ⏱ Hold expires at {new Date(reservationState.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-not-allowed">
-                      <span role="img" aria-label="locked">🔒</span> Reserved ({lockedVenue.capacity} Seats)
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {reservationState?.reservationId ? (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-800 text-sm font-bold rounded-lg">
+                          <span role="img" aria-label="locked">🔒</span>
+                          Held ({lockedVenue.capacity || '—'} Seats)
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 text-slate-700 text-sm font-bold rounded-lg cursor-not-allowed">
+                          <span role="img" aria-label="locked">🔒</span> Reserved
+                        </div>
+                      )}
+                      {(isResubmissionEdit || isDraftEdit) && (
+                        <button
+                          type="button"
+                          onClick={goToVenueSelection}
+                          className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white text-slate-700 border border-slate-300 hover:bg-slate-100 transition-colors"
+                        >
+                          Change
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  {((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
+                  {lockedVenue.capacity > 0 && ((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
                     <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 flex items-center gap-3">
                       <AlertTriangle className="text-rose-600 shrink-0" size={20} />
                       <span className="text-xs font-bold">
@@ -2761,6 +3347,18 @@ const CreateEvent = () => {
                       </span>
                     </div>
                   )}
+                </div>
+              ) : isDraftEdit && editingEvent?.venue ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                    <div>
+                      <p className="font-bold text-slate-900">{editingEvent.venue}</p>
+                      <p className="text-sm text-blue-700 mt-0.5">Saved venue from draft — a fresh venue slot will be reserved on final submission.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-bold rounded-lg">
+                      <span role="img" aria-label="draft">📋</span> Draft Saved
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
@@ -2828,6 +3426,7 @@ const CreateEvent = () => {
             <div className="space-y-1">
               <Lbl required>Event Date</Lbl>
               <input
+                type="date"
                 id="audioDate"
                  
                 min={audioMinDate}
@@ -2860,7 +3459,7 @@ const CreateEvent = () => {
                   </button>
                 )}
               </div>
-              <PremiumDatePicker 
+              <input 
                 id="audioVenueName"
                 className={fieldCls('audioVenueName')}
                 value={form.audioVenueName}
@@ -3033,7 +3632,7 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-semibold text-slate-700">No. of Persons <span className="text-red-500">*</span></label>
-              <PremiumDatePicker  type="number" min="1" className={inputClass} placeholder="e.g. 4"
+              <input  type="number" min="1" className={inputClass} placeholder="e.g. 4"
                 value={form[transportKey][journeyKey].numberOfPersons}
                 onChange={(e) => updateJourney(transportKey, journeyKey, 'numberOfPersons', e.target.value)} />
             </div>
@@ -3512,7 +4111,7 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl required>Departure Date</Lbl>
-              <PremiumDatePicker 
+              <input 
                 id="accom_departureDate"
                  
                 min={accommodationDepartureMinDate}
@@ -3536,7 +4135,7 @@ const CreateEvent = () => {
             </div>
             <div className="space-y-1">
               <Lbl>Number of Days</Lbl>
-              <PremiumDatePicker  className={`${inputClass} bg-slate-100`} readOnly value={accommodationDays || ''} />
+              <input  className={`${inputClass} bg-slate-100`} readOnly value={accommodationDays || ''} />
               <p className="field-hint">Auto-calculated from dates</p>
             </div>
             <div className="space-y-1">
@@ -3605,7 +4204,7 @@ const CreateEvent = () => {
                         {form.accommodation.mealSchedule.map((row) => (
                           <tr key={row.id} className="border-t border-slate-200">
                             <td className="px-2 py-2"><input   min={diningMinDate} className={inputClass} value={row.date} onChange={(e) => updateDiningRow(row.id, 'date', e.target.value)} /></td>
-                            <td className="px-2 py-2"><PremiumDatePicker  type="number" min="0" onKeyDown={onlyDigitsKeyDown} className={inputClass} value={row.guestCount} onChange={(e) => updateDiningRow(row.id, 'guestCount', e.target.value)} /></td>
+                            <td className="px-2 py-2"><input  type="number" min="0" onKeyDown={onlyDigitsKeyDown} className={inputClass} value={row.guestCount} onChange={(e) => updateDiningRow(row.id, 'guestCount', e.target.value)} /></td>
                             {['breakfast', 'morningRefreshment', 'lunchVeg', 'lunchNonVeg', 'eveningRefreshment', 'dinnerVeg', 'dinnerNonVeg'].map((key) => (
                               <td key={key} className="px-2 py-2 text-center">
                                 <input type="checkbox" checked={row[key]} onChange={(e) => updateDiningRow(row.id, key, e.target.checked)} />
@@ -3882,54 +4481,73 @@ const CreateEvent = () => {
       <div className="w-full relative p-4 sm:p-6 pb-20 max-w-7xl mx-auto">
         <div className="sticky top-0 z-30 bg-[#f8fafc] pt-4 sm:pt-6 pb-3 -mt-4 sm:-mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 mb-6 border-b border-slate-200">
           
-          {reservationState && lockedVenue && (
-            <div className={`mb-4 border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm transition-all ${
-              isExpired ? 'bg-rose-50 border-rose-300 text-rose-900 animate-pulse' : 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-200 text-emerald-950'
+          {isDraftEdit ? (
+            <div className="mb-3 border rounded-lg px-3 py-2 flex flex-row items-center justify-between gap-3 shadow-sm bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 border-blue-200 text-blue-900">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 shadow-sm bg-blue-600 text-white">
+                  <CheckCircle2 size={14} />
+                </div>
+                <span className="text-sm font-bold">Continuing Draft — {editingEvent?.title || 'Untitled Event'}</span>
+                {editingEvent?.venue && (
+                  <span className="text-xs font-semibold text-slate-600 bg-white/70 px-1.5 py-0.5 rounded border border-slate-200">
+                    {editingEvent.venue}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : reservationState && lockedVenue && (
+            <div className={`mb-3 border rounded-lg px-3 py-2 flex flex-row items-center justify-between gap-3 shadow-sm transition-all ${
+              isExpired ? 'bg-rose-50 border-rose-300 text-rose-900' : 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-200 text-emerald-950'
             }`}>
-              <div className="flex items-center gap-3.5">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 shadow-sm ${
                   isExpired ? 'bg-rose-600 text-white' : 'bg-emerald-600 text-white'
                 }`}>
-                  {isExpired ? <AlertCircle size={22} /> : <CheckCircle2 size={22} />}
+                  {isExpired ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/80 border border-emerald-200/60 shadow-2xs">
-                      {isExpired ? 'Hold Expired' : 'Venue Reserved'}
+                <div className="flex items-center gap-2 flex-wrap min-w-0 text-sm">
+                  <span className="font-bold truncate" title={lockedVenue.name}>{lockedVenue.name}</span>
+                  <span className="text-emerald-700 opacity-60">|</span>
+                  {reservationState?.startDate && (
+                    <span className="text-xs font-semibold text-slate-700 bg-white/70 px-1.5 py-0.5 rounded border border-slate-200">
+                      {reservationState.startDate === reservationState.endDate
+                        ? reservationState.startDate
+                        : `${reservationState.startDate} → ${reservationState.endDate}`}
                     </span>
-                    <span className="text-base font-black text-slate-900">{lockedVenue.name}</span>
-                  </div>
-                  <p className="text-xs sm:text-sm font-semibold mt-0.5 opacity-90">
+                  )}
+                  <span className="text-emerald-700 opacity-60">|</span>
+                  <span className="text-xs font-medium">
                     {isExpired ? (
-                      <span className="text-rose-700 font-bold">Your 10-minute hold has expired. Please re-reserve below to prevent losing this slot.</span>
+                      <span className="text-rose-700 font-bold">Hold expired.</span>
                     ) : (
                       <span>
-                        Reservation expires in <span className="font-mono font-black text-base px-1.5 py-0.5 bg-white rounded border border-emerald-300 text-emerald-800 ml-1 shadow-2xs">{formatCountdown(timeLeftSec)}</span> — Please complete event creation before the timer expires.
+                        Expires in <strong className="font-mono bg-white px-1 py-0.5 rounded border border-emerald-300 text-emerald-800 mx-1">{formatCountdown(timeLeftSec)}</strong>
                       </span>
                     )}
-                  </p>
+                  </span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {isExpired && (
                   <button 
                     type="button"
                     onClick={handleReReserve}
                     disabled={reReserving}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                    className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold rounded-md shadow-sm transition-all"
                   >
-                    {reReserving ? 'Re-reserving...' : 'Reserve Again'}
+                    {reReserving ? '...' : 'Re-reserve'}
                   </button>
                 )}
                 <button 
                   type="button"
                   onClick={() => {
                     sessionStorage.removeItem('currentVenueHold');
-                    navigate('/create-event');
+                    const rolePrefix = location.pathname.split('/')[1];
+                    navigate(`/${rolePrefix}/create-event`);
                   }}
-                  className="px-3.5 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-extrabold rounded-xl transition-colors shadow-2xs"
+                  className="px-2.5 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-[11px] font-bold rounded-md transition-colors shadow-sm"
                 >
-                  Change Venue
+                  Change
                 </button>
               </div>
             </div>
@@ -3937,44 +4555,50 @@ const CreateEvent = () => {
           {reReserveError && (
             <div className="mb-4 p-3 bg-rose-100 border border-rose-300 text-rose-800 rounded-xl text-xs font-bold flex items-center justify-between">
               <span>{reReserveError}</span>
-              <button onClick={() => navigate('/create-event')} className="underline font-black ml-2">Return to Selection</button>
+              <button
+                onClick={() => {
+                  const rolePrefix = location.pathname.split('/')[1];
+                  navigate(`/${rolePrefix}/create-event`);
+                }}
+                className="underline font-black ml-2"
+              >Return to Selection</button>
             </div>
           )}
 
-          <div className="flex flex-row items-center justify-between gap-3 mb-4">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-tight">Create Event Requisition</h2>
-              <p className="text-slate-500 mt-1 text-sm hidden sm:block">Toggle requirements in Step 1 — only selected steps will appear in the stepper.</p>
+          <div className="flex flex-row items-center justify-between gap-3 mb-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 leading-tight">Create Event Requisition</h2>
+              <p className="text-slate-500 text-xs hidden sm:block">Toggle requirements in Step 1 — only selected steps will appear in the stepper.</p>
               {isResubmissionEdit && (
-                <p className="text-amber-600 mt-2 text-sm font-medium">Editing rejected event before resubmission. Update details like date/time, then submit again.</p>
+                <span className="text-amber-600 text-[11px] font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Resubmission Edit</span>
               )}
             </div>
-            <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-3 py-1.5 h-fit text-sm whitespace-nowrap">
-              <ChevronLeft size={16} /> Back
+            <button onClick={() => navigate('/dashboard')} className="btn-secondary flex items-center gap-1 shrink-0 px-2.5 py-1.5 h-fit text-xs whitespace-nowrap">
+              <ChevronLeft size={14} /> Back
             </button>
           </div>
 
-          <div className="glass-panel p-4 rounded-2xl overflow-x-auto shadow-sm">
-            <div className="flex items-center gap-2 min-w-max">
+          <div className="glass-panel px-3 py-2.5 rounded-xl overflow-x-auto shadow-sm border border-slate-200/60 bg-white/50">
+            <div className="flex items-center gap-1.5 min-w-max">
               {steps.map((step, idx) => {
                 const Icon = step.icon;
                 const active = idx === currentStepIndex;
                 const done = idx < currentStepIndex;
                 return (
-                  <div key={step.key} className="flex items-center gap-2">
+                  <div key={step.key} className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => idx <= maxReachedIndex && setCurrentStepIndex(idx)}
                       disabled={idx > maxReachedIndex}
                       title={idx > maxReachedIndex ? 'Complete previous steps first' : undefined}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition-colors ${
-                        active ? 'bg-blue-600 text-white border-blue-600' : done ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-inner' : idx > maxReachedIndex ? 'bg-white text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200'
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                        active ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : done ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-inner' : idx > maxReachedIndex ? 'bg-white text-slate-300 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-600 border-slate-200'
                       }`}
                     >
-                      <Icon size={15} />
+                      <Icon size={14} />
                       {step.title}
                     </button>
-                    {idx < steps.length - 1 && <ChevronRight size={14} className="text-slate-400" />}
+                    {idx < steps.length - 1 && <ChevronRight size={13} className="text-slate-300" />}
                   </div>
                 );
               })}
@@ -4038,7 +4662,12 @@ const CreateEvent = () => {
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold disabled:opacity-60"
                 >
                   {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  {isSubmitting ? (isResubmissionEdit ? 'Resubmitting...' : 'Submitting...') : (isResubmissionEdit ? 'Update & Resubmit' : 'Submit Requisition')}
+                  {isSubmitting
+                    ? uploadProgress !== null
+                      ? 'Uploading poster...'
+                      : (isResubmissionEdit ? 'Resubmitting...' : 'Submitting...')
+                    : (isResubmissionEdit ? 'Update & Resubmit' : 'Submit Requisition')
+                  }
                 </button>
               )}
             </div>
@@ -4047,7 +4676,7 @@ const CreateEvent = () => {
 
         {/* Hold Expiry Modal */}
         <AnimatePresence>
-          {isExpired && (
+          {showExpireModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn">
               <motion.div 
                 initial={{ scale: 0.9, opacity: 0 }}
@@ -4059,9 +4688,10 @@ const CreateEvent = () => {
                   <AlertCircle size={36} />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-black text-slate-900">Your reservation has expired.</h3>
+                  <h2 className="text-2xl font-black text-slate-900 leading-tight">Venue Reservation Expired</h2>
+                  <h3 className="text-base font-bold text-rose-700">Your reservation has expired.</h3>
                   <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                    If the venue is still available, the reservation will be recreated. Otherwise, return to Venue Selection. This avoids losing all the information you have already entered.
+                    Please reserve the venue again. If the slot is still available, a new 30-minute hold will be placed instantly.
                   </p>
                 </div>
 
@@ -4084,8 +4714,10 @@ const CreateEvent = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      setShowExpireModal(false);
                       sessionStorage.removeItem('currentVenueHold');
-                      navigate('/create-event');
+                      const rolePrefix = location.pathname.split('/')[1];
+                      navigate(`/${rolePrefix}/create-event`);
                     }}
                     className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-sm transition-all"
                   >

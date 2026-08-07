@@ -63,7 +63,7 @@ class SchedulingEngine {
         let query = eventsRef.where('date', '==', date).where('venueId', '==', venueId);
         const snap = await query.get();
         
-        const activeStatuses = ['POSTED', 'APPROVED', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS'];
+        const activeStatuses = ['POSTED', 'APPROVED', 'PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS'];
         for (const doc of snap.docs) {
           if (eventId && doc.id === eventId) continue;
           const ev = doc.data();

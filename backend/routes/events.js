@@ -24,7 +24,8 @@ const { storageAdmin } = require('../firebaseAdmin');
 // Helper to recursively delete a folder in Firebase Storage using Admin SDK
 const deleteStorageFolder = async (folderPath) => {
   try {
-    const bucket = storageAdmin.bucket();
+    const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'eventmanagement-58831.firebasestorage.app';
+    const bucket = storageAdmin.bucket(bucketName);
     await bucket.deleteFiles({ prefix: folderPath });
   } catch (error) {
     if (error.code !== 404) {
@@ -61,6 +62,7 @@ const ScheduleService = require('../services/ScheduleService');
 const RegistrationConflictService = require('../services/RegistrationConflictService');
 const ManagerAvailabilityService = require('../services/ManagerAvailabilityService');
 const ManagerRecommendationService = require('../services/ManagerRecommendationService');
+const multer = require('multer');
 
 const router = express.Router();
 
@@ -194,6 +196,54 @@ function getRequiredDepartments(eventData) {
 }
 
 // â”€â”€ POST /api/events â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── POST /api/events/upload-poster ──────────────────────────────────────────
+// Uploads a poster via backend using Firebase Admin SDK (bypasses client storage auth rules)
+const posterUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.mimetype)) {
+      return cb(new Error('Only JPG, PNG, or WEBP images are allowed.'));
+    }
+    cb(null, true);
+  }
+}).single('poster');
+
+router.post('/upload-poster', requireAuth, (req, res) => {
+  posterUpload(req, res, async (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message });
+    if (!req.file) return res.status(400).json({ success: false, message: 'No poster file provided.' });
+    try {
+      const bucketName = process.env.FIREBASE_STORAGE_BUCKET || 'eventmanagement-58831.firebasestorage.app';
+      const bucket = storageAdmin.bucket(bucketName);
+      const eventId = req.body.eventId || `temp_${req.user.id}_${Date.now()}`;
+      const ext = (req.file.originalname.split('.').pop() || 'jpg').toLowerCase();
+      const storagePath = `events/${eventId}/poster_${Date.now()}.${ext}`;
+      const fileRef = bucket.file(storagePath);
+      await fileRef.save(req.file.buffer, {
+        contentType: req.file.mimetype,
+        metadata: { uploadedBy: req.user.id, uploadedAt: new Date().toISOString() }
+      });
+      // Build the Firebase Storage public download URL without calling makePublic()
+      // (makePublic() fails on buckets with Uniform bucket-level access control enabled)
+      const encodedPath = encodeURIComponent(storagePath);
+      const downloadURL = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media`;
+      return res.json({
+        success: true,
+        storagePath,
+        downloadURL,
+        fileName: req.file.originalname,
+        fileType: req.file.mimetype,
+        fileSize: req.file.size,
+        uploadedAt: new Date().toISOString()
+      });
+    } catch (uploadErr) {
+      console.error('[events/upload-poster] Error:', uploadErr.message, uploadErr.code || '');
+      return res.status(500).json({ success: false, message: 'Failed to upload poster.', error: uploadErr.message });
+    }
+  });
+});
+
 // Create a new event (saves to Firestore "events" collection)
 router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, asyncHandler(async (req, res) => {
   if (!checkDb(res)) return;
@@ -234,29 +284,36 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
     },
     department: req.user.department || department,
     // System fields
-    status: eventData.status || 'PENDING_FACULTY',
+    creatorType: actingRole === 'FACULTY' ? 'FACULTY' : 'STUDENT',
+    status: eventData.status || 'PENDING_MANAGERS',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
-  // Auto-accept the creator if they are in the managers list
+  // Ensure all managers have a default status of PENDING (except creator who is auto-accepted)
   if (payload.managers && payload.managers.length > 0) {
-    payload.managers = payload.managers.map(m => {
-      if (m.email === req.user.email) {
-        return { ...m, status: 'ACCEPTED' };
-      }
-      return m;
-    });
+    payload.managers = payload.managers.map(m => ({
+      ...m,
+      status: m.status || (m.email === req.user.email ? 'ACCEPTED' : 'PENDING')
+    }));
   }
 
-  // SUBMIT VALIDATION: Strict backend block if acceptedManagers < 1
+  // Approval chain gate for PENDING_MANAGERS: if managers were pre-accepted, advance
+  if (payload.status === 'PENDING_MANAGERS' && payload.managers && payload.managers.length > 0) {
+    const nonOrganizerManagers = payload.managers.filter(m => m.email !== req.user.email);
+    const acceptedNonOrganizer = nonOrganizerManagers.filter(m => m.status === 'ACCEPTED');
+    if (nonOrganizerManagers.length > 0 && acceptedNonOrganizer.length >= 1) {
+      // All required managers have accepted; advance to next stage
+      payload.status = payload.creatorType === 'FACULTY' ? 'PENDING_HOD' : 'PENDING_FACULTY';
+    }
+  }
+
+  // Legacy guard: if someone explicitly sent PENDING_FACULTY/PENDING_HOD without manager acceptance, pull back
   if (['PENDING_FACULTY', 'PENDING_HOD'].includes(payload.status) && payload.managers && payload.managers.length > 0) {
-    const acceptedManagers = payload.managers.filter(m => m.status === 'ACCEPTED');
-    if (acceptedManagers.length < 1) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Cannot submit event for approval: At least one manager must accept the invitation first. Please save as a draft.' 
-      });
+    const nonOrganizerManagers = payload.managers.filter(m => m.email !== req.user.email);
+    const acceptedNonOrganizer = nonOrganizerManagers.filter(m => m.status === 'ACCEPTED');
+    if (nonOrganizerManagers.length > 0 && acceptedNonOrganizer.length < 1) {
+      payload.status = 'PENDING_MANAGERS';
     }
   }
 
@@ -283,12 +340,15 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
   const { logAudit } = require('../utils/logger');
   const reservationId = eventData.reservationId && String(eventData.reservationId).trim() ? String(eventData.reservationId).trim() : null;
 
+  const isDraft = payload.status === 'DRAFT';
+  
   // Stage 4 transaction: Verify Hold → Create Event → Convert HELD→BOOKED → Link → Audit
   let docRef;
   let eventId;
   await runTransaction(db, async (transaction) => {
     // Step 1: if reservationId provided, validate and prepare HOLD→BOOKED (atomic w/ event create)
-    if (reservationId) {
+    // SKIP consuming reservation if this is just a draft
+    if (reservationId && !isDraft) {
       await VenueAvailabilityService.consumeReservation(reservationId, {
         t: transaction,
         eventId: eventData.id || null, // will be updated below for new events
@@ -320,7 +380,7 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
   });
 
   // Post-transaction: audit logs for venue booking
-  if (reservationId) {
+  if (reservationId && !isDraft) {
     try {
       const actor = { userId: req.user.id, name: req.user.name || req.user.email, role: actingRole, department: req.user.department };
       const target = { entityType: 'VENUE_RESERVATION', entityId: reservationId, venueId: payload.venueId || eventData.venueId || null, eventId };
@@ -349,7 +409,8 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
 
   // ── Background Notifications (centralized handler) ─────────────────
   const payloadWithId = { id: docRef.id, ...payload };
-  executeBackgroundNotification('events/create', async () => {
+  if (!isDraft) {
+    executeBackgroundNotification('events/create', async () => {
     // Resolve faculty email if student-created event
     let targetApproverId = null;
     if (payload.status === 'PENDING_FACULTY') {
@@ -380,6 +441,7 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
       await notifyManagersAssigned(payloadWithId, payloadWithId.managers, []);
     }
   });
+  }
 
   logActivity({
     category: 'EVENT',
@@ -671,7 +733,7 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
   const actingDept = req.user.department;
   const actingName = req.user.name;
 
-  const { status } = req.body; // Only status is read from body
+  let { status } = req.body; // Only status is read from body
 
   // SUBMIT VALIDATION: Managers must accept before submission
   if (['PENDING_FACULTY', 'PENDING_HOD'].includes(status)) {
@@ -679,6 +741,7 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
   }
 
   const allowedStatuses = [
+    'PENDING_MANAGERS',
     'PENDING_FACULTY',
     'PENDING_HOD',
     'PENDING_DEPARTMENTS',
@@ -706,14 +769,23 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
 
     const rawEventData = eventSnap.data();
 
-    // SUBMIT VALIDATION: Strict backend block if acceptedManagers < 1
+    // PENDING_MANAGERS gate: if patching to PENDING_MANAGERS and managers already accepted, auto-advance
+    if (status === 'PENDING_MANAGERS' && rawEventData.managers && rawEventData.managers.length > 0) {
+      const organizerEmail = rawEventData.organizer?.email || rawEventData.organizerEmail || '';
+      const nonOrgManagers = rawEventData.managers.filter(m => m.email !== organizerEmail);
+      const acceptedNonOrg = nonOrgManagers.filter(m => m.status === 'ACCEPTED');
+      if (nonOrgManagers.length > 0 && acceptedNonOrg.length >= 1) {
+        status = rawEventData.creatorType === 'FACULTY' ? 'PENDING_HOD' : 'PENDING_FACULTY';
+      }
+    }
+
+    // SUBMIT VALIDATION: Wait for at least one non-organizer manager to accept
     if (['PENDING_FACULTY', 'PENDING_HOD'].includes(status) && rawEventData.managers && rawEventData.managers.length > 0) {
-      const acceptedManagers = rawEventData.managers.filter(m => m.status === 'ACCEPTED');
-      if (acceptedManagers.length < 1) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Cannot submit event for approval: At least one manager must accept the invitation first.' 
-        });
+      const organizerEmail = rawEventData.organizer?.email || rawEventData.organizerEmail || '';
+      const nonOrgManagers = rawEventData.managers.filter(m => m.email !== organizerEmail);
+      const acceptedNonOrg = nonOrgManagers.filter(m => m.status === 'ACCEPTED');
+      if (nonOrgManagers.length > 0 && acceptedNonOrg.length < 1) {
+        status = 'PENDING_MANAGERS';
       }
     }
 
@@ -798,7 +870,8 @@ router.patch('/:id/status', requireRole(STATUS_ALLOWED_ROLES), async (req, res) 
       IQAC_TEAM:  { from: 'PENDING_IQAC',        to: ['POSTED', 'REJECTED'] },
     };
     const trans = VALID_TRANSITIONS[actingRole];
-    if (trans && rawEventData.status !== trans.from && !trans.to.includes(status)) {
+    // Fix: use || so that either wrong current state OR wrong target status triggers the block
+    if (trans && (rawEventData.status !== trans.from || !trans.to.includes(status))) {
       // Allow system admin to override
       if (actingRole !== 'SYSTEM_ADMIN') {
         return res.status(403).json({
@@ -1234,10 +1307,19 @@ router.put('/:id', async (req, res) => {
     await updateDoc(eventRef, updatePayload);
 
     if (updatePayload.managers) {
-      const oldManagers = eventSnap.data().managers || [];
-      const updatedEvent = { id: req.params.id, ...eventSnap.data(), ...updatePayload };
+      const oldEventData = eventSnap.data();
+      const oldManagers = oldEventData.managers || [];
+      const oldStatus = oldEventData.status || '';
+      const updatedEvent = { id: req.params.id, ...oldEventData, ...updatePayload };
+      // Ensure new managers get PENDING status
+      updatePayload.managers = updatePayload.managers.map(m => ({
+        ...m,
+        status: m.status || 'PENDING'
+      }));
       executeBackgroundNotification('events/update', async () => {
-        await notifyManagersAssigned(updatedEvent, updatePayload.managers, oldManagers);
+        // If transitioning from DRAFT, treat ALL managers as new (notify everyone)
+        const effectiveOldManagers = oldStatus === 'DRAFT' ? [] : oldManagers;
+        await notifyManagersAssigned(updatedEvent, updatePayload.managers, effectiveOldManagers);
       });
     }
 
@@ -1254,7 +1336,7 @@ router.put('/:id', async (req, res) => {
 
 // â”€â”€ PUT /api/events/:id/resubmit-edit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Resubmit a rejected event
-router.put('/:id/resubmit-edit', async (req, res) => {
+router.put('/:id/resubmit-edit', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
 
   try {
@@ -1266,8 +1348,17 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     }
 
     const eventData = eventSnap.data();
+
+    // Ownership guard: only the original organizer can resubmit
+    const isOwner = eventData.organizerId === req.user.id || eventData.organizer?.email === req.user.email;
+    if (!isOwner) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You can only resubmit your own events.' });
+    }
+
     const newEventData = req.body;
-    const isFacultyOrganizer = eventData.creatorType === 'FACULTY';
+    
+    // Check if the acting user is a Faculty organizer (use their token role, not the stored creatorType)
+    const isFacultyOrganizer = req.user.role === 'FACULTY';
     const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl);
 
     // ── Poster Resubmission Logic ──
@@ -1289,10 +1380,12 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     // Reset all approvals upon resubmission
     const newDeptApprovals = {};
 
+    const isDraft = req.body.status === 'DRAFT';
+
     const updatePayload = {
       ...req.body,
-      status: isFacultyOrganizer ? 'PENDING_HOD' : 'PENDING_FACULTY',
-      isResubmitted: true,
+      status: isDraft ? 'DRAFT' : 'PENDING_MANAGERS',
+      isResubmitted: !isDraft,
       updatedAt: new Date().toISOString(),
       posterStatus,
       posterWorkflow,
@@ -1317,39 +1410,175 @@ router.put('/:id/resubmit-edit', async (req, res) => {
     };
 
     if (updatePayload.managers && updatePayload.managers.length > 0) {
+      // Preserve accepted managers' status; set PENDING for new ones
+      updatePayload.managers = updatePayload.managers.map(m => ({
+        ...m,
+        status: m.status || 'PENDING'
+      }));
+      // Validate manager schedule conflicts
       try {
         const evDate = updatePayload.requisition?.step1?.eventStartDate || updatePayload.date || eventData.requisition?.step1?.eventStartDate || eventData.date;
-        const evStartTime = updatePayload.requisition?.step1?.eventStartTime || updatePayload.startTime || eventData.requisition?.step1?.eventStartTime || eventData.startTime || '00:00';
-        const evEndTime = updatePayload.requisition?.step1?.eventEndTime || updatePayload.endTime || eventData.requisition?.step1?.eventEndTime || eventData.endTime || '23:59';
+        const evStartTime = updatePayload.requisition?.step1?.eventStartTime || updatePayload.startTime || eventData.startTime || '00:00';
+        const evEndTime = updatePayload.requisition?.step1?.eventEndTime || updatePayload.endTime || eventData.endTime || '23:59';
         await ManagerAvailabilityService.validateManagerAssignments(req.params.id, evDate, evStartTime, evEndTime, updatePayload.managers, req.user);
       } catch (err) {
         if (err.status === 409 || (err.message && err.message.includes('CONFLICT'))) {
-          return res.status(409).json({
-            success: false,
-            message: err.message.split(':')[1] || err.message,
-            conflicts: err.conflicts || []
-          });
+          return res.status(409).json({ success: false, message: err.message.split(':')[1] || err.message, conflicts: err.conflicts || [] });
         }
         throw err;
       }
     }
 
-    await updateDoc(eventRef, updatePayload);
+    // ── Venue Transition: release OLD booking + consume NEW HOLD (if provided) ──
+    const VenueAvailabilityService = require('../services/venueAvailabilityService');
+    const { logAudit: logAudit2 } = require('../utils/logger');
+    const actingRole = req.user.role || (req.user.roles && req.user.roles[0]) || 'USER';
+    const actingName = req.user.name || req.user.email;
+    const actingDept = req.user.department || eventData.department;
+
+    const oldReservationId = eventData.reservationId || eventData.venueReservationId || null;
+    const newReservationIdRaw = updatePayload.reservationId || updatePayload.venueReservationId || null;
+    const newReservationId = newReservationIdRaw && String(newReservationIdRaw).trim() ? String(newReservationIdRaw).trim() : null;
+    const oldVenueId = eventData.venueId || eventData.requisition?.step1?.venueId || null;
+    const newVenueId = updatePayload.venueId || updatePayload.requisition?.step1?.venueId || null;
+    const venueChanged = (newVenueId && newVenueId !== oldVenueId) || (newReservationId && newReservationId !== oldReservationId);
+
+    if (!isDraft && (newReservationId || venueChanged)) {
+      // ── Stage 1: atomic HELD→BOOKED + event update transaction ──
+      await runTransaction(db, async (transaction) => {
+        if (newReservationId && newReservationId !== oldReservationId) {
+          await VenueAvailabilityService.consumeReservation(newReservationId, {
+            t: transaction,
+            eventId: req.params.id,
+            userId: req.user.id,
+            userName: actingName,
+            bookedBy: { uid: req.user.id, name: actingName, role: actingRole }
+          });
+        }
+
+        transaction.update(eventRef, updatePayload);
+
+        if (newReservationId) {
+          transaction.set(doc(db, 'venueReservations', newReservationId), {
+            eventId: req.params.id,
+            eventName: updatePayload.title || updatePayload.eventName || eventData.title || null,
+            eventDepartment: updatePayload.department || eventData.department || null,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+      });
+
+      // ── Stage 2: non-blocking release of the old venue (if changed) ──
+      if (venueChanged && (oldReservationId || (oldVenueId && newVenueId !== oldVenueId))) {
+        try {
+          const releaseKeys = { eventId: req.params.id, skipReservationId: newReservationId || null };
+          if (oldReservationId) {
+            releaseKeys.reservationId = oldReservationId;
+          } else {
+            releaseKeys.venueId = oldVenueId;
+          }
+          const venueResult = await VenueAvailabilityService.releaseBookedVenue(
+            releaseKeys,
+            {
+              id: req.user.id, uid: req.user.id,
+              name: actingName,
+              role: actingRole,
+              department: actingDept
+            }
+          );
+          if (venueResult?.released) {
+            logAudit2({
+              category: 'VENUE',
+              action: 'VENUE_BOOKING_CANCELLED',
+              status: 'SUCCESS',
+              severity: 'HIGH',
+              correlationId: req.params.id,
+              requestId: crypto.randomUUID(),
+              actor: {
+                userId: req.user.id,
+                name: actingName,
+                role: actingRole,
+                department: actingDept
+              },
+              target: {
+                entityType: 'VENUE_RESERVATION',
+                entityId: venueResult.reservationId || oldReservationId || 'n/a',
+                venueId: venueResult.venueId || oldVenueId,
+                eventId: req.params.id
+              },
+              details: {
+                reason: 'Resubmission – Venue Changed',
+                oldVenueId,
+                newVenueId,
+                oldReservationId,
+                newReservationId
+              },
+              ipAddress: req.ip || (req.headers && req.headers['x-forwarded-for']) || null,
+              userAgent: (req.headers && req.headers['user-agent']) || null
+            }).catch(() => {});
+          }
+        } catch (venueErr) {
+          console.warn('[events/resubmit-edit] Failed to release old venue booking (non-blocking):', venueErr.message);
+        }
+      }
+
+      // ── Stage 3: audit log for NEW venue booking (consumed) ──
+      if (newReservationId && newReservationId !== oldReservationId) {
+        try {
+          const eventDate = updatePayload.requisition?.step1?.eventStartDate || updatePayload.date || eventData.date;
+          const eventStartTime = updatePayload.requisition?.step1?.eventStartTime || updatePayload.startTime || eventData.startTime;
+          const eventEndTime = updatePayload.requisition?.step1?.eventEndTime || updatePayload.endTime || eventData.endTime;
+          await logAudit2({
+            category: 'VENUE',
+            action: 'VENUE_BOOKED',
+            status: 'SUCCESS',
+            severity: 'HIGH',
+            correlationId: req.params.id,
+            requestId: crypto.randomUUID(),
+            actor: { userId: req.user.id, name: actingName, role: actingRole, department: actingDept },
+            target: { entityType: 'VENUE_RESERVATION', entityId: newReservationId, venueId: newVenueId, eventId: req.params.id },
+            details: {
+              date: eventDate,
+              startTime: eventStartTime,
+              endTime: eventEndTime,
+              reservationId: newReservationId,
+              eventId: req.params.id,
+              resubmission: true,
+              oldReservationId
+            },
+            ipAddress: req.ip || (req.headers && req.headers['x-forwarded-for']) || null,
+            userAgent: (req.headers && req.headers['user-agent']) || null
+          });
+        } catch (auditErr) {
+          console.warn('[events/resubmit-edit] Failed to write venue booked audit log:', auditErr.message);
+        }
+      }
+    } else {
+      // Draft or no venue change: simple update
+      await updateDoc(eventRef, updatePayload);
+    }
 
     // After resubmitting, notify the faculty in the background
-    executeBackgroundNotification('events/resubmit-edit', async () => {
-      const payloadWithId = { id: req.params.id, ...updatePayload };
-      let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
-      if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
+    if (!isDraft) {
+      executeBackgroundNotification('events/resubmit-edit', async () => {
+        const payloadWithId = { id: req.params.id, ...updatePayload };
+        let facultyEmail = updatePayload.coordinator?.facultyEmail || updatePayload.coordinator?.faculty_email || updatePayload.facultyEmail || null;
+        if (typeof facultyEmail === 'string') facultyEmail = facultyEmail.trim().toLowerCase();
 
-      if (!facultyEmail && updatePayload.coordinator?.facultyName) {
-        facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
-      }
+        if (!facultyEmail && updatePayload.coordinator?.facultyName) {
+          facultyEmail = await getFacultyEmailByName(String(updatePayload.coordinator.facultyName).trim());
+        }
 
-      if (facultyEmail) {
-        await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
-      }
-    });
+        if (facultyEmail) {
+          await sendEventNotificationToFaculty(payloadWithId, facultyEmail);
+        }
+
+        // Notify all managers (pass empty oldManagers so ALL managers get notified on (re)submit)
+        if (updatePayload.managers && updatePayload.managers.length > 0) {
+          await notifyManagersAssigned(payloadWithId, updatePayload.managers, []);
+        }
+      });
+    }
 
     return res.json({
       success: true,
@@ -1752,6 +1981,22 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    const eventData = eventSnap.data();
+
+    // Only allow deletion before any approval has been granted
+    const PRE_APPROVAL_STATUSES = ['DRAFT', 'PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD'];
+    if (!PRE_APPROVAL_STATUSES.includes(eventData.status)) {
+      return res.status(403).json({
+        success: false,
+        message: `Cannot delete an event with status "${eventData.status}". Events can only be deleted before any approval.`
+      });
+    }
+
+    // Only the organizer (or admin) can delete
+    if (eventData.organizerId !== req.user.id && req.user.role !== 'IQAC_TEAM' && req.user.role !== 'SYSTEM_ADMIN') {
+      return res.status(403).json({ success: false, message: 'Only the event organizer can delete this event.' });
+    }
+
     // Delete associated OD requests to prevent orphans
     const odQuery = query(collection(db, 'odRequests'), where('eventId', '==', req.params.id));
     const odSnap = await getDocs(odQuery);
@@ -1770,7 +2015,6 @@ router.delete('/:id', async (req, res) => {
 
     // Release booked venue (best effort, non-blocking)
     try {
-      const eventData = eventSnap.data();
       const VenueAvailabilityService = require('../services/venueAvailabilityService');
       const venueId = eventData.venueId || eventData.requisition?.step1?.venueId || null;
       await VenueAvailabilityService.releaseBookedVenue(
@@ -2316,7 +2560,7 @@ router.patch('/:id/cancel', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async
 // Postpone an event (STUDENT_ORGANIZER or FACULTY)
 router.patch('/:id/postpone', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), async (req, res) => {
   if (!checkDb(res)) return;
-  const { reason, newDate, newEndDate: providedEndDate, newStartTime, newEndTime } = req.body;
+  const { reason, newDate, newEndDate: providedEndDate, newStartTime, newEndTime, venueId: bodyVenueId, skipVenueAvailabilityCheck: skipVenueCheck } = req.body;
   const newEndDate = providedEndDate || newDate;
   
   if (!reason || !newDate || !newStartTime || !newEndTime) {
@@ -2343,6 +2587,88 @@ router.patch('/:id/postpone', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), asy
     
     if (eventData.status === 'COMPLETED' || eventData.status === 'CANCELLED') {
       return res.status(400).json({ success: false, message: 'Cannot postpone an event that is completed or cancelled' });
+    }
+
+    // ── Server-side venue availability check (non-skippable by frontend, protected by RBAC) ──
+    // Only IQAC_TEAM or SYSTEM_ADMIN callers may explicitly skip the venue availability check via role guard
+    const canExplicitlySkipVenueCheck = (req.user.role === 'IQAC_TEAM' || req.user.role === 'SYSTEM_ADMIN') && skipVenueCheck === true;
+    const resolveVenueId = () => {
+      if (bodyVenueId) return String(bodyVenueId);
+      if (eventData.venueId || eventData.venue_id) return String(eventData.venueId || eventData.venue_id);
+      const step1VenueId = eventData.requisition?.step1?.venueId;
+      if (step1VenueId) return String(step1VenueId);
+      const hrSelections = Object.entries(eventData.requisition?.annexureI_venue?.venueSelection || {})
+        .filter(([, v]) => v && v.selected).map(([k]) => k);
+      if (hrSelections[0]) return hrSelections[0];
+      const audioVenue = eventData.requisition?.annexureII_audio?.venueName;
+      return audioVenue || null;
+    };
+    const eventVenueId = resolveVenueId();
+    const eventReservationId = eventData.reservationId || eventData.venueReservationId || null;
+    const VenueAvailabilityService = require('../services/venueAvailabilityService');
+
+    if (eventVenueId && !canExplicitlySkipVenueCheck) {
+      // Iterate over all days in the new date range (multi-day safety): at least one slot must be free per day.
+      const startDp = new Date(newDate);
+      const endDp = new Date(newEndDate);
+      const totalDays = Math.max(1, Math.round((endDp - startDp) / (1000 * 60 * 60 * 24)) + 1);
+      let firstConflict = null;
+      for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 1) {
+        const curDate = new Date(startDp.getTime() + dayOffset * 24 * 60 * 60 * 1000);
+        const yyyy = curDate.getFullYear();
+        const mm = String(curDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(curDate.getDate()).padStart(2, '0');
+        const curDateStr = `${yyyy}-${mm}-${dd}`;
+        // For multi-day events, use the actual start/end times only on first/last day; all-day window otherwise.
+        const dayStart = (dayOffset === 0) ? newStartTime : '00:01';
+        const dayEnd = (dayOffset === totalDays - 1) ? newEndTime : '23:59';
+        // eslint-disable-next-line no-await-in-loop
+        const slotOutcome = await VenueAvailabilityService.getVenueSlotStatus(
+          eventVenueId,
+          curDateStr,
+          dayStart,
+          dayEnd,
+          { skipEventId: req.params.id, skipReservationId: eventReservationId }
+        );
+        if (!slotOutcome.available) {
+          firstConflict = slotOutcome;
+          break;
+        }
+      }
+      if (firstConflict) {
+        const earliest = firstConflict.earliestAvailable
+          ? new Date(firstConflict.earliestAvailable).toLocaleString()
+          : null;
+        const actorHint = firstConflict.conflictingReservation?.organizerId
+          ? ` (by ${firstConflict.conflictingReservation.organizerName || 'another organizer'})`
+          : '';
+        const baseMsg = `Venue currently reserved for the selected new date/time${actorHint}.${earliest ? ` Available after ${earliest}.` : ''}`;
+        const logger = require('../utils/logger');
+        logger.logAudit({
+          category: 'VENUE',
+          action: 'VENUE_POSTPONE_BLOCKED',
+          status: 'BLOCKED',
+          severity: 'MEDIUM',
+          actor: { id: req.user.id, name: req.user.name, role: req.user.role, department: req.user.department },
+          target: { entityType: 'VENUE_RESERVATION', entityId: eventReservationId || 'n/a', venueId: eventVenueId, eventId: req.params.id },
+          correlationId: crypto.randomUUID(),
+          requestId: req.id || crypto.randomUUID(),
+          details: {
+            requestedNew: { newDate, newEndDate, newStartTime, newEndTime },
+            conflictingReservation: firstConflict.conflictingReservation || null,
+            earliestAvailable: firstConflict.earliestAvailable || null
+          },
+          ipAddress: req.ipAddress || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+          device: req.headers['user-agent'] || null
+        });
+        return res.status(409).json({
+          success: false,
+          message: baseMsg,
+          earliestAvailable: firstConflict.earliestAvailable || null,
+          conflictingReservation: firstConflict.conflictingReservation || null,
+          status: firstConflict.status
+        });
+      }
     }
 
     const now = new Date().toISOString();

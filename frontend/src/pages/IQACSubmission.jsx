@@ -260,7 +260,7 @@ const IQACSubmission = () => {
     const fetchODStats = async () => {
       try {
         setIsFetchingStats(true);
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/iqac/${selectedEvent.id}`);
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/iqac/${selectedEvent.id}`);
         const data = await response.json();
 
         if (data.success) {
@@ -1035,7 +1035,7 @@ const IQACSubmission = () => {
         iqacSubmissionCompletedAt: new Date().toISOString(),
       };
 
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/iqac/${selectedEvent.id}`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/iqac/${selectedEvent.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

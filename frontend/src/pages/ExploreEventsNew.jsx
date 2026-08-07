@@ -41,7 +41,7 @@ const IQACSummaryModal = ({ event, onClose }) => {
   // Fetch fresh data from backend API on mount
   useEffect(() => {
     if (!event?.id) return;
-    fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/iqac/${event.id}`)
+    fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/iqac/${event.id}`)
       .then(r => r.json())
       .then(data => {
         if (data.success) setFreshIqacData(data);
@@ -2022,7 +2022,7 @@ export const ExploreEventsNew = () => {
 
     try {
       // 1. Create OD Request
-      const odResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests`, {
+      const odResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2051,7 +2051,7 @@ export const ExploreEventsNew = () => {
       }
 
       // 2. Persist registration to Firestore
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/register`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEntry),
@@ -2094,10 +2094,10 @@ export const ExploreEventsNew = () => {
       // Withdraw OD request if one exists
       const odReq = (odRequests || []).find(r => r.eventId === eventId && r.studentId === currentUser.id && r.status !== 'WITHDRAWN');
       if (odReq) {
-        await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${odReq.id}/withdraw`, { method: 'PATCH' });
+        await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests/${odReq.id}/withdraw`, { method: 'PATCH' });
       }
 
-      await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/withdraw`, {
+      await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}/withdraw`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id }),

@@ -95,6 +95,27 @@ const findStudentInFirestore = async (studentId) => {
         };
       }
     }
+
+    // 3. Fallback to legacy members subcollection
+    const classesSnap = await db.collection('students').get();
+    for (const classDoc of classesSnap.docs) {
+      const memberRef = db.collection('students').doc(classDoc.id).collection('members').doc(studentId);
+      const memberSnap = await memberRef.get();
+      if (memberSnap.exists) {
+        const studentData = memberSnap.data();
+        // Return a special structure for members subcollection updates
+        return {
+          className: studentData.class || classDoc.id,
+          ref: memberRef,
+          studentIndex: -1,         // -1 signals members subcollection (not array-based)
+          allStudents: null,
+          isMembersSubcollection: true,
+          ...studentData,
+          id: studentId,
+        };
+      }
+    }
+
     return null;
   } catch (err) {
     console.error(`[studentHelper] Error fetching student ${studentId}:`, err.message);

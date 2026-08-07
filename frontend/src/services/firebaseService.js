@@ -182,7 +182,7 @@ const ALL_CLASSES = [
 // Fetch all students
 export const fetchStudents = async () => {
   try {
-    const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+    const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'http://localhost:5001');
     const res = await fetch(`${API_BASE}/api/students`);
     if (!res.ok) return [];
     const data = await res.json();
@@ -217,7 +217,7 @@ export const fetchClasses = async () => {
 
 export const getStudentById = async (studentId, className = null) => {
   try {
-    const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+    const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'http://localhost:5001');
     const res = await fetch(`${API_BASE}/api/students`);
     if (!res.ok) return null;
     const data = await res.json();
@@ -457,31 +457,31 @@ export const subscribeToEvents = (currentUser, callback) => {
 let studentsFetchPromise = null;
 
 export const fetchStudentsDirect = async (currentUser) => {
+  // Students don't need the full student list — it's a staff-only endpoint.
+  // Returning early prevents unauthorized 401 that loops them back to /login.
+  if (currentUser?.role === 'STUDENT_GENERAL' || currentUser?.role === 'STUDENT_ORGANIZER') {
+    return [];
+  }
+
   if (studentsFetchPromise) return studentsFetchPromise;
 
   studentsFetchPromise = (async () => {
     try {
       console.log('Students API called');
       const token = getAuthToken();
-      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
-      // Fetch with large limit for context (AppContext needs all students for HOD/IQAC)
+      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'http://localhost:5001');
       const res = await fetch(`${API_BASE}/api/students?limit=200`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        // Support both new paginated format (data.data) and legacy format (data.students)
-        const allStudents = data.data || data.students || [];
-        if (currentUser?.role === 'STUDENT_GENERAL' || currentUser?.role === 'STUDENT_ORGANIZER') {
-          const myStudent = allStudents.find(s => s.id === currentUser.id);
-          return myStudent ? [myStudent] : [];
-        } else {
-          return allStudents;
-        }
+        return data.data || data.students || [];
       } else if (res.status === 401) {
+        console.warn('[fetchStudentsDirect] 401 — session expired, clearing token');
         localStorage.removeItem('sessionToken');
+        localStorage.removeItem('token');
         localStorage.removeItem('currentUser');
-        window.location.href = '/login';
+        // Let React Router / ProtectedRoute handle the redirect — no hard reload
       }
     } catch (err) {
       console.error('Error fetching students:', err);
@@ -513,18 +513,19 @@ export const fetchUsersDirect = async () => {
     try {
       console.log('Users API called');
       const token = getAuthToken();
-      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+      const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'http://localhost:5001');
       const res = await fetch(`${API_BASE}/api/users?limit=200`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data = await res.json();
-        // Support both new paginated format (data.data) and legacy format (data.users)
         return data.data || data.users || [];
       } else if (res.status === 401) {
+        console.warn('[fetchUsersDirect] 401 — session expired, clearing token');
         localStorage.removeItem('sessionToken');
+        localStorage.removeItem('token');
         localStorage.removeItem('currentUser');
-        window.location.href = '/login';
+        // Let React Router / ProtectedRoute handle the redirect — no hard reload
       }
     } catch (err) {
       console.error('Error fetching users:', err);

@@ -36,7 +36,7 @@ const STAFF_ROLES = [
   'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'MEDIA', 'IQAC_TEAM'
 ];
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '');
+const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '');
 
 const DirectoryFilterSelect = ({ value, onChange, options, className = '', dropUp = false }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -904,27 +904,29 @@ const ManageStudents = () => {
         const targets = displayedClassStudents;
         if (targets.length === 0) return;
         setBulkStatusProcessing(true);
-        // Optimistic update
+        // Optimistic update immediately
         const targetIds = new Set(targets.map(s => s.id));
+        const newRole = newStatus === 'GRADUATED' ? 'ALUMNI' : undefined;
         setStudents?.(prev => prev.map(s => targetIds.has(s.id)
-            ? { ...s, studentStatus: newStatus, role: newStatus === 'GRADUATED' ? 'ALUMNI' : (s.role === 'ALUMNI' ? 'STUDENT_GENERAL' : s.role) }
+            ? { ...s, studentStatus: newStatus, ...(newRole ? { role: newRole } : s.role === 'ALUMNI' ? { role: 'STUDENT_GENERAL' } : {}) }
             : s
         ));
         try {
-            await Promise.all(targets.map(student =>
-                fetch(`${API_BASE}/api/students/${student.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
-                    body: JSON.stringify({
-                        studentStatus: newStatus,
-                        role: newStatus === 'GRADUATED' ? 'ALUMNI'
-                            : (student?.role === 'ALUMNI' ? 'STUDENT_GENERAL' : student?.role),
-                    }),
-                })
-            ));
+            const res = await fetch(`${API_BASE}/api/students/bulk-status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
+                body: JSON.stringify({
+                    studentIds: Array.from(targetIds),
+                    studentStatus: newStatus,
+                    role: newStatus === 'GRADUATED' ? 'ALUMNI'
+                        : targets.some(s => s.role === 'ALUMNI') ? 'STUDENT_GENERAL' : undefined,
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message);
         } catch (err) {
             console.error(err);
-            alert('Status update failed: ' + err.message);
+            alert('Bulk status update failed: ' + err.message);
             await refreshStudents();
         } finally {
             setBulkStatusProcessing(false);
@@ -1290,12 +1292,13 @@ const ManageStudents = () => {
                                                                 value={student.studentStatus || 'ACTIVE'}
                                                                 disabled={togglingId === `${student.id}-status`}
                                                                 onChange={e => handleUpdateStudentStatus(student, e.target.value)}
-                                                                className={`text-[11px] font-bold rounded-full px-3 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 transition-colors
-                                                                    ${(student.studentStatus || 'ACTIVE') === 'ACTIVE' ? 'bg-blue-50 text-blue-600 border-blue-100 focus:ring-blue-300' :
+                                                                className={`text-[11px] font-bold rounded-full px-3 py-1 border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 transition-all
+                                                                    ${togglingId === `${student.id}-status` ? 'opacity-50 cursor-wait' :
+                                                                    (student.studentStatus || 'ACTIVE') === 'ACTIVE' ? 'bg-blue-50 text-blue-600 border-blue-100 focus:ring-blue-300' :
                                                                     student.studentStatus === 'GRADUATED' ? 'bg-purple-50 text-purple-600 border-purple-100 focus:ring-purple-300' :
                                                                     'bg-slate-50 text-slate-600 border-slate-200 focus:ring-slate-300'}`}
                                                             >
-                                                                <option value="ACTIVE">Active</option>
+                                                                <option value="ACTIVE">{togglingId === `${student.id}-status` ? 'Saving...' : 'Active'}</option>
                                                                 <option value="GRADUATED">Graduated</option>
                                                                 <option value="INACTIVE">Inactive</option>
                                                             </select>

@@ -30,20 +30,28 @@ router.get('/', async (req, res) => {
     if (category) constraints.push(where('category', '==', category));
     if (priority) constraints.push(where('priority', '==', priority));
 
-    constraints.push(orderBy('createdAt', 'desc'));
+    // Temporary workaround: fetch all matching user notifications and sort/limit in memory
+    // to avoid Firebase composite index errors crashing the server.
+    const snapshot = await getDocs(query(collection(db, 'notifications'), ...constraints));
+    
+    let notifications = [];
+    snapshot.forEach(doc => notifications.push({ id: doc.id, ...doc.data() }));
+    
+    // Sort descending by createdAt
+    notifications.sort((a, b) => {
+      const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0;
+      const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0;
+      return tb - ta;
+    });
 
     if (startAfterParam) {
-      const startAfterDoc = await dbAdmin.collection('notifications').doc(startAfterParam).get();
-      if (startAfterDoc.exists) {
-        constraints.push(startAfter(startAfterDoc));
+      const startIndex = notifications.findIndex(n => n.id === startAfterParam);
+      if (startIndex !== -1) {
+        notifications = notifications.slice(startIndex + 1);
       }
     }
 
-    constraints.push(limit(limitNum));
-    const snapshot = await getDocs(query(collection(db, 'notifications'), ...constraints));
-
-    const notifications = [];
-    snapshot.forEach(doc => notifications.push({ id: doc.id, ...doc.data() }));
+    notifications = notifications.slice(0, limitNum);
 
     res.status(200).json({ success: true, data: notifications });
   } catch (error) {
@@ -67,13 +75,17 @@ router.get('/unread', async (req, res) => {
 
     const latestSnapshot = await getDocs(query(
       collection(db, 'notifications'),
-      where('recipientId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(10)
+      where('recipientId', '==', userId)
     ));
       
-    const latest = [];
+    let latest = [];
     latestSnapshot.forEach(doc => latest.push({ id: doc.id, ...doc.data() }));
+    latest.sort((a, b) => {
+      const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0;
+      const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0;
+      return tb - ta;
+    });
+    latest = latest.slice(0, 10);
 
     res.status(200).json({
       success: true,

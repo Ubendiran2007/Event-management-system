@@ -521,6 +521,26 @@ async function sendManagerAssignmentEmail(managerEmail, eventData, managerName) 
   }
 }
 
+async function sendBulkManagerAssignmentEmail(managerEmails, eventData) {
+  if (!managerEmails || managerEmails.length === 0) return { success: false };
+  try {
+    const html = templates.managerAssignmentTemplate(eventData, 'Managers');
+    const mailOptions = {
+      from: getSenderAddress(),
+      to: managerEmails,
+      subject: `Manager Assignment: "${eventData.title}"`,
+      html,
+      text: `You have been designated as an Event Manager for "${eventData.title}". Please log into the portal to review and accept.`
+    };
+    const result = await sendMailWithFallback(mailOptions);
+    console.log('[Email Service] Bulk manager assignment email sent:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[Email Service] Failed to send bulk manager assignment email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 async function sendManagerAcceptedEmail(organizerEmail, eventData, managerEmail) {
   if (!organizerEmail) return { success: false };
   try {
@@ -772,6 +792,7 @@ module.exports = {
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
   sendManagerAssignmentEmail,
+  sendBulkManagerAssignmentEmail,
   sendManagerAcceptedEmail,
   sendManagerDeclinedEmail,
   sendPostponementApprovalRequestEmail,

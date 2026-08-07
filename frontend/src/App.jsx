@@ -76,7 +76,7 @@ const FallbackRoute = () => {
   const { currentUser } = useAppContext();
   if (currentUser) {
     const rolePrefix = getRolePath(currentUser.role);
-    return <Navigate to={`/${rolePrefix}/dashboard`} replace />;
+    if (rolePrefix) return <Navigate to={`/${rolePrefix}/dashboard`} replace />;
   }
   return <Navigate to="/login" replace />;
 };

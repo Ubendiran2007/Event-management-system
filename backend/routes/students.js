@@ -8,7 +8,6 @@ const { parsePaginationParams } = require('../utils/paginationHelper');
 
 // Protect all Manage Students APIs
 router.use(requireAuth);
-router.use(requireRole(['FACULTY', 'HOD', 'IQAC_TEAM']));
 
 const checkDb = (res) => {
   if (!db) {
@@ -103,7 +102,7 @@ async function buildCollegeWideStudentIndex() {
 }
 
 // GET /api/students — fetch students with in-memory pagination
-router.get('/', async (req, res) => {
+router.get('/', requireRole(['FACULTY', 'HOD', 'IQAC_TEAM', 'STUDENT_ORGANIZER']), async (req, res) => {
   if (checkDb(res)) return;
   try {
     const { batch, department, section, class: classFilter, search } = req.query;
@@ -114,26 +113,48 @@ router.get('/', async (req, res) => {
     if (cachedStudents) {
       allStudents = cachedStudents;
     } else {
+      // ── Path 1: array-based section docs ──────────────────────────────────
       const sectionDocs = await getAllSectionDocs();
-      
       sectionDocs.forEach(secDoc => {
         const studentsArray = secDoc.data.students || [];
         studentsArray.forEach(data => {
           const { password, ...safeData } = data;
-          // Infer department from class if missing (e.g. "CSE D" → "CSE")
           if (!safeData.department && safeData.class) {
             safeData.department = safeData.class.replace(/-/g, ' ').trim().split(' ')[0].toUpperCase();
           }
           allStudents.push(safeData);
         });
       });
+
+      // ── Path 2: legacy members subcollection (frontend-seeded students) ───
+      try {
+        const classesSnap = await getDocs(collection(db, 'students'));
+        await Promise.all(classesSnap.docs.map(async (classDoc) => {
+          // Skip batch-level docs (they have sub-collections, not members directly)
+          const membersSnap = await getDocs(collection(db, 'students', classDoc.id, 'members'));
+          membersSnap.docs.forEach(memberDoc => {
+            const { password, ...safeData } = memberDoc.data();
+            // Avoid duplicates — skip if already loaded via array-based path
+            if (allStudents.some(s => s.id === memberDoc.id || s.rollNo === safeData.rollNo)) return;
+            if (!safeData.department && (safeData.class || classDoc.id)) {
+              const cls = safeData.class || classDoc.id;
+              safeData.department = cls.replace(/-/g, ' ').trim().split(' ')[0].toUpperCase();
+            }
+            safeData.id = safeData.id || memberDoc.id;
+            allStudents.push(safeData);
+          });
+        }));
+      } catch (err) {
+        console.warn('[students GET] Legacy members scan error:', err.message);
+      }
+
       cachedStudents = allStudents;
     }
 
     // Apply filters
     let filtered = allStudents;
     if (batch) filtered = filtered.filter(s => s.academicBatch === batch);
-    if (department) filtered = filtered.filter(s => s.department === department);
+    if (department) filtered = filtered.filter(s => (s.department || '').toUpperCase() === department.toUpperCase());
     if (section) filtered = filtered.filter(s => s.section === section);
     if (classFilter) {
       const normalizeClass = (value) => String(value || '').trim().replace(/\s+/g, '-').toUpperCase();
@@ -171,6 +192,8 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+// Protect mutation routes
+router.use(requireRole(['FACULTY', 'HOD', 'IQAC_TEAM']));
 
 // POST /api/students — add a single student
 router.post('/', async (req, res) => {
@@ -403,12 +426,76 @@ router.post('/bulk', async (req, res) => {
   }
 });
 
+// PATCH /api/students/bulk-status — update studentStatus for multiple students atomically
+router.patch('/bulk-status', async (req, res) => {
+  if (checkDb(res)) return;
+  const { studentIds, studentStatus, role } = req.body;
+
+  if (!Array.isArray(studentIds) || studentIds.length === 0 || !studentStatus) {
+    return res.status(400).json({ success: false, message: 'studentIds array and studentStatus are required' });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const updateFields = { studentStatus, updatedAt: now };
+    if (role) updateFields.role = role;
+
+    // ── Locate all students in parallel ───────────────────────────────────
+    const found = await Promise.all(
+      studentIds.map(id => findStudentInFirestore(id).then(s => ({ id, student: s })))
+    );
+
+    // ── Group by storage type ──────────────────────────────────────────────
+    const arrayDocUpdates = new Map(); // ref.path → { ref, array }
+    const membersUpdates  = [];        // { ref }
+
+    for (const { id, student } of found) {
+      if (!student) { console.warn(`[bulk-status] Student ${id} not found`); continue; }
+
+      if (student.isMembersSubcollection) {
+        membersUpdates.push({ ref: student.ref, id });
+      } else {
+        const refPath = student.ref.path;
+        if (!arrayDocUpdates.has(refPath)) {
+          arrayDocUpdates.set(refPath, { ref: student.ref, arr: student.allStudents });
+        }
+        // Apply update to the in-memory array
+        const entry = arrayDocUpdates.get(refPath);
+        const idx = entry.arr.findIndex(s => s.id === id);
+        if (idx !== -1) Object.assign(entry.arr[idx], updateFields);
+      }
+    }
+
+    // ── Write array-based docs in one batch ───────────────────────────────
+    if (arrayDocUpdates.size > 0) {
+      const batch = writeBatch(db);
+      for (const { ref, arr } of arrayDocUpdates.values()) {
+        batch.update(ref, { students: arr });
+      }
+      await batch.commit();
+    }
+
+    // ── Write members subcollection docs in parallel ───────────────────────
+    if (membersUpdates.length > 0) {
+      await Promise.all(membersUpdates.map(({ ref }) =>
+        setDoc(ref, updateFields, { merge: true })
+      ));
+    }
+
+    invalidateCache();
+    res.json({ success: true, message: `Updated ${studentIds.length} students to ${studentStatus}` });
+  } catch (err) {
+    console.error('Error bulk-status update:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // PUT /api/students/:id — update a student
 router.put('/:id', async (req, res) => {
   if (checkDb(res)) return;
   const { id } = req.params;
   const updateData = req.body;
-  delete updateData.className; 
+  delete updateData.className;
 
   try {
     const student = await findStudentInFirestore(id);
@@ -416,47 +503,34 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Student not found in any class' });
     }
 
-    const targetDoc = { ref: student.ref };
-    const studentIndex = student.studentIndex;
-    const studentsArray = student.allStudents;
-
-    // Check for email/rollNo uniqueness against ALL students except this one
-    if (updateData.email || updateData.rollNo) {
-      let conflict = false;
-      const sectionDocs = await getAllSectionDocs();
-      for (const secDoc of sectionDocs) {
-        const arr = secDoc.data.students || [];
-        for (const s of arr) {
-          if (s.id !== id) {
-            if (updateData.email && s.email.toLowerCase() === updateData.email.toLowerCase()) conflict = true;
-            if (updateData.rollNo && s.rollNo.toUpperCase() === updateData.rollNo.toUpperCase()) conflict = true;
-          }
-        }
-      }
-      if (conflict) {
-         return res.status(400).json({ success: false, message: 'Email or Roll Number already exists in another student record' });
-      }
-    }
-
     delete updateData.id;
     updateData.updatedAt = new Date().toISOString();
-    
-    studentsArray[studentIndex] = { ...studentsArray[studentIndex], ...updateData };
 
-    await updateDoc(targetDoc.ref, { students: studentsArray });
-    
-    // Sync status or uid changes to index
-    if (updateData.status || updateData.uid) {
-      const idxSnap = await getDoc(doc(db, 'student_index', id));
-      if (idxSnap.exists()) {
-         const idxData = idxSnap.data();
-         if (updateData.status) idxData.status = updateData.status;
-         if (updateData.uid) idxData.uid = updateData.uid;
-         idxData.updatedAt = new Date().toISOString();
-         await updateDoc(doc(db, 'student_index', id), idxData);
-      }
+    if (student.isMembersSubcollection) {
+      // ── Legacy members subcollection: use setDoc with merge ──────────────
+      await setDoc(student.ref, updateData, { merge: true });
+    } else {
+      // ── Array-based section doc ───────────────────────────────────────────
+      const studentsArray = student.allStudents;
+      studentsArray[student.studentIndex] = { ...studentsArray[student.studentIndex], ...updateData };
+      await updateDoc(student.ref, { students: studentsArray });
     }
-    
+
+    // Sync studentStatus to student_index if changed
+    if (updateData.studentStatus || updateData.status || updateData.uid) {
+      try {
+        const idxRef = doc(db, 'student_index', id);
+        const idxSnap = await getDoc(idxRef);
+        if (idxSnap.exists()) {
+          const patch = { updatedAt: new Date().toISOString() };
+          if (updateData.studentStatus) patch.studentStatus = updateData.studentStatus;
+          if (updateData.status) patch.status = updateData.status;
+          if (updateData.uid) patch.uid = updateData.uid;
+          await updateDoc(idxRef, patch);
+        }
+      } catch (_) {}
+    }
+
     invalidateCache();
     res.json({ success: true, message: 'Student updated successfully' });
   } catch (err) {

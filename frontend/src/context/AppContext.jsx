@@ -41,24 +41,33 @@ export const AppProvider = ({ children }) => {
     { id: 's2', name: 'Jane Smith', status: 'pending' }
   ]);
 
-  // Manual fetch for students and users (Phase 2 architecture)
-  const loadStudents = React.useCallback(async () => {
-    if (!currentUser) return;
-    try {
-      const data = await import('../services/firebaseService').then(m => m.fetchStudentsDirect(currentUser));
-      setStudents(data);
-    } catch (err) {
-      console.error('Error fetching students:', err);
-    }
-  }, [currentUser]);
-
   const loadUsers = React.useCallback(async () => {
     if (!currentUser) return;
     try {
       const data = await import('../services/firebaseService').then(m => m.fetchUsersDirect());
+      // If 401 cleared localStorage, sync React state
+      if (!localStorage.getItem('currentUser')) {
+        setCurrentUser(null);
+        return;
+      }
       setStaffUsers(data);
     } catch (err) {
       console.error('Error fetching users:', err);
+    }
+  }, [currentUser]);
+
+  const loadStudents = React.useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const data = await import('../services/firebaseService').then(m => m.fetchStudentsDirect(currentUser));
+      // If 401 cleared localStorage, sync React state
+      if (!localStorage.getItem('currentUser')) {
+        setCurrentUser(null);
+        return;
+      }
+      setStudents(data);
+    } catch (err) {
+      console.error('Error fetching students:', err);
     }
   }, [currentUser]);
 
@@ -122,14 +131,10 @@ export const AppProvider = ({ children }) => {
     const isStudent = currentUser.role === 'STUDENT_GENERAL' || currentUser.role === 'STUDENT_ORGANIZER';
     if (isStudent) return;
 
-    // Guard: only match if we have a real, non-empty id to avoid undefined===undefined false positives
+    // Guard: only match by ID — never by email fallback to avoid cross-user patching
     const myStaffData = staffUsers.find(u => {
-      if (currentUser.id && u.id) return u.id === currentUser.id;
-      // Fallback: match by email AND name, but only if both sides have a non-empty role
-      return u.email &&
-        u.email.toLowerCase() === currentUser.email?.toLowerCase() &&
-        u.name === currentUser.name &&
-        !!u.role;
+      if (!currentUser.id || !u.id) return false;
+      return u.id === currentUser.id;
     });
     if (!myStaffData || !myStaffData.role) return;
 
@@ -170,11 +175,11 @@ export const AppProvider = ({ children }) => {
 
   const createEvent = async (newEvent) => {
     try {
-      // If the creator is Faculty, skip Faculty approval step and go directly to HOD
+      // All events must go through manager acceptance first before any higher-level approvals
       const isFacultyOrganizer = currentUser?.role === UserRole.FACULTY;
       const createdEvent = await createEventInDB({
         ...newEvent,
-        status: isFacultyOrganizer ? EventStatus.PENDING_HOD : EventStatus.PENDING_FACULTY,
+        status: EventStatus.PENDING_MANAGERS,
         creatorType: isFacultyOrganizer ? 'FACULTY' : 'STUDENT',
       });
       return createdEvent;
@@ -227,7 +232,7 @@ export const AppProvider = ({ children }) => {
         body.rejectedByDept = String(currentUser?.department || 'N/A');
       }
 
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}/status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -250,7 +255,7 @@ export const AppProvider = ({ children }) => {
 
   const handleDepartmentApproval = async (eventId, department, status = 'APPROVED', reason = '') => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/department-approval`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}/department-approval`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',
@@ -308,7 +313,7 @@ export const AppProvider = ({ children }) => {
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${request.id}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests/${request.id}/status`, {
         method: 'PATCH',
         headers: { 
           'Content-Type': 'application/json',

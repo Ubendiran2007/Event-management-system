@@ -4,10 +4,10 @@ import {
   Car, Hotel, Camera, CheckCircle2, Award,
   ArrowRight, FileCheck, ExternalLink, Trash2,
   Star, AlertTriangle, Clock3,
-  XCircle, Loader2, ClipboardList, Eye, Download, Users, Edit3, Save, PlayCircle, Plus, GraduationCap, Share2, Upload, MessageSquare
+  XCircle, Loader2, ClipboardList, Eye, Download, Users, Edit3, Save, PlayCircle, Plus, GraduationCap, Share2, Upload, MessageSquare, RefreshCw, CheckCircle, XOctagon
 } from 'lucide-react';
 import { uploadFileToStorage, deleteFileFromStorage, validateFile } from '../utils/storageService';
-import { getAuthToken } from '../utils/api';
+import { getAuthToken, venueApi } from '../utils/api';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -105,13 +105,18 @@ const EventDetailModal = ({ event, onClose }) => {
   const [postponeStartTime, setPostponeStartTime] = useState('');
   const [postponeEndTime, setPostponeEndTime] = useState('');
   const [postponeError, setPostponeError] = useState(null);
+  const [venueCheckLoading, setVenueCheckLoading] = useState(false);
+  const [venueCheckResult, setVenueCheckResult] = useState(null);
   
   const [activeTab, setActiveTab] = useState('Overview');
 
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    if (showPostponeModal) setPostponeError(null);
+    if (showPostponeModal) {
+      setPostponeError(null);
+      setVenueCheckResult(null);
+    }
   }, [showPostponeModal]);
 
   useEffect(() => {
@@ -222,6 +227,75 @@ const EventDetailModal = ({ event, onClose }) => {
     ? (s1.eventStartDate === s1.eventEndDate ? s1.eventStartDate : `${s1.eventStartDate} to ${s1.eventEndDate}`)
     : (event?.date || 'Not specified');
   const enabledRequirementCount = Object.values(s1?.requirements || {}).filter(Boolean).length;
+
+  // Resolve venueId (for postponement slot-availability check).
+  // Falls back through multiple storage locations to support legacy + new schemas.
+  const hrSelectedVenueName = (() => {
+    const pairs = Object.entries(venueAnnex?.venueSelection || {});
+    const picked = pairs.find(([, v]) => v && v.selected);
+    return picked ? picked[0] : null;
+  })();
+  const audioVenueName = audioAnnex?.venueName || null;
+  const postponeVenueId = (() => {
+    const direct = event.venueId || event.venue_id || s1?.venueId;
+    if (direct) return String(direct);
+    return hrSelectedVenueName || audioVenueName || null;
+  })();
+
+  // ── Auto venue-availability check on postpone date/time change ──
+  useEffect(() => {
+    if (!showPostponeModal) return;
+    if (!postponeVenueId) {
+      setVenueCheckResult(null);
+      return;
+    }
+    // Basic sanity before firing API call
+    if (!postponeDate || !postponeStartTime || !postponeEndTime) return;
+    if (postponeDate > postponeEndDate) return;
+    if (postponeDate === postponeEndDate && postponeStartTime >= postponeEndTime) return;
+
+    let cancelled = false;
+    const runCheck = async () => {
+      try {
+        setVenueCheckLoading(true);
+        const res = await venueApi.getSlotStatus(postponeVenueId, {
+          date: postponeDate,
+          startTime: postponeStartTime,
+          endTime: postponeEndTime,
+          skipEventId: event.id || null,
+          skipReservationId: event.reservationId || null
+        });
+        if (cancelled) return;
+        if (res && typeof res === 'object') {
+          setVenueCheckResult({
+            ...res,
+            venueName: hrSelectedVenueName || audioVenueName || postponeVenueId
+          });
+        } else {
+          setVenueCheckResult({ available: false, status: 'UNKNOWN' });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setVenueCheckResult({
+            available: false,
+            status: 'ERROR',
+            message: err?.message || 'Availability check failed'
+          });
+        }
+      } finally {
+        if (!cancelled) setVenueCheckLoading(false);
+      }
+    };
+    const t = setTimeout(runCheck, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [showPostponeModal, postponeVenueId, postponeDate, postponeEndDate, postponeStartTime, postponeEndTime, event.id, event.reservationId, hrSelectedVenueName, audioVenueName]);
+
+  const venueCheckIsAvailable = venueCheckResult && (venueCheckResult.available === true || venueCheckResult.status === 'AVAILABLE');
+  const venueCheckIsConflict = venueCheckResult && venueCheckResult.available === false && venueCheckResult.status !== 'ERROR' && venueCheckResult.status !== 'UNKNOWN';
+  const venueCheckEarliestAvailable = venueCheckResult?.earliestAvailable;
   const eventPosterSrc = event?.posterStorage?.downloadURL || event?.posterDataUrl || event?.posterUrl || null;
 
   const isMedia = currentUser?.role === UserRole.MEDIA;
@@ -240,7 +314,7 @@ const EventDetailModal = ({ event, onClose }) => {
         await deleteFileFromStorage(event.posterStorage.storagePath);
       }
 
-      const patchRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster`, {
+      const patchRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove', updatedBy: currentUser.name })
@@ -276,7 +350,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setCancelError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/cancel`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/cancel`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -308,20 +382,50 @@ const EventDetailModal = ({ event, onClose }) => {
       setPostponeError('End time must be after start time on the same day.');
       return;
     }
+    // Venue-availability gating
+    if (postponeVenueId && venueCheckLoading) {
+      setPostponeError('Checking venue availability… please wait.');
+      return;
+    }
+    if (postponeVenueId && venueCheckIsConflict) {
+      const earliest = venueCheckEarliestAvailable
+        ? new Date(venueCheckEarliestAvailable).toLocaleString()
+        : null;
+      setPostponeError(
+        `Venue currently reserved for the selected slot${earliest ? `. Available after ${earliest}` : '. Please choose a different date/time or venue.'}`
+      );
+      return;
+    }
+    if (postponeVenueId && !venueCheckResult) {
+      setPostponeError('Venue availability is not confirmed yet. Change date/time slightly to re-check, or wait a moment.');
+      return;
+    }
     setIsProcessing(true);
     setPostponeError(null);
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/postpone`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/postpone`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${getAuthToken()}`
         },
-        body: JSON.stringify({ reason: postponeReason, newDate: postponeDate, newEndDate: postponeEndDate, newStartTime: postponeStartTime, newEndTime: postponeEndTime })
+        body: JSON.stringify({
+          reason: postponeReason,
+          newDate: postponeDate,
+          newEndDate: postponeEndDate,
+          newStartTime: postponeStartTime,
+          newEndTime: postponeEndTime,
+          venueId: postponeVenueId,
+          skipVenueAvailabilityCheck: postponeVenueId ? false : true
+        })
       });
       if (!res.ok) {
         const d = await res.json();
-        throw new Error(d.message || 'Failed to postpone event');
+        let message = d.message || 'Failed to postpone event';
+        if (res.status === 409 && d.earliestAvailable) {
+          message = `${message}. Available after ${new Date(d.earliestAvailable).toLocaleString()}`;
+        }
+        throw new Error(message);
       }
       setTimeout(() => { 
         onClose(); 
@@ -355,7 +459,7 @@ const EventDetailModal = ({ event, onClose }) => {
 
       const metadata = await uploadFileToStorage(file, `events/${event.id}/poster_${Date.now()}.jpg`);
 
-      const patchRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster`, {
+      const patchRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/poster`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -397,7 +501,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsProcessing(true);
     setPosterUploadError('');
     try {
-      const wfRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster-workflow`, {
+      const wfRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/poster-workflow`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -439,7 +543,7 @@ const EventDetailModal = ({ event, onClose }) => {
         payload.organizerReviewComment = organizerPosterComment.trim();
       }
 
-      const wfRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/poster-workflow`, {
+      const wfRes = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/poster-workflow`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -467,7 +571,7 @@ const EventDetailModal = ({ event, onClose }) => {
     setIsRequestingExtension(true);
     setApprovalError('');
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${event.id}/request-iqac-extension`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}/request-iqac-extension`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -684,10 +788,36 @@ const EventDetailModal = ({ event, onClose }) => {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 pr-10 sm:pr-0">
-              {(currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser?.email) && event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && getEventStatus(event) !== 'completed' && (
+              {(currentUser?.role === UserRole.STUDENT_ORGANIZER || currentUser?.role === UserRole.FACULTY) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser?.email) && (
                 <>
-                  <button onClick={() => { setShowPostponeModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg shrink-0">Postpone Event</button>
-                  <button onClick={() => { setShowCancelModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg shrink-0">Cancel Event</button>
+                  {/* Pre-approval: show Delete only — no postpone/cancel needed yet */}
+                  {['PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD', 'DRAFT'].includes(event.status) ? (
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm(`Delete "${event.title}"? This cannot be undone.`)) return;
+                        try {
+                          const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${event.id}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${getAuthToken()}` }
+                          });
+                          const data = await res.json();
+                          if (data.success) { onClose(); window.location.reload(); }
+                          else alert(data.message || 'Failed to delete event.');
+                        } catch { alert('Failed to delete event. Please try again.'); }
+                      }}
+                      className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg shrink-0"
+                    >
+                      Delete Event
+                    </button>
+                  ) : (
+                    /* Post-approval: show Postpone & Cancel */
+                    event.status !== 'COMPLETED' && event.status !== 'CANCELLED' && getEventStatus(event) !== 'completed' && (
+                      <>
+                        <button onClick={() => { setShowPostponeModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg shrink-0">Postpone Event</button>
+                        <button onClick={() => { setShowCancelModal(true); setApprovalError(''); }} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg shrink-0">Cancel Event</button>
+                      </>
+                    )
+                  )}
                 </>
               )}
             </div>
@@ -1252,6 +1382,55 @@ const EventDetailModal = ({ event, onClose }) => {
                 </div>
               </InfoSection>
             )}
+
+            {/* Event Managers Section */}
+            {(() => {
+              const managers = event?.managers || s1?.managers || [];
+              if (!managers.length) return null;
+              return (
+                <InfoSection title="Event Managers" icon={Users}>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-sm">
+                    <table className="min-w-full text-sm divide-y divide-slate-200">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Name</th>
+                          <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Roll No.</th>
+                          <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Email</th>
+                          <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Department</th>
+                          <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Response</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {managers.map((mgr, idx) => {
+                          const status = mgr.status || mgr.managerStatus || 'PENDING';
+                          const badgeClass = status === 'ACCEPTED'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : status === 'DECLINED'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200';
+                          const badgeLabel = status === 'ACCEPTED' ? '✅ Accepted'
+                            : status === 'DECLINED' ? '❌ Declined'
+                            : '⏳ Pending';
+                          return (
+                            <tr key={mgr.userId || idx} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-slate-800">{mgr.name || '-'}</td>
+                              <td className="px-4 py-3 text-slate-600 font-mono text-xs">{mgr.rollNo || '-'}</td>
+                              <td className="px-4 py-3 text-slate-600 text-xs">{mgr.email || '-'}</td>
+                              <td className="px-4 py-3 text-slate-600 text-xs">{mgr.department || '-'}</td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${badgeClass}`}>
+                                  {badgeLabel}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </InfoSection>
+              );
+            })()}
 
             {/* ── Internal Requirements (Annexures 2 to 7) - Hidden from General Students ── */}
             {(isOrganizer || currentUser.role !== UserRole.STUDENT) && (
@@ -2370,9 +2549,68 @@ const EventDetailModal = ({ event, onClose }) => {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2 justify-end mt-6">
-              <button disabled={isProcessing} onClick={() => { setShowPostponeModal(false); setPostponeError(null); }} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button disabled={isProcessing} onClick={handlePostponeEvent} className="px-4 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg flex items-center gap-2">
+
+            {/* Venue Availability Status Panel */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <MapPin size={13} className="text-indigo-600" />
+                  Venue Availability Check
+                </span>
+                {!postponeVenueId && (
+                  <span className="text-[11px] font-bold text-slate-500 bg-white rounded-md px-2 py-0.5 border border-slate-200">
+                    No venue assigned — auto-skipped
+                  </span>
+                )}
+              </div>
+              {postponeVenueId && (
+                <div className="flex items-start justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700 truncate max-w-[210px]">{hrSelectedVenueName || audioVenueName || postponeVenueId}</span>
+                    {venueCheckLoading ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white text-indigo-700 border border-indigo-200 text-[11px] font-black">
+                        <RefreshCw size={11} className="animate-spin" /> Checking…
+                      </span>
+                    ) : venueCheckIsAvailable ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 text-[11px] font-black">
+                        <CheckCircle size={11} /> Available
+                      </span>
+                    ) : venueCheckIsConflict ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-300 text-[11px] font-black">
+                        <XOctagon size={11} /> {venueCheckResult.status === 'BOOKED' ? 'Booked' : venueCheckResult.status === 'HELD' ? 'Held' : 'Unavailable'}
+                      </span>
+                    ) : venueCheckResult?.status === 'ERROR' || venueCheckResult?.status === 'UNKNOWN' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-[11px] font-black">
+                        <AlertTriangle size={11} /> {venueCheckResult.status === 'ERROR' ? 'Check Failed' : 'Unverified'}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-black">
+                        Waiting for valid date/time
+                      </span>
+                    )}
+                  </div>
+                  {venueCheckIsConflict && venueCheckEarliestAvailable && (
+                    <div className="w-full sm:w-auto text-[11px] font-bold text-rose-700 bg-white rounded-md px-2 py-1 border border-rose-200">
+                      Available after {new Date(venueCheckEarliestAvailable).toLocaleString()}
+                    </div>
+                  )}
+                  {venueCheckIsConflict && venueCheckResult?.conflictingReservation && (
+                    <div className="w-full text-[11px] font-semibold text-rose-600 bg-rose-50/70 rounded-md px-2 py-1 border border-rose-100">
+                      Conflicting event / hold ID: <span className="font-mono">{String(venueCheckResult.conflictingReservation.id || venueCheckResult.conflictingReservation.reservationId || '—')}</span>
+                    </div>
+                  )}
+                  {venueCheckResult?.status === 'ERROR' && venueCheckResult?.message && (
+                    <div className="w-full text-[11px] font-semibold text-amber-700 bg-amber-50 rounded-md px-2 py-1 border border-amber-200">
+                      {venueCheckResult.message}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 justify-end mt-2">
+              <button disabled={isProcessing || (postponeVenueId && (venueCheckLoading || venueCheckIsConflict))} onClick={() => { setShowPostponeModal(false); setPostponeError(null); }} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+              <button disabled={isProcessing || (postponeVenueId && (venueCheckLoading || venueCheckIsConflict || !venueCheckResult))} onClick={handlePostponeEvent} className="px-4 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 {isProcessing ? <Loader2 size={16} className="animate-spin" /> : null} Confirm Postponement
               </button>
             </div>

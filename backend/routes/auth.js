@@ -130,8 +130,10 @@ async function syncAllStaffUsersToFirestore() {
 async function verifyPassword(plain, stored) {
   if (!stored) return false;
   if (stored.startsWith('$2a$') || stored.startsWith('$2b$')) {
-    return bcrypt.compare(plain, stored);
+    const match = await bcrypt.compare(plain, stored);
+    return match;
   }
+  // Plain text comparison (case-insensitive fallback for legacy data)
   return plain === stored || plain.toUpperCase() === stored.toUpperCase();
 }
 
@@ -355,39 +357,105 @@ router.post('/login', async (req, res, next) => {
 
     const studentLookup = (async () => {
       try {
-        const snap = await getDocs(
-          query(
-            collectionGroup(db, 'members'),
-            where('email', '==', lowerEmail),
-            limit(1)
-          )
-        );
-        if (!snap.empty) {
-          const memberDoc = snap.docs[0];
+        const { getAllSectionDocs } = require('../utils/studentHelper');
+
+        // Run all 3 lookups simultaneously — fastest wins
+        const [cgResult, sectionResult] = await Promise.all([
+          // ── 1. collectionGroup query (instant if index exists) ────────────
+          (async () => {
+            try {
+              const snap = await getDocs(
+                query(collectionGroup(db, 'members'), where('email', '==', lowerEmail), limit(1))
+              );
+              if (!snap.empty) {
+                const d = snap.docs[0];
+                return { doc: d, classId: d.ref.parent.parent.id, type: 'cg' };
+              }
+            } catch (_) {}
+            return null;
+          })(),
+
+          // ── 2. Array-based section docs (cached, fast) ───────────────────
+          (async () => {
+            try {
+              const sectionDocs = await getAllSectionDocs();
+              for (const secDoc of sectionDocs) {
+                const s = (secDoc.data.students || []).find(st => st.email && st.email.toLowerCase() === lowerEmail);
+                if (s) return { student: s, secDoc, type: 'array' };
+              }
+            } catch (_) {}
+            return null;
+          })(),
+        ]);
+
+        // ── 3. Parallel class scan fallback (only if both above missed) ────
+        let manualResult = null;
+        if (!cgResult && !sectionResult) {
+          const classesSnap = await getDocs(collection(db, 'students'));
+          const hits = await Promise.all(
+            classesSnap.docs.map(async cDoc => {
+              const mSnap = await getDocs(
+                query(collection(db, 'students', cDoc.id, 'members'), where('email', '==', lowerEmail), limit(1))
+              );
+              return mSnap.empty ? null : { doc: mSnap.docs[0], classId: cDoc.id, type: 'cg' };
+            })
+          );
+          manualResult = hits.find(r => r !== null) || null;
+        }
+
+        const pick = cgResult || manualResult;
+
+        // Handle array-based result
+        if (sectionResult && !pick) {
+          const s = sectionResult.student;
+          const secDoc = sectionResult.secDoc;
+          const inferredDept = (s.class || secDoc.sec || '').split(/[\s\-]+/)[0].toUpperCase();
+          const { password: _pw, ...safeData } = s;
+          return {
+            obj: {
+              id: s.id, ...safeData, email: lowerEmail,
+              role: (s.role || 'STUDENT_GENERAL').toUpperCase(),
+              department: s.department || inferredDept,
+              class: s.class || `${secDoc.dept}-${secDoc.sec}`,
+              section: s.section || secDoc.sec,
+              className: s.class || secDoc.sec,
+              rollNo: s.rollNo || s.id,
+              odUsed: s.odUsed || 0,
+              odLimit: s.odLimit !== undefined ? s.odLimit : 7,
+              isApprovedOrganizer: s.isApprovedOrganizer || false,
+            },
+            pwd: s.password || s.rollNo || s.id.replace('student_', '').toUpperCase(),
+            rollNo: s.rollNo || s.id.replace('student_', '').toUpperCase(),
+          };
+        }
+
+        // Handle members-subcollection result
+        if (pick) {
+          const memberDoc = pick.doc;
+          const classId = pick.classId;
           const memberData = memberDoc.data();
-          const classId = memberDoc.ref.parent.parent.id; // e.g. "CSE-D"
           const inferredDept = classId.split(/[\s\-]+/)[0].toUpperCase();
           const { password: _pw, ...safeData } = memberData;
-          const obj = {
-            id: memberDoc.id,
-            ...safeData,
-            email: lowerEmail,
-            role: (safeData.role || 'STUDENT_GENERAL').toUpperCase(),
-            department: safeData.department || inferredDept,
-            class: safeData.class || classId,
-            section: safeData.section || classId,
-            className: classId,
-            rollNo: safeData.rollNo || memberDoc.id,
-            odUsed: safeData.odUsed || 0,
-            odLimit: safeData.odLimit !== undefined ? safeData.odLimit : 7,
-            isApprovedOrganizer: safeData.isApprovedOrganizer || false,
+          const rollNo = safeData.rollNo || memberDoc.id.replace('student_', '').toUpperCase();
+          return {
+            obj: {
+              id: memberDoc.id, ...safeData, email: lowerEmail,
+              role: (safeData.role || 'STUDENT_GENERAL').toUpperCase(),
+              department: safeData.department || inferredDept,
+              class: safeData.class || classId,
+              section: safeData.section || classId,
+              className: classId,
+              rollNo,
+              odUsed: safeData.odUsed || 0,
+              odLimit: safeData.odLimit !== undefined ? safeData.odLimit : 7,
+              isApprovedOrganizer: safeData.isApprovedOrganizer || false,
+            },
+            pwd: memberData.password || rollNo,
+            rollNo,
           };
-          const pwd = memberData.password ||
-            (safeData.rollNo || memberDoc.id.replace('student_', '').toUpperCase());
-          return { obj, pwd };
         }
       } catch (err) {
-        console.error('[auth] collectionGroup student lookup error:', err);
+        console.error('[auth] student lookup error:', err);
       }
       return null;
     })();
@@ -426,6 +494,22 @@ router.post('/login', async (req, res, next) => {
       foundUserObj = studentResult.obj;
       foundStoredPassword = studentResult.pwd;
       isStudent = true;
+
+      // Block inactive or graduated students from logging in
+      const status = (foundUserObj.studentStatus || 'ACTIVE').toUpperCase();
+      if (status === 'INACTIVE') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account has been deactivated. Please contact your department.'
+        });
+      }
+      if (status === 'GRADUATED') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your student account has been marked as Graduated. Portal access is no longer available.'
+        });
+      }
+
       console.log(`[AUTH] Found student via collectionGroup: ${foundUserObj.id} (${foundUserObj.className})`);
     } else if (staffResult) {
       foundUserObj = staffResult.obj;
@@ -450,9 +534,21 @@ router.post('/login', async (req, res, next) => {
     }
 
     // Verify Password
-    const isMatch = await verifyPassword(password, foundStoredPassword);
-    
-    console.log('[DEBUG LOGIN]', { email, foundUserObj: !!foundUserObj, foundStoredPassword, isMatch });
+    let isMatch = await verifyPassword(password, foundStoredPassword);
+
+    // Fallback for students: if stored password is a bcrypt hash that doesn't match,
+    // also try the rollNo as the password (allows rollNo to always work as default login)
+    if (!isMatch && isStudent && studentResult?.rollNo) {
+      const rollNo = studentResult.rollNo;
+      if (password === rollNo || password.toUpperCase() === rollNo.toUpperCase()) {
+        // Plain rollNo matches — accept it and upgrade to hash in background
+        isMatch = true;
+        foundStoredPassword = null; // force upgrade below
+        console.log(`[AUTH] Student ${foundUserObj.id} logged in with rollNo fallback`);
+      }
+    }
+
+    console.log('[DEBUG LOGIN]', { email, foundUserObj: !!foundUserObj, isMatch });
 
     if (!isMatch) {
       recordFailedLogin(email, foundUserObj, reqDetails).catch(err => console.error('[auth] Failed login record error:', err));
@@ -465,11 +561,11 @@ router.post('/login', async (req, res, next) => {
     handleLoginSuccess(foundUserObj, reqDetails).catch(err => console.error('[auth] Login success handler error:', err));
 
     // Optional: Upgrade plain-text password to bcrypt hash in the background
-    if (foundStoredPassword && !foundStoredPassword.startsWith('$2')) {
-      hashPassword(password)
+    if (!foundStoredPassword || !foundStoredPassword.startsWith('$2')) {
+      const pwdToHash = foundStoredPassword || password;
+      hashPassword(pwdToHash)
         .then(async (hashed) => {
           if (isStudent) {
-            // Update the members subcollection doc
             const classesSnap = await getDocs(collection(db, 'students'));
             for (const classDoc of classesSnap.docs) {
               const memberRef = doc(db, 'students', classDoc.id, 'members', foundUserObj.id);
@@ -480,7 +576,6 @@ router.post('/login', async (req, res, next) => {
               }
             }
           }
-          // Staff password upgrades are not needed — staffs array docs use plain text by design
         })
         .catch(err => console.error('[auth] Password upgrade error:', err));
     }

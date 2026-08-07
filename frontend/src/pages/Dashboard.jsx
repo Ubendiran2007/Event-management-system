@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getRolePath } from '../utils/routeUtils';
 import {
@@ -69,7 +69,7 @@ import RegistrationsTable from '../components/RegistrationsTable';
 import EventsTable from '../components/EventsTable';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
-import { getAuthToken } from '../utils/api';
+import { getAuthToken, acceptInvitation, declineInvitation } from '../utils/api';
 
 import { formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, getEventStatus, isRegistrationLocked } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
@@ -90,7 +90,7 @@ const IQACExtensionApprovalWidget = ({ events, hodName }) => {
     }
     setProcessingId(eventId);
     try {
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/approve-iqac-extension`, {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}/approve-iqac-extension`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endDate, approvedBy: hodName }),
@@ -200,7 +200,7 @@ const Dashboard = () => {
   const isEventsLoading = workflowLoading && organizerLoading;
   // Consolidated error — only show if all event sources failed (not just one)
   const eventsError = workflowError && organizerError
-    ? (workflowError === 'quota' || organizerError === 'quota' ? 'quota' : (workflowError || organizerError))
+    ? (workflowError || organizerError)
     : null;
 
   const navigate = useNavigate();
@@ -250,7 +250,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchSummary = async () => {
       try {
-        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/dashboard/summary', {
+        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/dashboard/summary', {
           headers: {
             'Authorization': `Bearer ${getAuthToken()}`
           }
@@ -269,20 +269,88 @@ const Dashboard = () => {
   }, [currentUser]);
 
   const [mySchedule, setMySchedule] = useState(null);
+  const [scheduleDisplayCount, setScheduleDisplayCount] = useState(10);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [managerInviteProcessing, setManagerInviteProcessing] = useState(null); // eventId being processed
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+
+  // Fetch pending manager invitations on mount
+  useEffect(() => {
+    const fetchPendingInvitations = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/my-schedule`, {
+          headers: { Authorization: `Bearer ${getAuthToken()}` }
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.schedule)) {
+          const pending = data.schedule.filter(
+            item => item.type === 'MANAGED_EVENT' && item.managerStatus === 'PENDING'
+          );
+          setPendingInvitations(pending);
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Failed to fetch pending invitations:', err.message);
+      }
+    };
+    fetchPendingInvitations();
+  }, []);
+  const scheduleCacheRef = useRef(null); // in-memory cache: { userId, data }
+
+  const handleManagerInvite = async (eventId, action) => {
+    setManagerInviteProcessing(eventId);
+    try {
+      const fn = action === 'accept' ? acceptInvitation : declineInvitation;
+      const result = await fn(eventId);
+      if (result.success !== false) {
+        // Remove from pending invitations banner
+        setPendingInvitations(prev => prev.filter(item => item.eventId !== eventId));
+        // Optimistically update the schedule item in local state
+        setMySchedule(prev => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            schedule: prev.schedule.map(item =>
+              item.eventId === eventId && item.type === 'MANAGED_EVENT'
+                ? { ...item, managerStatus: action === 'accept' ? 'ACCEPTED' : 'DECLINED' }
+                : item
+            )
+          };
+          if (scheduleCacheRef.current) {
+            scheduleCacheRef.current = { ...scheduleCacheRef.current, data: updated };
+          }
+          return updated;
+        });
+      } else {
+        alert(result.message || `Failed to ${action} invitation.`);
+      }
+    } catch (err) {
+      console.error(`[Dashboard] Failed to ${action} invitation:`, err);
+      alert(`An error occurred. Please try again.`);
+    } finally {
+      setManagerInviteProcessing(null);
+    }
+  };
 
   useEffect(() => {
     const fetchSchedule = async () => {
       if (activeTab !== 'my-schedule') return;
+      // Serve from cache if same user and cache exists
+      if (scheduleCacheRef.current && scheduleCacheRef.current.userId === currentUser?.id) {
+        setMySchedule(scheduleCacheRef.current.data);
+        return;
+      }
+      setScheduleDisplayCount(10);
       setLoadingSchedule(true);
       try {
-        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/events/my-schedule', {
+        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/events/my-schedule', {
           headers: {
             'Authorization': `Bearer ${getAuthToken()}`
           }
         });
         const data = await res.json();
         if (data.success) {
+          // Store in cache keyed by user
+          scheduleCacheRef.current = { userId: currentUser?.id, data };
           setMySchedule(data);
         }
       } catch (err) {
@@ -318,7 +386,7 @@ const Dashboard = () => {
     if (window.confirm("WARNING: This will reset the OD used count to ZERO for ALL students across the entire institution. This action is typically only done at the start of a new semester.\n\nAre you absolutely sure you want to proceed?")) {
       setIsResettingAllOD(true);
       try {
-        const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/students/reset-od-usage', {
+        const response = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/students/reset-od-usage', {
           method: 'POST'
         });
         const data = await response.json();
@@ -340,6 +408,9 @@ const Dashboard = () => {
   useEffect(() => {
     if (location.state?.filter) {
       setEventFilter(location.state.filter);
+    }
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
     }
   }, [location.state]);
   const isMedia = currentUser?.role === UserRole.MEDIA;
@@ -596,7 +667,7 @@ const Dashboard = () => {
 
     try {
       const results = await Promise.allSettled([
-        fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests`, {
+        fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -610,7 +681,7 @@ const Dashboard = () => {
             registrationType: 'PARTICIPANT'
           }),
         }),
-        fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${eventId}/register`, {
+        fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newEntry),
@@ -789,7 +860,7 @@ const Dashboard = () => {
       }
 
       console.log(`[Approval] Sending ${approve ? 'approval' : 'rejection'} for ${odId}...`);
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${odId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests/${odId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -819,13 +890,13 @@ const Dashboard = () => {
     setWithdrawingOD(prev => ({ ...prev, [odId]: true }));
     try {
       // 1. Mark OD request as withdrawn
-      await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${odId}/withdraw`, {
+      await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests/${odId}/withdraw`, {
         method: 'PATCH',
       });
 
       // 2. Remove student from event's registration list
       if (req.eventId && currentUser?.id) {
-        await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${req.eventId}/withdraw`, {
+        await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${req.eventId}/withdraw`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: currentUser.id }),
@@ -857,7 +928,7 @@ const Dashboard = () => {
             console.error(`[Bulk Approval] PDF generation failed for ${req.studentName}:`, pdfErr);
           }
 
-          return fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/od-requests/${req.id}/status`, {
+          return fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/od-requests/${req.id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1329,12 +1400,14 @@ const Dashboard = () => {
                    activeTab === 'modifications' ? 'Modifications' :
                    activeTab === 'available' ? 'Available Events' :
                    activeTab === 'my-registrations' ? 'My Registrations' :
+                   activeTab === 'my-schedule' ? 'My Schedule' :
                    currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER ? 'Student Dashboard' : 'My Dashboard'}
                 </h2>
                 <p className="text-slate-500 font-medium mt-1">
                   {activeTab === 'registrations' ? 'Review and manage event participant registrations' : 
                    activeTab === 'available' ? 'Browse and register for upcoming events' :
                    activeTab === 'my-registrations' ? 'Track your event registrations and OD requests' :
+                   activeTab === 'my-schedule' ? 'Manage your upcoming events, manager roles, and ODs' :
                    getDashboardSubtitle(currentUser.role)}
                 </p>
               </div>
@@ -1476,6 +1549,45 @@ const Dashboard = () => {
 
           {activeTab === 'dashboard' ? (
             <div className="flex flex-col gap-6">
+              {/* Pending Manager Invitations Banner */}
+              {pendingInvitations.length > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-amber-600 font-bold text-sm">⏳ Pending Manager Invitations ({pendingInvitations.length})</span>
+                    <span className="text-xs text-amber-500 font-medium">— Please respond before the event begins</span>
+                  </div>
+                  {pendingInvitations.map(item => (
+                    <div key={item.eventId} className="flex items-center justify-between gap-4 bg-white rounded-xl border border-amber-100 px-4 py-3 shadow-sm">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 text-sm truncate">{item.title || item.eventTitle || 'Event'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {item.date || item.eventDate ? `${item.date || item.eventDate}` : ''}
+                          {item.startTime ? ` · ${item.startTime}–${item.endTime || ''}` : ''}
+                          {item.department ? ` · ${item.department}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleManagerInvite(item.eventId, 'accept')}
+                          disabled={managerInviteProcessing === item.eventId}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {managerInviteProcessing === item.eventId
+                            ? <><Loader2 size={12} className="animate-spin" /> Processing…</>
+                            : <><Check size={12} strokeWidth={3} /> Accept</>}
+                        </button>
+                        <button
+                          onClick={() => handleManagerInvite(item.eventId, 'decline')}
+                          disabled={managerInviteProcessing === item.eventId}
+                          className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+                        >
+                          <X size={12} strokeWidth={3} /> Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* Dashboard Overview Stats */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {(() => {
@@ -1516,16 +1628,18 @@ const Dashboard = () => {
                         const myRegistered = events.filter(e => (e.registeredStudents || []).some(s => String(s.userId) === String(currentUser.id)));
                         
                         const combinedMap = new Map();
-                        // Store relationship type
                         myRegistered.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'Registered' }));
                         myCreated.forEach(e => combinedMap.set(e.id, { ...e, _relation: 'Created' }));
                         
-                        // Sort by ID descending to get newest first, then slice to 4
                         const recentLog = Array.from(combinedMap.values())
                           .sort((a, b) => String(b.id).localeCompare(String(a.id)))
                           .slice(0, 4);
 
-                        return recentLog.length > 0 ? recentLog.map(ev => (
+                        // Always pad to 4 rows
+                        const rows = [...recentLog];
+                        while (rows.length < 4) rows.push(null);
+
+                        return rows.map((ev, idx) => ev ? (
                            <div key={ev.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100 hover:border-blue-100 transition-colors gap-3">
                               <div>
                                  <div className="flex flex-wrap items-center gap-2">
@@ -1542,9 +1656,11 @@ const Dashboard = () => {
                                 <StatusBadge status={ev.status} />
                               </div>
                            </div>
-                        )) : (
-                           <p className="text-slate-500 text-sm text-center py-4">No recent events found.</p>
-                        );
+                        ) : (
+                           <div key={`empty-${idx}`} className="flex items-center p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/30 h-[72px]">
+                             <div className="w-24 h-3 bg-slate-100 rounded-full" />
+                           </div>
+                        ));
                      })()}
                   </div>
                 </div>
@@ -1593,8 +1709,8 @@ const Dashboard = () => {
             <>
               <div className="flex flex-col flex-1 min-h-0 w-full max-w-[1400px] mx-auto">
                 <div className="flex flex-col flex-1 min-h-0 space-y-6 w-full">
-                {/* Hide stats for events list, registrations, available events, my registrations, approvals, and modifications */}
-                {activeTab !== 'events' && activeTab !== 'registrations' && activeTab !== 'available' && activeTab !== 'my-registrations' && activeTab !== 'approvals' && activeTab !== 'modifications' && (
+                {/* Hide stats for events list, registrations, available events, my registrations, approvals, modifications, and my schedule */}
+                {activeTab !== 'events' && activeTab !== 'registrations' && activeTab !== 'available' && activeTab !== 'my-registrations' && activeTab !== 'approvals' && activeTab !== 'modifications' && activeTab !== 'my-schedule' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                     {(() => {
                       const isOrg = currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY;
@@ -1742,12 +1858,12 @@ const Dashboard = () => {
                                       </td>
                                       <td className="py-3 sm:py-4 px-3 sm:px-6 w-[20%] sm:w-[13%] text-right">
                                          <div className="flex items-center justify-end gap-1 sm:gap-2">
-                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && [EventStatus.REJECTED, EventStatus.DRAFT].includes(event.status) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
+                                            {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && [EventStatus.REJECTED, EventStatus.DRAFT, EventStatus.PENDING_FACULTY, EventStatus.PENDING_HOD, EventStatus.PENDING_MANAGERS].includes(event.status) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
                                               <button
-                                                onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event`, { state: { editingEvent: event } }); }}
-                                                className="hidden sm:inline-flex px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+                                                onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event/details`, { state: { editingEvent: event, editMode: true } }); }}
+                                                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
                                               >
-                                                {event.status === EventStatus.DRAFT ? 'Continue Draft' : 'Edit'}
+                                                {event.status === EventStatus.DRAFT ? 'Continue' : 'Edit'}
                                               </button>
                                             )}
                                             <button onClick={(e) => { e.stopPropagation(); setSelectedEventDetail(event); }} className="px-2 sm:px-4 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] sm:text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm active:scale-95">
@@ -1772,12 +1888,10 @@ const Dashboard = () => {
                               <AlertCircle size={36} />
                             </div>
                             <h3 className="text-slate-800 font-bold text-lg mb-1">
-                              {eventsError === 'quota' ? 'Service Temporarily Unavailable' : 'Unable to Load Events'}
+                              {'Unable to Load Events'}
                             </h3>
                             <p className="text-slate-500 font-medium text-sm max-w-sm mx-auto mb-5">
-                              {eventsError === 'quota'
-                                ? 'The database quota limit has been reached. Your data is safe — events will reappear automatically once the service recovers.'
-                                : 'There was a problem loading your events. Please try again.'}
+                              {'There was a problem loading your events. Please try again.'}
                             </p>
                             <button
                               onClick={() => window.location.reload()}
@@ -2128,8 +2242,22 @@ const Dashboard = () => {
                   )}
 
                   {/* My Schedule Tab */}
-                  {activeTab === 'my-schedule' && (
-                    <div className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm overflow-y-auto">
+                  {activeTab === 'my-schedule' && (() => {
+                    const handleScheduleScroll = (e) => {
+                      const { scrollTop, scrollHeight, clientHeight } = e.target;
+                      // Load more when scrolled within 50px of bottom
+                      if (scrollHeight - scrollTop <= clientHeight + 50) {
+                        if (mySchedule && mySchedule.schedule && scheduleDisplayCount < mySchedule.schedule.length) {
+                          setScheduleDisplayCount(prev => prev + 10);
+                        }
+                      }
+                    };
+                    
+                    return (
+                    <div 
+                      className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm overflow-y-auto"
+                      onScroll={handleScheduleScroll}
+                    >
                       {loadingSchedule ? (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -2147,78 +2275,146 @@ const Dashboard = () => {
                         <div className="space-y-4">
                           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                              <span>📅 Chronological Timeline</span>
+                              <span>📅 Schedule</span>
                               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
                                 {mySchedule.schedule.length} Item(s)
                               </span>
                             </h3>
                           </div>
-                          
-                          <div className="relative border-l-2 border-blue-200 ml-4 pl-6 space-y-6 my-4">
-                            {mySchedule.schedule.map((item, idx) => {
-                              const conflicts = mySchedule.schedule.filter((other, oIdx) => oIdx !== idx && isTimeOverlapping(item, other));
-                              const hasConflict = conflicts.length > 0;
-
-                              return (
-                                <div key={item.id || idx} className="relative group">
-                                  <div className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 bg-white transition-all ${
-                                    hasConflict ? 'border-red-500 bg-red-100 shadow-sm animate-pulse' : 'border-blue-500 group-hover:bg-blue-500 group-hover:scale-125'
-                                  }`} />
-
-                                  <div className={`p-4 rounded-xl border transition-all shadow-2xs ${
-                                    hasConflict 
-                                      ? 'bg-red-50/50 border-red-300 hover:border-red-400' 
-                                      : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-md'
-                                  }`}>
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-xs font-extrabold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-                                          📅 {item.date} {item.startTime && `• ⏰ ${item.startTime} - ${item.endTime || ''}`}
-                                        </span>
-                                        {item.type === 'MANAGED_EVENT' && (
-                                          <span className="px-2.5 py-0.5 rounded-md bg-purple-100 text-purple-800 text-xs font-bold border border-purple-200">
-                                            🛠️ Event Manager
-                                          </span>
-                                        )}
-                                        {item.type === 'REGISTRATION' && (
-                                          <span className="px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs font-bold border border-blue-200">
-                                            🎟️ Participant
-                                          </span>
-                                        )}
-                                        {item.type === 'OD_APPROVED' && (
-                                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">
-                                            📋 Approved OD
-                                          </span>
-                                        )}
-                                        {item.type === 'ORGANIZED_EVENT' && (
-                                          <span className="px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-xs font-bold border border-amber-200">
-                                            👑 Organizer
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {hasConflict && (
-                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-100 text-red-800 border border-red-300 text-xs font-extrabold shadow-2xs animate-bounce">
-                                          <span>⚠️ Schedule Conflict: Overlaps with "{conflicts.map(c => c.title).join(', ')}"</span>
+                          <div className="bg-white border border-slate-100 shadow-sm rounded-xl overflow-hidden mt-4">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="border-b-2 border-slate-100 uppercase tracking-widest text-[10px] font-extrabold text-slate-500 bg-slate-50/50">
+                                  <th className="py-4 px-6 w-[30%]">Event / Role</th>
+                                  <th className="py-4 px-6 w-[20%]">Date & Time</th>
+                                  <th className="py-4 px-6 w-[20%]">Venue</th>
+                                  <th className="py-4 px-6 w-[15%]">Status</th>
+                                  <th className="py-4 px-6 w-[15%] text-right">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {mySchedule.schedule.slice(0, scheduleDisplayCount).map((item, idx) => {
+                                  const conflicts = mySchedule.schedule.filter((other, oIdx) => oIdx !== idx && isTimeOverlapping(item, other));
+                                  const hasConflict = conflicts.length > 0;
+                                  
+                                  return (
+                                    <tr key={item.id || idx} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group">
+                                      <td className="py-4 px-6">
+                                        <h4 className="font-bold text-slate-900 text-sm truncate" title={item.title}>
+                                          {item.title}
+                                        </h4>
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                          {item.type === 'MANAGED_EVENT' && (
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-purple-100 text-purple-800 border-purple-200">
+                                              🛠️ Event Manager
+                                            </span>
+                                          )}
+                                          {item.type === 'REGISTRATION' && (
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-blue-100 text-blue-800 border-blue-200">
+                                              🎟️ Participant
+                                            </span>
+                                          )}
+                                          {item.type === 'OD_APPROVED' && (
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-emerald-100 text-emerald-800 border-emerald-200">
+                                              📋 Approved OD
+                                            </span>
+                                          )}
+                                          {item.type === 'ORGANIZED_EVENT' && (
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-amber-100 text-amber-800 border-amber-200">
+                                              👑 Organizer
+                                            </span>
+                                          )}
                                         </div>
-                                      )}
-                                    </div>
-
-                                    <h4 className="font-bold text-slate-900 text-base mb-1">{item.title}</h4>
-                                    
-                                    <div className="flex items-center gap-4 text-xs font-medium text-slate-500 mt-2">
-                                      <span>📍 Venue: <strong className="text-slate-700">{item.venue || 'Campus / TBA'}</strong></span>
-                                      {item.status && <span>• Status: <strong className="text-slate-700">{item.status}</strong></span>}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                      </td>
+                                      <td className="py-4 px-6">
+                                        <div className="flex flex-col gap-1">
+                                          <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 whitespace-nowrap">
+                                            <Calendar size={13} className="text-slate-400 shrink-0" />
+                                            {item.date}
+                                          </p>
+                                          {item.startTime && (
+                                            <p className="text-[11px] font-medium text-slate-500 flex items-center gap-1.5 whitespace-nowrap">
+                                              <Clock size={12} className="text-slate-400 shrink-0" />
+                                              {item.startTime} {item.endTime ? `- ${item.endTime}` : ''}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="py-4 px-6">
+                                        <p className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 truncate" title={item.venue || 'To be allocated'}>
+                                          <MapPin size={13} className="text-slate-400 shrink-0" />
+                                          {item.venue || 'To be allocated'}
+                                        </p>
+                                      </td>
+                                      <td className="py-4 px-6">
+                                        <div className="flex flex-col items-start gap-1">
+                                          {item.type === 'MANAGED_EVENT' ? (
+                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border shadow-sm flex items-center gap-1 ${
+                                              item.managerStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                                              item.managerStatus === 'DECLINED' ? 'bg-red-50 text-red-700 border-red-200' : 
+                                              'bg-amber-50 text-amber-700 border-amber-200'
+                                            }`}>
+                                              {item.managerStatus === 'ACCEPTED' && '✅ Accepted'}
+                                              {item.managerStatus === 'DECLINED' && '❌ Declined'}
+                                              {item.managerStatus === 'PENDING' && '⏳ Pending'}
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-1 rounded-lg text-[10px] font-bold border shadow-sm bg-blue-50 text-blue-700 border-blue-200">
+                                              {item.status || 'Active'}
+                                            </span>
+                                          )}
+                                          
+                                          {hasConflict && (
+                                            <span className="inline-flex items-center gap-1 mt-1 text-[9px] font-bold text-red-600 animate-pulse" title={`Overlaps with: ${conflicts.map(c => c.title).join(', ')}`}>
+                                              <AlertCircle size={10} /> Conflict
+                                            </span>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="py-4 px-6 text-right">
+                                        {item.type === 'MANAGED_EVENT' && item.managerStatus === 'PENDING' ? (
+                                          <div className="flex items-center justify-end gap-2">
+                                            <button
+                                              onClick={() => handleManagerInvite(item.eventId, 'accept')}
+                                              disabled={managerInviteProcessing === item.eventId}
+                                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 rounded-lg transition-colors disabled:opacity-50"
+                                              title="Accept"
+                                            >
+                                              {managerInviteProcessing === item.eventId ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
+                                            </button>
+                                            <button
+                                              onClick={() => handleManagerInvite(item.eventId, 'decline')}
+                                              disabled={managerInviteProcessing === item.eventId}
+                                              className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg transition-colors disabled:opacity-50"
+                                              title="Decline"
+                                            >
+                                              {managerInviteProcessing === item.eventId ? <Loader2 size={14} className="animate-spin" /> : <X size={14} strokeWidth={3} />}
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center justify-end text-[10px] text-slate-400 font-medium group-hover:text-blue-500 transition-colors cursor-pointer">
+                                            View Details <ChevronRight size={12} />
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                {/* Load-more indicator row */}
+                                {scheduleDisplayCount < mySchedule.schedule.length && (
+                                  <tr>
+                                    <td colSpan={5} className="text-center py-4 text-[11px] font-semibold text-slate-400">
+                                      Scroll down to load more · {mySchedule.schedule.length - scheduleDisplayCount} remaining
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}
                     </div>
-                  )}
+                  );})()}
                 </div>
               </div>
             </div>

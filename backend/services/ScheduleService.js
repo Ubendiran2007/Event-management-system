@@ -65,7 +65,7 @@ class ScheduleService {
       }
 
       // 2. Process Events (matching registrations, manager assignments, or organized events)
-      const activeEventStatuses = ['POSTED', 'APPROVED', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
+      const activeEventStatuses = ['POSTED', 'APPROVED', 'PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
 
       for (const doc of eventsSnap.docs) {
         const ev = doc.data();
@@ -103,12 +103,12 @@ class ScheduleService {
 
         // Check if managing
         const managers = Array.isArray(ev.managers) ? ev.managers : [];
-        const isManager = managers.some(m => 
-          (String(m.userId) === String(studentId) || String(m.id) === String(studentId)) && 
+        const managerEntry = managers.find(m =>
+          (String(m.userId) === String(studentId) || String(m.id) === String(studentId)) &&
           m.status !== 'DECLINED'
         );
 
-        if (isManager) {
+        if (managerEntry) {
           scheduleItems.push({
             id: `mgr_${evId}_${studentId}`,
             eventId: evId,
@@ -120,7 +120,8 @@ class ScheduleService {
             startTime,
             endTime,
             venue,
-            status: 'ASSIGNED'
+            status: 'ASSIGNED',
+            managerStatus: managerEntry.status || 'PENDING' // PENDING | ACCEPTED | DECLINED
           });
         }
 
@@ -171,11 +172,11 @@ class ScheduleService {
         }
       }
 
-      // Sort chronologically by date and start time
+      // Sort chronologically by date and start time descending
       scheduleItems.sort((a, b) => {
         const timeA = `${a.date}T${a.startTime}`;
         const timeB = `${b.date}T${b.startTime}`;
-        return timeA.localeCompare(timeB);
+        return timeB.localeCompare(timeA);
       });
 
       return scheduleItems;
@@ -194,7 +195,7 @@ class ScheduleService {
     try {
       const eventsSnap = await dbAdmin.collection('events').get();
       const scheduleItems = [];
-      const activeEventStatuses = ['POSTED', 'APPROVED', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
+      const activeEventStatuses = ['POSTED', 'APPROVED', 'PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
 
       for (const doc of eventsSnap.docs) {
         const ev = doc.data();

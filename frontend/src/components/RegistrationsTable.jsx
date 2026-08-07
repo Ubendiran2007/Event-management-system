@@ -26,7 +26,7 @@ export default function RegistrationsTable({ currentUser, onRowClick }) {
     setProcessingId(req.id);
     try {
       const token = getAuthToken();
-      const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+      const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
       
       const res = await fetch(`${baseUrl}/api/od-requests/${req.id}/status`, {
         method: 'PATCH',

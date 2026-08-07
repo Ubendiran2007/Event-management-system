@@ -31,7 +31,7 @@ export default function EventsTable({ currentUser, activeTab, filter, onRowClick
       }
 
       if (filter === 'process') {
-        params.status = 'PENDING_FACULTY,PENDING_CLASS_ADVISOR,PENDING_HOD,PENDING_IQAC,PENDING_HR,PENDING_AUDIO,PENDING_TRANSPORT';
+        params.status = 'PENDING_MANAGERS,PENDING_FACULTY,PENDING_CLASS_ADVISOR,PENDING_HOD,PENDING_IQAC,PENDING_HR,PENDING_AUDIO,PENDING_TRANSPORT';
       } else if (filter === 'approved') {
         params.status = 'APPROVED';
       } else if (filter === 'posted') {

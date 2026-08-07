@@ -62,7 +62,7 @@ const CustomFilterSelect = ({ value, onChange, options, className }) => {
 
 const VenueManagement = () => {
   const { currentUser } = useAppContext();
-  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
   const getToken = () => getAuthToken();
 
   const [activeTab, setActiveTab] = useState('venues'); // 'venues' or 'calendar'

@@ -18,9 +18,15 @@ const handleValidationErrors = (req, res, next) => {
 const validateEvent = [
   body('title').trim().notEmpty().withMessage('Event title is required.'),
   body('department').trim().notEmpty().withMessage('Department is required.'),
-  // Ensure server-controlled fields are NOT injected from the client payload
-  body('status').not().exists().withMessage('Status cannot be set manually.'),
-  body('createdAt').not().exists().withMessage('createdAt cannot be set manually.'),
+  // Allow DRAFT to be passed from client; all other status values are server-controlled
+  body('status')
+    .optional()
+    .custom((val) => {
+      if (val !== undefined && val !== 'DRAFT') {
+        throw new Error('Status cannot be set manually.');
+      }
+      return true;
+    }),
   handleValidationErrors
 ];
 

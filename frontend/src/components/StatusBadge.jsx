@@ -2,6 +2,7 @@ import { EventStatus } from '../types';
 
 const StatusBadge = ({ status }) => {
   const styles = {
+    [EventStatus.PENDING_MANAGERS]: "bg-purple-100 text-purple-700 border-purple-200",
     [EventStatus.PENDING_FACULTY]: "bg-amber-100 text-amber-700 border-amber-200",
     [EventStatus.PENDING_HOD]: "bg-blue-100 text-blue-700 border-blue-200",
     [EventStatus.PENDING_DEPARTMENTS]: "bg-orange-100 text-orange-700 border-orange-200",
@@ -14,6 +15,7 @@ const StatusBadge = ({ status }) => {
   };
 
   const labels = {
+    [EventStatus.PENDING_MANAGERS]: 'Pending Managers',
     [EventStatus.PENDING_FACULTY]: 'Pending Faculty',
     [EventStatus.PENDING_HOD]: 'Pending HOD',
     [EventStatus.PENDING_DEPARTMENTS]: 'Dept. Approvals',

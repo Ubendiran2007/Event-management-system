@@ -25,14 +25,23 @@ const Login = () => {
   const [showForgot, setShowForgot] = useState(false);
   const alertRef = useRef(null);
 
-  // If already logged in, redirect to dashboard immediately
+  // If already logged in with a valid token, redirect to dashboard
   useEffect(() => {
-    if (currentUser) {
-      const rolePrefix = getRolePath(currentUser.role);
-      const from = location.state?.from?.pathname || (rolePrefix ? `/${rolePrefix}/dashboard` : '/');
-      navigate(from, { replace: true });
+    if (!currentUser) return;
+    const token = localStorage.getItem('sessionToken') || localStorage.getItem('token');
+    if (!token) {
+      // Token gone — clear stale user and stay on login
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('user');
+      return;
     }
-  }, [currentUser]);
+    const rolePrefix = getRolePath(currentUser.role);
+    if (!rolePrefix) return;
+    const from = location.state?.from?.pathname;
+    const dest = (from && from !== '/login' && from !== '/') ? from : `/${rolePrefix}/dashboard`;
+    navigate(dest, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -79,7 +88,11 @@ const Login = () => {
           role: userRole,
           isApprovedOrganizer: data.user.isApprovedOrganizer || false,
         });
-        // Navigation is handled by the useEffect that watches currentUser
+        // Navigate immediately — don't wait for currentUser effect
+        const rolePrefix = getRolePath(userRole);
+        const from = location.state?.from?.pathname;
+        const dest = (from && from !== '/login' && from !== '/') ? from : (rolePrefix ? `/${rolePrefix}/dashboard` : '/');
+        navigate(dest, { replace: true });
         // to ensure React state has fully updated before navigating.
 
       } else {

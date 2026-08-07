@@ -74,7 +74,7 @@ const SecurityProfile = () => {
     try {
       const params = new URLSearchParams({ limit: '15' });
       if (append && attendanceAuditNextCursor) params.set('cursor', attendanceAuditNextCursor);
-      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/events/${attendanceAuditEventId}/attendance-audit?${params}`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${attendanceAuditEventId}/attendance-audit?${params}`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
       const data = await res.json();
       if (data.success) {
         setAttendanceAuditLogs((previous) => append ? [...previous, ...(data.logs || [])] : (data.logs || []));
@@ -199,7 +199,7 @@ const SecurityProfile = () => {
     setIsFetchingLogs(true);
     try {
       const query = new URLSearchParams({ limit: TIMELINE_PAGE_SIZE, page, filter });
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/security/activity-timeline?${query}` , {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/security/activity-timeline?${query}` , {
         headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       const data = await response.json();
@@ -225,7 +225,7 @@ const SecurityProfile = () => {
       const token = getAuthToken();
       const headers = { 'Authorization': `Bearer ${token}` };
       
-      const loginRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/login-history', { headers });
+      const loginRes = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/security/login-history', { headers });
       
       const loginData = await loginRes.json();
       
@@ -254,7 +254,7 @@ const SecurityProfile = () => {
     try {
       const params = new URLSearchParams({ limit: '15', role: iqacRoleFilter, status: iqacStatusFilter, time: iqacTimeFilter });
       if (append && iqacNextCursor) params.set('cursor', iqacNextCursor);
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/security/iqac-audit?${params}`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/security/iqac-audit?${params}`, { headers: { Authorization: `Bearer ${getAuthToken()}` } });
       const data = await response.json();
       if (data.success) {
         setIqacLogs((previous) => append ? [...previous, ...(data.logs || [])] : (data.logs || []));
@@ -284,7 +284,7 @@ const SecurityProfile = () => {
     setAlert(null);
     setLoading(true);
     try {
-      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/change-password/request', {
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/security/change-password/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -316,7 +316,7 @@ const SecurityProfile = () => {
     
     setLoading(true);
     try {
-      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/verify-otp', {
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/security/verify-otp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -359,7 +359,7 @@ const SecurityProfile = () => {
     
     setLoading(true);
     try {
-      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/security/change-password/verify', {
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/security/change-password/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

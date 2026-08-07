@@ -20,8 +20,9 @@ const normalizeRollNo = (value) =>
     .replace(/^student_/i, '')
     .toUpperCase();
 
-const { collection, getDocs, query, where, db } = require('../firebaseClientWrapper');
+const { collection, getDocs, query, where, db, collectionGroup, setDoc, doc } = require('../firebaseClientWrapper');
 const { getAllStaffDocs } = require('../utils/staffHelper');
+const { NOTIFICATION_STATUS } = require('../utils/notificationConstants');
 
 const {
   sendEventNotificationToFaculty,
@@ -35,6 +36,7 @@ const {
   sendIQACExtensionRequestEmail,
   sendIQACExtensionStatusEmail,
   sendManagerAssignmentEmail,
+  sendBulkManagerAssignmentEmail,
   sendPostponementApprovalRequestEmail,
   sendPostponementRequestToIQACEmail,
   sendPostponementApprovedEmail,
@@ -552,12 +554,43 @@ async function handleEventPostponed(eventData) {
 // NEW WHITELISTED HANDLERS (#2–#4, #8–#15)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _notifiedManagersSet = new Set();
+// TTL-based dedup: key → expiry timestamp (ms). Prevents same notification within 30 min.
+const _notifiedManagersMap = new Map();
+const _MANAGER_DEDUP_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Look up a userId by email across students (collectionGroup) and staffs.
+ * Returns null if not found.
+ */
+async function _getUserIdByEmail(email) {
+  try {
+    // Try students members collectionGroup first
+    const studentSnap = await getDocs(
+      query(collectionGroup(db, 'members'), where('email', '==', email))
+    );
+    if (!studentSnap.empty) return studentSnap.docs[0].id;
+  } catch (_) {}
+
+  try {
+    // Try staff docs — structure: { staffs: [{id, email, ...}] }
+    const staffDocs = await getAllStaffDocs();
+    for (const sDoc of staffDocs) {
+      const list = Array.isArray(sDoc.data?.staffs) ? sDoc.data.staffs : [];
+      const match = list.find(m => m && (m.email || '').toLowerCase() === email);
+      if (match && match.id) return match.id;
+    }
+  } catch (_) {}
+
+  return null;
+}
 
 async function notifyManagersAssigned(eventData, newManagers = [], oldManagers = []) {
   if (!Array.isArray(newManagers) || newManagers.length === 0) return;
   const oldEmails = new Set((oldManagers || []).map(m => typeof m === 'string' ? m.toLowerCase() : (m.email || '').toLowerCase()));
   
+  const emailsToSend = [];
+  const validManagers = [];
+
   for (const mgr of newManagers) {
     const email = typeof mgr === 'string' ? mgr : mgr.email;
     if (!isValidEmail(email)) continue;
@@ -567,13 +600,44 @@ async function notifyManagersAssigned(eventData, newManagers = [], oldManagers =
     if (oldEmails.has(cleanEmail)) continue;
 
     const dedupKey = `mgr_assign_${eventData.id || eventData.title}_${cleanEmail}`;
-    if (_notifiedManagersSet.has(dedupKey)) continue;
-    _notifiedManagersSet.add(dedupKey);
+    const expiry = _notifiedManagersMap.get(dedupKey);
+    if (expiry && Date.now() < expiry) continue;
+    _notifiedManagersMap.set(dedupKey, Date.now() + _MANAGER_DEDUP_TTL_MS);
 
-    const name = typeof mgr === 'object' && mgr.name ? mgr.name : 'Event Manager';
-    await safeSend('Manager assignment to ' + cleanEmail, cleanEmail, () =>
-      sendManagerAssignmentEmail(cleanEmail, eventData, name)
+    emailsToSend.push(cleanEmail);
+    validManagers.push({ mgr, cleanEmail });
+  }
+
+  if (emailsToSend.length > 0) {
+    await safeSend('Bulk manager assignment', emailsToSend.join(', '), () =>
+      sendBulkManagerAssignmentEmail(emailsToSend, eventData)
     );
+  }
+
+  for (const { mgr, cleanEmail } of validManagers) {
+    // Also write an in-app notification so it appears in the Notification Center
+    try {
+      const recipientId = (typeof mgr === 'object' && (mgr.userId || mgr.id))
+        || await _getUserIdByEmail(cleanEmail);
+      if (recipientId) {
+        const notifId = `mgr_invite_${eventData.id || eventData.title}_${recipientId}_${Date.now()}`;
+        await setDoc(doc(db, 'notifications', notifId), {
+          recipientId: String(recipientId),
+          type: 'MANAGER_INVITATION',
+          category: 'EVENT',
+          priority: 'HIGH',
+          title: 'Event Manager Assignment',
+          message: `You have been assigned as Event Manager for "${eventData.title || eventData.requisition?.step1?.eventTitle || 'an event'}". Please log in to accept or decline.`,
+          eventId: eventData.id || null,
+          eventTitle: eventData.title || eventData.requisition?.step1?.eventTitle || '',
+          status: NOTIFICATION_STATUS.DELIVERED,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } catch (notifErr) {
+      console.error('[emailHandler] Failed to write in-app manager notification:', notifErr.message);
+    }
   }
 }
 

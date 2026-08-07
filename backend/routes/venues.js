@@ -80,6 +80,167 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 /**
+ * @route   GET /api/venues/available
+ * @desc    Get all active venues with their availability status for a given date/time slot.
+ *          This replaces N parallel getCalendar calls with a single batched request.
+ * @query   date, startTime, endTime
+ */
+router.get('/available', authenticateToken, async (req, res) => {
+  try {
+    const { date, startDate, endDate, startTime, endTime } = req.query;
+    const finalStartDate = startDate || date;
+    const finalEndDate = endDate || date;
+
+    if (!finalStartDate || !startTime || !endTime) {
+      return errorResponse(res, 'startDate (or date), startTime, endTime are required', 'VALIDATION_ERROR', 400);
+    }
+
+    // Generate dates array for memory checks
+    const dates = [];
+    let current = new Date(finalStartDate);
+    const end = new Date(finalEndDate);
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+    if (dates.length > 30) return errorResponse(res, 'Max 30 days allowed', 'VALIDATION_ERROR', 400);
+
+    // 1. Fetch all active venues
+    const venuesSnap = await db.collection('venues').where('status', '==', 'ACTIVE').get();
+    const venues = venuesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (venues.length === 0) {
+      return successResponse(res, [], 'No active venues found');
+    }
+
+    // 2. Fetch reservations and events for that date range
+    const resP = dates.map(d => db.collection('venueReservations').where('date', '==', d).get());
+    const resDatesP = dates.map(d => db.collection('venueReservations').where('dates', 'array-contains', d).get());
+    const evP = dates.map(d => db.collection('events').where('date', '==', d).get());
+
+    const allSnaps = await Promise.all([...resP, ...resDatesP, ...evP]);
+    
+    const resDocs = new Map();
+    const evDocs = new Map();
+
+    for (let i = 0; i < dates.length * 2; i++) {
+      allSnaps[i].docs.forEach(doc => resDocs.set(doc.id, doc));
+    }
+    for (let i = dates.length * 2; i < allSnaps.length; i++) {
+      allSnaps[i].docs.forEach(doc => evDocs.set(doc.id, doc));
+    }
+
+    // Fetch maintenance separately
+    let mainSnap;
+    try {
+      mainSnap = await db.collection('venueMaintenance').where('startDate', '<=', finalEndDate).get();
+    } catch (_) {
+      mainSnap = { docs: [] };
+    }
+
+    const now = new Date();
+    const toMin = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + m; };
+    const reqS = toMin(startTime);
+    const reqE = toMin(endTime);
+    const overlaps = (s, e) => toMin(s) < reqE && toMin(e) > reqS;
+
+    const ACTIVE_EVENT_STATUSES = new Set(['APPROVED', 'POSTED', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'RUNNING', 'PUBLISHED']);
+
+    // Index by venueId
+    const resByVenue = {};
+    for (const d of resDocs.values()) {
+      const r = d.data();
+      if (!resByVenue[r.venueId]) resByVenue[r.venueId] = [];
+      resByVenue[r.venueId].push(r);
+    }
+
+    const eventsByVenue = {};
+    for (const d of evDocs.values()) {
+      const e = d.data();
+      if (!ACTIVE_EVENT_STATUSES.has(e.status)) continue;
+      if (!eventsByVenue[e.venueId]) eventsByVenue[e.venueId] = [];
+      eventsByVenue[e.venueId].push(e);
+    }
+
+    // Maintenance: venues under maintenance on this date range
+    const mainVenueIds = new Set();
+    mainSnap.docs.forEach(d => {
+      const m = d.data();
+      if (m.startDate <= finalEndDate && m.endDate >= finalStartDate) mainVenueIds.add(m.venueId);
+    });
+
+    // Build index: venueId -> first active HELD reservation details
+    const heldDetailsByVenue = {};
+    for (const d of resDocs.values()) {
+      const r = d.data();
+      const st = r.status;
+      if (st !== 'HELD' && st !== 'RESERVED') continue;
+      const expired = r.expiresAt &&
+        (r.expiresAt.toDate ? r.expiresAt.toDate() : new Date(r.expiresAt)) < now;
+      if (expired) continue;
+      if (!heldDetailsByVenue[r.venueId]) {
+        heldDetailsByVenue[r.venueId] = {
+          reservationId: d.id,
+          organizerName: r.organizerName || r.userName || null,
+          organizerId: r.organizerId || r.reservedBy || null,
+          department: r.department || null,
+          date: r.date,
+          startDate: r.startDate || r.date,
+          endDate: r.endDate || r.date,
+          dates: r.dates || [r.date],
+          startTime: r.startTime,
+          endTime: r.endTime,
+          expiresAt: r.expiresAt ? (r.expiresAt.toDate ? r.expiresAt.toDate().toISOString() : new Date(r.expiresAt).toISOString()) : null,
+          heldAt: r.heldAt ? (r.heldAt.toDate ? r.heldAt.toDate().toISOString() : new Date(r.heldAt).toISOString()) : null,
+        };
+      }
+    }
+
+    // 3. Compute availability for each venue in memory
+    const result = venues.map(venue => {
+      const vid = venue.id || venue.venueId;
+      let slotStatus = 'AVAILABLE';
+
+      if (mainVenueIds.has(vid)) {
+        slotStatus = 'UNAVAILABLE';
+      } else {
+        for (const r of (resByVenue[vid] || [])) {
+          const st = r.status;
+          if (st === 'EXPIRED' || st === 'CANCELLED') continue;
+          // Check if hold has expired
+          const expired = r.expiresAt &&
+            (r.expiresAt.toDate ? r.expiresAt.toDate() : new Date(r.expiresAt)) < now &&
+            st !== 'BOOKED' && st !== 'COMPLETED' && st !== 'CONSUMED';
+          if (expired) continue;
+          if (overlaps(r.startTime, r.endTime)) {
+            slotStatus = (st === 'BOOKED' || st === 'CONSUMED' || st === 'COMPLETED') ? 'BOOKED' : 'HELD';
+            if (slotStatus === 'BOOKED') break;
+          }
+        }
+        if (slotStatus === 'AVAILABLE') {
+          for (const e of (eventsByVenue[vid] || [])) {
+            if (overlaps(e.startTime, e.endTime)) { slotStatus = 'BOOKED'; break; }
+          }
+        }
+      }
+
+      return {
+        ...venue,
+        slotStatus,
+        available: slotStatus === 'AVAILABLE',
+        isAvailable: slotStatus === 'AVAILABLE',
+        holdDetails: slotStatus === 'HELD' ? (heldDetailsByVenue[vid] || null) : null,
+      };
+    });
+
+    return successResponse(res, result, 'Available venues fetched successfully');
+  } catch (err) {
+    console.error('[venues/available] Error:', err);
+    return errorResponse(res, err.message, 'FETCH_AVAILABLE_ERROR');
+  }
+});
+
+/**
  * @route   GET /api/venues/all
  * @desc    Get all venues regardless of status (HR / IQAC / Admin only) with pagination
  */
@@ -259,8 +420,8 @@ router.post('/re-reserve', authenticateToken, async (req, res) => {
  */
 router.post('/validate-hold', authenticateToken, async (req, res) => {
   try {
-    const { reservationId, venueId, date, startTime, endTime } = req.body;
-    await VenueAvailabilityService.validateHoldForSubmission(reservationId, venueId, req.user.id, date, startTime, endTime);
+    const { reservationId, venueId, date, startDate, endDate, startTime, endTime } = req.body;
+    await VenueAvailabilityService.validateHoldForSubmission(reservationId, venueId, req.user.id, date, startTime, endTime, { startDate, endDate });
     return successResponse(res, { valid: true }, 'Hold is valid');
   } catch (err) {
     console.error('Error validating hold:', err);
@@ -555,16 +716,18 @@ router.get('/hold-duration-options', authenticateToken, async (req, res) => {
 router.post('/:id/hold', authenticateToken, async (req, res) => {
   try {
     const venueId = req.params.id;
-    const { date, startTime, endTime, eventDraftId, coordinatorName } = req.body;
-    if (!date || !startTime || !endTime) {
-      return res.status(400).json({ success: false, message: 'date, startTime, and endTime are required.', code: 'VALIDATION' });
+    const { date, startDate, endDate, startTime, endTime, eventDraftId, coordinatorName } = req.body;
+    if (!(date || startDate) || !startTime || !endTime) {
+      return res.status(400).json({ success: false, message: 'date (or startDate), startTime, and endTime are required.', code: 'VALIDATION' });
     }
     const holdOpts = {
       organizerName: req.user.name || req.user.email,
       department: req.user.department || null,
       eventDraftId: eventDraftId || null,
       coordinatorName: coordinatorName || null,
-      userName: req.user.name || req.user.email
+      userName: req.user.name || req.user.email,
+      startDate,
+      endDate
     };
     const result = await VenueAvailabilityService.holdVenue(
       venueId, String(req.user.id), date, startTime, endTime, holdOpts

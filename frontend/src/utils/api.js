@@ -8,7 +8,7 @@
  *   - 401 responses (expired/invalid token) are handled globally
  */
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'https://event-management-system-dpzc.onrender.com');
+const API_BASE = import.meta.env.VITE_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5001' : 'http://localhost:5001');
 
 /**
  * Returns the current auth token from localStorage.
@@ -39,10 +39,15 @@ function buildHeaders(extra = {}) {
 
 async function handleResponse(res) {
   if (res.status === 401) {
-    console.warn('[API] Unauthorized — clearing session and redirecting to login');
+    console.warn('[API] Unauthorized — clearing session');
     localStorage.removeItem('sessionToken');
+    localStorage.removeItem('token');
     localStorage.removeItem('user');
-    window.location.href = '/login';
+    localStorage.removeItem('currentUser');
+    // Only redirect if NOT already on the login page — prevents reload loop
+    if (!window.location.pathname.includes('/login') && window.location.pathname !== '/') {
+      window.location.href = '/login';
+    }
     return { success: false, message: 'Session expired. Please log in again.' };
   }
 
@@ -71,7 +76,11 @@ async function handleResponse(res) {
 
 export const api = {
   get: (path, query = {}) => {
-    const params = new URLSearchParams(query).toString();
+    // Filter out undefined/null values to prevent "undefined" string in query params
+    const cleanQuery = Object.fromEntries(
+      Object.entries(query).filter(([, v]) => v !== undefined && v !== null)
+    );
+    const params = new URLSearchParams(cleanQuery).toString();
     const url = `${API_BASE}${path}${params ? '?' + params : ''}`;
     return fetch(url, { headers: buildHeaders() }).then(handleResponse);
   },
@@ -113,6 +122,9 @@ export const api = {
  * backend endpoints in backend/routes/events.js. All calls go through the
  * central api.* wrapper above, so session tokens and 401 handling are automatic.
  */
+export const acceptInvitation = (eventId) => api.post(`/api/invitations/${eventId}/accept`, {});
+export const declineInvitation = (eventId) => api.post(`/api/invitations/${eventId}/decline`, {});
+
 export const registrationApi = {
   list: (eventId, options = {}) =>
     api.get(`/api/events/${eventId}/registrations`, {
@@ -148,7 +160,14 @@ export const registrationApi = {
  * central api.* wrapper above, so session tokens and 401 handling are automatic.
  */
 export const venueApi = {
-  listActive: () => api.get('/api/venues'),
+  // If date/startTime/endTime or startDate/endDate/startTime/endTime provided, uses the fast batch availability endpoint
+  listActive: (params = {}) => {
+    const hasDate = (params.date || params.startDate) && params.startTime && params.endTime;
+    if (hasDate) {
+      return api.get('/api/venues/available', params);
+    }
+    return api.get('/api/venues', params);
+  },
 
   listAll: (params = {}) => api.get('/api/venues/all', params),
 

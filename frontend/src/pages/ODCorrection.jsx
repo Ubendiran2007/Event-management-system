@@ -77,7 +77,7 @@ const ODCorrection = () => {
         try {
             setLoading(true);
             const viewParam = activeTab === 'pending' ? 'pending' : 'history';
-            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/correction-requests?role=${currentUser.role}&department=${currentUser.department}&userId=${currentUser.id}&view=${viewParam}`, {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/correction-requests?role=${currentUser.role}&department=${currentUser.department}&userId=${currentUser.id}&view=${viewParam}`, {
                 headers: {
                     'Authorization': `Bearer ${getAuthToken()}`
                 }
@@ -123,7 +123,7 @@ const ODCorrection = () => {
         e.preventDefault();
         setSubmitting(true);
         try {
-            const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com') + '/api/correction-requests', {
+            const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/correction-requests', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -167,7 +167,7 @@ const ODCorrection = () => {
 
         setProcessingId(actionModal.requestId);
         try {
-            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com'}/api/correction-requests/${actionModal.requestId}/status`, {
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/correction-requests/${actionModal.requestId}/status`, {
                 method: 'PATCH',
                 headers: { 
                     'Content-Type': 'application/json',

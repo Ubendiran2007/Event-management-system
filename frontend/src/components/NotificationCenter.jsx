@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, XCircle, CalendarX, CalendarClock, Bell, FileText, CheckCheck, ArchiveX } from 'lucide-react';
+import { X, CheckCircle2, XCircle, CalendarX, CalendarClock, Bell, FileText, CheckCheck, ArchiveX, Briefcase } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
 
@@ -27,26 +27,34 @@ const NotificationCenter = ({ isOpen, onClose }) => {
     if (notif.status === 'DELIVERED') {
       markAsRead(notif.id);
     }
-    if (notif.deepLink) {
-      onClose();
+    onClose();
+    // Route based on notification type
+    if (notif.type === 'MANAGER_INVITATION') {
+      navigate('/dashboard', { state: { activeTab: 'my-schedule' } });
+    } else if (notif.deepLink) {
       navigate(notif.deepLink);
     }
   };
 
-  const renderIcon = (iconName, color) => {
+  const renderIcon = (notif) => {
     let IconComponent = Bell;
-    switch(iconName) {
-      case 'calendar-check': IconComponent = CheckCircle2; break; // Simple fallback
-      case 'user-check': IconComponent = CheckCircle2; break;
-      case 'file-check': IconComponent = FileText; break;
-      case 'alert-triangle': IconComponent = CalendarX; break;
-      default: IconComponent = Bell;
-    }
-    
     let colorClass = 'text-blue-500 bg-blue-50';
-    if (color === 'green') colorClass = 'text-emerald-500 bg-emerald-50';
-    if (color === 'red') colorClass = 'text-red-500 bg-red-50';
-    if (color === 'amber' || color === 'orange') colorClass = 'text-amber-500 bg-amber-50';
+
+    if (notif.type === 'MANAGER_INVITATION') {
+      IconComponent = Briefcase;
+      colorClass = 'text-purple-600 bg-purple-50';
+    } else {
+      switch(notif.icon) {
+        case 'calendar-check': IconComponent = CheckCircle2; break;
+        case 'user-check': IconComponent = CheckCircle2; break;
+        case 'file-check': IconComponent = FileText; break;
+        case 'alert-triangle': IconComponent = CalendarX; break;
+        default: IconComponent = Bell;
+      }
+      if (notif.color === 'green') colorClass = 'text-emerald-500 bg-emerald-50';
+      if (notif.color === 'red') colorClass = 'text-red-500 bg-red-50';
+      if (notif.color === 'amber' || notif.color === 'orange') colorClass = 'text-amber-500 bg-amber-50';
+    }
 
     return (
       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${colorClass}`}>
@@ -75,7 +83,7 @@ const NotificationCenter = ({ isOpen, onClose }) => {
       )}
       
       <div className="flex gap-4 items-start">
-        {renderIcon(notif.icon, notif.color)}
+        {renderIcon(notif)}
         <div className="flex-1 min-w-0 pr-4">
           <div className="flex items-start justify-between gap-2 mb-1">
             <h4 className={`text-sm leading-tight ${isUnread ? 'font-extrabold text-slate-900' : 'font-bold text-slate-700'}`}>

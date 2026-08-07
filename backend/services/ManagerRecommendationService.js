@@ -27,7 +27,7 @@ class ManagerRecommendationService {
       // 1. Fetch active events to calculate manager workload (assignment counts)
       const eventsSnap = await dbAdmin.collection('events').get();
       const workloadMap = new Map(); // userId -> count
-      const activeStatuses = ['POSTED', 'APPROVED', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
+      const activeStatuses = ['POSTED', 'APPROVED', 'PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
 
       for (const doc of eventsSnap.docs) {
         const ev = doc.data();
@@ -51,35 +51,39 @@ class ManagerRecommendationService {
           const sId = String(s.id || s.userId || s.uid || '');
           if (!sId || excludedSet.has(sId)) continue;
           
+          const sDept = s.department || sec.dept || '';
+          if (department && sDept.toLowerCase() !== department.toLowerCase()) continue;
+          
           candidates.push({
             userId: sId,
             name: s.name || s.userName || 'Student',
             email: s.email || '',
-            department: s.department || sec.dept || '',
+            department: sDept,
             role: s.role || 'STUDENT_GENERAL',
             workload: workloadMap.get(sId) || 0
           });
         }
       }
 
-      // If candidates from students are too few or empty, also check staff/faculty
-      if (candidates.length < limit * 2) {
-        const staffDocs = await getAllStaffDocs();
-        for (const st of staffDocs) {
-          const staffs = st.data?.staffs || [];
-          for (const s of staffs) {
-            const sId = String(s.id || s.userId || s.uid || '');
-            if (!sId || excludedSet.has(sId)) continue;
+      // 3. Fetch potential staff/faculty candidates
+      const staffDocs = await getAllStaffDocs();
+      for (const st of staffDocs) {
+        const staffs = st.data?.staffs || [];
+        for (const s of staffs) {
+          const sId = String(s.id || s.userId || s.uid || '');
+          if (!sId || excludedSet.has(sId)) continue;
 
-            candidates.push({
-              userId: sId,
-              name: s.name || 'Staff Member',
-              email: s.email || '',
-              department: s.department || st.category || '',
-              role: s.role || 'FACULTY',
-              workload: workloadMap.get(sId) || 0
-            });
-          }
+          const sDept = s.department || st.category || '';
+          if (department && sDept.toLowerCase() !== department.toLowerCase()) continue;
+
+          candidates.push({
+            userId: sId,
+            name: s.name || 'Staff Member',
+            email: s.email || '',
+            department: sDept,
+            role: s.role || 'FACULTY',
+            workload: workloadMap.get(sId) || 0
+          });
         }
       }
 

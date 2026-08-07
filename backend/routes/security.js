@@ -99,6 +99,7 @@ async function findUserByIdentifier(identifier) {
 }
 
 async function findAuthenticatedUser(user) {
+  console.log('findAuthenticatedUser called with:', user);
   if (!user) return null;
 
   // 1. Check staffs collection — match by id first, then fall back to email

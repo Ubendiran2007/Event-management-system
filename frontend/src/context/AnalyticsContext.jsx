@@ -47,7 +47,7 @@ export const AnalyticsProvider = ({ children }) => {
     // Common Computations
     const approvedEvents = filteredEvents.filter(e => e.status === EventStatus.APPROVED);
     const completedEvents = filteredEvents.filter(e => e.status === EventStatus.COMPLETED);
-    const pendingEvents = filteredEvents.filter(e => [EventStatus.PENDING_FACULTY, EventStatus.PENDING_HOD, EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL].includes(e.status));
+    const pendingEvents = filteredEvents.filter(e => [EventStatus.PENDING_MANAGERS, EventStatus.PENDING_FACULTY, EventStatus.PENDING_HOD, EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL].includes(e.status));
     const rejectedEvents = filteredEvents.filter(e => e.status === EventStatus.REJECTED);
 
     const calcAttendanceAndFeedback = (filteredRequests) => {

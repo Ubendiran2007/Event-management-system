@@ -53,6 +53,17 @@ class VenueAvailabilityService {
     return (startA < endB) && (endA > startB);
   }
 
+  static _getDatesBetween(startDate, endDate) {
+    const dates = [];
+    let current = new Date(startDate);
+    const end = new Date(endDate);
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }
+
   /**
    * Internal conflict check — validates both legacy (RESERVED/CONSUMED) and
    * HELD/BOOKED reservations plus booked events for overlapping time ranges.
@@ -65,15 +76,19 @@ class VenueAvailabilityService {
     let earliestAvailable = null;
     let conflictReason = null;
     let conflictingReservation = null;
+    let expiredRefs = [];
 
     // 1) ACTIVE venueReservations records (HELD/BOOKED/legacy RESERVED/legacy CONSUMED)
     // Note: Firestore doesn't support OR queries on status, so scan + filter by
     // active-status predicate. Use venueId+date indexing.
-    const reservationsQ = db.collection('venueReservations')
-      .where('venueId', '==', venueId)
-      .where('date', '==', date);
-    const reservationsSnap = await t.get(reservationsQ);
-    for (const resDoc of reservationsSnap.docs) {
+    const snap1 = await t.get(db.collection('venueReservations').where('venueId', '==', venueId).where('date', '==', date));
+    const snap2 = await t.get(db.collection('venueReservations').where('venueId', '==', venueId).where('dates', 'array-contains', date));
+    const mergedDocs = [...snap1.docs, ...snap2.docs].reduce((acc, doc) => {
+      if (!acc.find(d => d.id === doc.id)) acc.push(doc);
+      return acc;
+    }, []);
+
+    for (const resDoc of mergedDocs) {
       if (skipReservationId && resDoc.id === skipReservationId) continue;
       const resData = resDoc.data();
       const st = resData.status;
@@ -83,11 +98,7 @@ class VenueAvailabilityService {
         st !== VenueReservationStatus.BOOKED && st !== VenueReservationStatus.COMPLETED &&
         st !== ReservationStatus.CONSUMED;
       if (expired) {
-        t.update(resDoc.ref, {
-          status: VenueReservationStatus.EXPIRED,
-          expiredAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp()
-        });
+        expiredRefs.push(resDoc.ref);
         continue;
       }
       if (!_isActiveHoldOrBooking(st)) continue;
@@ -121,11 +132,10 @@ class VenueAvailabilityService {
           EventStatus.APPROVED,
           EventStatus.PUBLISHED,
           EventStatus.RUNNING,
-          EventStatus.POSTED,
           EventStatus.PENDING_FACULTY,
           EventStatus.PENDING_HOD,
           EventStatus.PENDING_IQAC
-        ]);
+        ].filter(Boolean));
       const eventsSnap = await t.get(approvedEventsQ);
       for (const evDoc of eventsSnap.docs) {
         if (opts.skipEventId && evDoc.id === opts.skipEventId) continue;
@@ -152,7 +162,7 @@ class VenueAvailabilityService {
       }
     }
 
-    return { conflict: !!conflictReason, reason: conflictReason, earliestAvailable, conflictingReservation };
+    return { conflict: !!conflictReason, reason: conflictReason, earliestAvailable, conflictingReservation, expiredRefs };
   }
 
   /**
@@ -166,6 +176,18 @@ class VenueAvailabilityService {
     const db = getFirestore();
     const venueRef = db.collection('venues').doc(venueId);
 
+    const finalStartDate = opts.startDate || date;
+    const finalEndDate = opts.endDate || date;
+    const dates = this._getDatesBetween(finalStartDate, finalEndDate);
+    if (dates.length > 30) throw new Error('BAD_REQUEST:Cannot reserve venue for more than 30 consecutive days.');
+
+    // Resolve hold duration from SystemConfig (10-60 allowed range) outside transaction
+    const allCfg = await SystemConfig.loadAll();
+    let durationMinutes = parseInt(allCfg.venueHoldDurationMinutes || allCfg.venueReservationDuration, 10);
+    if (!VENUE_HOLD_DURATION_OPTIONS.includes(durationMinutes)) {
+      durationMinutes = 30; // default
+    }
+
     return await db.runTransaction(async (t) => {
       const venueDoc = await t.get(venueRef);
       if (!venueDoc.exists) throw new Error('NOT_FOUND:Venue does not exist.');
@@ -176,34 +198,48 @@ class VenueAvailabilityService {
 
       // Maintenance
       const mSnap = await t.get(db.collection('venueMaintenance').where('venueId', '==', venueId));
-      for (const mDoc of mSnap.docs) {
-        const m = mDoc.data();
-        if (date >= m.startDate && date <= m.endDate) {
-          throw new Error(`BAD_REQUEST:Venue is in maintenance (${m.reason}) from ${m.startDate} to ${m.endDate}.`);
+      for (const d of dates) {
+        for (const mDoc of mSnap.docs) {
+          const m = mDoc.data();
+          if (d >= m.startDate && d <= m.endDate) {
+            throw new Error(`BAD_REQUEST:Venue is in maintenance (${m.reason}) on ${d}.`);
+          }
         }
       }
 
       const now = new Date();
-      const { conflict, earliestAvailable, conflictingReservation } = await this._checkConflictsWithinTransaction(
-        t, venueId, date, startTime, endTime, { now }
+      
+      // Run all conflict checks concurrently to save transaction round-trips
+      const conflictResults = await Promise.all(
+        dates.map(d => this._checkConflictsWithinTransaction(t, venueId, d, startTime, endTime, { now }))
       );
-      if (conflict) {
-        const msg = earliestAvailable
-          ? `Venue currently reserved. Available after ${new Date(earliestAvailable).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`
-          : 'Venue is already reserved for this time slot.';
-        const err = new Error('CONFLICT:' + msg);
-        err.status = 409;
-        err.earliestAvailable = earliestAvailable ? new Date(earliestAvailable).toISOString() : null;
-        err.conflictingReservation = conflictingReservation || null;
-        throw err;
+
+      for (let i = 0; i < dates.length; i++) {
+        const { conflict, earliestAvailable, conflictingReservation } = conflictResults[i];
+        if (conflict) {
+          const msg = earliestAvailable
+            ? `Venue currently reserved on ${dates[i]}. Available after ${new Date(earliestAvailable).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`
+            : `Venue is already reserved for this time slot on ${dates[i]}.`;
+          const err = new Error('CONFLICT:' + msg);
+          err.status = 409;
+          err.earliestAvailable = earliestAvailable ? new Date(earliestAvailable).toISOString() : null;
+          err.conflictingReservation = conflictingReservation || null;
+          throw err;
+        }
+      }
+      
+      const uniqueRefs = new Map();
+      conflictResults.forEach(res => {
+        (res.expiredRefs || []).forEach(ref => uniqueRefs.set(ref.path, ref));
+      });
+      for (const ref of uniqueRefs.values()) {
+        t.update(ref, {
+          status: VenueReservationStatus.EXPIRED,
+          expiredAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
       }
 
-      // Resolve hold duration from SystemConfig (10-60 allowed range)
-      const allCfg = await SystemConfig.loadAll();
-      let durationMinutes = parseInt(allCfg.venueHoldDurationMinutes || allCfg.venueReservationDuration, 10);
-      if (!VENUE_HOLD_DURATION_OPTIONS.includes(durationMinutes)) {
-        durationMinutes = 30; // default
-      }
       const expirationDate = new Date(now.getTime() + durationMinutes * 60_000);
 
       const newReservationRef = db.collection('venueReservations').doc();
@@ -216,7 +252,10 @@ class VenueAvailabilityService {
         department: opts.department || null,
         coordinatorName: opts.coordinatorName || null,
         reservedBy: userUid,
-        date,
+        date: finalStartDate, // legacy
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+        dates: dates,
         startTime,
         endTime,
         status: VenueReservationStatus.HELD,
@@ -246,7 +285,10 @@ class VenueAvailabilityService {
         expiresAt: expirationDate,
         holdDurationMinutes: durationMinutes,
         venueId,
-        date,
+        date: finalStartDate,
+        startDate: finalStartDate,
+        endDate: finalEndDate,
+        dates,
         startTime,
         endTime
       };
@@ -280,25 +322,29 @@ class VenueAvailabilityService {
       if (!isOwner && !isAdmin && !isHod) throw new Error('FORBIDDEN:Unauthorized to release this reservation.');
 
       if (data.status === VenueReservationStatus.HELD || data.status === ReservationStatus.RESERVED) {
+        let vDoc = null;
+        let venueRef = null;
+        if (data.venueId) {
+          venueRef = db.collection('venues').doc(data.venueId);
+          vDoc = await t.get(venueRef);
+        }
+
         t.update(resRef, {
           status: VenueReservationStatus.CANCELLED,
           cancelledAt: FieldValue.serverTimestamp(),
           cancelledBy: { uid: userUid, name: user.name || null, role: actingRole, department: user.department || null },
           updatedAt: FieldValue.serverTimestamp()
         });
+
         // Clear venue active-reservation pointer if it points here
-        if (data.venueId) {
-          const venueRef = db.collection('venues').doc(data.venueId);
-          const vDoc = await t.get(venueRef);
-          if (vDoc.exists && String(vDoc.data().activeReservationId || '') === String(reservationId)) {
-            t.set(venueRef, {
-              activeReservationId: null,
-              activeEventId: null,
-              currentStatus: 'AVAILABLE',
-              currentStatusExpiresAt: null,
-              updatedAt: FieldValue.serverTimestamp()
-            }, { merge: true });
-          }
+        if (vDoc && vDoc.exists && String(vDoc.data().activeReservationId || '') === String(reservationId)) {
+          t.set(venueRef, {
+            activeReservationId: null,
+            activeEventId: null,
+            currentStatus: 'AVAILABLE',
+            currentStatusExpiresAt: null,
+            updatedAt: FieldValue.serverTimestamp()
+          }, { merge: true });
         }
       }
     });
@@ -330,11 +376,19 @@ class VenueAvailabilityService {
         throw new Error(`BAD_REQUEST:Cannot extend a ${data.status} reservation.`);
       }
       // Conflict check re-verify slot still free for extended hold
-      const { conflict } = await this._checkConflictsWithinTransaction(
+      const { conflict, expiredRefs } = await this._checkConflictsWithinTransaction(
         t, data.venueId, data.date, data.startTime, data.endTime,
         { skipReservationId: reservationId, now }
       );
       if (conflict) throw new Error('CONFLICT:Venue slot has been taken since the hold was created.');
+
+      (expiredRefs || []).forEach(ref => {
+        t.update(ref, {
+          status: VenueReservationStatus.EXPIRED,
+          expiredAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      });
 
       let addMinutes = parseInt(extraMinutes || defaultExtend, 10);
       if (!allowed.includes(addMinutes)) addMinutes = defaultExtend;
@@ -438,7 +492,7 @@ class VenueAvailabilityService {
    * Admin/HOD override allowed per RBAC rules in master prompt.
    */
   static async releaseBookedVenue(keys, user = {}) {
-    const { eventId, reservationId, venueId } = keys || {};
+    const { eventId, reservationId, venueId, skipReservationId = null } = keys || {};
     const db = getFirestore();
     if (!eventId && !reservationId) throw new Error('VALIDATION:eventId or reservationId is required.');
 
@@ -447,6 +501,9 @@ class VenueAvailabilityService {
       let targetData = null;
 
       if (reservationId) {
+        if (skipReservationId && reservationId === skipReservationId) {
+          return { released: false, message: 'Reservation ID matches skip ID; no release needed.' };
+        }
         targetResRef = db.collection('venueReservations').doc(reservationId);
         const snap = await t.get(targetResRef);
         if (snap.exists) targetData = snap.data();
@@ -455,14 +512,18 @@ class VenueAvailabilityService {
         // Try to locate booking by eventId + venueId
         let q = db.collection('venueReservations').where('eventId', '==', eventId);
         const snap = await t.get(q);
+        const candidates = snap.docs.filter(d => {
+          if (skipReservationId && d.id === skipReservationId) return false;
+          return true;
+        });
         if (venueId) {
-          snap.docs.forEach(d => {
+          candidates.forEach(d => {
             if (!targetResRef && String(d.data().venueId || '') === String(venueId)) {
               targetResRef = d.ref; targetData = d.data();
             }
           });
-        } else if (snap.docs.length) {
-          targetResRef = snap.docs[0].ref; targetData = snap.docs[0].data();
+        } else if (candidates.length) {
+          targetResRef = candidates[0].ref; targetData = candidates[0].data();
         }
       }
       if (!targetResRef) {
@@ -529,10 +590,19 @@ class VenueAvailabilityService {
     const db = getFirestore();
     const now = new Date();
     return await db.runTransaction(async (t) => {
-      const { conflict, earliestAvailable, conflictingReservation } =
+      const { conflict, earliestAvailable, conflictingReservation, expiredRefs } =
         await this._checkConflictsWithinTransaction(
           t, venueId, date, startTime, endTime, { skipReservationId: opts.skipReservationId, skipEventId: opts.skipEventId, now }
         );
+        
+      (expiredRefs || []).forEach(ref => {
+        t.update(ref, {
+          status: VenueReservationStatus.EXPIRED,
+          expiredAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      });
+      
       if (conflict) {
         const hold = conflictingReservation?.status === VenueReservationStatus.HELD ||
                      conflictingReservation?.status === ReservationStatus.RESERVED;
@@ -612,10 +682,18 @@ class VenueAvailabilityService {
         actionSet.forcedBy = { uid: adminUser.id, name: adminUser.name, role: actingRole };
       } else if (action && action.newVenueId) {
         // FORCE_REASSIGN to a different venue (verify availability first at same date/time)
-        const { conflict } = await this._checkConflictsWithinTransaction(
+        const { conflict, expiredRefs } = await this._checkConflictsWithinTransaction(
           t, action.newVenueId, data.date, data.startTime, data.endTime, { skipReservationId: reservationId }
         );
         if (conflict) throw new Error('CONFLICT:New venue slot is not available for reassignment.');
+
+        (expiredRefs || []).forEach(ref => {
+          t.update(ref, {
+            status: VenueReservationStatus.EXPIRED,
+            expiredAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp()
+          });
+        });
         actionSet.venueId = action.newVenueId;
         actionSet.previousVenueId = data.venueId;
         actionSet.reassignedAt = FieldValue.serverTimestamp();
@@ -661,11 +739,10 @@ class VenueAvailabilityService {
       EventStatus.APPROVED,
       EventStatus.PUBLISHED,
       EventStatus.RUNNING,
-      EventStatus.POSTED,
       EventStatus.PENDING_FACULTY,
       EventStatus.PENDING_HOD,
       EventStatus.PENDING_IQAC
-    ];
+    ].filter(Boolean);
     const eventsSnapshot = await db.collection('events')
       .where('venueId', '==', venueId)
       .where('date', '>=', startDate)
@@ -777,11 +854,16 @@ class VenueAvailabilityService {
   /**
    * Validate hold right before submitting event
    */
-  static async validateHoldForSubmission(reservationId, venueId, userUid, date, startTime, endTime) {
+  static async validateHoldForSubmission(reservationId, venueId, userUid, date, startTime, endTime, opts = {}) {
     const db = getFirestore();
     if (!reservationId) {
       throw new Error("Reservation validation failed. No hold ID provided. Please reserve the venue again.");
     }
+
+    const { startDate, endDate } = opts;
+    const finalStartDate = startDate || date;
+    const finalEndDate = endDate || date;
+    const dates = this._getDatesBetween(finalStartDate, finalEndDate);
 
     const resRef = db.collection('venueReservations').doc(reservationId);
     const doc = await resRef.get();
@@ -790,7 +872,15 @@ class VenueAvailabilityService {
     }
 
     const data = doc.data();
-    if (data.reservedBy !== userUid || data.venueId !== venueId || data.date !== date || data.startTime !== startTime || data.endTime !== endTime) {
+    
+    // Check if the reservation covers at least the event's start date.
+    // Venue holds are booked for the initial time slot — for multi-day events,
+    // the hold covering the startDate is sufficient; each subsequent day is
+    // validated at the point of final booking by the backend.
+    const reservationDates = data.dates || (data.date ? [data.date] : []);
+    const coversStartDate = reservationDates.includes(finalStartDate) || data.startDate === finalStartDate || data.date === finalStartDate;
+
+    if (data.reservedBy !== userUid || data.venueId !== venueId || !coversStartDate || data.startTime !== startTime || data.endTime !== endTime) {
       throw new Error("Reservation validation failed. Event details do not match the held venue slot. Please reserve the venue again.");
     }
 

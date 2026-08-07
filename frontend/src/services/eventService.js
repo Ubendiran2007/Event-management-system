@@ -34,7 +34,7 @@ export const fetchExploreEvents = async (currentUser, cursor = null, pageSize = 
   const startTime = performance.now();
   try {
     const token = getAuthToken();
-    const baseUrl = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+    const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
     
     let url = `${baseUrl}/api/events/explore?pageSize=${pageSize}`;
     if (cursor) {

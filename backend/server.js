@@ -136,4 +136,21 @@ server.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   startEventAutoRejectionJob();
   startFeedbackReminderJob();
-}); // Triggered restart to load .env
+
+  // Warm up caches so first login is fast
+  setTimeout(async () => {
+    try {
+      const { getAllSectionDocs } = require('./utils/studentHelper');
+      const { getAllStaffDocs } = require('./utils/staffHelper');
+      const { getDocs, collection, db } = require('./firebaseClientWrapper');
+      await Promise.all([
+        getAllSectionDocs(),
+        getAllStaffDocs(),
+        getDocs(collection(db, 'students')), // pre-fetch class list for members scan
+      ]);
+      console.log('[Cache] Warmed up student, staff, and class caches.');
+    } catch (e) {
+      console.warn('[Cache] Warm-up error (non-fatal):', e.message);
+    }
+  }, 2000); // 2s after startup to avoid blocking
+});

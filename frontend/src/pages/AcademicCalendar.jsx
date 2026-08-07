@@ -274,7 +274,7 @@ const IQACManagementTab = () => {
   };
   
   const token = getAuthToken();
-  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
 
   const handleApi = async (endpoint, method, body) => {
     setLoadingAction(true);
@@ -743,7 +743,7 @@ const HODManagementTab = () => {
   const [newEvent, setNewEvent] = useState({ title: '', date: '', endDate: '', type: 'event' });
 
   const token = getAuthToken();
-  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'https://event-management-system-dpzc.onrender.com';
+  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
 
   const myDeptEvents = departmentCalendar.filter(d => d.department === currentUser.department);
 
