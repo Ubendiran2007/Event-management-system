@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
@@ -260,6 +260,35 @@ const CreateEvent = () => {
 
   const [reservationState, setReservationState] = useState(() => location.state?.reservation || storedHold?.reservation || null);
   const [lockedVenue, setLockedVenue] = useState(() => location.state?.venue || storedHold?.venue || null);
+
+  const submitSuccessRef = useRef(false);
+  const reservationStateRef = useRef(reservationState);
+  const lockedVenueRef = useRef(lockedVenue);
+
+  useEffect(() => {
+    reservationStateRef.current = reservationState;
+  }, [reservationState]);
+
+  useEffect(() => {
+    lockedVenueRef.current = lockedVenue;
+  }, [lockedVenue]);
+
+  // Release hold on unmount if not submitted (only for new events)
+  useEffect(() => {
+    return () => {
+      const res = reservationStateRef.current;
+      const ven = lockedVenueRef.current;
+      const isEdit = location.state?.editMode === true || loadRestoredEditDraft(false)?.editMode === true;
+      if (!submitSuccessRef.current && !isEdit && res?.reservationId && ven?.id) {
+         fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/venues/${ven.id}/release`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
+           body: JSON.stringify({ reservationId: res.reservationId }),
+           keepalive: true
+         }).catch(() => {});
+      }
+    };
+  }, []);
 
   // Route protection
   useEffect(() => {
@@ -947,8 +976,10 @@ const CreateEvent = () => {
       eventName: step1.eventName || editingEvent.title || '',
       eventType: step1.eventType || editingEvent.eventType || '',
       posterDataUrl: editingEvent.posterDataUrl || '',
-      posterFileName: editingEvent.posterFileName || '',
-      posterMimeType: editingEvent.posterMimeType || '',
+      posterStorage: editingEvent.posterStorage || null,
+      posterPreviewUrl: editingEvent.posterStorage?.downloadURL || editingEvent.posterDataUrl || '',
+      posterFileName: editingEvent.posterFileName || editingEvent.posterStorage?.fileName || '',
+      posterMimeType: editingEvent.posterMimeType || editingEvent.posterStorage?.fileType || '',
       requirePoster: editingEvent.posterWorkflow?.requested || false,
       professionalSocieties: step1.professionalSocieties || [],
       isIIC: step1.isIIC || 'No',
@@ -1249,16 +1280,14 @@ const CreateEvent = () => {
     // NOTE: initialHoldLoading intentionally excluded — including it causes a re-trigger loop
   ]);
 
-  // ── Auto Re-Hold: when date/time changes in edit/resubmission mode, release old hold and grab a new one ──
+  // ── Auto Re-Hold: when date/time changes, release old hold and grab a new one ──
   // This prevents the "Event details do not match the held venue slot" error on submit.
   useEffect(() => {
-    if (!isResubmissionEdit && !isDraftEdit) return;
     if (!form.venueRequired) return;
     if (!form.startDate || !form.startTime || !form.endTime) return;
     if (!lockedVenue?.id) return;
-    // Only re-hold if we already have a reservation AND the stored times differ from what the user typed
-    if (!reservationState?.reservationId) return;
     const sameTimes =
+      reservationState &&
       reservationState.startDate === form.startDate &&
       reservationState.endDate === form.endDate &&
       reservationState.startTime === form.startTime &&
@@ -1272,7 +1301,9 @@ const CreateEvent = () => {
         setReHoldError('');
         // Release the old hold first (non-blocking — even if it fails we proceed)
         try {
-          await venueApi.releaseHold(lockedVenue.id, reservationState.reservationId);
+          if (reservationState?.reservationId) {
+            await venueApi.releaseHold(lockedVenue.id, reservationState.reservationId);
+          }
         } catch (_) { /* ignore — hold may already be expired */ }
 
         if (cancelled) return;
@@ -1383,6 +1414,10 @@ const CreateEvent = () => {
       if (match) newMap[match] = { selected: true, qty: 1 };
       return {
         ...prev,
+        startDate: reservation.startDate || prev.startDate,
+        endDate: reservation.endDate || prev.endDate,
+        startTime: reservation.startTime || prev.startTime,
+        endTime: reservation.endTime || prev.endTime,
         numberOfVenuesRequired: '1',
         venueSelection: newMap,
         audioVenueName: venue.name || prev.audioVenueName,
@@ -2791,6 +2826,7 @@ const CreateEvent = () => {
         }
         throw new Error(data.message || 'Failed to save draft');
       }
+      submitSuccessRef.current = true;
       navigate('/dashboard');
     } catch (err) {
       setSubmitError(err.message || 'Failed to save draft');
@@ -2921,6 +2957,8 @@ const CreateEvent = () => {
         }
         throw new Error(data.message || (isResubmissionEdit ? 'Failed to update and resubmit event' : 'Failed to create event'));
       }
+      
+      submitSuccessRef.current = true;
       navigate('/dashboard');
     } catch (err) {
       setSubmitError(err.message || 'Failed to submit event');

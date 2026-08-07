@@ -37,6 +37,7 @@ const VenueSelection = () => {
   const [calendarData, setCalendarData] = useState({}); // map venueId -> array of events/holds/maint
   const [calLoading, setCalLoading] = useState(false);
   const [dragRange, setDragRange] = useState(null); // { venueId, startIdx, endIdx }
+  const [infoModalData, setInfoModalData] = useState(null);
 
   // Filters
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -141,16 +142,16 @@ const VenueSelection = () => {
 
     for (const ev of events) {
       if (ev.type === 'MAINTENANCE') {
-        return { status: 'MAINTENANCE', label: ev.reason || 'Venue Unavailable' };
+        return { status: 'MAINTENANCE', label: ev.reason || 'Venue Unavailable', data: ev };
       }
       if (ev.startTime && ev.endTime) {
         const startH = parseInt(ev.startTime.split(':')[0], 10);
         const endH = parseInt(ev.endTime.split(':')[0], 10);
         if (hour >= startH && hour < endH) {
-          if (ev.type === 'EVENT') return { status: 'BOOKED', label: ev.title || 'Confirmed Booking' };
+          if (ev.type === 'EVENT') return { status: 'BOOKED', label: ev.title || 'Confirmed Booking', data: ev };
           if (ev.type === 'RESERVATION') {
             const isExpired = ev.status === 'EXPIRED' || (ev.expiresAt && new Date(ev.expiresAt).getTime() < Date.now());
-            return { status: isExpired ? 'EXPIRED' : 'HOLD', label: isExpired ? 'Expired Hold' : 'Temporary Draft Hold' };
+            return { status: isExpired ? 'EXPIRED' : 'HOLD', label: isExpired ? 'Expired Hold' : 'Temporary Draft Hold', data: ev };
           }
         }
       }
@@ -289,7 +290,7 @@ const VenueSelection = () => {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6 flex-1 min-h-0 flex flex-col">
+      <div className="max-w-7xl mx-auto w-full px-4 py-4 h-full flex flex-col min-h-0 space-y-4">
         {/* Header Banner */}
         {venueChangeOnly && eventSchedule && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-950">
@@ -303,26 +304,17 @@ const VenueSelection = () => {
             </div>
           </div>
         )}
-        <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 p-6 sm:p-8 rounded-3xl text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-          <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="space-y-2 z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/30 border border-blue-400/30 text-blue-200 text-xs font-extrabold uppercase tracking-wider">
-              <Sparkles size={14} className="text-amber-300" /> Step 1: Venue-First Event Creation
-            </div>
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight flex items-center gap-3">
-              Interactive Venue Scheduler
-            </h1>
-            <p className="text-blue-100 text-sm sm:text-base max-w-2xl font-medium leading-relaxed">
-              Select your event date, check real-time institutional hall occupancy, and place a 10-minute hold on your preferred venue before entering event details.
-            </p>
-          </div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 flex items-center gap-3">
+            Interactive Venue Scheduler
+          </h1>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 z-10 shrink-0">
-            <div className="bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/20 flex items-center gap-1">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex items-center gap-1">
               <button
                 onClick={() => setViewMode('timeline')}
                 className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-                  viewMode === 'timeline' ? 'bg-white text-blue-950 shadow-md' : 'text-blue-200 hover:text-white'
+                  viewMode === 'timeline' ? 'bg-white text-blue-700 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 <Layers size={14} /> Timeline View
@@ -330,7 +322,7 @@ const VenueSelection = () => {
               <button
                 onClick={() => setViewMode('card')}
                 className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-                  viewMode === 'card' ? 'bg-white text-blue-950 shadow-md' : 'text-blue-200 hover:text-white'
+                  viewMode === 'card' ? 'bg-white text-blue-700 shadow-sm border border-slate-200/60' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
                 <LayoutGrid size={14} /> Card Grid View
@@ -351,10 +343,10 @@ const VenueSelection = () => {
         )}
 
         {/* Main Workspace Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start flex-1 min-h-0">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 min-h-0">
           
           {/* LEFT SIDEBAR: FILTERS */}
-          <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-md space-y-6 lg:sticky lg:top-24">
+          <div className="lg:col-span-1 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-md space-y-6 h-fit max-h-full overflow-y-auto custom-scrollbar">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
                 <Filter size={18} className="text-blue-600" /> Filter Directory
@@ -466,10 +458,10 @@ const VenueSelection = () => {
           </div>
 
           {/* RIGHT CONTENT AREA: SCHEDULER & BOOKING BAR */}
-          <div className="lg:col-span-3 space-y-6 flex flex-col min-h-0 flex-1">
+          <div className="lg:col-span-3 flex flex-col min-h-0 flex-1 space-y-4">
             
             {/* Quick Stats / Legend */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 shrink-0">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <span className="text-sm font-extrabold text-slate-800 flex items-center">
                   Showing {filteredVenues.length} available halls for <span className="text-blue-600 underline decoration-2 ml-1">{selectedDate}</span>
@@ -503,11 +495,11 @@ const VenueSelection = () => {
                     <p className="text-sm text-slate-400 max-w-md mx-auto">Try lowering minimum seating capacity or resetting facility filters in the left panel.</p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto flex-1">
-                    <table className="w-full border-collapse text-left min-w-[850px]">
+                  <div className="overflow-auto flex-1 min-h-0">
+                    <table className="w-full border-collapse text-left min-w-[850px] mb-20">
                       <thead>
                         <tr className="bg-slate-900 text-white text-xs uppercase tracking-wider">
-                          <th className="py-4 px-5 font-black w-64 sticky left-0 bg-slate-900 z-20 border-r border-slate-800">
+                          <th className="py-4 px-5 font-black min-w-[240px] max-w-[280px] sticky left-0 bg-slate-900 z-20 border-r border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">
                             Venue Details
                           </th>
                           {TIME_SLOTS.map((slot, i) => (
@@ -527,7 +519,7 @@ const VenueSelection = () => {
                               className={`transition-colors ${isSelected ? 'bg-blue-50/70' : 'hover:bg-slate-50/80'}`}
                             >
                               {/* Sticky Venue Info Col */}
-                              <td className={`py-4 px-5 sticky left-0 z-10 border-r border-slate-200 ${isSelected ? 'bg-blue-50/95 font-bold' : 'bg-white'}`}>
+                              <td className={`py-4 px-5 min-w-[240px] max-w-[280px] sticky left-0 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)] ${isSelected ? 'bg-blue-50/95 font-bold' : 'bg-white'}`}>
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="space-y-0.5">
                                     <div className="font-black text-slate-900 text-base flex items-center gap-1.5">
@@ -562,7 +554,6 @@ const VenueSelection = () => {
                                   <td key={idx} className="p-1.5 border-r border-slate-100 text-center align-middle">
                                     <button
                                       type="button"
-                                      disabled={!isFree}
                                       onMouseDown={(e) => {
                                         if (isFree && e.button === 0) {
                                           setDragRange({ venueId: venue.id, startIdx: idx, endIdx: idx });
@@ -582,19 +573,24 @@ const VenueSelection = () => {
                                         }
                                       }}
                                       onClick={() => {
-                                        if (!dragRange || dragRange.startIdx === dragRange.endIdx) {
-                                          handleSelectVenueSlot(venue, slot, TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)]);
+                                        if (isFree) {
+                                          if (!dragRange || dragRange.startIdx === dragRange.endIdx) {
+                                            handleSelectVenueSlot(venue, slot, TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)]);
+                                          }
+                                        } else {
+                                          const statusData = getSlotStatus(venue.id, slot);
+                                          setInfoModalData({ venueName: venue.name, slot, ...statusData });
                                         }
                                       }}
-                                      title={isFree ? `Click or drag to reserve starting at ${slot}` : `${label} (${slot})`}
+                                      title={isFree ? `Click or drag to reserve starting at ${slot}` : `Click to view details for ${label} (${slot})`}
                                       className={`w-full h-11 rounded-lg font-bold text-[11px] transition-all flex flex-col items-center justify-center p-1 shadow-2xs select-none ${
                                         isDraggingThis ? 'bg-blue-600 text-white border-2 border-blue-700 scale-105 shadow-md z-10' :
                                         isFree ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-500 hover:text-white hover:border-emerald-600 hover:scale-105 cursor-pointer' :
-                                        isHold ? 'bg-amber-100 text-amber-900 border border-amber-300 cursor-not-allowed animate-pulse' :
-                                        isExpired ? 'bg-slate-200 text-slate-600 border border-slate-300 cursor-not-allowed opacity-70 line-through' :
-                                        isMaintenance ? 'bg-violet-100 text-violet-900 border border-violet-300 cursor-not-allowed opacity-90' :
-                                        isBooked ? 'bg-rose-100 text-rose-900 border border-rose-300 cursor-not-allowed opacity-80' :
-                                        'bg-slate-100 text-slate-800 border border-slate-300 cursor-not-allowed'
+                                        isHold ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 hover:border-amber-400 cursor-pointer' :
+                                        isExpired ? 'bg-slate-200 text-slate-600 border border-slate-300 hover:bg-slate-300 hover:border-slate-400 cursor-pointer opacity-80' :
+                                        isMaintenance ? 'bg-violet-100 text-violet-900 border border-violet-300 hover:bg-violet-200 hover:border-violet-400 cursor-pointer opacity-90' :
+                                        isBooked ? 'bg-rose-100 text-rose-900 border border-rose-300 hover:bg-rose-200 hover:border-rose-400 cursor-pointer opacity-90' :
+                                        'bg-slate-100 text-slate-800 border border-slate-300 cursor-pointer'
                                       }`}
                                     >
                                       <span>{
@@ -701,9 +697,16 @@ const VenueSelection = () => {
             )}
 
             {/* STICKY BOTTOM RESERVATION CONFIRMATION BAR */}
-            <div className="sticky bottom-4 z-40 bg-slate-900/95 backdrop-blur-md text-white p-5 sm:p-6 rounded-3xl shadow-2xl border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-6 animate-slideUp">
-              <div className="space-y-1">
-                {selectedVenue ? (
+            {selectedVenue && (
+              <div className="sticky bottom-4 z-40 bg-slate-900/95 backdrop-blur-md text-white p-5 sm:p-6 rounded-3xl shadow-2xl border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-6 animate-slideUp relative">
+                <button
+                  type="button"
+                  onClick={() => setSelectedVenue(null)}
+                  className="absolute -top-3 -right-3 bg-slate-800 text-slate-400 hover:text-white p-1.5 rounded-full border border-slate-600 shadow-lg hover:bg-slate-700 transition-colors z-50"
+                >
+                  <X size={16} />
+                </button>
+                <div className="space-y-1">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-lg">
                       <Building2 size={24} />
@@ -715,75 +718,142 @@ const VenueSelection = () => {
                       <h4 className="text-lg font-black text-white">{selectedVenue.name} <span className="text-sm font-semibold text-slate-300">({selectedVenue.building})</span></h4>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-500 flex items-center justify-center shrink-0 border border-slate-700">
-                      <Building2 size={24} />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-bold text-slate-300">No Venue Currently Selected</h4>
-                      <p className="text-xs text-slate-400">Please choose a free slot from the timeline above to proceed.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Time selector and Submit */}
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2 bg-slate-800/90 p-2 rounded-2xl border border-slate-700">
-                  <div className="flex items-center gap-1.5 px-2">
-                    <Clock size={16} className="text-blue-400" />
-                    <span className="text-xs font-extrabold text-slate-300">Time:</span>
-                  </div>
-                  <input
-                    type="time"
-                    value={startTime}
-                    min={(() => {
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      if (selectedDate !== todayStr) return undefined;
-                      const now = new Date();
-                      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-                    })()}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-white text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
-                  <span className="text-slate-400 text-xs font-bold">➔</span>
-                  <input
-                    type="time"
-                    value={endTime}
-                    min={startTime || undefined}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 text-white text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-500"
-                  />
                 </div>
 
-                <button
-                  type="button"
-                  disabled={!selectedVenue || reserving}
-                  onClick={handleReserveAndProceed}
-                  className={`px-7 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2.5 shadow-xl shrink-0 ${
-                    !selectedVenue || reserving ? 'bg-slate-700 text-slate-400 cursor-not-allowed' :
-                    'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30 hover:scale-[1.02] active:scale-95'
-                  }`}
-                >
-                  {reserving ? (
-                    <>
-                      <RefreshCw size={18} className="animate-spin" />
-                      <span>Locking Slot...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Reserve Slot & Continue</span>
-                      <ArrowRight size={18} />
-                    </>
-                  )}
-                </button>
+                {/* Time selector and Submit */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2 bg-slate-800/90 p-2 rounded-2xl border border-slate-700">
+                    <div className="flex items-center gap-1.5 px-2">
+                      <Clock size={16} className="text-blue-400" />
+                      <span className="text-xs font-extrabold text-slate-300">Time:</span>
+                    </div>
+                    <input
+                      type="time"
+                      value={startTime}
+                      min={(() => {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        if (selectedDate !== todayStr) return undefined;
+                        const now = new Date();
+                        return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                      })()}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-white text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
+                    <span className="text-slate-400 text-xs font-bold">➔</span>
+                    <input
+                      type="time"
+                      value={endTime}
+                      min={startTime || undefined}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-white text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!selectedVenue || reserving}
+                    onClick={handleReserveAndProceed}
+                    className={`px-7 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2.5 shadow-xl shrink-0 ${
+                      !selectedVenue || reserving ? 'bg-slate-700 text-slate-400 cursor-not-allowed' :
+                      'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30 hover:scale-[1.02] active:scale-95'
+                    }`}
+                  >
+                    {reserving ? (
+                      <>
+                        <RefreshCw size={18} className="animate-spin" />
+                        <span>Locking Slot...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Reserve Slot & Continue</span>
+                        <ArrowRight size={18} />
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
           </div>
         </div>
       </div>
+
+      {/* Info Modal for Unavailable Slots */}
+      {infoModalData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden border border-slate-200/60 animate-scaleIn">
+            <div className={`px-6 py-5 border-b ${
+              infoModalData.status === 'MAINTENANCE' ? 'bg-violet-50 border-violet-100' :
+              infoModalData.status === 'BOOKED' ? 'bg-rose-50 border-rose-100' :
+              'bg-amber-50 border-amber-100'
+            }`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className={`text-xs font-black uppercase tracking-wider mb-1 flex items-center gap-1.5 ${
+                    infoModalData.status === 'MAINTENANCE' ? 'text-violet-600' :
+                    infoModalData.status === 'BOOKED' ? 'text-rose-600' :
+                    'text-amber-600'
+                  }`}>
+                    {infoModalData.status === 'MAINTENANCE' && <AlertCircle size={14} />}
+                    {infoModalData.status === 'BOOKED' && <CheckCircle2 size={14} />}
+                    {(infoModalData.status === 'HOLD' || infoModalData.status === 'EXPIRED') && <Clock size={14} />}
+                    {infoModalData.status}
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900">{infoModalData.venueName}</h3>
+                </div>
+                <button 
+                  onClick={() => setInfoModalData(null)}
+                  className="p-1.5 bg-white rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shadow-sm border border-slate-200"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Status Description</p>
+                <p className="text-sm font-semibold text-slate-800">{infoModalData.label}</p>
+              </div>
+
+              {infoModalData.data?.reason && (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Reason</p>
+                  <p className="text-sm font-semibold text-slate-800">{infoModalData.data.reason}</p>
+                </div>
+              )}
+
+              {infoModalData.data?.reservedBy && (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Reserved By</p>
+                  <p className="text-sm font-semibold text-slate-800">{infoModalData.data.reservedBy}</p>
+                </div>
+              )}
+
+              {infoModalData.data?.organizerId && (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Organizer ID</p>
+                  <p className="text-sm font-semibold text-slate-800">{infoModalData.data.organizerId}</p>
+                </div>
+              )}
+
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center justify-between text-xs font-bold mt-2">
+                <span className="text-slate-500">Selected Time</span>
+                <span className="text-slate-800 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">{infoModalData.slot}</span>
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setInfoModalData(null)}
+                className="w-full py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors shadow-sm"
+              >
+                Close Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

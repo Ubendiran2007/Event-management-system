@@ -1860,7 +1860,7 @@ const Dashboard = () => {
                                          <div className="flex items-center justify-end gap-1 sm:gap-2">
                                             {(currentUser.role === UserRole.STUDENT_ORGANIZER || currentUser.role === UserRole.FACULTY) && [EventStatus.REJECTED, EventStatus.DRAFT, EventStatus.PENDING_FACULTY, EventStatus.PENDING_HOD, EventStatus.PENDING_MANAGERS].includes(event.status) && (event.organizerId === currentUser.id || event.organizerEmail === currentUser.email) && (
                                               <button
-                                                onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event/details`, { state: { editingEvent: event, editMode: true } }); }}
+                                                onClick={(e) => { e.stopPropagation(); navigate(`/${expectedRolePrefix}/create-event`, { state: { editingEvent: event, editMode: true } }); }}
                                                 className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
                                               >
                                                 {event.status === EventStatus.DRAFT ? 'Continue' : 'Edit'}

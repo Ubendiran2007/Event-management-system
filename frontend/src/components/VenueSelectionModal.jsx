@@ -193,7 +193,7 @@ const VenueSelectionModal = ({ isOpen, onClose, onVenueReserved }) => {
             onClose();
             const rolePrefix = getRolePath(currentUser?.role);
             const basePath = rolePrefix ? `/${rolePrefix}` : '';
-            navigate(`${basePath}/create-event/details`, {
+            navigate(`${basePath}/create-event`, {
               state: { reservation: holdReservation, venue, date: startDate, startDate, endDate, startTime, endTime }
             });
           }
