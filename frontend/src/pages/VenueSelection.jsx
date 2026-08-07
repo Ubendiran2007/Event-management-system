@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Building2, Calendar as CalendarIcon, Clock, MapPin, Users, Search, 
   Filter, CheckCircle2, AlertCircle, ArrowRight, Layers, LayoutGrid, 
@@ -22,6 +22,12 @@ const TIME_SLOTS = [
 const VenueSelection = () => {
   const { currentUser } = useAppContext();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const venueChangeOnly = Boolean(location.state?.venueChangeOnly);
+  const editingEvent = location.state?.editingEvent || null;
+  const eventSchedule = location.state?.eventSchedule || null;
+  const rolePrefix = location.pathname.split('/')[1] || 'coordinator';
 
   const [viewMode, setViewMode] = useState('timeline'); // 'timeline' or 'card'
   const [venues, setVenues] = useState([]);
@@ -34,6 +40,7 @@ const VenueSelection = () => {
 
   // Filters
   const [selectedDate, setSelectedDate] = useState(() => {
+    if (eventSchedule?.startDate) return eventSchedule.startDate;
     const today = new Date();
     return today.toISOString().split('T')[0];
   });
@@ -45,8 +52,8 @@ const VenueSelection = () => {
 
   // Selected Booking Slot
   const [selectedVenue, setSelectedVenue] = useState(null);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('11:00');
+  const [startTime, setStartTime] = useState(eventSchedule?.startTime || '09:00');
+  const [endTime, setEndTime] = useState(eventSchedule?.endTime || '11:00');
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
 
@@ -159,11 +166,24 @@ const VenueSelection = () => {
 
   const handleReserveAndProceed = async () => {
     if (!selectedVenue || !selectedDate || !startTime || !endTime) {
-      alert("Please select a valid venue, date, and time range.");
+      setError("Please select a valid venue, date, and time range.");
       return;
     }
+
+    // Prevent booking a slot in the past when the date is today
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (selectedDate === todayStr) {
+      const now = new Date();
+      const [sh, sm] = startTime.split(':').map(Number);
+      const pickedStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm);
+      if (pickedStart <= now) {
+        setError("Start time must be in the future — you cannot book a slot that has already passed.");
+        return;
+      }
+    }
+
     if (startTime >= endTime) {
-      alert("End time must be after start time.");
+      setError("End time must be after start time.");
       return;
     }
 
@@ -185,12 +205,21 @@ const VenueSelection = () => {
         }
       };
 
+      const holdDate = venueChangeOnly && eventSchedule?.startDate ? eventSchedule.startDate : selectedDate;
+      const holdStartDate = venueChangeOnly && eventSchedule?.startDate ? eventSchedule.startDate : selectedDate;
+      const holdEndDate = venueChangeOnly && eventSchedule?.endDate ? eventSchedule.endDate : selectedDate;
+      const holdStartTime = venueChangeOnly && eventSchedule?.startTime ? eventSchedule.startTime : startTime;
+      const holdEndTime = venueChangeOnly && eventSchedule?.endTime ? eventSchedule.endTime : endTime;
+
       let result = null;
       try {
         result = await venueApi.holdVenue(venueId, {
-          date: selectedDate,
-          startTime,
-          endTime
+          date: holdDate,
+          startDate: holdStartDate,
+          endDate: holdEndDate,
+          startTime: holdStartTime,
+          endTime: holdEndTime,
+          eventDraftId: editingEvent?.id || null,
         });
       } catch (_e) {
         result = await legacyFallback();
@@ -220,9 +249,11 @@ const VenueSelection = () => {
         reservationId: payload.reservationId,
         expiresAt: payload.expiresAt,
         holdDurationMinutes: payload.holdDurationMinutes || null,
-        date: selectedDate,
-        startTime,
-        endTime
+        date: holdDate,
+        startDate: holdStartDate,
+        endDate: holdEndDate,
+        startTime: holdStartTime,
+        endTime: holdEndTime,
       };
       if (!holdData.reservationId || !holdData.expiresAt) {
         throw new Error(result.message || 'Server did not return a valid venue hold. Please refresh and try again.');
@@ -233,11 +264,20 @@ const VenueSelection = () => {
         reservation: holdData
       }));
 
-      navigate('/create-event/details', {
-        state: {
-          venue: selectedVenue,
-          reservation: holdData
-        }
+      navigate(`/${rolePrefix}/create-event/details`, {
+        state: venueChangeOnly
+          ? {
+              venue: selectedVenue,
+              reservation: holdData,
+              editMode: true,
+              editingEvent,
+              returningFromVenueChange: true,
+              venueChangeOnly: true,
+            }
+          : {
+              venue: selectedVenue,
+              reservation: holdData,
+            },
       });
     } catch (err) {
       setError(err.message);
@@ -251,6 +291,18 @@ const VenueSelection = () => {
     <Layout>
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6 flex-1 min-h-0 flex flex-col">
         {/* Header Banner */}
+        {venueChangeOnly && eventSchedule && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-950">
+            <AlertCircle size={20} className="shrink-0 text-amber-600 mt-0.5" />
+            <div>
+              <p className="font-bold text-sm">Choose a replacement venue for your edit</p>
+              <p className="text-xs mt-1 opacity-90">
+                Your event schedule stays <strong>{eventSchedule.startDate}{eventSchedule.endDate !== eventSchedule.startDate ? ` – ${eventSchedule.endDate}` : ''}</strong> from <strong>{eventSchedule.startTime}</strong> to <strong>{eventSchedule.endTime}</strong>.
+                Pick an available venue for that slot — all other event details will be kept when you return.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 p-6 sm:p-8 rounded-3xl text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
           <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="space-y-2 z-10">
@@ -686,6 +738,12 @@ const VenueSelection = () => {
                   <input
                     type="time"
                     value={startTime}
+                    min={(() => {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      if (selectedDate !== todayStr) return undefined;
+                      const now = new Date();
+                      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    })()}
                     onChange={(e) => setStartTime(e.target.value)}
                     className="bg-slate-900 border border-slate-700 text-white text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-500"
                   />
@@ -693,6 +751,7 @@ const VenueSelection = () => {
                   <input
                     type="time"
                     value={endTime}
+                    min={startTime || undefined}
                     onChange={(e) => setEndTime(e.target.value)}
                     className="bg-slate-900 border border-slate-700 text-white text-xs font-mono font-bold px-2.5 py-1.5 rounded-xl focus:outline-none focus:border-blue-500"
                   />

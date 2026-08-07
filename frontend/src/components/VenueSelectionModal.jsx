@@ -185,12 +185,18 @@ const VenueSelectionModal = ({ isOpen, onClose, onVenueReserved }) => {
         sessionStorage.setItem('currentVenueHold', JSON.stringify({ venue, reservation: holdReservation }));
 
         setTimeout(() => {
-          onClose();
-          const rolePrefix = getRolePath(currentUser?.role);
-          const basePath = rolePrefix ? `/${rolePrefix}` : '';
-          navigate(`${basePath}/create-event/details`, {
-            state: { reservation: holdReservation, venue, date: startDate, startDate, endDate, startTime, endTime }
-          });
+          if (typeof onVenueReserved === 'function') {
+            // Called from CreateEvent edit mode — apply in-place, no navigation
+            onVenueReserved({ venue, reservation: holdReservation });
+          } else {
+            // Standalone flow — navigate to event creation details page
+            onClose();
+            const rolePrefix = getRolePath(currentUser?.role);
+            const basePath = rolePrefix ? `/${rolePrefix}` : '';
+            navigate(`${basePath}/create-event/details`, {
+              state: { reservation: holdReservation, venue, date: startDate, startDate, endDate, startTime, endTime }
+            });
+          }
         }, 500);
       } else {
         const code = holdResult?.code || '';

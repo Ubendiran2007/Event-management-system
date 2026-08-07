@@ -654,19 +654,28 @@ const checkEditImpactHandler = async (req, res) => {
     const eventId = req.params.id || req.body.eventId || null;
     const { date, startTime, endTime, managers = [] } = req.body;
     
-    // 1. Check registrations for this event
+    // 1. Check registrations for this event — parallel overlap checks per student
     const affectedRegistrationConflicts = [];
     if (eventId) {
       const regSnap = await getDocs(query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId)));
       const activeStatuses = ['REGISTERED', 'APPROVED', 'OD_APPROVED', 'ATTENDED'];
-      
-      for (const docSnap of regSnap.docs) {
-        const reg = docSnap.data();
-        if (!activeStatuses.includes(reg.status)) continue;
-        const studentId = String(reg.userId || reg.studentId);
-        if (!studentId) continue;
-        
-        const { hasConflict, conflicts } = await ScheduleService.checkOverlap(studentId, date, startTime, endTime, eventId);
+
+      // Collect all active registrations first
+      const activeRegs = regSnap.docs
+        .map(d => d.data())
+        .filter(reg => activeStatuses.includes(reg.status) && (reg.userId || reg.studentId));
+
+      // Fire all overlap checks in parallel instead of sequentially
+      const overlapResults = await Promise.all(
+        activeRegs.map(reg => {
+          const studentId = String(reg.userId || reg.studentId);
+          return ScheduleService.checkOverlap(studentId, date, startTime, endTime, eventId)
+            .then(result => ({ reg, studentId, ...result }))
+            .catch(() => ({ reg, studentId, hasConflict: false, conflicts: [] }));
+        })
+      );
+
+      for (const { reg, studentId, hasConflict, conflicts } of overlapResults) {
         if (hasConflict) {
           affectedRegistrationConflicts.push({
             studentId,
@@ -1359,7 +1368,7 @@ router.put('/:id/resubmit-edit', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), 
     
     // Check if the acting user is a Faculty organizer (use their token role, not the stored creatorType)
     const isFacultyOrganizer = req.user.role === 'FACULTY';
-    const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl);
+    const hasMediaPoster = Boolean(eventData.posterDataUrl || eventData.posterUrl || eventData.posterStorage?.downloadURL || newEventData.posterStorage?.downloadURL);
 
     // ── Poster Resubmission Logic ──
     let posterWorkflow = newEventData.posterWorkflow || eventData.posterWorkflow || {};

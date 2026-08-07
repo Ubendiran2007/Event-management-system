@@ -720,6 +720,25 @@ router.post('/:id/hold', authenticateToken, async (req, res) => {
     if (!(date || startDate) || !startTime || !endTime) {
       return res.status(400).json({ success: false, message: 'date (or startDate), startTime, and endTime are required.', code: 'VALIDATION' });
     }
+
+    // Reject holds where the requested slot is already in the past
+    const effectiveDate = startDate || date;
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (effectiveDate < todayStr) {
+      return res.status(400).json({ success: false, message: 'Cannot hold a venue for a past date.', code: 'PAST_DATE' });
+    }
+    if (effectiveDate === todayStr) {
+      const now = new Date();
+      const [sh, sm] = startTime.split(':').map(Number);
+      const slotStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm);
+      if (slotStart <= now) {
+        return res.status(400).json({ success: false, message: 'Cannot hold a venue slot that has already passed. Please choose a future time.', code: 'PAST_TIME' });
+      }
+    }
+    // endTime must be after startTime
+    if (startTime >= endTime) {
+      return res.status(400).json({ success: false, message: 'End time must be after start time.', code: 'INVALID_TIME_RANGE' });
+    }
     const holdOpts = {
       organizerName: req.user.name || req.user.email,
       department: req.user.department || null,

@@ -39,6 +39,7 @@ import { validateUpload } from '../utils/fileValidation';
 import EventManagerSelector from '../components/EventManagerSelector';
 import VolunteerRequirementSelector from '../components/VolunteerRequirementSelector';
 import { getAuthToken, venueApi } from '../utils/api';
+import VenueSelectionModal from '../components/VenueSelectionModal';
 
 const EVENT_TYPES = ['FDP', 'Seminar', 'Workshop', 'Guest Lecture', 'Hackathon', 'Other'];
 const PROFESSIONAL_SOCIETIES = ['IEEE', 'IETE', 'ISTE', 'WiCYS', 'IGEN', 'GDG', 'Other'];
@@ -166,6 +167,31 @@ const STEP_KEYS = {
   REVIEW: 'review',
 };
 
+const EDIT_DRAFT_STORAGE_KEY = 'editEventRequisitionDraft';
+
+const loadRestoredEditDraft = (returningFromVenueChange) => {
+  if (!returningFromVenueChange) return null;
+  try {
+    const raw = sessionStorage.getItem(EDIT_DRAFT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const applyNewVenueToDraftForm = (draftForm, venue) => {
+  if (!draftForm) return draftForm;
+  if (!venue) return { ...draftForm };
+  const updated = { ...draftForm };
+  updated.numberOfVenuesRequired = updated.numberOfVenuesRequired || '1';
+  const map = createQtyMap(VENUE_OPTIONS);
+  const match = VENUE_OPTIONS.find((opt) => opt.toLowerCase() === (venue.name || '').toLowerCase());
+  if (match) map[match] = { selected: true, qty: 1 };
+  updated.venueSelection = map;
+  updated.audioVenueName = venue.name || updated.audioVenueName;
+  return updated;
+};
+
 const Card = ({ title, icon: Icon, children }) => (
   <div className="glass-panel p-6 md:p-8 rounded-2xl space-y-5">
     <h3 className="text-lg md:text-xl font-bold flex items-center gap-2">
@@ -225,12 +251,15 @@ const CreateEvent = () => {
     } catch (e) { return null; }
   }, []);
 
+  const returningFromVenueChange = Boolean(location.state?.returningFromVenueChange);
+  const restoredEditDraft = loadRestoredEditDraft(returningFromVenueChange);
+  const editingEvent = location.state?.editingEvent || restoredEditDraft?.editingEvent || null;
+  const isEditMode = location.state?.editMode === true || restoredEditDraft?.editMode === true;
+  const isDraftEdit = isEditMode && editingEvent?.status === 'DRAFT';
+  const isResubmissionEdit = isEditMode && !isDraftEdit;
+
   const [reservationState, setReservationState] = useState(() => location.state?.reservation || storedHold?.reservation || null);
   const [lockedVenue, setLockedVenue] = useState(() => location.state?.venue || storedHold?.venue || null);
-
-  // Distinguish between continuing a draft vs editing a rejected event
-  const isDraftEdit = location.state?.editMode === true && location.state?.editingEvent?.status === 'DRAFT';
-  const isResubmissionEdit = location.state?.editMode === true && !isDraftEdit;
 
   // Route protection
   useEffect(() => {
@@ -240,18 +269,22 @@ const CreateEvent = () => {
   }, [isResubmissionEdit, isDraftEdit, reservationState, lockedVenue, navigate]);
 
   // Hold Timer state
-  const [timeLeftSec, setTimeLeftSec] = useState(600);
+  const [timeLeftSec, setTimeLeftSec] = useState(1800);
   const [isExpired, setIsExpired] = useState(false);
   const [reReserving, setReReserving] = useState(false);
   const [reReserveError, setReReserveError] = useState('');
   const [showExpireModal, setShowExpireModal] = useState(false);
-  // Resubmission/edit venue availability state (no active HELD; checking previously booked venue)
+  const [showVenueModal, setShowVenueModal] = useState(false);
+  // Resubmission/edit venue availability state (checked after user enters date/time)
   const [editVenueCheckLoading, setEditVenueCheckLoading] = useState(false);
   const [editVenueCheckResult, setEditVenueCheckResult] = useState(null);
-  // Auto venue re-hold state for edit/resubmission
-  const [autoHoldingVenue, setAutoHoldingVenue] = useState(false);
-  const [autoHoldError, setAutoHoldError] = useState('');
-  const [autoHoldAttempted, setAutoHoldAttempted] = useState(false);
+  // Immediate 30-min venue hold on edit/resubmission load
+  const [initialHoldLoading, setInitialHoldLoading] = useState(false);
+  const [initialHoldError, setInitialHoldError] = useState('');
+  const [initialHoldAttempted, setInitialHoldAttempted] = useState(false);
+  // Re-hold when date/time changes in edit mode
+  const [reHoldLoading, setReHoldLoading] = useState(false);
+  const [reHoldError, setReHoldError] = useState('');
 
   // Resolve the venue ID/name for draft/resubmission edit:
   // - For normal create: use lockedVenue
@@ -409,7 +442,41 @@ const CreateEvent = () => {
       setReReserving(false);
     }
   };
-  const editingEvent = location.state?.editingEvent || null;
+  const getEditingEventSchedule = () => {
+    if (!editingEvent) return null;
+    const step1 = editingEvent.requisition?.step1 || {};
+    const startDate = step1.eventStartDate || editingEvent.date || '';
+    const endDate = step1.eventEndDate || editingEvent.date || startDate;
+    const startTime = step1.eventStartTime || editingEvent.startTime || '09:00';
+    const endTime = step1.eventEndTime || editingEvent.endTime || '17:00';
+    if (!startDate || !startTime || !endTime) return null;
+    return { startDate, endDate, startTime, endTime };
+  };
+
+  const resolveEditingVenueIdFromEvent = (evt = editingEvent) => {
+    if (!evt) return null;
+    if (evt.venueId || evt.venue_id) return String(evt.venueId || evt.venue_id);
+    const step1 = evt.requisition?.step1;
+    if (step1?.venueId) return String(step1.venueId);
+    const hrSelected = Object.entries(evt.requisition?.annexureI_venue?.venueSelection || {})
+      .filter(([, v]) => v && v.selected).map(([k]) => k);
+    if (hrSelected[0]) return hrSelected[0];
+    const audioName = evt.requisition?.annexureII_audio?.venueName;
+    if (audioName) return String(audioName);
+    if (evt.venue) return String(evt.venue);
+    return null;
+  };
+
+  const resolveEditingVenueNameFromEvent = (evt = editingEvent) => {
+    if (!evt) return null;
+    const hrSelected = Object.entries(evt.requisition?.annexureI_venue?.venueSelection || {})
+      .filter(([, v]) => v && v.selected).map(([k]) => k);
+    if (hrSelected[0]) return hrSelected[0];
+    const audioName = evt.requisition?.annexureII_audio?.venueName;
+    if (audioName) return audioName;
+    if (evt.venue) return evt.venue;
+    return resolveEditingVenueIdFromEvent(evt);
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -462,7 +529,15 @@ const CreateEvent = () => {
     return base;
   };
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => {
+    if (restoredEditDraft?.form) {
+      return applyNewVenueToDraftForm(
+        restoredEditDraft.form,
+        location.state?.venue || storedHold?.venue
+      );
+    }
+    const useReservationSchedule = !returningFromVenueChange;
+    return {
     eventName: '',
     eventType: '',
     posterDataUrl: '',
@@ -475,10 +550,18 @@ const CreateEvent = () => {
     isIIC: 'No',
     audienceScope: 'Open To All',
     selectedDepartments: [],
-    startDate: location.state?.reservation?.startDate || location.state?.startDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.startDate || storedHold?.reservation?.date || '',
-    endDate: location.state?.reservation?.endDate || location.state?.endDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.endDate || storedHold?.reservation?.date || '',
-    startTime: location.state?.reservation?.startTime || location.state?.startTime || storedHold?.reservation?.startTime || '09:00',
-    endTime: location.state?.reservation?.endTime || location.state?.endTime || storedHold?.reservation?.endTime || '17:00',
+    startDate: useReservationSchedule
+      ? (location.state?.reservation?.startDate || location.state?.startDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.startDate || storedHold?.reservation?.date || '')
+      : '',
+    endDate: useReservationSchedule
+      ? (location.state?.reservation?.endDate || location.state?.endDate || location.state?.reservation?.date || location.state?.date || storedHold?.reservation?.endDate || storedHold?.reservation?.date || '')
+      : '',
+    startTime: useReservationSchedule
+      ? (location.state?.reservation?.startTime || location.state?.startTime || storedHold?.reservation?.startTime || '09:00')
+      : '09:00',
+    endTime: useReservationSchedule
+      ? (location.state?.reservation?.endTime || location.state?.endTime || storedHold?.reservation?.endTime || '17:00')
+      : '17:00',
     organizerName: currentUser?.name || '',
     department: currentUser?.department || '',
     mobileNumber: '',
@@ -617,6 +700,7 @@ const CreateEvent = () => {
       otherMediaRequirement: '',
       specialRequest: '',
     },
+  };
   });
 
   const referenceIdDisplay = useMemo(() => {
@@ -833,11 +917,22 @@ const CreateEvent = () => {
     ];
   }, [form.venueRequired, form.audioRequired, form.ictsRequired, form.transportRequired, form.accommodationRequired, form.mediaRequired]);
 
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [maxReachedIndex, setMaxReachedIndex] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = useState(() => restoredEditDraft?.currentStepIndex ?? 0);
+  const [maxReachedIndex, setMaxReachedIndex] = useState(() => restoredEditDraft?.maxReachedIndex ?? 0);
 
   useEffect(() => {
-    if (!editingEvent) return;
+    if (!returningFromVenueChange) return;
+    setEditVenueCheckResult({
+      available: true,
+      status: 'AVAILABLE',
+      venueName: lockedVenue?.name || location.state?.venue?.name,
+    });
+    setInitialHoldAttempted(true);
+    sessionStorage.removeItem(EDIT_DRAFT_STORAGE_KEY);
+  }, [returningFromVenueChange, lockedVenue?.name, location.state?.venue?.name]);
+
+  useEffect(() => {
+    if (!editingEvent || returningFromVenueChange) return;
 
     const step1 = editingEvent.requisition?.step1 || {};
     const venueAnnex = editingEvent.requisition?.annexureI_venue || null;
@@ -924,8 +1019,12 @@ const CreateEvent = () => {
       setEditImpact(null);
       return;
     }
+    let abortCtrl = null;
     const checkImpact = async () => {
       setCheckingImpact(true);
+      abortCtrl = new AbortController();
+      // 8-second hard timeout so the spinner never hangs indefinitely
+      const timeoutId = setTimeout(() => abortCtrl.abort(), 8000);
       try {
         const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${editingEvent.id}/check-edit-impact`, {
           method: 'POST',
@@ -938,21 +1037,32 @@ const CreateEvent = () => {
             startTime: form.startTime,
             endTime: form.endTime,
             managers: form.managers || []
-          })
+          }),
+          signal: abortCtrl.signal
         });
+        clearTimeout(timeoutId);
         const data = await res.json();
         if (data.success) {
           setEditImpact(data);
         }
       } catch (err) {
-        console.error('Error checking edit impact:', err);
+        clearTimeout(timeoutId);
+        if (err.name !== 'AbortError') {
+          console.error('Error checking edit impact:', err);
+        }
+        // On timeout or error: silently dismiss the spinner — don't block the user
+        setEditImpact(null);
       } finally {
         setCheckingImpact(false);
       }
     };
-    const timer = setTimeout(checkImpact, 600);
-    return () => clearTimeout(timer);
-  }, [isResubmissionEdit, editingEvent, form.startDate, form.startTime, form.endTime, form.managers]);
+    const timer = setTimeout(checkImpact, 800);
+    return () => {
+      clearTimeout(timer);
+      if (abortCtrl) abortCtrl.abort();
+      setCheckingImpact(false);
+    };
+  }, [isResubmissionEdit, editingEvent?.id, form.startDate, form.startTime, form.endTime, form.managers]);
 
   // ── Resubmission/Edit Mode Venue Availability Re-Check ──
   // Re-runs when date/time or venue selections change; skips own event's existing booking via skipEventId
@@ -973,28 +1083,21 @@ const CreateEvent = () => {
         const startDp = new Date(form.startDate);
         const endDp = new Date(form.endDate);
         const totalDays = Math.max(1, Math.round((endDp - startDp) / (1000 * 60 * 60 * 24)) + 1);
-        let firstConflict = null;
-        for (let dayOffset = 0; dayOffset < totalDays; dayOffset += 1) {
+        const skipEventId = editingEvent?.id || null;
+        const skipReservationId = reservationState?.reservationId || editingEvent?.reservationId || editingEvent?.venueReservationId || null;
+
+        // Build all day-slot requests and fire them in parallel for speed
+        const dayRequests = Array.from({ length: totalDays }, (_, dayOffset) => {
           const cur = new Date(startDp.getTime() + dayOffset * 24 * 60 * 60 * 1000);
-          const y = cur.getFullYear();
-          const m = String(cur.getMonth() + 1).padStart(2, '0');
-          const d = String(cur.getDate()).padStart(2, '0');
-          const curStr = `${y}-${m}-${d}`;
+          const curStr = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
           const dayStart = dayOffset === 0 ? form.startTime : '00:01';
           const dayEnd = dayOffset === totalDays - 1 ? form.endTime : '23:59';
-          const slot = await venueApi.getSlotStatus(editingVenueId, {
-            date: curStr,
-            startTime: dayStart,
-            endTime: dayEnd,
-            skipEventId: editingEvent?.id || null,
-            skipReservationId: editingEvent?.reservationId || editingEvent?.venueReservationId || null
-          });
-          if (slot && slot.available === false) {
-            firstConflict = slot;
-            break;
-          }
-        }
+          return venueApi.getSlotStatus(editingVenueId, { date: curStr, startTime: dayStart, endTime: dayEnd, skipEventId, skipReservationId });
+        });
+
+        const results = await Promise.all(dayRequests);
         if (cancelled) return;
+        const firstConflict = results.find(slot => slot && slot.available === false) || null;
         setEditVenueCheckResult(
           firstConflict || { available: true, status: 'AVAILABLE', venueName: resolveEditingVenueName() }
         );
@@ -1010,55 +1113,79 @@ const CreateEvent = () => {
   }, [
     isResubmissionEdit, isDraftEdit, editingEvent?.id, editingEvent?.reservationId, editingEvent?.venueReservationId,
     form.startDate, form.endDate, form.startTime, form.endTime,
-    form.venueSelection, form.audioVenueName, lockedVenue?.id, lockedVenue?.name
+    form.venueSelection, form.audioVenueName, lockedVenue?.id, lockedVenue?.name,
+    reservationState?.reservationId
   ]);
 
   const editVenueIsAvailable = editVenueCheckResult && (editVenueCheckResult.available === true || editVenueCheckResult.status === 'AVAILABLE');
   const editVenueIsConflict = editVenueCheckResult && editVenueCheckResult.available === false && editVenueCheckResult.status !== 'ERROR' && editVenueCheckResult.status !== 'UNKNOWN';
   const editVenueEarliest = editVenueCheckResult?.earliestAvailable;
+  const editHasDateTime = Boolean(form.startDate && form.endDate && form.startTime && form.endTime);
+  const editVenueReady = Boolean(
+    reservationState?.reservationId
+    && editHasDateTime
+    && editVenueIsAvailable
+    && !editVenueCheckLoading
+  );
 
-  // ── Auto venue re-hold for edit/resubmission mode ──
-  // When the previously used venue becomes available, automatically place a HOLD on it.
+  // ── Immediate 30-min venue hold for edit/resubmission (on load, before availability check) ──
   useEffect(() => {
     if (!isResubmissionEdit && !isDraftEdit) return;
-    if (!editVenueIsAvailable) return;
-    if (lockedVenue?.id || reservationState?.reservationId) return;
-    if (autoHoldingVenue || autoHoldAttempted) return;
+    if (!form.venueRequired) return;
+    if (reservationState?.reservationId) return;
+    if (initialHoldAttempted) return; // guard: do NOT include initialHoldLoading here — causes re-trigger loop
 
-    const editingVenueId = resolveEditingVenueId();
-    if (!editingVenueId || !form.startDate || !form.startTime || !form.endTime) return;
+    const editingVenueId = resolveEditingVenueIdFromEvent();
+    const schedule = getEditingEventSchedule();
+    if (!editingVenueId || !schedule) return;
 
     let cancelled = false;
-    const runAutoHold = async () => {
+    const runInitialHold = async () => {
       try {
-        setAutoHoldingVenue(true);
-        setAutoHoldError('');
+        setInitialHoldLoading(true);
+        setInitialHoldError('');
+
+        const venueName = resolveEditingVenueNameFromEvent() || editingVenueId;
+        const venueMeta = {
+          id: editingVenueId,
+          name: venueName,
+          building: lockedVenue?.building || '',
+          floor: lockedVenue?.floor || '',
+          capacity: lockedVenue?.capacity || 0,
+        };
+        if (!lockedVenue?.id) setLockedVenue(venueMeta);
 
         const legacyFallback = async () => {
           try {
             return await venueApi.reserveVenue({
               venueId: editingVenueId,
-              date: form.startDate,
-              startDate: form.startDate,
-              endDate: form.endDate,
-              startTime: form.startTime,
-              endTime: form.endTime,
+              date: schedule.startDate,
+              startDate: schedule.startDate,
+              endDate: schedule.endDate,
+              startTime: schedule.startTime,
+              endTime: schedule.endTime,
             });
           } catch (e) {
             return { success: false, message: e?.message || 'Legacy reserve failed.' };
           }
         };
 
+        // Apply a 10-second timeout so the loading spinner never hangs indefinitely
+        const withTimeout = (promise, ms = 10000) => Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Hold request timed out. Please try again.')), ms))
+        ]);
+
         let result = null;
         try {
-          result = await venueApi.holdVenue(editingVenueId, {
-            date: form.startDate,
-            startDate: form.startDate,
-            endDate: form.endDate,
-            startTime: form.startTime,
-            endTime: form.endTime,
+          result = await withTimeout(venueApi.holdVenue(editingVenueId, {
+            date: schedule.startDate,
+            startDate: schedule.startDate,
+            endDate: schedule.endDate,
+            startTime: schedule.startTime,
+            endTime: schedule.endTime,
             eventDraftId: editingEvent?.id || null,
-          });
+          }));
         } catch (_e) {
           result = await legacyFallback();
         }
@@ -1079,68 +1206,195 @@ const CreateEvent = () => {
         if (result?.success) {
           const payload = result.reservation || result.data || {};
           if (payload.reservationId && payload.expiresAt) {
-            const venueName = resolveEditingVenueName() || (editVenueCheckResult?.venueName) || editingVenueId;
             const newRes = {
               reservationId: payload.reservationId,
               expiresAt: payload.expiresAt,
-              holdDurationMinutes: payload.holdDurationMinutes || null,
+              holdDurationMinutes: payload.holdDurationMinutes || 30,
+              date: schedule.startDate,
+              startDate: schedule.startDate,
+              endDate: schedule.endDate,
+              startTime: schedule.startTime,
+              endTime: schedule.endTime,
+            };
+            setReservationState(newRes);
+            setLockedVenue(venueMeta);
+            sessionStorage.setItem('currentVenueHold', JSON.stringify({
+              venue: venueMeta,
+              reservation: newRes,
+            }));
+            setInitialHoldError('');
+          } else {
+            setInitialHoldError('Could not place a venue hold. Please choose another venue.');
+          }
+        } else {
+          setInitialHoldError(result?.message || 'Venue is currently unavailable. Please choose another venue.');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setInitialHoldError(err?.message || 'Failed to hold venue. Please choose another venue.');
+        }
+      } finally {
+        if (!cancelled) {
+          setInitialHoldLoading(false);
+          setInitialHoldAttempted(true);
+        }
+      }
+    };
+
+    runInitialHold();
+    return () => { cancelled = true; };
+  }, [
+    isResubmissionEdit, isDraftEdit, editingEvent?.id, form.venueRequired,
+    reservationState?.reservationId, initialHoldAttempted,
+    // NOTE: initialHoldLoading intentionally excluded — including it causes a re-trigger loop
+  ]);
+
+  // ── Auto Re-Hold: when date/time changes in edit/resubmission mode, release old hold and grab a new one ──
+  // This prevents the "Event details do not match the held venue slot" error on submit.
+  useEffect(() => {
+    if (!isResubmissionEdit && !isDraftEdit) return;
+    if (!form.venueRequired) return;
+    if (!form.startDate || !form.startTime || !form.endTime) return;
+    if (!lockedVenue?.id) return;
+    // Only re-hold if we already have a reservation AND the stored times differ from what the user typed
+    if (!reservationState?.reservationId) return;
+    const sameTimes =
+      reservationState.startDate === form.startDate &&
+      reservationState.endDate === form.endDate &&
+      reservationState.startTime === form.startTime &&
+      reservationState.endTime === form.endTime;
+    if (sameTimes) return;
+
+    let cancelled = false;
+    const runReHold = async () => {
+      try {
+        setReHoldLoading(true);
+        setReHoldError('');
+        // Release the old hold first (non-blocking — even if it fails we proceed)
+        try {
+          await venueApi.releaseHold(lockedVenue.id, reservationState.reservationId);
+        } catch (_) { /* ignore — hold may already be expired */ }
+
+        if (cancelled) return;
+
+        // Place a fresh hold for the new date/time
+        const withTimeout = (promise, ms = 10000) =>
+          Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('Hold request timed out.')), ms))]);
+
+        let result = null;
+        try {
+          result = await withTimeout(venueApi.holdVenue(lockedVenue.id, {
+            date: form.startDate,
+            startDate: form.startDate,
+            endDate: form.endDate,
+            startTime: form.startTime,
+            endTime: form.endTime,
+            eventDraftId: editingEvent?.id || null,
+          }));
+        } catch (holdErr) {
+          // Fallback to legacy reserve
+          try {
+            result = await venueApi.reserveVenue({
+              venueId: lockedVenue.id,
+              date: form.startDate,
+              startDate: form.startDate,
+              endDate: form.endDate,
+              startTime: form.startTime,
+              endTime: form.endTime,
+            });
+          } catch (_) {
+            result = { success: false, message: holdErr.message };
+          }
+        }
+
+        if (cancelled) return;
+
+        if (result?.success) {
+          const p = result.reservation || result.data || {};
+          if (p.reservationId && p.expiresAt) {
+            const newRes = {
+              reservationId: p.reservationId,
+              expiresAt: p.expiresAt,
+              holdDurationMinutes: p.holdDurationMinutes || 30,
               date: form.startDate,
               startDate: form.startDate,
               endDate: form.endDate,
               startTime: form.startTime,
               endTime: form.endTime,
             };
-            const newVenue = {
-              id: editingVenueId,
-              name: venueName,
-              building: lockedVenue?.building || '',
-              floor: lockedVenue?.floor || '',
-              capacity: lockedVenue?.capacity || 0,
-            };
             setReservationState(newRes);
-            setLockedVenue(newVenue);
-            sessionStorage.setItem('currentVenueHold', JSON.stringify({
-              venue: newVenue,
-              reservation: newRes,
-            }));
+            sessionStorage.setItem('currentVenueHold', JSON.stringify({ venue: lockedVenue, reservation: newRes }));
+            setReHoldError('');
           }
-          setAutoHoldError('');
         } else {
-          setAutoHoldError(result?.message || 'Venue slot was just reserved by someone else.');
+          // Could not re-hold — surface conflict banner by clearing reservation
+          setReservationState(null);
+          setReHoldError(result?.message || 'Venue not available for the new date/time. Please choose another venue.');
         }
       } catch (err) {
         if (!cancelled) {
-          setAutoHoldError(err?.message || 'Failed to automatically re-allocate venue.');
+          setReservationState(null);
+          setReHoldError(err?.message || 'Failed to update venue hold. Please choose another venue.');
         }
       } finally {
-        if (!cancelled) {
-          setAutoHoldingVenue(false);
-          setAutoHoldAttempted(true);
-        }
+        if (!cancelled) setReHoldLoading(false);
       }
     };
 
-    const t = setTimeout(runAutoHold, 400);
+    // Debounce 600 ms so rapid typing doesn't spam the API
+    const t = setTimeout(runReHold, 600);
     return () => { cancelled = true; clearTimeout(t); };
   }, [
-    isResubmissionEdit, isDraftEdit,
-    editVenueIsAvailable, editVenueCheckResult,
-    lockedVenue, reservationState,
-    autoHoldingVenue, autoHoldAttempted,
+    isResubmissionEdit, isDraftEdit, form.venueRequired,
+    lockedVenue?.id,
     form.startDate, form.endDate, form.startTime, form.endTime,
-    editingEvent?.id,
+    // NOTE: reservationState intentionally read by ref inside the effect, not listed — avoids loop
   ]);
 
-  // Helper: navigate to venue selection page (for "choose another venue" actions)
+  // Helper: open the compact VenueSelectionModal so the user can pick a new venue
+  // without navigating away from CreateEvent. Saves the edit draft first.
   const goToVenueSelection = () => {
-    sessionStorage.removeItem('currentVenueHold');
-    const rolePrefix = location.pathname.split('/')[1];
-    navigate(`/${rolePrefix}/create-event`);
+    if (isResubmissionEdit || isDraftEdit) {
+      sessionStorage.setItem(EDIT_DRAFT_STORAGE_KEY, JSON.stringify({
+        form,
+        editingEvent,
+        editMode: true,
+        currentStepIndex,
+        maxReachedIndex,
+      }));
+    }
+    setShowVenueModal(true);
   };
 
-  const retryAutoHold = () => {
-    setAutoHoldAttempted(false);
-    setAutoHoldError('');
+  // Called by VenueSelectionModal when the user successfully holds a new venue.
+  // Applies the new venue + reservation to the current form in-place — no page navigation.
+  const handleVenueReservedInModal = ({ venue, reservation }) => {
+    setShowVenueModal(false);
+    setLockedVenue(venue);
+    setReservationState(reservation);
+    setInitialHoldAttempted(true);
+    setInitialHoldError('');
+    sessionStorage.setItem('currentVenueHold', JSON.stringify({ venue, reservation }));
+
+    // Map new venue into venueSelection form field
+    setForm(prev => {
+      const newMap = createQtyMap(VENUE_OPTIONS);
+      const match = VENUE_OPTIONS.find(opt => opt.toLowerCase() === (venue.name || '').toLowerCase());
+      if (match) newMap[match] = { selected: true, qty: 1 };
+      return {
+        ...prev,
+        numberOfVenuesRequired: '1',
+        venueSelection: newMap,
+        audioVenueName: venue.name || prev.audioVenueName,
+      };
+    });
+
+    // Reset availability check so it re-runs for the new venue
+    setEditVenueCheckResult(null);
+  };
+
+  const retryVenueAvailabilityCheck = () => {
+    setEditVenueCheckResult(null);
   };
 
   const renderEditImpactBanner = () => {
@@ -1216,38 +1470,126 @@ const CreateEvent = () => {
   const renderVenueStatusBanner = () => {
     if (!isResubmissionEdit && !isDraftEdit) return null;
     if (!form.venueRequired) return null;
-    const venueName = resolveEditingVenueName() || 'previously selected venue';
-    const venueId = resolveEditingVenueId();
+    const venueName = resolveEditingVenueName() || resolveEditingVenueNameFromEvent() || 'previously selected venue';
 
-    // CASE 1: Auto-hold in progress
-    if (autoHoldingVenue) {
+    // CASE 1: Initial 30-min hold in progress
+    if (initialHoldLoading) {
       return (
-        <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center gap-3 text-sm text-blue-800 animate-pulse">
+        <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center gap-3 text-sm text-blue-800">
           <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
           <div className="flex-1 min-w-0">
-            <h5 className="font-bold">Re-allocating your previous venue…</h5>
+            <h5 className="font-bold">Holding your venue for 30 minutes…</h5>
             <p className="text-xs mt-0.5 opacity-90">
-              Attempting to reserve <strong className="font-extrabold">{venueName}</strong> for the updated schedule.
+              Placing a temporary hold on <strong className="font-extrabold">{venueName}</strong> so you can edit safely.
             </p>
           </div>
         </div>
       );
     }
 
-    // CASE 2: Successfully re-held the venue (lockedVenue is set)
-    if (lockedVenue?.id && reservationState?.reservationId) {
+    // CASE 2: Hold failed on load
+    if (initialHoldError && !reservationState?.reservationId) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-rose-50/95 border border-rose-300 text-rose-900 transition-all shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-rose-600">!</div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Could Not Hold Previous Venue</h5>
+              <p className="text-xs mt-1 font-medium opacity-95">
+                <strong>{venueName}</strong> could not be held: <em>{initialHoldError}</em>
+              </p>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={goToVenueSelection}
+                  className="text-xs font-black px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm active:scale-[.98] transition-all"
+                >
+                  Choose Another Venue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 3: Re-hold in progress (user changed date/time)
+    if (reHoldLoading) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center gap-3 text-sm text-blue-800">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h5 className="font-bold">Updating venue hold for new date/time…</h5>
+            <p className="text-xs mt-0.5 opacity-90">
+              Verifying <strong className="font-extrabold">{venueName}</strong> is still available for the new schedule.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 3b: Re-hold failed — venue not available for new time
+    if (reHoldError && !reservationState?.reservationId) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-rose-50/95 border border-rose-300 text-rose-900 transition-all shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-rose-600">!</div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Venue Not Available for New Date/Time</h5>
+              <p className="text-xs mt-1 font-medium opacity-95">
+                <strong>{venueName}</strong> could not be held for the new schedule: <em>{reHoldError}</em>
+              </p>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={goToVenueSelection}
+                  className="text-xs font-black px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm active:scale-[.98] transition-all"
+                >
+                  Choose Another Venue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 4: Venue held — waiting for date/time or checking availability
+    if (lockedVenue?.id && reservationState?.reservationId && !editHasDateTime) {
       return (
         <div className="mb-6 p-4 rounded-2xl bg-emerald-50/90 border border-emerald-300 text-emerald-900 transition-all shadow-sm">
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-emerald-600">✓</div>
             <div className="flex-1 min-w-0">
-              <h5 className="font-bold text-sm">Venue Automatically Re-Allocated</h5>
+              <h5 className="font-bold text-sm">Venue Held for 30 Minutes</h5>
               <p className="text-xs mt-0.5 font-medium opacity-90">
-                <strong>{lockedVenue.name}</strong> is reserved for <strong>{form.startDate}{form.startDate !== form.endDate ? ` – ${form.endDate}` : ''}</strong> from <strong>{form.startTime}</strong> to <strong>{form.endTime}</strong>.
+                <strong>{lockedVenue.name}</strong> is temporarily reserved while you edit. Enter your event date and time below — we'll verify the slot is still free.
               </p>
               {reservationState.expiresAt && (
                 <p className="text-[11px] mt-1.5 text-emerald-700 font-semibold">
-                  ⏱ 10-minute hold expires at {new Date(reservationState.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — complete your submission before then.
+                  ⏱ Hold expires at {new Date(reservationState.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // CASE 4: Successfully held and date/time confirmed available
+    if (editVenueReady) {
+      return (
+        <div className="mb-6 p-4 rounded-2xl bg-emerald-50/90 border border-emerald-300 text-emerald-900 transition-all shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-emerald-600">✓</div>
+            <div className="flex-1 min-w-0">
+              <h5 className="font-bold text-sm">Venue Confirmed — Available for Your Schedule</h5>
+              <p className="text-xs mt-0.5 font-medium opacity-90">
+                <strong>{lockedVenue.name}</strong> is free for <strong>{form.startDate}{form.startDate !== form.endDate ? ` – ${form.endDate}` : ''}</strong> from <strong>{form.startTime}</strong> to <strong>{form.endTime}</strong>. You may continue.
+              </p>
+              {reservationState.expiresAt && (
+                <p className="text-[11px] mt-1.5 text-emerald-700 font-semibold">
+                  ⏱ 30-minute hold expires at {new Date(reservationState.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               )}
             </div>
@@ -1263,21 +1605,21 @@ const CreateEvent = () => {
       );
     }
 
-    // CASE 3: Availability check still loading
-    if (editVenueCheckLoading && !editVenueCheckResult) {
+    // CASE 5: Availability check still loading
+    if (editVenueCheckLoading && editHasDateTime) {
       return (
         <div className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-sm text-slate-600">
           <div className="w-5 h-5 border-2 border-slate-500 border-t-transparent rounded-full animate-spin shrink-0" />
           <div>
             <h5 className="font-bold">Checking venue availability…</h5>
-            <p className="text-xs mt-0.5 opacity-80">Verifying if <strong>{venueName}</strong> is free for your updated times.</p>
+            <p className="text-xs mt-0.5 opacity-80">Verifying if <strong>{venueName}</strong> is free for your selected date and time.</p>
           </div>
         </div>
       );
     }
 
-    // CASE 4: Venue is UNAVAILABLE (conflict/BOOKED)
-    if (editVenueIsConflict) {
+    // CASE 6: Venue is UNAVAILABLE (conflict/BOOKED) for selected date/time
+    if (editVenueIsConflict && editHasDateTime) {
       const conflictInfo = editVenueCheckResult;
       const earliest = conflictInfo.earliestAvailable
         ? new Date(conflictInfo.earliestAvailable).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -1287,9 +1629,9 @@ const CreateEvent = () => {
           <div className="flex items-start gap-3">
             <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-rose-600">!</div>
             <div className="flex-1 min-w-0">
-              <h5 className="font-bold text-sm">⚠ Previous Venue is No Longer Available</h5>
+              <h5 className="font-bold text-sm">Venue Not Available for Selected Date/Time</h5>
               <p className="text-xs mt-1 font-medium opacity-95">
-                <strong>{venueName}</strong> is currently {conflictInfo.status === 'BOOKED' ? 'booked for another event' : 'held by another user'} during{' '}
+                <strong>{venueName}</strong> is {conflictInfo.status === 'BOOKED' ? 'booked for another event' : 'held by another user'} during{' '}
                 <strong>{form.startDate}{form.startDate !== form.endDate ? ` – ${form.endDate}` : ''}</strong> from <strong>{form.startTime}</strong> to <strong>{form.endTime}</strong>.
               </p>
               {earliest && (
@@ -1303,50 +1645,15 @@ const CreateEvent = () => {
                   onClick={goToVenueSelection}
                   className="text-xs font-black px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-sm active:scale-[.98] transition-all flex items-center gap-1.5"
                 >
-                  🚀 Choose Another Venue
-                </button>
-                {form.startDate && form.endDate && form.startTime && form.endTime && (
-                  <button
-                    type="button"
-                    onClick={retryAutoHold}
-                    className="text-xs font-bold px-3 py-2 rounded-lg bg-white/80 hover:bg-white text-rose-800 border border-rose-300 transition-colors"
-                  >
-                    ↻ Recheck Availability
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // CASE 5: Auto-hold failed but venue is available
-    if (editVenueIsAvailable && autoHoldError && !lockedVenue?.id) {
-      return (
-        <div className="mb-6 p-4 rounded-2xl bg-amber-50/95 border border-amber-300 text-amber-900 transition-all shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl text-white font-bold shrink-0 shadow-2xs bg-amber-600">!</div>
-            <div className="flex-1 min-w-0">
-              <h5 className="font-bold text-sm">Venue is Free but Auto-Reservation Failed</h5>
-              <p className="text-xs mt-1 font-medium opacity-95">
-                <strong>{venueName}</strong> is available, but we couldn't reserve it automatically: <em>{autoHoldError}</em>
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={retryAutoHold}
-                  className="text-xs font-black px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm active:scale-[.98] transition-all flex items-center gap-1.5"
-                >
-                  ↻ Retry Auto-Reservation
-                </button>
-                <button
-                  type="button"
-                  onClick={goToVenueSelection}
-                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white/80 hover:bg-white text-amber-800 border border-amber-300 transition-colors"
-                >
                   Choose Another Venue
                 </button>
+                <button
+                  type="button"
+                  onClick={retryVenueAvailabilityCheck}
+                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white/80 hover:bg-white text-rose-800 border border-rose-300 transition-colors"
+                >
+                  ↻ Recheck Availability
+                </button>
               </div>
             </div>
           </div>
@@ -1354,8 +1661,8 @@ const CreateEvent = () => {
       );
     }
 
-    // CASE 6: Availability check had an error
-    if (editVenueCheckResult?.status === 'ERROR') {
+    // CASE 7: Availability check had an error
+    if (editVenueCheckResult?.status === 'ERROR' && editHasDateTime) {
       return (
         <div className="mb-6 p-4 rounded-2xl bg-slate-100 border border-slate-300 text-slate-800">
           <div className="flex items-start gap-3">
@@ -1366,7 +1673,7 @@ const CreateEvent = () => {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => { setEditVenueCheckResult(null); setAutoHoldAttempted(false); }}
+                  onClick={retryVenueAvailabilityCheck}
                   className="text-xs font-bold px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-800 text-white shadow-sm transition-colors"
                 >
                   ↻ Retry Check
@@ -1377,39 +1684,6 @@ const CreateEvent = () => {
                   className="text-xs font-bold px-3 py-2 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 transition-colors"
                 >
                   Pick a Venue Manually
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // CASE 7: Venue is available but auto-hold hasn't triggered yet (edge case)
-    if (editVenueIsAvailable && !lockedVenue?.id && !autoHoldingVenue) {
-      return (
-        <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-800">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 size={20} className="shrink-0 text-blue-600 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <h5 className="font-bold text-sm">Venue is Available</h5>
-              <p className="text-xs mt-0.5 opacity-90">
-                <strong>{venueName}</strong> is free for your selected date/time. Reservation will be placed automatically, or you can:
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={retryAutoHold}
-                  className="text-xs font-black px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
-                >
-                  Reserve Now
-                </button>
-                <button
-                  type="button"
-                  onClick={goToVenueSelection}
-                  className="text-xs font-bold px-3 py-2 rounded-lg bg-white hover:bg-blue-50 text-blue-800 border border-blue-200 transition-colors"
-                >
-                  Pick Different Venue
                 </button>
               </div>
             </div>
@@ -1718,14 +1992,23 @@ const CreateEvent = () => {
         if (!value) { msg = 'End Date is required.'; break; }
         if (form.startDate && value < form.startDate) msg = 'End Date must be on or after Start Date.';
         break;
-      case 'startTime':
-        if (!value) msg = 'Start Time is required.';
+      case 'startTime': {
+        if (!value) { msg = 'Start Time is required.'; break; }
+        // If the event starts today, the start time must not be in the past
+        if (form.startDate && form.startDate === todayIso) {
+          const now = new Date();
+          const [h, m] = value.split(':').map(Number);
+          const picked = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+          if (picked <= now) msg = 'Start Time must be in the future for today\'s events.';
+        }
         break;
-      case 'endTime':
+      }
+      case 'endTime': {
         if (!value) { msg = 'End Time is required.'; break; }
         if (form.startDate && form.endDate && form.startDate === form.endDate && form.startTime && value <= form.startTime)
           msg = 'End Time must be after Start Time for same-day events.';
         break;
+      }
       case 'organizerName':
         if (!String(value || '').trim()) msg = 'Organizer Name is required.';
         break;
@@ -1900,6 +2183,17 @@ const CreateEvent = () => {
         return false;
       }
 
+      // If event starts today, start time must be in the future
+      if (form.startDate === todayIso && form.startTime) {
+        const now = new Date();
+        const [h, m] = form.startTime.split(':').map(Number);
+        const picked = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+        if (picked <= now) {
+          setStepError('Start Time must be in the future for today\'s events.');
+          return false;
+        }
+      }
+
       if (form.startDate === form.endDate && form.endTime <= form.startTime) {
         setStepError('Event End Time must be after Start Time for same-day events.');
         return false;
@@ -1915,6 +2209,39 @@ const CreateEvent = () => {
       if (!form.managers || form.managers.length === 0) {
         setStepError('At least 1 event manager must be added.');
         return false;
+      }
+
+      if ((isResubmissionEdit || isDraftEdit) && form.venueRequired) {
+        if (initialHoldLoading) {
+          setStepError('Placing a 30-minute venue hold. Please wait a moment.');
+          return false;
+        }
+        if (reHoldLoading) {
+          setStepError('Updating venue hold for new date/time. Please wait a moment…');
+          return false;
+        }
+        if (reHoldError && !reservationState?.reservationId) {
+          setStepError('Venue is not available for the new date/time. Please choose another venue.');
+          goToVenueSelection();
+          return false;
+        }
+        if (!reservationState?.reservationId && initialHoldError) {
+          setStepError('Could not hold your previous venue. Please choose another venue using the button above.');
+          return false;
+        }
+        if (editVenueCheckLoading) {
+          setStepError('Checking venue availability for your selected date and time…');
+          return false;
+        }
+        if (editVenueIsConflict) {
+          setStepError('Venue is not available for the selected date/time. Please choose another venue.');
+          goToVenueSelection();
+          return false;
+        }
+        if (editVenueCheckResult?.status === 'ERROR') {
+          setStepError('Could not verify venue availability. Please retry or choose another venue.');
+          return false;
+        }
       }
     }
 
@@ -1955,23 +2282,22 @@ const CreateEvent = () => {
         return false;
       }
       
-      const hasHeldVenue = lockedVenue && (reservationState?.reservationId || isResubmissionEdit || isDraftEdit);
+      const hasHeldVenue = lockedVenue && reservationState?.reservationId;
       const hasDraftVenue = isDraftEdit && editingEvent?.venue;
       const venueConflict = (isResubmissionEdit || isDraftEdit) && editVenueIsConflict;
-      const holdInProgress = (isResubmissionEdit || isDraftEdit) && autoHoldingVenue;
-      const holdFailed = (isResubmissionEdit || isDraftEdit) && autoHoldError && !hasHeldVenue;
       
       if (!hasHeldVenue && !hasDraftVenue) {
         if (venueConflict) {
-          setStepError('Previous venue is not available for the selected date/time. Please click "Choose Another Venue" above to pick a different venue.');
+          setStepError('Venue is not available for the selected date/time. Redirecting to venue selection…');
+          goToVenueSelection();
           return false;
         }
-        if (holdInProgress) {
-          setStepError('Venue is being reserved automatically. Please wait a moment and try again.');
+        if (initialHoldLoading) {
+          setStepError('Venue hold is being placed. Please wait a moment and try again.');
           return false;
         }
-        if (holdFailed) {
-          setStepError('Venue auto-reservation failed. Click "Retry Auto-Reservation" or "Choose Another Venue" above.');
+        if (initialHoldError) {
+          setStepError('Venue hold failed. Click "Choose Another Venue" above.');
           return false;
         }
         setStepError('No venue reserved. Please return to Venue Selection to reserve a venue.');
@@ -2214,6 +2540,9 @@ const CreateEvent = () => {
 
   const buildPayload = (statusOverride) => {
     const initialStatus = statusOverride || EventStatus.PENDING_MANAGERS;
+    // Only include status in the payload if it's DRAFT — the backend validator rejects
+    // all other client-supplied status values and sets the correct status server-side.
+    const statusField = initialStatus === 'DRAFT' ? { status: 'DRAFT' } : {};
     let posterWorkflow = {
       requested: false,
       status: 'NOT_REQUIRED',
@@ -2272,11 +2601,11 @@ const CreateEvent = () => {
       audienceScope: form.audienceScope,
       selectedDepartments: form.selectedDepartments,
       openToAllDepartments: form.audienceScope === 'Open To All',
-      status: initialStatus,
+      ...statusField,
       createdAt: new Date().toISOString(),
       posterWorkflow,
       posterRequired: form.requirePoster || false,
-      posterStatus: form.requirePoster ? 'AWAITING_MEDIA_UPLOAD' : ((form.posterDataUrl || form.posterFile || form.posterStorage) ? 'UPLOADED' : 'NOT_REQUIRED'),
+      posterStatus: form.requirePoster ? 'AWAITING_MEDIA_UPLOAD' : ((form.posterDataUrl || form.posterStorage) ? 'UPLOADED' : (form.posterFile ? 'UPLOADING' : 'NOT_REQUIRED')),
       posterDataUrl: form.posterDataUrl || null,
       posterFileName: form.posterFileName || null,
       posterMimeType: form.posterMimeType || null,
@@ -2430,6 +2759,7 @@ const CreateEvent = () => {
           const uploadData = await uploadRes.json();
           if (!uploadRes.ok || !uploadData.success) throw new Error(uploadData.message || 'Upload failed');
           payload.posterStorage = { storagePath: uploadData.storagePath, downloadURL: uploadData.downloadURL, fileName: uploadData.fileName, fileType: uploadData.fileType, fileSize: uploadData.fileSize, uploadedAt: uploadData.uploadedAt };
+          payload.posterStatus = 'UPLOADED';
           payload.posterDataUrl = null;
           setUploadProgress(null);
         } catch (uploadErr) {
@@ -2475,10 +2805,21 @@ const CreateEvent = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    // For edit/resubmission mode: fail early if venue is in conflict state (user hasn't chosen another)
-    if ((isResubmissionEdit || isDraftEdit) && form.venueRequired && editVenueIsConflict && !reservationState?.reservationId) {
-      setSubmitError('Previous venue is not available. Please click "Choose Another Venue" in the banner above to select a different venue before resubmitting.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    // For edit/resubmission mode: fail early if venue is in conflict state
+    if ((isResubmissionEdit || isDraftEdit) && form.venueRequired && editVenueIsConflict) {
+      setSubmitError('Venue is not available for the selected date/time. Redirecting to venue selection…');
+      goToVenueSelection();
+      return;
+    }
+    // Block submit while re-hold is in flight
+    if (reHoldLoading) {
+      setSubmitError('Updating venue hold for new date/time. Please wait a moment…');
+      return;
+    }
+    // Block submit if re-hold failed (venue not available)
+    if (reHoldError && !reservationState?.reservationId) {
+      setSubmitError('Venue is not available for the new date/time. Please choose another venue.');
+      goToVenueSelection();
       return;
     }
     for (let i = 0; i < steps.length; i += 1) {
@@ -2501,8 +2842,11 @@ const CreateEvent = () => {
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      // Validate hold: applies to new events AND edit/resubmission events that acquired a fresh reservation
-      if (reservationState?.reservationId && lockedVenue) {
+      // Validate hold: applies to new events.
+      // For edit/resubmission the auto-rehold effect keeps the reservation in sync with form times,
+      // so we only validate when we have a lockedVenue with a real ID (not a name string).
+      const venueHasRealId = lockedVenue?.id && !/\s/.test(String(lockedVenue.id));
+      if (reservationState?.reservationId && venueHasRealId && !isResubmissionEdit && !isDraftEdit) {
         const valData = await venueApi.validateHold({
           reservationId: reservationState.reservationId,
           venueId: lockedVenue.id,
@@ -2543,7 +2887,8 @@ const CreateEvent = () => {
           const uploadData = await uploadRes.json();
           if (!uploadRes.ok || !uploadData.success) throw new Error(uploadData.message || 'Upload failed');
           payload.posterStorage = { storagePath: uploadData.storagePath, downloadURL: uploadData.downloadURL, fileName: uploadData.fileName, fileType: uploadData.fileType, fileSize: uploadData.fileSize, uploadedAt: uploadData.uploadedAt };
-          // Clean up legacy field if it was replaced
+          // Mark as uploaded and clean up legacy field
+          payload.posterStatus = 'UPLOADED';
           payload.posterDataUrl = null;
           setUploadProgress(null);
         } catch (uploadErr) {
@@ -3307,7 +3652,7 @@ const CreateEvent = () => {
                     <div className="space-y-1">
                       <p className="font-bold text-slate-900">{lockedVenue.name}</p>
                       <p className="text-sm text-slate-500">
-                        {lockedVenue.building ? `${lockedVenue.building}${lockedVenue.floor ? ` · Floor ${lockedVenue.floor}` : ''}` : 'Auto-reallocated venue slot'}
+                        {lockedVenue.building ? `${lockedVenue.building}${lockedVenue.floor ? ` · Floor ${lockedVenue.floor}` : ''}` : 'Held venue — edit date/time to verify availability'}
                         {lockedVenue.capacity ? ` · ${lockedVenue.capacity} Seats` : ''}
                       </p>
                       {(isResubmissionEdit || isDraftEdit) && reservationState?.expiresAt && (
@@ -4488,14 +4833,29 @@ const CreateEvent = () => {
                   <CheckCircle2 size={14} />
                 </div>
                 <span className="text-sm font-bold">Continuing Draft — {editingEvent?.title || 'Untitled Event'}</span>
-                {editingEvent?.venue && (
+                {(lockedVenue?.name || editingEvent?.venue) && (
                   <span className="text-xs font-semibold text-slate-600 bg-white/70 px-1.5 py-0.5 rounded border border-slate-200">
-                    {editingEvent.venue}
+                    {lockedVenue?.name || editingEvent?.venue}
                   </span>
                 )}
               </div>
             </div>
-          ) : reservationState && lockedVenue && (
+          ) : (isResubmissionEdit && editingEvent) ? (
+            <div className="mb-3 border rounded-lg px-3 py-2 flex flex-row items-center justify-between gap-3 shadow-sm bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-amber-200 text-amber-950">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 shadow-sm bg-amber-600 text-white">
+                  <CheckCircle2 size={14} />
+                </div>
+                <span className="text-sm font-bold">Resubmission Edit — {editingEvent?.title || 'Untitled Event'}</span>
+                {(lockedVenue?.name || resolveEditingVenueNameFromEvent()) && (
+                  <span className="text-xs font-semibold text-slate-600 bg-white/70 px-1.5 py-0.5 rounded border border-slate-200">
+                    {lockedVenue?.name || resolveEditingVenueNameFromEvent()}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : null}
+          {reservationState && lockedVenue && (
             <div className={`mb-3 border rounded-lg px-3 py-2 flex flex-row items-center justify-between gap-3 shadow-sm transition-all ${
               isExpired ? 'bg-rose-50 border-rose-300 text-rose-900' : 'bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-emerald-200 text-emerald-950'
             }`}>
@@ -4729,6 +5089,12 @@ const CreateEvent = () => {
           )}
         </AnimatePresence>
       </div>
+      {/* Compact venue picker modal — shown when user clicks "Choose Another Venue" in edit mode */}
+      <VenueSelectionModal
+        isOpen={showVenueModal}
+        onClose={() => setShowVenueModal(false)}
+        onVenueReserved={handleVenueReservedInModal}
+      />
     </Layout>
   );
 };
