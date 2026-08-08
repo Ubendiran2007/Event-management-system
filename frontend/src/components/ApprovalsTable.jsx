@@ -23,7 +23,7 @@ export default function ApprovalsTable({ currentUser, filter, onRowClick }) {
     else if ([UserRole.HR_TEAM, UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN, UserRole.TRANSPORT_TEAM, UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN, UserRole.MEDIA].includes(role)) {
       pendingStatuses = [EventStatus.PENDING_DEPARTMENTS];
     } else {
-      pendingStatuses = [EventStatus.PENDING_FACULTY, EventStatus.PENDING_CLASS_ADVISOR, EventStatus.PENDING_HOD, EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC];
+      pendingStatuses = [EventStatus.PENDING_MANAGERS, EventStatus.PENDING_FACULTY, EventStatus.PENDING_CLASS_ADVISOR, EventStatus.PENDING_HOD, EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC];
     }
 
     const pastApprovedStatuses = ['APPROVED', 'POSTED', 'COMPLETED'];

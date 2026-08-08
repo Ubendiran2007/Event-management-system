@@ -22,7 +22,19 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     navigate('/');
   };
 
-  const rolePrefix = getRolePath(currentUser.role);
+  const rawRole = String(currentUser.role || '').toUpperCase();
+  const roleMapping = {
+    'HR': 'HR_TEAM',
+    'HR_TEAM': 'HR_TEAM',
+    'IQAC': 'IQAC_TEAM',
+    'AUDIO': 'AUDIO_TEAM',
+    'TRANSPORT': 'TRANSPORT_TEAM',
+    'ADMIN': 'SYSTEM_ADMIN',
+    'SYSTEM_ADMIN': 'SYSTEM_ADMIN'
+  };
+  const normalizedRole = roleMapping[rawRole] || rawRole;
+
+  const rolePrefix = getRolePath(normalizedRole);
 
   // Derive active tab from URL — match on any segment, not just the last
   let currentActive = 'dashboard';
@@ -52,32 +64,30 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   ];
 
   const excludedRoles = [
-    UserRole.HOD, UserRole.HR_TEAM, UserRole.MEDIA, 
-    UserRole.AUDIO_TEAM, UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN, 
-    UserRole.SYSTEM_ADMIN, UserRole.IQAC_TEAM
+    'HOD', 'HR_TEAM', 'MEDIA', 'AUDIO_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'SYSTEM_ADMIN', 'IQAC_TEAM', 'TRANSPORT_TEAM'
   ];
 
   const hasOrganizedEvents = (events || []).some(e => (String(e.organizerId) === String(currentUser.id) || e.organizerEmail === currentUser.email));
-  const canSeeMyEvents = !excludedRoles.includes(currentUser.role) && 
-    (currentUser.role === UserRole.FACULTY || currentUser.role === UserRole.STUDENT_ORGANIZER || hasOrganizedEvents);
+  const canSeeMyEvents = !excludedRoles.includes(normalizedRole) && 
+    (normalizedRole === 'FACULTY' || normalizedRole === 'STUDENT_ORGANIZER' || hasOrganizedEvents);
 
   if (canSeeMyEvents) {
     navItems.push({ id: 'events', label: 'My Events', icon: CalendarDays, path: '/events' });
   }
   
-  if (currentUser.role === UserRole.STUDENT_GENERAL || currentUser.role === UserRole.STUDENT_ORGANIZER) {
+  if (normalizedRole === 'STUDENT_GENERAL' || normalizedRole === 'STUDENT_ORGANIZER') {
     navItems.push({ id: 'available', label: 'Available Events', icon: Compass, path: '/available' });
     navItems.push({ id: 'my-registrations', label: 'My Registrations', icon: Ticket, path: '/my-registrations' });
     navItems.push({ id: 'my-schedule', label: 'My Schedule', icon: Calendar, path: '/my-schedule' });
   }
 
   const approvalRoles = [
-    UserRole.FACULTY, UserRole.HOD, UserRole.IQAC_TEAM,
-    UserRole.HR_TEAM, UserRole.AUDIO_TEAM, UserRole.SYSTEM_ADMIN,
-    UserRole.TRANSPORT_TEAM, UserRole.BOYS_WARDEN, UserRole.GIRLS_WARDEN,
-    UserRole.MEDIA
+    'FACULTY', 'HOD', 'IQAC_TEAM',
+    'HR_TEAM', 'AUDIO_TEAM', 'SYSTEM_ADMIN',
+    'TRANSPORT_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN',
+    'MEDIA'
   ];
-  if (approvalRoles.includes(currentUser.role)) {
+  if (approvalRoles.includes(normalizedRole)) {
     navItems.push({ id: 'approvals', label: 'Approvals', icon: CheckCircle2, path: '/approvals' });
   }
 
@@ -85,14 +95,14 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
     navItems.push({ id: 'registrations', label: 'Manage Registrations', icon: ClipboardList, path: '/registrations' });
   }
 
-  if (currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0) {
+  if (normalizedRole === 'FACULTY' && currentUser.assignedClasses && currentUser.assignedClasses.length > 0) {
     navItems.push({ id: 'tracking', label: 'Event Tracking', icon: Activity, path: '/tracking' });
   }
 
-  const isClassAdvisor = currentUser.role === UserRole.FACULTY && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
+  const isClassAdvisor = normalizedRole === 'FACULTY' && currentUser.assignedClasses && currentUser.assignedClasses.length > 0;
   
-  if (currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM || isClassAdvisor) {
-    const isHODorIQAC = currentUser.role === UserRole.HOD || currentUser.role === UserRole.IQAC_TEAM;
+  if (normalizedRole === 'HOD' || normalizedRole === 'IQAC_TEAM' || isClassAdvisor) {
+    const isHODorIQAC = normalizedRole === 'HOD' || normalizedRole === 'IQAC_TEAM';
     navItems.push({ 
       id: 'manage-students', 
       label: isHODorIQAC ? 'User Management' : 'Manage Students', 
@@ -106,22 +116,17 @@ const Navbar = ({ isMobileMenuOpen, setIsMobileMenuOpen }) => {
   navItems.push({ id: 'notifications', label: 'Notifications', icon: Bell, path: '/notifications', unreadCount });
 
   const noAnalyticsRoles = [
-    UserRole.STUDENT_GENERAL, 
-    UserRole.STUDENT_ORGANIZER, 
-    UserRole.FACULTY,
-    UserRole.HR_TEAM, 
-    UserRole.BOYS_WARDEN, 
-    UserRole.GIRLS_WARDEN, 
-    UserRole.TRANSPORT_TEAM, 
-    UserRole.AUDIO_TEAM, 
-    UserRole.MEDIA
+    'STUDENT_GENERAL', 'STUDENT_ORGANIZER', 'FACULTY',
+    'HR_TEAM', 'BOYS_WARDEN', 'GIRLS_WARDEN', 
+    'TRANSPORT_TEAM', 'AUDIO_TEAM', 'MEDIA', 'SYSTEM_ADMIN'
   ];
 
-  if (!noAnalyticsRoles.includes(currentUser.role)) {
+  if (!noAnalyticsRoles.includes(normalizedRole)) {
     navItems.push({ id: 'analytics', label: 'Analytics', icon: BarChart2, path: '/analytics' });
   }
 
-  if (currentUser.role === UserRole.HR_TEAM || currentUser.role === UserRole.SUPER_ADMIN) {
+  // HR is removed from venue management as requested by the user
+  if (normalizedRole === 'SUPER_ADMIN') {
     navItems.push({ id: 'venue-management', label: 'Venue Management', icon: Building2, path: '/venue-management' });
   }
 

@@ -269,7 +269,9 @@ const Dashboard = () => {
   }, [currentUser]);
 
   const [mySchedule, setMySchedule] = useState(null);
-  const [scheduleDisplayCount, setScheduleDisplayCount] = useState(10);
+  const [schedulePage, setSchedulePage] = useState(1);
+  const [hasMoreSchedule, setHasMoreSchedule] = useState(true);
+  const [fetchingMoreSchedule, setFetchingMoreSchedule] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [managerInviteProcessing, setManagerInviteProcessing] = useState(null); // eventId being processed
   const [pendingInvitations, setPendingInvitations] = useState([]);
@@ -331,36 +333,53 @@ const Dashboard = () => {
     }
   };
 
-  useEffect(() => {
-    const fetchSchedule = async () => {
-      if (activeTab !== 'my-schedule') return;
-      // Serve from cache if same user and cache exists
-      if (scheduleCacheRef.current && scheduleCacheRef.current.userId === currentUser?.id) {
-        setMySchedule(scheduleCacheRef.current.data);
-        return;
-      }
-      setScheduleDisplayCount(10);
+  const fetchSchedulePage = async (pageNum, reset = false) => {
+    if (activeTab !== 'my-schedule' || !currentUser) return;
+    
+    if (reset) {
       setLoadingSchedule(true);
-      try {
-        const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001') + '/api/events/my-schedule', {
-          headers: {
-            'Authorization': `Bearer ${getAuthToken()}`
-          }
+      setSchedulePage(1);
+    } else {
+      setFetchingMoreSchedule(true);
+    }
+    
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/my-schedule?page=${pageNum}&limit=20`, {
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMySchedule(prev => {
+          if (reset || !prev) return data;
+          return {
+            ...data,
+            schedule: [...prev.schedule, ...data.schedule]
+          };
         });
-        const data = await res.json();
-        if (data.success) {
-          // Store in cache keyed by user
-          scheduleCacheRef.current = { userId: currentUser?.id, data };
-          setMySchedule(data);
+        setHasMoreSchedule(data.hasMore);
+        
+        // Cache only the first page
+        if (pageNum === 1) {
+          scheduleCacheRef.current = { userId: currentUser.id, data };
         }
-      } catch (err) {
-        console.error('Failed to load my schedule:', err);
-      } finally {
-        setLoadingSchedule(false);
       }
-    };
-    if (currentUser) {
-      fetchSchedule();
+    } catch (err) {
+      console.error('Failed to load my schedule:', err);
+    } finally {
+      setLoadingSchedule(false);
+      setFetchingMoreSchedule(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'my-schedule' && currentUser) {
+      if (scheduleCacheRef.current && scheduleCacheRef.current.userId === currentUser.id) {
+        setMySchedule(scheduleCacheRef.current.data);
+        setSchedulePage(1);
+        setHasMoreSchedule(scheduleCacheRef.current.data.hasMore ?? true);
+      } else {
+        fetchSchedulePage(1, true);
+      }
     }
   }, [currentUser, activeTab]);
 
@@ -380,6 +399,23 @@ const Dashboard = () => {
     const startIsoB = `${dStartB}T${sB}`;
     const endIsoB = `${dEndB}T${eB}`;
     return (startIsoA < endIsoB) && (endIsoA > startIsoB);
+  };
+
+  const handleViewScheduleItem = async (eventId) => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001'}/api/events/${eventId}`, {
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+      });
+      const data = await res.json();
+      if (data.success && data.event) {
+        setSelectedEventDetail(data.event);
+      } else {
+        alert('Could not load event details.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error loading event details.');
+    }
   };
 
   const handleResetAllOD = async () => {
@@ -2247,15 +2283,17 @@ const Dashboard = () => {
                       const { scrollTop, scrollHeight, clientHeight } = e.target;
                       // Load more when scrolled within 50px of bottom
                       if (scrollHeight - scrollTop <= clientHeight + 50) {
-                        if (mySchedule && mySchedule.schedule && scheduleDisplayCount < mySchedule.schedule.length) {
-                          setScheduleDisplayCount(prev => prev + 10);
+                        if (!fetchingMoreSchedule && hasMoreSchedule) {
+                          const nextPage = schedulePage + 1;
+                          setSchedulePage(nextPage);
+                          fetchSchedulePage(nextPage, false);
                         }
                       }
                     };
                     
                     return (
                     <div 
-                      className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm overflow-y-auto"
+                      className="flex flex-col flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-y-auto"
                       onScroll={handleScheduleScroll}
                     >
                       {loadingSchedule ? (
@@ -2264,7 +2302,7 @@ const Dashboard = () => {
                           <p className="text-slate-500 font-medium text-sm">Loading your chronological schedule...</p>
                         </div>
                       ) : !mySchedule || !mySchedule.schedule || mySchedule.schedule.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/30 rounded-xl">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/30">
                           <div className="w-20 h-20 bg-white border border-slate-200 rounded-full flex items-center justify-center mx-auto mb-5 text-slate-300 shadow-sm">
                             <Calendar size={36} />
                           </div>
@@ -2272,19 +2310,10 @@ const Dashboard = () => {
                           <p className="text-slate-500 font-medium text-sm">No upcoming event participations, manager assignments, or OD duties found.</p>
                         </div>
                       ) : (
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                              <span>📅 Schedule</span>
-                              <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                                {mySchedule.schedule.length} Item(s)
-                              </span>
-                            </h3>
-                          </div>
-                          <div className="bg-white border border-slate-100 shadow-sm rounded-xl overflow-hidden mt-4">
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="border-b-2 border-slate-100 uppercase tracking-widest text-[10px] font-extrabold text-slate-500 bg-slate-50/50">
+                        <div className="bg-white w-full">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="border-b-2 border-slate-100 uppercase tracking-widest text-[10px] font-extrabold text-slate-500 bg-slate-50/95 backdrop-blur-sm sticky top-0 z-10">
                                   <th className="py-4 px-6 w-[30%]">Event / Role</th>
                                   <th className="py-4 px-6 w-[20%]">Date & Time</th>
                                   <th className="py-4 px-6 w-[20%]">Venue</th>
@@ -2293,12 +2322,12 @@ const Dashboard = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {mySchedule.schedule.slice(0, scheduleDisplayCount).map((item, idx) => {
+                                {mySchedule.schedule.map((item, idx) => {
                                   const conflicts = mySchedule.schedule.filter((other, oIdx) => oIdx !== idx && isTimeOverlapping(item, other));
                                   const hasConflict = conflicts.length > 0;
                                   
                                   return (
-                                    <tr key={item.id || idx} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group">
+                                    <tr key={item.id || idx} onClick={() => handleViewScheduleItem(item.eventId)} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group cursor-pointer">
                                       <td className="py-4 px-6">
                                         <h4 className="font-bold text-slate-900 text-sm truncate" title={item.title}>
                                           {item.title}
@@ -2401,17 +2430,23 @@ const Dashboard = () => {
                                   );
                                 })}
                                 {/* Load-more indicator row */}
-                                {scheduleDisplayCount < mySchedule.schedule.length && (
+                                {fetchingMoreSchedule && (
                                   <tr>
                                     <td colSpan={5} className="text-center py-4 text-[11px] font-semibold text-slate-400">
-                                      Scroll down to load more · {mySchedule.schedule.length - scheduleDisplayCount} remaining
+                                      <Loader2 size={16} className="animate-spin inline-block mr-2" /> Loading more...
+                                    </td>
+                                  </tr>
+                                )}
+                                {!hasMoreSchedule && mySchedule.schedule.length > 0 && (
+                                  <tr>
+                                    <td colSpan={5} className="text-center py-4 text-[11px] font-semibold text-slate-400">
+                                      No more items
                                     </td>
                                   </tr>
                                 )}
                               </tbody>
                             </table>
                           </div>
-                        </div>
                       )}
                     </div>
                   );})()}

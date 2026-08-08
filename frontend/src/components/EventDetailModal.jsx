@@ -922,21 +922,25 @@ const EventDetailModal = ({ event, onClose }) => {
                   {(() => {
                     const isDeptRejection = event.status === EventStatus.REJECTED && ['HR', 'AUDIO', 'ICTS', 'TRANSPORT', 'WARDEN', 'BOYS_WARDEN', 'GIRLS_WARDEN', 'SYSTEM_ADMIN', 'HR_TEAM', 'AUDIO_TEAM', 'TRANSPORT_TEAM', 'DEPARTMENT OFFICER'].includes(String(event.rejectedByRole).toUpperCase());
 
+                    const postFacultyStatuses = [EventStatus.PENDING_HOD, EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL, EventStatus.APPROVED, EventStatus.POSTED, EventStatus.COMPLETED];
                     const isFacultyActive = event.status === EventStatus.PENDING_FACULTY;
                     const isFacultyRejected = event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'FACULTY';
-                    const isFacultyApproved = !isFacultyActive && !isFacultyRejected && event.status !== EventStatus.PENDING_FACULTY;
+                    const isFacultyApproved = postFacultyStatuses.includes(event.status) || (event.status === EventStatus.REJECTED && !['STUDENT_MANAGER', 'FACULTY'].includes(String(event.rejectedByRole).toUpperCase()));
 
+                    const postHodStatuses = [EventStatus.PENDING_DEPARTMENTS, EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL, EventStatus.APPROVED, EventStatus.POSTED, EventStatus.COMPLETED];
                     const isHodActive = event.status === EventStatus.PENDING_HOD;
                     const isHodRejected = event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'HOD';
-                    const isHodApproved = ['PENDING_DEPARTMENTS', 'PENDING_IQAC', 'APPROVED', 'POSTED', 'COMPLETED'].includes(event.status) || (event.status === EventStatus.REJECTED && !isFacultyRejected && !isHodRejected);
+                    const isHodApproved = postHodStatuses.includes(event.status) || (event.status === EventStatus.REJECTED && !['STUDENT_MANAGER', 'FACULTY', 'HOD'].includes(String(event.rejectedByRole).toUpperCase()));
 
+                    const postDeptStatuses = [EventStatus.PENDING_IQAC, EventStatus.PENDING_PRINCIPAL, EventStatus.APPROVED, EventStatus.POSTED, EventStatus.COMPLETED];
                     const isDeptActive = event.status === EventStatus.PENDING_DEPARTMENTS;
                     const isDeptRejected = event.status === EventStatus.REJECTED && isDeptRejection;
-                    const isDeptApproved = ['PENDING_IQAC', 'APPROVED', 'POSTED', 'COMPLETED'].includes(event.status) || (event.status === EventStatus.REJECTED && !isFacultyRejected && !isHodRejected && !isDeptRejected);
+                    const isDeptApproved = postDeptStatuses.includes(event.status) || (event.status === EventStatus.REJECTED && !['STUDENT_MANAGER', 'FACULTY', 'HOD'].includes(String(event.rejectedByRole).toUpperCase()) && !isDeptRejection);
 
+                    const postIqacStatuses = [EventStatus.PENDING_PRINCIPAL, EventStatus.APPROVED, EventStatus.POSTED, EventStatus.COMPLETED];
                     const isIqacActive = event.status === EventStatus.PENDING_IQAC;
                     const isIqacRejected = event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'IQAC';
-                    const isIqacApproved = ['POSTED', 'COMPLETED'].includes(event.status);
+                    const isIqacApproved = postIqacStatuses.includes(event.status) || (event.status === EventStatus.REJECTED && String(event.rejectedByRole).toUpperCase() === 'PRINCIPAL');
 
                     return (
                       <>

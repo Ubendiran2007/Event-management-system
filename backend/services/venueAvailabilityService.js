@@ -91,6 +91,7 @@ class VenueAvailabilityService {
     for (const resDoc of mergedDocs) {
       if (skipReservationId && resDoc.id === skipReservationId) continue;
       const resData = resDoc.data();
+      if (opts.skipEventId && (resData.eventId === opts.skipEventId || resData.eventDraftId === opts.skipEventId)) continue;
       const st = resData.status;
 
       // Expired holds can be lazily cleaned up inside the transaction
@@ -192,8 +193,9 @@ class VenueAvailabilityService {
       const venueDoc = await t.get(venueRef);
       if (!venueDoc.exists) throw new Error('NOT_FOUND:Venue does not exist.');
       const venueData = venueDoc.data();
-      if (venueData.status !== 'ACTIVE') {
-        throw new Error(`BAD_REQUEST:Venue is currently ${venueData.status} and cannot be reserved.`);
+      const venueStatus = venueData.status || 'ACTIVE';
+      if (venueStatus !== 'ACTIVE') {
+        throw new Error(`BAD_REQUEST:Venue is currently ${venueStatus} and cannot be reserved.`);
       }
 
       // Maintenance
@@ -211,7 +213,10 @@ class VenueAvailabilityService {
       
       // Run all conflict checks concurrently to save transaction round-trips
       const conflictResults = await Promise.all(
-        dates.map(d => this._checkConflictsWithinTransaction(t, venueId, d, startTime, endTime, { now }))
+        dates.map(d => this._checkConflictsWithinTransaction(t, venueId, d, startTime, endTime, { 
+          now, 
+          skipEventId: opts.eventDraftId || opts.eventId 
+        }))
       );
 
       for (let i = 0; i < dates.length; i++) {

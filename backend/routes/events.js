@@ -296,6 +296,9 @@ router.post('/', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), validateEvent, a
       ...m,
       status: m.status || (m.email === req.user.email ? 'ACCEPTED' : 'PENDING')
     }));
+    payload.managerIds = payload.managers.map(m => m.userId || m.id).filter(Boolean);
+  } else {
+    payload.managerIds = [];
   }
 
   // Approval chain gate for PENDING_MANAGERS: if managers were pre-accepted, advance
@@ -614,7 +617,23 @@ router.get('/my-schedule', async (req, res) => {
   if (!checkDb(res)) return;
   try {
     const schedule = await ScheduleService.getStudentSchedule(req.user.id);
-    return res.json({ success: true, schedule, total: schedule.length });
+    
+    // Pagination logic
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20; // default 20 items per page
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    
+    const paginatedSchedule = schedule.slice(startIndex, endIndex);
+    const hasMore = endIndex < schedule.length;
+    
+    return res.json({ 
+      success: true, 
+      schedule: paginatedSchedule, 
+      total: schedule.length,
+      page,
+      hasMore 
+    });
   } catch (err) {
     console.error('[events/my-schedule] Error:', err);
     return res.status(500).json({ success: false, message: err.message });
@@ -1313,6 +1332,10 @@ router.put('/:id', async (req, res) => {
       }
     }
 
+    if (updatePayload.managers) {
+      updatePayload.managerIds = updatePayload.managers.map(m => m.userId || m.id).filter(Boolean);
+    }
+
     await updateDoc(eventRef, updatePayload);
 
     if (updatePayload.managers) {
@@ -1415,7 +1438,8 @@ router.put('/:id/resubmit-edit', requireRole(['STUDENT_ORGANIZER', 'FACULTY']), 
       iqacApprovedBy: null,
 
       // Reset department approvals (except media if poster exists)
-      departmentApprovals: newDeptApprovals
+      departmentApprovals: newDeptApprovals,
+      managerIds: req.body.managers ? req.body.managers.map(m => m.userId || m.id).filter(Boolean) : []
     };
 
     if (updatePayload.managers && updatePayload.managers.length > 0) {

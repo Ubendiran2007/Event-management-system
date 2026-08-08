@@ -138,7 +138,12 @@ const runTransaction = async (dbRef, callback) => {
         const snap = await t.get(ref);
         return wrapSnapshot(snap);
       },
-      set: (ref, data) => t.set(ref, data),
+      set: (ref, data, options) => {
+        if (options) {
+          return t.set(ref, data, options);
+        }
+        return t.set(ref, data);
+      },
       update: (ref, data) => t.update(ref, data),
       delete: (ref) => t.delete(ref)
     };

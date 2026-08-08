@@ -12,20 +12,27 @@ export const getRolePath = (role) => {
     case UserRole.HOD:
       return 'hod';
     case UserRole.IQAC_TEAM:
+    case 'IQAC':
       return 'iqac';
     case UserRole.HR_TEAM:
+    case 'HR':
       return 'hr';
     case UserRole.AUDIO_TEAM:
+    case 'AUDIO':
       return 'audio';
     case UserRole.PRINCIPAL:
       return 'principal';
     case UserRole.SYSTEM_ADMIN:
+    case 'ADMIN':
       return 'admin';
     case UserRole.TRANSPORT_TEAM:
+    case 'TRANSPORT':
       return 'transport';
     case UserRole.BOYS_WARDEN:
+    case 'WARDEN/BOYS':
       return 'warden/boys';
     case UserRole.GIRLS_WARDEN:
+    case 'WARDEN/GIRLS':
       return 'warden/girls';
     case UserRole.MEDIA:
       return 'media';

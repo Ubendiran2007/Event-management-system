@@ -411,7 +411,8 @@ const CreateEvent = () => {
             venueId,
             date: holdDate,
             startTime: holdStart,
-            endTime: holdEnd
+            endTime: holdEnd,
+            eventDraftId: isResubmissionEdit && editingEvent?.id ? editingEvent.id : null
           });
         } catch (e) {
           return { success: false, message: e?.message || 'Legacy reserve failed.' };
@@ -1195,14 +1196,15 @@ const CreateEvent = () => {
               endDate: schedule.endDate,
               startTime: schedule.startTime,
               endTime: schedule.endTime,
+              eventDraftId: editingEvent?.id || null,
             });
           } catch (e) {
             return { success: false, message: e?.message || 'Legacy reserve failed.' };
           }
         };
 
-        // Apply a 10-second timeout so the loading spinner never hangs indefinitely
-        const withTimeout = (promise, ms = 10000) => Promise.race([
+        // Apply a 20-second timeout so the loading spinner never hangs indefinitely
+        const withTimeout = (promise, ms = 20000) => Promise.race([
           promise,
           new Promise((_, reject) => setTimeout(() => reject(new Error('Hold request timed out. Please try again.')), ms))
         ]);
@@ -1309,7 +1311,7 @@ const CreateEvent = () => {
         if (cancelled) return;
 
         // Place a fresh hold for the new date/time
-        const withTimeout = (promise, ms = 10000) =>
+        const withTimeout = (promise, ms = 20000) =>
           Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('Hold request timed out.')), ms))]);
 
         let result = null;
@@ -1332,6 +1334,7 @@ const CreateEvent = () => {
               endDate: form.endDate,
               startTime: form.startTime,
               endTime: form.endTime,
+              eventDraftId: editingEvent?.id || null,
             });
           } catch (_) {
             result = { success: false, message: holdErr.message };
@@ -1356,6 +1359,7 @@ const CreateEvent = () => {
             setReservationState(newRes);
             sessionStorage.setItem('currentVenueHold', JSON.stringify({ venue: lockedVenue, reservation: newRes }));
             setReHoldError('');
+            setInitialHoldError('');
           }
         } else {
           // Could not re-hold — surface conflict banner by clearing reservation
@@ -2644,6 +2648,7 @@ const CreateEvent = () => {
       posterDataUrl: form.posterDataUrl || null,
       posterFileName: form.posterFileName || null,
       posterMimeType: form.posterMimeType || null,
+      managers: form.managers || [],
 
       // Full requisition model
       requisition: {
@@ -3347,7 +3352,7 @@ const CreateEvent = () => {
 
             <div className="md:col-span-2 border-t border-slate-200 pt-4">
               <h4 className="font-semibold text-slate-800 mb-3">Participants</h4>
-              {lockedVenue && ((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
+              {lockedVenue && lockedVenue.capacity > 0 && ((Number(form.internalParticipants || 0) + Number(form.externalParticipants || 0)) > lockedVenue.capacity || (form.capacity && form.capacity > lockedVenue.capacity)) && (
                 <div className="p-4 bg-rose-50 border-2 border-rose-400 rounded-2xl text-rose-900 shadow-sm flex items-start gap-3.5 mb-4">
                   <ShieldAlert className="text-rose-600 shrink-0 mt-0.5" size={24} />
                   <div className="space-y-1 flex-1">

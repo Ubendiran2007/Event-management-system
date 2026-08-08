@@ -581,7 +581,21 @@ router.post('/login', async (req, res, next) => {
     }
 
     // ── DATA CONSISTENCY CHECK (Module A & B) ──
-    const finalRole = String(foundUserObj.role || '').toUpperCase();
+    let finalRole = String(foundUserObj.role || '').toUpperCase();
+    
+    // Normalize legacy/short role strings to match canonical UserRole enums
+    const roleMapping = {
+      'HR': 'HR_TEAM',
+      'IQAC': 'IQAC_TEAM',
+      'AUDIO': 'AUDIO_TEAM',
+      'TRANSPORT': 'TRANSPORT_TEAM',
+      'ADMIN': 'SYSTEM_ADMIN'
+    };
+    if (roleMapping[finalRole]) {
+      finalRole = roleMapping[finalRole];
+      foundUserObj.role = finalRole;
+    }
+
     if (!finalRole) {
       console.error(`[AUTH FATAL] Profile resolved without a role for ${email}`);
       return res.status(500).json({ success: false, message: 'CRITICAL: Profile resolved without a role.' });

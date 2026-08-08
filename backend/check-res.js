@@ -1,0 +1,1 @@
+require('dotenv').config(); const { dbAdmin } = require('./firebaseAdmin.js'); async function check() { const doc = await dbAdmin.collection('events').doc('mU1iFQTvnNF2Sbsochcs').get(); console.log(doc.data().venueId, doc.data().venueName, doc.data().venue); process.exit(0); } check();

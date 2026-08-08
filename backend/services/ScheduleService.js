@@ -44,10 +44,9 @@ class ScheduleService {
     if (!studentId) return [];
 
     try {
-      // Execute parallel queries against eventRegistrations, events, and odRequests
-      const [regSnap, eventsSnap, odSnap] = await Promise.all([
+      // Execute parallel queries against eventRegistrations and odRequests
+      const [regSnap, odSnap] = await Promise.all([
         dbAdmin.collection('eventRegistrations').where('userId', '==', studentId).get(),
-        dbAdmin.collection('events').get(),
         dbAdmin.collection('odRequests').where('status', '==', 'APPROVED').get()
       ]);
 
@@ -56,7 +55,6 @@ class ScheduleService {
       // 1. Process Registrations
       const activeRegStatuses = ['REGISTERED', 'APPROVED', 'OD_APPROVED', 'ATTENDED'];
       const registeredEventIds = new Set();
-
       for (const doc of regSnap.docs) {
         const data = doc.data();
         if (activeRegStatuses.includes(data.status)) {
@@ -64,10 +62,38 @@ class ScheduleService {
         }
       }
 
+      // Fetch targeted events
+      const [orgSnap, mgrSnap] = await Promise.all([
+        dbAdmin.collection('events').where('organizerId', '==', studentId).get(),
+        dbAdmin.collection('events').where('managerIds', 'array-contains', studentId).get()
+      ]);
+
+      const eventsMap = new Map();
+      orgSnap.docs.forEach(doc => eventsMap.set(doc.id, doc));
+      mgrSnap.docs.forEach(doc => eventsMap.set(doc.id, doc));
+
+      // Fetch registered events not already in the map
+      const regEventIdsArr = Array.from(registeredEventIds).filter(id => !eventsMap.has(id));
+      if (regEventIdsArr.length > 0) {
+        // Chunk into sizes of 10 for Firestore 'in' queries
+        const chunkedPromises = [];
+        const FieldPath = require('firebase-admin').firestore.FieldPath;
+        for (let i = 0; i < regEventIdsArr.length; i += 10) {
+          const chunk = regEventIdsArr.slice(i, i + 10);
+          chunkedPromises.push(dbAdmin.collection('events').where(FieldPath.documentId(), 'in', chunk).get());
+        }
+        const chunkResults = await Promise.all(chunkedPromises);
+        chunkResults.forEach(snap => {
+          snap.docs.forEach(doc => eventsMap.set(doc.id, doc));
+        });
+      }
+
+      const eventsDocs = Array.from(eventsMap.values());
+
       // 2. Process Events (matching registrations, manager assignments, or organized events)
       const activeEventStatuses = ['POSTED', 'APPROVED', 'PENDING_MANAGERS', 'PENDING_FACULTY', 'PENDING_HOD', 'PENDING_IQAC', 'PENDING_PRINCIPAL', 'PUBLISHED', 'IN_PROGRESS', 'COMPLETED'];
 
-      for (const doc of eventsSnap.docs) {
+      for (const doc of eventsDocs) {
         const ev = doc.data();
         const evId = doc.id;
 
