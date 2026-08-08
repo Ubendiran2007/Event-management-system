@@ -10,14 +10,14 @@ const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 const STATUSES = ['DELIVERED', 'VIEWED', 'ARCHIVED'];
 
 export default function NotificationCenterPage() {
-  const { 
-    notifications, 
-    loading, 
-    hasMore, 
-    filters, 
-    refreshNotifications, 
-    loadMore, 
-    markAllRead 
+  const {
+    notifications,
+    loading,
+    hasMore,
+    filters,
+    refreshNotifications,
+    loadMore,
+    markAllRead
   } = useNotifications();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,8 +38,8 @@ export default function NotificationCenterPage() {
   const filteredNotifications = notifications.filter(n => {
     if (!searchTerm) return true;
     const lowerSearch = searchTerm.toLowerCase();
-    return n.title.toLowerCase().includes(lowerSearch) || 
-           n.message.toLowerCase().includes(lowerSearch);
+    return n.title.toLowerCase().includes(lowerSearch) ||
+      n.message.toLowerCase().includes(lowerSearch);
   });
 
   // Grouping by Date
@@ -83,88 +83,88 @@ export default function NotificationCenterPage() {
 
   return (
     <Layout>
-    <div className="flex h-full min-h-0 flex-col bg-[#eef3fb]">
-      <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
-        <div className="mx-auto flex w-full max-w-6xl flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div className="flex items-center gap-3"><span className="rounded-2xl bg-blue-50 p-3 text-blue-600"><Bell className="h-6 w-6" /></span><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Message inbox</p><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Notification Center</h1><p className="mt-0.5 text-sm text-slate-500">Manage your alerts, updates and institutional messages.</p></div></div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative min-w-0 sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="text" placeholder="Search notifications..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50" /></div><button onClick={markAllRead} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><CheckCheck className="h-4 w-4" /> Mark all read</button></div>
-        </div>
-      </header>
+      <div className="flex h-full min-h-0 flex-col bg-[#eef3fb]">
+        <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
+          <div className="mx-auto flex w-full max-w-6xl flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div className="flex items-center gap-3"><span className="rounded-2xl bg-blue-50 p-3 text-blue-600"><Bell className="h-6 w-6" /></span><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-600">Message inbox</p><h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Notification Center</h1><p className="mt-0.5 text-sm text-slate-500">Manage your alerts, updates and institutional messages.</p></div></div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center"><div className="relative min-w-0 sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="text" placeholder="Search notifications..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50" /></div><button onClick={markAllRead} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><CheckCheck className="h-4 w-4" /> Mark all read</button></div>
+          </div>
+        </header>
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="mx-auto w-full max-w-6xl space-y-5">
-          <section className="flex flex-wrap items-center justify-end gap-2">{renderFilterMenu('category', activeCategory, 'All categories', CATEGORIES, setActiveCategory)}{renderFilterMenu('status', activeStatus, 'All statuses', STATUSES, setActiveStatus, true)}{renderFilterMenu('priority', activePriority, 'All priorities', PRIORITIES, setActivePriority)}</section>
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="mb-5 flex items-center justify-between"><div><h2 className="font-extrabold text-slate-900">Recent notifications</h2><p className="mt-0.5 text-sm text-slate-500">{filteredNotifications.length} notification{filteredNotifications.length === 1 ? '' : 's'} in this view</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activeStatus === 'DELIVERED' ? 'Unread' : 'All messages'}</span></div>
-            <div className="mx-auto max-w-4xl space-y-7">
-            
-            {loading && notifications.length === 0 ? (
-              <div className="space-y-3">
-                <NotificationSkeleton />
-                <NotificationSkeleton />
-                <NotificationSkeleton />
-                <NotificationSkeleton />
-                <NotificationSkeleton />
-              </div>
-            ) : filteredNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4 text-slate-300">
-                  <CheckCheck className="w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-700">No notifications found</h3>
-                <p className="text-sm text-slate-500 max-w-sm mt-2">
-                  {searchTerm || activeCategory || activeStatus || activePriority 
-                    ? "Try adjusting your filters to see more results." 
-                    : "You're all caught up! There are no new notifications for you right now."}
-                </p>
-                {(searchTerm || activeCategory || activeStatus || activePriority) && (
-                  <button 
-                    onClick={clearFilters}
-                    className="mt-4 text-blue-600 font-semibold hover:underline"
-                  >
-                    Clear all filters
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                {groupOrder.map(group => {
-                  const groupItems = groupedNotifications[group];
-                  if (!groupItems || groupItems.length === 0) return null;
-                  
-                  return (
-                    <div key={group} className="space-y-3">
-                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-2">
-                        {group}
-                      </h3>
-                      <div className="space-y-3">
-                        {groupItems.map(notif => (
-                          <NotificationCard key={notif.id} notification={notif} />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="mx-auto w-full max-w-6xl flex flex-col min-h-full space-y-5">
+            <section className="shrink-0 flex flex-wrap items-center justify-end gap-2">{renderFilterMenu('category', activeCategory, 'All categories', CATEGORIES, setActiveCategory)}{renderFilterMenu('status', activeStatus, 'All statuses', STATUSES, setActiveStatus, true)}{renderFilterMenu('priority', activePriority, 'All priorities', PRIORITIES, setActivePriority)}</section>
+            <section className="flex-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 flex flex-col min-h-0">
+              <div className="shrink-0 mb-5 flex items-center justify-between"><div><h2 className="font-extrabold text-slate-900">Recent notifications</h2><p className="mt-0.5 text-sm text-slate-500">{filteredNotifications.length} notification{filteredNotifications.length === 1 ? '' : 's'} in this view</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{activeStatus === 'DELIVERED' ? 'Unread' : 'All messages'}</span></div>
+              <div className="flex-1 overflow-y-auto min-h-0 pr-1 mx-auto w-full max-w-4xl space-y-5">
 
-                {hasMore && (
-                  <div className="pt-4 pb-8 flex justify-center">
-                    <button 
-                      onClick={loadMore}
-                      disabled={loading}
-                      className="px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 flex items-center gap-2"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                      Load More
-                    </button>
+                {loading && notifications.length === 0 ? (
+                  <div className="space-y-3">
+                    <NotificationSkeleton />
+                    <NotificationSkeleton />
+                    <NotificationSkeleton />
+                    <NotificationSkeleton />
+                    <NotificationSkeleton />
                   </div>
+                ) : filteredNotifications.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4 text-slate-300">
+                      <CheckCheck className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-700">No notifications found</h3>
+                    <p className="text-sm text-slate-500 max-w-sm mt-2">
+                      {searchTerm || activeCategory || activeStatus || activePriority
+                        ? "Try adjusting your filters to see more results."
+                        : "You're all caught up! There are no new notifications for you right now."}
+                    </p>
+                    {(searchTerm || activeCategory || activeStatus || activePriority) && (
+                      <button
+                        onClick={clearFilters}
+                        className="mt-4 text-blue-600 font-semibold hover:underline"
+                      >
+                        Clear all filters
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {groupOrder.map(group => {
+                      const groupItems = groupedNotifications[group];
+                      if (!groupItems || groupItems.length === 0) return null;
+
+                      return (
+                        <div key={group} className="space-y-3">
+                          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-2">
+                            {group}
+                          </h3>
+                          <div className="space-y-3">
+                            {groupItems.map(notif => (
+                              <NotificationCard key={notif.id} notification={notif} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {hasMore && (
+                      <div className="pt-4 pb-8 flex justify-center">
+                        <button
+                          onClick={loadMore}
+                          disabled={loading}
+                          className="px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+                        >
+                          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          Load More
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-            </div>
-          </section>
-        </div>
-      </main>
-    </div>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
     </Layout>
   );
 }

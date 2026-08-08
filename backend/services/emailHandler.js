@@ -630,6 +630,7 @@ async function notifyManagersAssigned(eventData, newManagers = [], oldManagers =
           message: `You have been assigned as Event Manager for "${eventData.title || eventData.requisition?.step1?.eventTitle || 'an event'}". Please log in to accept or decline.`,
           eventId: eventData.id || null,
           eventTitle: eventData.title || eventData.requisition?.step1?.eventTitle || '',
+          deepLink: '/student/my-schedule',
           status: NOTIFICATION_STATUS.DELIVERED,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()

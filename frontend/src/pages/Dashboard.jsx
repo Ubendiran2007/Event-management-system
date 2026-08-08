@@ -62,6 +62,7 @@ import Layout from '../components/Layout';
 import StatusBadge from '../components/StatusBadge';
 import ODRequestDetailModal from '../components/ODRequestDetailModal';
 import EventDetailModal from '../components/EventDetailModal';
+import ReasonPromptModal from '../components/ReasonPromptModal';
 import VenueSelectionModal from '../components/VenueSelectionModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ApprovalsTable from '../components/ApprovalsTable';
@@ -69,7 +70,7 @@ import RegistrationsTable from '../components/RegistrationsTable';
 import EventsTable from '../components/EventsTable';
 import { generateODLetterBase64 as generateODLetterPDF } from '../utils/pdfGenerator';
 import { sortEventsByEventDateDesc, sortEventsBySubmissionDesc, sortEventsByEndDateDesc } from '../utils/eventSort';
-import { getAuthToken, acceptInvitation, declineInvitation } from '../utils/api';
+import { getAuthToken, acceptInvitation, declineInvitation, revokeManagerRequest } from '../utils/api';
 
 import { formatStudentNameWithRoll, formatStudentNameOnly, formatEventRef, fallbackValue, getEventStatus, isRegistrationLocked } from '../utils/formatters';
 import seceHeader from '../assets/sece header.jpeg';
@@ -297,6 +298,48 @@ const Dashboard = () => {
     fetchPendingInvitations();
   }, []);
   const scheduleCacheRef = useRef(null); // in-memory cache: { userId, data }
+
+  const [revokePromptOpen, setRevokePromptOpen] = useState(false);
+  const [revokeTargetEvent, setRevokeTargetEvent] = useState(null);
+
+  const handleManagerRevoke = (eventId) => {
+    setRevokeTargetEvent(eventId);
+    setRevokePromptOpen(true);
+  };
+
+  const confirmRevoke = async (reason) => {
+    const eventId = revokeTargetEvent;
+    
+    setRevokePromptOpen(false);
+    setRevokeTargetEvent(null);
+    setManagerInviteProcessing(eventId);
+    
+    try {
+      const result = await revokeManagerRequest(eventId, reason);
+      if (result.success !== false) {
+        setMySchedule(prev => {
+          if (!prev) return prev;
+          const updated = {
+            ...prev,
+            schedule: prev.schedule.map(item =>
+              item.eventId === eventId && item.type === 'MANAGED_EVENT'
+                ? { ...item, managerStatus: 'REVOKE_PENDING' }
+                : item
+            )
+          };
+          if (scheduleCacheRef.current) scheduleCacheRef.current = { ...scheduleCacheRef.current, data: updated };
+          return updated;
+        });
+      } else {
+        alert(result.message || 'Failed to request revocation.');
+      }
+    } catch (err) {
+      console.error('Failed to request revocation:', err);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setManagerInviteProcessing(null);
+    }
+  };
 
   const handleManagerInvite = async (eventId, action) => {
     setManagerInviteProcessing(eventId);
@@ -2322,12 +2365,17 @@ const Dashboard = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {mySchedule.schedule.map((item, idx) => {
+                                  {mySchedule.schedule.map((item, idx) => {
                                   const conflicts = mySchedule.schedule.filter((other, oIdx) => oIdx !== idx && isTimeOverlapping(item, other));
                                   const hasConflict = conflicts.length > 0;
+                                  const isManagerInactive = item.type === 'MANAGED_EVENT' && ['DECLINED', 'REVOKED', 'REMOVED'].includes(item.managerStatus);
                                   
                                   return (
-                                    <tr key={item.id || idx} onClick={() => handleViewScheduleItem(item.eventId)} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors group cursor-pointer">
+                                    <tr 
+                                      key={item.id || idx} 
+                                      onClick={() => { if (!isManagerInactive) handleViewScheduleItem(item.eventId); }} 
+                                      className={`border-b border-slate-50 transition-colors group ${!isManagerInactive ? 'hover:bg-slate-50/80 cursor-pointer' : 'opacity-70'}`}
+                                    >
                                       <td className="py-4 px-6">
                                         <h4 className="font-bold text-slate-900 text-sm truncate" title={item.title}>
                                           {item.title}
@@ -2381,11 +2429,16 @@ const Dashboard = () => {
                                             <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border shadow-sm flex items-center gap-1 ${
                                               item.managerStatus === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
                                               item.managerStatus === 'DECLINED' ? 'bg-red-50 text-red-700 border-red-200' : 
+                                              item.managerStatus === 'REVOKE_PENDING' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                              (item.managerStatus === 'REVOKED' || item.managerStatus === 'REMOVED') ? 'bg-slate-50 text-slate-700 border-slate-200' :
                                               'bg-amber-50 text-amber-700 border-amber-200'
                                             }`}>
                                               {item.managerStatus === 'ACCEPTED' && '✅ Accepted'}
                                               {item.managerStatus === 'DECLINED' && '❌ Declined'}
-                                              {item.managerStatus === 'PENDING' && '⏳ Pending'}
+                                              {item.managerStatus === 'REVOKE_PENDING' && '⏳ Revoke Pending'}
+                                              {item.managerStatus === 'REVOKED' && '❌ Revoked'}
+                                              {item.managerStatus === 'REMOVED' && '❌ Removed'}
+                                              {(item.managerStatus === 'PENDING' || item.managerStatus === 'INVITED') && '⏳ Pending'}
                                             </span>
                                           ) : (
                                             <span className="px-2 py-1 rounded-lg text-[10px] font-bold border shadow-sm bg-blue-50 text-blue-700 border-blue-200">
@@ -2401,10 +2454,10 @@ const Dashboard = () => {
                                         </div>
                                       </td>
                                       <td className="py-4 px-6 text-right">
-                                        {item.type === 'MANAGED_EVENT' && item.managerStatus === 'PENDING' ? (
+                                        {item.type === 'MANAGED_EVENT' && (item.managerStatus === 'PENDING' || item.managerStatus === 'INVITED') ? (
                                           <div className="flex items-center justify-end gap-2">
                                             <button
-                                              onClick={() => handleManagerInvite(item.eventId, 'accept')}
+                                              onClick={(e) => { e.stopPropagation(); handleManagerInvite(item.eventId, 'accept'); }}
                                               disabled={managerInviteProcessing === item.eventId}
                                               className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 rounded-lg transition-colors disabled:opacity-50"
                                               title="Accept"
@@ -2412,13 +2465,27 @@ const Dashboard = () => {
                                               {managerInviteProcessing === item.eventId ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={3} />}
                                             </button>
                                             <button
-                                              onClick={() => handleManagerInvite(item.eventId, 'decline')}
+                                              onClick={(e) => { e.stopPropagation(); handleManagerInvite(item.eventId, 'decline'); }}
                                               disabled={managerInviteProcessing === item.eventId}
                                               className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg transition-colors disabled:opacity-50"
                                               title="Decline"
                                             >
                                               {managerInviteProcessing === item.eventId ? <Loader2 size={14} className="animate-spin" /> : <X size={14} strokeWidth={3} />}
                                             </button>
+                                          </div>
+                                        ) : item.type === 'MANAGED_EVENT' && item.managerStatus === 'ACCEPTED' ? (
+                                          <div className="flex items-center justify-end gap-2">
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); handleManagerRevoke(item.eventId); }}
+                                              disabled={managerInviteProcessing === item.eventId}
+                                              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg transition-colors disabled:opacity-50 text-xs font-semibold flex items-center gap-1"
+                                            >
+                                              {managerInviteProcessing === item.eventId ? <Loader2 size={14} className="animate-spin" /> : 'Revoke'}
+                                            </button>
+                                          </div>
+                                        ) : isManagerInactive ? (
+                                          <div className="flex items-center justify-end text-[10px] text-slate-400 font-medium">
+                                            <span className="opacity-50">—</span>
                                           </div>
                                         ) : (
                                           <div className="flex items-center justify-end text-[10px] text-slate-400 font-medium group-hover:text-blue-500 transition-colors cursor-pointer">
@@ -2481,6 +2548,20 @@ const Dashboard = () => {
           onClose={() => setSelectedEventDetail(null)}
         />
       )}
+
+      <ReasonPromptModal 
+        isOpen={revokePromptOpen}
+        onClose={() => {
+          setRevokePromptOpen(false);
+          setRevokeTargetEvent(null);
+        }}
+        onSubmit={confirmRevoke}
+        title="Revoke Management Role"
+        description="Are you sure you want to request to be removed as a manager for this event? The organizer will have to approve this request."
+        placeholder="Enter your reason..."
+        submitText="Request Revoke"
+        isDestructive={true}
+      />
     </Layout>
   );
 };

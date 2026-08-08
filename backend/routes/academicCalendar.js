@@ -491,14 +491,16 @@ router.delete('/holidays/:id', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async
 router.post('/exams', requireRole(['IQAC_TEAM', 'SYSTEM_ADMIN']), async (req, res) => {
   if (checkDb(res)) return;
   try {
-    const { name, startDate, endDate, department, semester } = req.body;
+    const { name, startDate, endDate, department = null, semester = null } = req.body;
+    if (!name || !startDate || !endDate) return res.status(400).json({ success: false, message: 'Missing required fields' });
     const examData = { name, startDate, endDate, department, semester, createdAt: new Date().toISOString() };
     const docRef = doc(collection(db, 'exams'));
     await setDoc(docRef, examData);
     logCalendarAction('CREATE_EXAM', req.user, name, examData);
     res.json({ success: true, data: { id: docRef.id, ...examData } });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    console.error("Error creating exam:", error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
   }
 });
 

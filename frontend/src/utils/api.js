@@ -124,6 +124,9 @@ export const api = {
  */
 export const acceptInvitation = (eventId) => api.post(`/api/invitations/${eventId}/accept`, {});
 export const declineInvitation = (eventId) => api.post(`/api/invitations/${eventId}/decline`, {});
+export const revokeManagerRequest = (eventId, reason) => api.post(`/api/invitations/${eventId}/revoke-request`, { reason });
+export const approveRevokeRequest = (eventId, managerEmail, reason) => api.post(`/api/invitations/${eventId}/approve-revoke`, { managerEmail, reason });
+export const removeManager = (eventId, managerEmail, reason) => api.post(`/api/invitations/${eventId}/remove-manager`, { managerEmail, reason });
 
 export const registrationApi = {
   list: (eventId, options = {}) =>

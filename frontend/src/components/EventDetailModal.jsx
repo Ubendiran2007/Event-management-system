@@ -7,7 +7,9 @@ import {
   XCircle, Loader2, ClipboardList, Eye, Download, Users, Edit3, Save, PlayCircle, Plus, GraduationCap, Share2, Upload, MessageSquare, RefreshCw, CheckCircle, XOctagon
 } from 'lucide-react';
 import { uploadFileToStorage, deleteFileFromStorage, validateFile } from '../utils/storageService';
-import { getAuthToken, venueApi } from '../utils/api';
+import { getAuthToken, venueApi, approveRevokeRequest, removeManager } from '../utils/api';
+import ReasonPromptModal from './ReasonPromptModal';
+import ConfirmationModal from './ConfirmationModal';
 
 const formatTime12 = (t24) => {
   if (!t24) return "-";
@@ -87,6 +89,7 @@ const EventDetailModal = ({ event, onClose }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalError, setApprovalError] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
+  const [pendingRejectAction, setPendingRejectAction] = useState(null);
   const [extensionReason, setExtensionReason] = useState('');
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -111,6 +114,49 @@ const EventDetailModal = ({ event, onClose }) => {
   const [activeTab, setActiveTab] = useState('Overview');
 
   const fileInputRef = useRef(null);
+
+  const [removeTargetEmail, setRemoveTargetEmail] = useState(null);
+  const [approveRevokeTargetEmail, setApproveRevokeTargetEmail] = useState(null);
+
+  const handleApproveRevoke = (managerEmail) => {
+    setApproveRevokeTargetEmail(managerEmail);
+  };
+
+  const confirmApproveRevoke = async () => {
+    if (!approveRevokeTargetEmail) return;
+    const email = approveRevokeTargetEmail;
+    setApproveRevokeTargetEmail(null);
+    try {
+      const res = await approveRevokeRequest(event.id, email, "Approved by Organizer");
+      if (res.success !== false) {
+        onClose();
+      } else {
+        alert(res.message || 'Failed to approve revocation');
+      }
+    } catch (err) {
+      alert('Error approving revocation');
+    }
+  };
+
+  const handleRemoveManager = (managerEmail) => {
+    setRemoveTargetEmail(managerEmail);
+  };
+
+  const confirmRemoveManager = async (reason) => {
+    if (!removeTargetEmail) return;
+    const email = removeTargetEmail;
+    setRemoveTargetEmail(null);
+    try {
+      const res = await removeManager(event.id, email, reason);
+      if (res.success !== false) {
+        onClose();
+      } else {
+        alert(res.message || 'Failed to remove manager');
+      }
+    } catch (err) {
+      alert('Error removing manager');
+    }
+  };
 
   useEffect(() => {
     if (showPostponeModal) {
@@ -651,8 +697,8 @@ const EventDetailModal = ({ event, onClose }) => {
     }
   };
 
-  const handleDeptReject = async (department) => {
-    const reason = String(rejectionReason || '').trim();
+  const handleDeptReject = async (department, reasonFromModal) => {
+    const reason = String(reasonFromModal || rejectionReason || '').trim();
     if (!reason) {
       setApprovalError('Please enter a rejection reason before rejecting this requirement.');
       return;
@@ -670,8 +716,8 @@ const EventDetailModal = ({ event, onClose }) => {
     }
   };
 
-  const handleHRRejectBoth = async () => {
-    const reason = String(rejectionReason || '').trim();
+  const handleHRRejectBoth = async (reasonFromModal) => {
+    const reason = String(reasonFromModal || rejectionReason || '').trim();
     if (!reason) {
       setApprovalError('Please enter a rejection reason before rejecting these requirements.');
       return;
@@ -710,8 +756,8 @@ const EventDetailModal = ({ event, onClose }) => {
     }
   };
 
-  const handleReject = async () => {
-    const reason = String(rejectionReason || '').trim();
+  const handleReject = async (reasonFromModal) => {
+    const reason = String(reasonFromModal || rejectionReason || '').trim();
     if (!reason) {
       setApprovalError('Please enter a rejection reason before rejecting this event.');
       return;
@@ -730,7 +776,7 @@ const EventDetailModal = ({ event, onClose }) => {
         setTimeout(() => onClose(), 4000);
       } else {
         console.error('Error rejecting event:', error);
-        setApprovalError('Action failed. Check your connection or Firestore permissions and try again.');
+        setApprovalError(error.message || 'Action failed. Check your connection or Firestore permissions and try again.');
       }
       setIsProcessing(false);
     }
@@ -1402,6 +1448,7 @@ const EventDetailModal = ({ event, onClose }) => {
                           <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Email</th>
                           <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Department</th>
                           <th className="px-4 py-3 text-left font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Response</th>
+                          {isOrganizer && <th className="px-4 py-3 text-right font-bold text-slate-700 uppercase tracking-wider text-[10px] border-b border-slate-200">Actions</th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1411,9 +1458,16 @@ const EventDetailModal = ({ event, onClose }) => {
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : status === 'DECLINED'
                             ? 'bg-red-50 text-red-700 border-red-200'
+                            : status === 'REVOKE_PENDING'
+                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            : (status === 'REVOKED' || status === 'REMOVED')
+                            ? 'bg-slate-50 text-slate-700 border-slate-200'
                             : 'bg-amber-50 text-amber-700 border-amber-200';
                           const badgeLabel = status === 'ACCEPTED' ? '✅ Accepted'
                             : status === 'DECLINED' ? '❌ Declined'
+                            : status === 'REVOKE_PENDING' ? '⏳ Revoke Pending'
+                            : status === 'REVOKED' ? '❌ Revoked'
+                            : status === 'REMOVED' ? '❌ Removed'
                             : '⏳ Pending';
                           return (
                             <tr key={mgr.userId || idx} className="hover:bg-slate-50 transition-colors">
@@ -1425,7 +1479,32 @@ const EventDetailModal = ({ event, onClose }) => {
                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${badgeClass}`}>
                                   {badgeLabel}
                                 </span>
+                                {status === 'REVOKE_PENDING' && mgr.revokeReason && (
+                                  <div className="mt-1.5 text-[9px] text-slate-500 italic max-w-[120px] truncate" title={mgr.revokeReason}>
+                                    "{mgr.revokeReason}"
+                                  </div>
+                                )}
                               </td>
+                              {isOrganizer && (
+                                <td className="px-4 py-3 text-right">
+                                  {status === 'ACCEPTED' && (
+                                    <button 
+                                      onClick={() => handleRemoveManager(mgr.email)}
+                                      className="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded hover:bg-red-100 border border-red-200 transition-colors"
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
+                                  {status === 'REVOKE_PENDING' && (
+                                    <button 
+                                      onClick={() => handleApproveRevoke(mgr.email)}
+                                      className="px-2 py-1 bg-purple-50 text-purple-700 text-[10px] font-bold rounded hover:bg-purple-100 border border-purple-200 transition-colors"
+                                    >
+                                      Approve Revoke
+                                    </button>
+                                  )}
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -2217,26 +2296,12 @@ const EventDetailModal = ({ event, onClose }) => {
                   )}
                   <p className="text-sm font-semibold text-slate-700">Approve or Reject Your Department's Requirements</p>
 
-                  <div className="mb-3">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                      Reason for Rejection *
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      placeholder="Enter why this requirement is being rejected"
-                      disabled={isProcessing}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
-                    />
-                  </div>
-
                   <div className="flex flex-col gap-3">
                     {canApproveVenue && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('venue')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'venue' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Venue
@@ -2253,8 +2318,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveMedia && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('media')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'media' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Media Booking
@@ -2271,8 +2336,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveVenue && canApproveMedia && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={handleHRRejectBoth}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'HR_BOTH' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Both (HR)
@@ -2289,8 +2354,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveAudio && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('audio')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'audio' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Audio
@@ -2307,8 +2372,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveICTS && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('icts')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'icts' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject ICTS
@@ -2325,8 +2390,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveTransport && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('transport')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'transport' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Transport
@@ -2343,8 +2408,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveBoysAccommodation && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('boysAccommodation')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'boysAccommodation' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Boys Accommodation
@@ -2361,8 +2426,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     {canApproveGirlsAccommodation && (
                       <div className="flex gap-2 w-full">
                         <button
-                          onClick={() => handleDeptReject('girlsAccommodation')}
-                          disabled={isProcessing || !rejectionReason.trim()}
+                          onClick={() => setPendingRejectAction({ type: 'DEPARTMENT', department: 'girlsAccommodation' })}
+                          disabled={isProcessing}
                           className="flex-1 px-5 py-2.5 bg-red-50 text-red-600 rounded-lg font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                         >
                           {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />} Reject Girls Accommodation
@@ -2389,19 +2454,6 @@ const EventDetailModal = ({ event, onClose }) => {
                       {approvalError}
                     </div>
                   )}
-                  <div className="mb-3">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                      Reason for Rejection *
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                      placeholder="Enter why this event is being rejected"
-                      disabled={isProcessing}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cse-accent/30 disabled:bg-slate-100"
-                    />
-                  </div>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="text-sm text-slate-600">
                       {getNextApprover() && (
@@ -2413,8 +2465,8 @@ const EventDetailModal = ({ event, onClose }) => {
                     </div>
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <button
-                        onClick={handleReject}
-                        disabled={isProcessing || !rejectionReason.trim()}
+                        onClick={() => setPendingRejectAction({ type: 'GENERAL' })}
+                        disabled={isProcessing}
                         className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isProcessing ? (
@@ -2623,7 +2675,50 @@ const EventDetailModal = ({ event, onClose }) => {
       </div>
     )}
       </motion.div>
-    </AnimatePresence>
+
+      <ReasonPromptModal 
+        isOpen={!!removeTargetEmail}
+        onClose={() => setRemoveTargetEmail(null)}
+        onSubmit={confirmRemoveManager}
+        title="Remove Manager"
+        description="Are you sure you want to remove this manager from the event? Please provide a reason to be sent to them."
+        placeholder="Reason for removal..."
+        submitText="Remove Manager"
+        isDestructive={true}
+      />
+
+      <ConfirmationModal
+        isOpen={!!approveRevokeTargetEmail}
+        onClose={() => setApproveRevokeTargetEmail(null)}
+        onConfirm={confirmApproveRevoke}
+        title="Approve Revocation"
+        message="Are you sure you want to approve this manager's request to be revoked from the event?"
+        confirmText="Approve Revoke"
+        cancelText="Cancel"
+        type="warning"
+      />
+
+    
+      <ReasonPromptModal
+        isOpen={!!pendingRejectAction}
+        onClose={() => setPendingRejectAction(null)}
+        onSubmit={(reason) => {
+          if (!pendingRejectAction) return;
+          if (pendingRejectAction.type === 'DEPARTMENT') {
+            handleDeptReject(pendingRejectAction.department, reason);
+          } else if (pendingRejectAction.type === 'HR_BOTH') {
+            handleHRRejectBoth(reason);
+          } else if (pendingRejectAction.type === 'GENERAL') {
+            handleReject(reason);
+          }
+          setPendingRejectAction(null);
+        }}
+        title="Reject Event/Requirement"
+        description="Please provide a reason for rejection. This will be visible to the organizer."
+        isDestructive={true}
+        submitText="Confirm Rejection"
+      />
+</AnimatePresence>
   );
 };
 

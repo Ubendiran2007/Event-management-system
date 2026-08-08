@@ -265,9 +265,15 @@ const EventManagerSelector = ({
                   {/* Invite Status */}
                   <div className="mt-1 text-[11px] text-slate-500 flex items-center gap-1">
                     {manager.status === 'ACCEPTED' ? (
-                      <span className="text-emerald-700 font-medium">● Accepted Invite</span>
+                      <span className="text-emerald-700 font-medium">✅ Accepted Invite</span>
                     ) : manager.status === 'DECLINED' ? (
-                      <span className="text-red-700 font-medium">● Declined Invite</span>
+                      <span className="text-red-700 font-medium">❌ Declined Invite</span>
+                    ) : manager.status === 'REVOKE_PENDING' ? (
+                      <span className="text-purple-700 font-medium">⏳ Revoke Pending</span>
+                    ) : manager.status === 'REVOKED' ? (
+                      <span className="text-slate-700 font-medium">❌ Revoked</span>
+                    ) : manager.status === 'REMOVED' ? (
+                      <span className="text-slate-700 font-medium">❌ Removed</span>
                     ) : (
                       <span className="text-amber-600 font-medium">● Invite Pending</span>
                     )}
